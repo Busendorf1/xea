@@ -1,27 +1,76 @@
+/* Color system variables mapping official white, blue, and black */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --blue-primary: #2563eb;       /* Official Blue */
+  --blue-hover: #1d4ed8;
+  --black-color: #000000;
+  --white-color: #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Default Theme / Dark theme */
+[data-theme='dark'],
+:root:not([data-theme]) {
+  --background: #000000;
+  --foreground: #ffffff;
+  --primary: var(--blue-primary);
+  --primary-hover: #3b82f6;
+  --primary-glow: rgba(37, 99, 235, 0.15);
+  --secondary: #ffffff;
+  --secondary-glow: rgba(255, 255, 255, 0.15);
+  --card-bg: #0c0c0e;
+  --card-border: #222222;
+  --card-border-hover: #333333;
+  --text-muted: #a0aec0;
+  --input-bg: #111111;
+  --input-border: #222222;
+  --sidebar-bg: #090909;
+}
+
+/* White Theme */
+[data-theme='white'] {
+  --background: #ffffff;
+  --foreground: #000000;
+  --primary: var(--blue-primary);
+  --primary-hover: var(--blue-hover);
+  --primary-glow: rgba(37, 99, 235, 0.1);
+  --secondary: #000000;
+  --secondary-glow: rgba(0, 0, 0, 0.05);
+  --card-bg: #f8fafc;
+  --card-border: #cbd5e1;
+  --card-border-hover: #94a3b8;
+  --text-muted: #475569;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --sidebar-bg: #f1f5f9;
+}
+
+/* Semi-Dark Theme */
+[data-theme='semi-dark'] {
+  --background: #0f172a;        /* Deep slate-blue/navy */
+  --foreground: #f8fafc;
+  --primary: #38bdf8;          /* Light Sky Blue for high contrast on navy */
+  --primary-hover: #0ea5e9;
+  --primary-glow: rgba(56, 189, 248, 0.15);
+  --secondary: #ffffff;
+  --secondary-glow: rgba(255, 255, 255, 0.1);
+  --card-bg: #1e293b;
+  --card-border: #334155;
+  --card-border-hover: #475569;
+  --text-muted: #94a3b8;
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --sidebar-bg: #0b0f19;
 }
 
 html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-}
-
-body {
+  background-color: var(--background);
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 * {
@@ -35,8 +84,8 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+body::-webkit-scrollbar {
+  display: none;
 }
+
+

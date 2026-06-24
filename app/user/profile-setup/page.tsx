@@ -1,0 +1,460 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useUser } from "@auth0/nextjs-auth0";
+import { useRouter } from "next/navigation";
+import styles from "./page.module.css";
+import HeaderJoin from "@/components/HeaderJoin/page";
+import Footer from "@/components/Footer/page";
+import LocationSelector from "@/components/LocationSelector";
+
+const industries = [
+  "Technology", "Healthcare", "Finance", "Education", "Retail", "Construction",
+  "Real Estate", "Hospitality", "Transportation", "Media", "Entertainment",
+  "Telecommunications", "Energy", "Legal", "Marketing", "Insurance",
+  "Government", "Nonprofit", "Manufacturing", "Logistics", "Security",
+  "Consulting", "Design", "Agriculture", "Automotive", "Mining",
+  "Politics", "Religion", "NGO", "Environmental", "Diversity & Inclusion"
+];
+
+const interests = [
+  "Jobs", "Business", "Investing", "Fashion", "Fitness", "Sports",
+  "Health", "Travel", "Education", "Tech", "Gaming", "Politics",
+  "Religion", "Movies", "Music", "Lifestyle", "Shopping", "Books",
+  "Beauty", "Home Decor", "Parenting", "Spirituality", "Cars", "Cooking",
+  "Photography", "Volunteering", "Environment", "Dating", "Finance",
+  "Online Courses"
+];
+
+const behaviors = [
+  "Online Shopper", "Window Shopper", "Impulsive Buyer", "Researcher",
+  "High Engagement", "Clicks Ads", "Saves Products", "Abandons Cart",
+  "Subscribes Newsletters", "Downloads Freebies", "Shares Content",
+  "Buys via Referral", "Attends Webinars", "Engages with Polls",
+  "Searches Reviews", "Watches How‑To Videos", "Follows Brands",
+  "Uses Coupons", "Buys in Sales", "Daily App User", "Loyal Customer",
+  "Early Adopter", "Price‑Sensitive", "Mobile‑first", "Night User",
+  "Seeks Deals", "Prefers Premium", "Needs Instant Response",
+  "Reviews Often", "Follows Influencers"
+];
+
+const lifestyles = [
+  "Luxury‑Seeking", "Minimalist", "Eco‑Conscious", "Fitness‑Oriented",
+  "Family‑Oriented", "Adventurous", "Spiritual", "Career‑Driven",
+  "Budget‑Conscious", "Tech‑Savvy", "Pet Lover", "Urban Dweller",
+  "Countryside Living", "Night Owl", "Early Riser", "Remote Worker",
+  "Frequent Flyer", "Homebody", "Volunteer‑Minded", "Art Enthusiast",
+  "Foodie", "DIYer", "Health Nut", "Social Butterfly", "Solo Traveler",
+  "Workaholic", "Balanced Life", "Digital Nomad", "Collector", "Gamer"
+];
+
+const personalityTraits = [
+  "Introvert", "Extrovert", "Ambitious", "Creative", "Analytical",
+  "Empathetic", "Pragmatic", "Optimistic", "Pessimistic", "Curious",
+  "Disciplined", "Spontaneous", "Confident", "Cautious", "Assertive",
+  "Playful", "Serious", "Flexible", "Meticulous", "Innovative",
+  "Traditional", "Adventurous", "Skeptical", "Dependable", "Perfectionist",
+  "Kind‑Hearted", "Leader", "Follower", "Observer", "Strategic"
+];
+
+export default function ProfileSetup() {
+  const { user: authUser, isLoading: authLoading } = useUser();
+  const router = useRouter();
+  
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [formData, setFormData] = useState({
+    dob: "",
+    phone: "",
+    country: "",
+    state: "",
+    location: "",
+    bio: "",
+    gender: "",
+    employment: "",
+    intlTravel: "no",
+    localTravel: "no",
+    industry: [] as string[],
+    interest: [] as string[],
+    behavior: [] as string[],
+    lifestyle: [] as string[],
+    personality: [] as string[],
+    businessName: "",
+  });
+
+  const [openDropdowns, setOpenDropdowns] = useState({
+    industry: false,
+    interest: false,
+    behavior: false,
+    lifestyle: false,
+    personality: false,
+  });
+
+  useEffect(() => {
+    // If not logged in after auth finishes loading, redirect to home
+    if (!authLoading && !authUser) {
+      router.push("/");
+    }
+  }, [authUser, authLoading, router]);
+
+  const toggleDropdown = (key: keyof typeof openDropdowns) => {
+    setOpenDropdowns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCheckboxChange = (name: string, value: string, checked: boolean) => {
+    setFormData(prev => {
+      const arr = (prev as any)[name] as string[];
+      const updated = checked ? [...arr, value] : arr.filter(v => v !== value);
+      return { ...prev, [name]: updated };
+    });
+  };
+
+  const validateStep1 = () => {
+    if (!formData.dob || !formData.phone || !formData.country || !formData.state || !formData.location || !formData.gender || !formData.employment) {
+      setErrorMessage("Please fill in all fields.");
+      return false;
+    }
+
+    // Check age >= 18
+    const dobDate = new Date(formData.dob);
+    const today = new Date();
+    let age = today.getFullYear() - dobDate.getFullYear();
+    const m = today.getMonth() - dobDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) {
+      age--;
+    }
+
+    if (age < 18) {
+      setErrorMessage("You must be at least 18 years old to complete registration.");
+      return false;
+    }
+
+    setErrorMessage(null);
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateStep1()) return;
+
+    setLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          dob: formData.dob,
+          phone: formData.phone,
+          country: formData.country,
+          state: formData.state,
+          location: formData.location,
+          bio: formData.bio,
+          gender: formData.gender,
+          employment: formData.employment,
+          intlTravel: formData.intlTravel,
+          localTravel: formData.localTravel,
+          industry: formData.industry,
+          interest: formData.interest,
+          behavior: formData.behavior,
+          lifestyle: formData.lifestyle,
+          personality: formData.personality,
+          businessName: formData.businessName
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        setErrorMessage(errData.error || "Failed to update profile.");
+        setLoading(false);
+        return;
+      }
+
+      // Success - Redirect to dashboard
+      router.push("/user/dashboard");
+    } catch (err: any) {
+      console.error("Unexpected error:", err);
+      setErrorMessage("An unexpected error occurred. Please try again.");
+      setLoading(false);
+    }
+  };
+
+  const renderMultiSelect = (label: string, name: keyof typeof openDropdowns, options: string[]) => (
+    <div className={styles.dropdownContainer}>
+      <label className={styles.inputLabel}>{label}</label>
+      <div className={styles.dropdownHeader} onClick={() => toggleDropdown(name)}>
+        <span>{(formData as any)[name].length > 0 ? `${(formData as any)[name].length} selected` : `Select ${label}`}</span>
+        <span>{openDropdowns[name] ? "▲" : "▼"}</span>
+      </div>
+      {openDropdowns[name] && (
+        <div className={styles.checkboxGroup}>
+          {options.map((opt, i) => (
+            <label key={i} className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={(formData as any)[name].includes(opt)}
+                onChange={(e) => handleCheckboxChange(name, opt, e.target.checked)}
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  if (authLoading) {
+    return (
+      <div className={styles.loadingContainer}>
+        <p>Loading session...</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <HeaderJoin />
+      <main className={styles.container}>
+        <div className={styles.glowBlob}></div>
+        
+        <div className={styles.setupCard}>
+          <div className={styles.progressContainer}>
+            <div className={`${styles.progressStep} ${step >= 1 ? styles.stepActive : ""}`}>
+              <div className={styles.stepNum}>1</div>
+              <span>Profile info</span>
+            </div>
+            <div className={styles.progressBar}>
+              <div className={styles.progressFill} style={{ width: step === 2 ? "100%" : "0%" }}></div>
+            </div>
+            <div className={`${styles.progressStep} ${step >= 2 ? styles.stepActive : ""}`}>
+              <div className={styles.stepNum}>2</div>
+              <span>Targeting traits</span>
+            </div>
+          </div>
+
+          <div className={styles.cardHeader}>
+            <h2>Complete Profile Setup</h2>
+            <p>Help us customize your dashboard so you only see ads that pay well and fit your preferences.</p>
+          </div>
+
+          {errorMessage && <div className={styles.errorAlert}>{errorMessage}</div>}
+
+          <form onSubmit={handleSubmit} className={styles.form}>
+            {step === 1 && (
+              <div className={styles.formStep}>
+                <div className={styles.grid}>
+                  <div className={styles.inputGroup}>
+                    <label htmlFor="dob" className={styles.inputLabel}>Date of Birth</label>
+                    <input
+                      type="date"
+                      id="dob"
+                      name="dob"
+                      required
+                      value={formData.dob}
+                      onChange={handleInputChange}
+                      className={styles.inputField}
+                    />
+                  </div>
+
+                  <div className={styles.inputGroup}>
+                    <label htmlFor="phone" className={styles.inputLabel}>Phone Number</label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      placeholder="e.g. +2348012345678"
+                      required
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className={styles.inputField}
+                    />
+                  </div>
+
+                  <div className={styles.inputGroup}>
+                    <label htmlFor="gender" className={styles.inputLabel}>Gender</label>
+                    <select
+                      id="gender"
+                      name="gender"
+                      required
+                      value={formData.gender}
+                      onChange={handleInputChange}
+                      className={styles.selectField}
+                    >
+                      <option value="">Select Gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      {/* <option value="nonbinary">Non-Binary</option>
+                      <option value="prefer_not">Prefer not to say</option> */}
+                    </select>
+                  </div>
+
+                  <div className={styles.inputGroup}>
+                    <label htmlFor="employment" className={styles.inputLabel}>Employment Status</label>
+                    <select
+                      id="employment"
+                      name="employment"
+                      required
+                      value={formData.employment}
+                      onChange={handleInputChange}
+                      className={styles.selectField}
+                    >
+                      <option value="">Select Employment</option>
+                      <option value="employed">Employed</option>
+                      <option value="student">Student</option>
+                      <option value="unemployed">Unemployed</option>
+                      <option value="freelancer">Freelancer</option>
+                      <option value="entrepreneur">Entrepreneur</option>
+                      <option value="retired">Retired</option>
+                    </select>
+                  </div>
+
+                  <LocationSelector
+                    country={formData.country}
+                    state={formData.state}
+                    location={formData.location}
+                    onChange={({ country, state, location }) =>
+                      setFormData((prev) => ({ ...prev, country, state, location }))
+                    }
+                    inputClass={styles.inputField}
+                    labelClass={styles.inputLabel}
+                    groupClass={styles.inputGroup}
+                    cityGroupClass={styles.inputGroupFull}
+                    cityLabel="City/Location details"
+                  />
+
+                  <div className={styles.inputGroupFull}>
+                    <label htmlFor="businessName" className={styles.inputLabel}>Business Name (Optional, max 25 characters)</label>
+                    <input
+                      type="text"
+                      id="businessName"
+                      name="businessName"
+                      placeholder="e.g. Acme Corp"
+                      maxLength={25}
+                      value={formData.businessName}
+                      onChange={handleInputChange}
+                      className={styles.inputField}
+                    />
+                  </div>
+
+                  <div className={styles.inputGroupFull}>
+                    <label htmlFor="bio" className={styles.inputLabel}>Bio (max 90 characters)</label>
+                    <textarea
+                      id="bio"
+                      name="bio"
+                      placeholder="Tell us a bit about yourself..."
+                      maxLength={90}
+                      value={formData.bio}
+                      onChange={handleInputChange}
+                      className={styles.textareaField}
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.buttonGroup}>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/user/logout")}
+                    className={styles.backBtn}
+                    style={{ marginRight: "auto" }}
+                  >
+                    Logout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (validateStep1()) setStep(2);
+                    }}
+                    className={styles.nextBtn}
+                  >
+                    Next Step
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className={styles.formStep}>
+                <div className={styles.dropdownsGrid}>
+                  {renderMultiSelect("Industries", "industry", industries)}
+                  {renderMultiSelect("Interests", "interest", interests)}
+                  {renderMultiSelect("Behaviors", "behavior", behaviors)}
+                  {renderMultiSelect("Lifestyles", "lifestyle", lifestyles)}
+                  {renderMultiSelect("Personality Traits", "personality", personalityTraits)}
+                </div>
+
+                <div className={styles.grid2}>
+                  <div className={styles.inputGroup}>
+                    <label htmlFor="intlTravel" className={styles.inputLabel}>International Traveller?</label>
+                    <select
+                      id="intlTravel"
+                      name="intlTravel"
+                      value={formData.intlTravel}
+                      onChange={handleInputChange}
+                      className={styles.selectField}
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                  
+
+                  <div className={styles.inputGroup}>
+                    <label htmlFor="localTravel" className={styles.inputLabel}>Local Air Traveller?</label>
+                    <select
+                      id="localTravel"
+                      name="localTravel"
+                      value={formData.localTravel}
+                      onChange={handleInputChange}
+                      className={styles.selectField}
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className={styles.buttonGroup}>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/user/logout")}
+                    className={styles.backBtn}
+                    style={{ marginRight: "auto" }}
+                    disabled={loading}
+                  >
+                    Logout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className={styles.backBtn}
+                    disabled={loading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className={styles.submitBtn}
+                    disabled={loading}
+                  >
+                    {loading ? "Completing setup..." : "Complete & Enter Dashboard"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        </div>
+      </main>
+      <Footer />
+    </>
+  );
+}

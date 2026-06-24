@@ -1,0 +1,64 @@
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--card-bg);
+  color: var(--foreground);
+  line-height: 1.6;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: bold;
+  text-align: center;
+  color: #1a1a1a;
+  margin-bottom: 0.5rem;
+}
+
+.updatedDate {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.divider {
+  margin: 1.5rem 0;
+  border: none;
+  border-top: 2px solid #eee;
+}
+
+.acknowledgment {
+  margin-top: 1.5rem;
+  background-color: #f1f9ff;
+  border-left: 4px solid #1e90ff;
+  padding: 1rem;
+  font-weight: 600;
+}
+
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.heading {
+  font-size: 1.4rem;
+  color: #1e90ff;
+  border-left: 4px solid #1e90ff;
+  padding-left: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.list {
+  padding-left: 1.5rem;
+}
+
+.listItem {
+  margin-bottom: 0.5rem;
+}

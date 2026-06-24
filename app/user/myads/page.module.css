@@ -1,0 +1,51 @@
+.pageContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+  background-color: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.pageTitle {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--foreground); /* Slate 900 */
+  margin-top: 1rem;
+  margin-bottom: 2.5rem;
+  text-align: left;
+}
+
+.section {
+  margin-bottom: 3.5rem;
+  background: transparent;
+}
+
+.sectionTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--foreground); /* Slate 800 */
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--card-border); /* Slate 200 */
+}
+
+.authContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  text-align: center;
+  padding: 2rem;
+  background-color: var(--sidebar-bg);
+}
+
+.authMessage {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #ef4444; /* Slate red */
+}

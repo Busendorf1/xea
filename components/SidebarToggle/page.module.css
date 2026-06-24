@@ -1,0 +1,52 @@
+.settingsToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggleBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  margin-right: 8px;
+  transition: transform 0.3s ease, color 0.3s ease;
+  color: var(--foreground);
+}
+
+.toggleBtn:hover {
+  transform: rotate(90deg);
+}
+
+.leftSidebar {
+  padding: 1rem;
+  background-color: var(--sidebar-bg);
+  border-right: 1px solid var(--card-border);
+}
+
+.menuButtonGroup {
+  margin-top: 1rem;
+}
+
+.menuButton,
+.menuButtonDanger {
+  display: block;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  text-decoration: none;
+  border-radius: 4px;
+  color: var(--foreground);
+}
+
+.menuButton:hover {
+  background-color: var(--card-border);
+}
+
+.menuButtonDanger {
+  color: #ef4444;
+}
+
+.menuButtonDanger:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+

@@ -1,0 +1,407 @@
+/* Wrapper Styling */
+.pageWapper {
+  font-family: Arial, sans-serif;
+  background-color: var(--sidebar-bg);
+  min-height: 100vh;
+  padding: 2rem;
+  color: var(--foreground);
+}
+
+.pageWrapper {
+  max-width: 800px;
+  /* margin-top: 3rem; */
+  margin: 2rem auto;
+  background-color: var(--card-bg);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  color: var(--foreground);
+}
+
+/* Form Container */
+.adFormContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Labels and Inputs */
+.adFormContainer label {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.adFormContainer input[type="text"],
+.adFormContainer select {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  width: 100%;
+  background-color: var(--sidebar-bg);
+  color: var(--foreground);
+}
+
+.adFormContainer input[type="range"] {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* Dropdown Section */
+.dropdownContainer summary {
+  cursor: pointer;
+  font-weight: 600;
+  background-color: var(--sidebar-bg);
+  padding: 0.5rem;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.dropdownContainer details[open] summary {
+  background-color: #d1d5db;
+}
+
+.dropdownContainer label {
+  display: block;
+  margin-left: 1rem;
+  margin-bottom: 0.25rem;
+  cursor: pointer;
+  color: var(--foreground);
+}
+
+.dropdownContainer input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.dropdownContainer button {
+  float: right;
+  font-size: 0.875rem;
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+/* Button Styling */
+.buttonGroup {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2rem;
+}
+
+.buttonGroup button,
+.submitButton {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  /* border-radius: 8px; */
+  cursor: pointer;
+  background-color: black;
+  color: white;
+  transition: background-color 0.3s ease;
+}
+
+.buttonGroup button:hover,
+.submitButton:hover:not(:disabled) {
+  background-color: var(--primary);
+}
+
+.submitButton:disabled {
+  background-color: var(--card-border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+
+.adCreativeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.error {
+  color: red;
+  font-size: 0.9rem;
+}
+
+.inputError {
+  border: 1px solid red;
+}
+
+
+.adCreativeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.charCount {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  float: right;
+}
+
+.error {
+  color: red;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.inputError {
+  border: 1px solid red;
+}
+
+.info {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+
+.adCreativeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.inputBox {
+  padding: 0.6rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--card-border);
+  font-size: 1rem;
+  width: 100%;
+  color: var(--foreground);
+  background-color: var(--card-bg);
+}
+
+.inputBox:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.charCount {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  float: right;
+}
+
+.error {
+  color: red;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.inputError {
+  border-color: red !important;
+}
+
+.info {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.centeredHeading {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.checkboxGroup {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--sidebar-bg);
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--foreground);
+  user-select: none;
+  font-weight: 500 !important;
+}
+
+.checkboxLabel input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: pointer;
+}
+
+/* Premium Stripe/Apple Campaign Summary Section */
+.summaryContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.summaryHeader {
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 1.25rem;
+}
+
+.summaryTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+  margin: 0 0 0.5rem 0;
+}
+
+.summarySubtitle {
+  font-size: 0.925rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+
+.summarySection {
+  display: flex;
+  flex-direction: column;
+}
+
+.sectionTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 1rem 0;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 0.25rem;
+}
+
+.detailsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.detailsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.95rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.detailsKey {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.detailsVal {
+  color: var(--foreground);
+  font-weight: 500;
+  text-align: right;
+  max-width: 60%;
+  word-wrap: break-word;
+}
+
+/* Cost receipt card (Stripe style) */
+.costCard {
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 8px 24px rgba(0, 0, 0, 0.03);
+}
+
+.costCardTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 1.25rem 0;
+  color: var(--foreground);
+}
+
+.costRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.costRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.925rem;
+}
+
+.costKey {
+  color: var(--text-muted);
+}
+
+.costVal {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.divider {
+  height: 1px;
+  background-color: var(--card-border);
+  margin: 0.5rem 0;
+}
+
+.totalSection {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.totalLabel {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.totalAmount {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+

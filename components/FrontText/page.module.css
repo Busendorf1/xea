@@ -1,0 +1,285 @@
+.heroContainer {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--background);
+  background-image: 
+    radial-gradient(at 0% 0%, var(--primary-glow) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(0, 242, 254, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(111, 45, 189, 0.05) 0px, transparent 50%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8rem 2rem 4rem 2rem;
+  overflow: hidden;
+}
+
+/* Glowing background blobs */
+.glowBlob1 {
+  position: absolute;
+  top: 25%;
+  left: 15%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, var(--primary-glow) 0%, rgba(138, 43, 226, 0) 70%);
+  border-radius: 50%;
+  filter: blur(40px);
+  z-index: 0;
+  pointer-events: none;
+  animation: float1 15s infinite ease-in-out alternate;
+}
+
+.glowBlob2 {
+  position: absolute;
+  bottom: 20%;
+  right: 15%;
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.1) 0%, rgba(0, 242, 254, 0) 70%);
+  border-radius: 50%;
+  filter: blur(45px);
+  z-index: 0;
+  pointer-events: none;
+  animation: float2 12s infinite ease-in-out alternate;
+}
+
+@keyframes float1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(50px, -50px) scale(1.1); }
+}
+
+@keyframes float2 {
+  0% { transform: translate(0, 0) scale(1.1); }
+  100% { transform: translate(-40px, 30px) scale(0.9); }
+}
+
+.heroContent {
+  width: 100%;
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 4rem;
+  align-items: center;
+  z-index: 1;
+}
+
+.leftSection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.tagline {
+  background: rgba(138, 43, 226, 0.1);
+  border: 1px solid var(--primary-glow);
+  padding: 0.4rem 1rem;
+  border-radius: 99px;
+  margin-bottom: 1.5rem;
+}
+
+.tagline span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.title {
+  font-size: clamp(2.5rem, 4.5vw, 4rem);
+  font-weight: 850;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 1.5rem;
+  color: var(--foreground);
+}
+
+.gradientText {
+  background: linear-gradient(135deg, var(--primary) 0%, #4facfe 50%, var(--primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 0 40px rgba(0, 242, 254, 0.1);
+}
+
+.subtitle {
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 2.5rem;
+  max-width: 600px;
+}
+
+.featuresList {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.featureItem {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.featureIcon {
+  font-size: 1.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0.6rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+}
+
+.featureItem h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.featureItem p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Right Section - Login Card */
+.rightSection {
+  display: flex;
+  justify-content: center;
+}
+
+.loginCard {
+  width: 100%;
+  max-width: 420px;
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--card-border);
+  border-radius: 24px;
+  padding: 2.5rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.loginCard:hover {
+  border-color: var(--card-border-hover);
+  box-shadow: 0 20px 50px var(--primary-glow);
+}
+
+.cardHeader h3 {
+  font-size: 1.75rem;
+  font-weight: 750;
+  color: var(--foreground);
+  margin-bottom: 0.5rem;
+}
+
+.cardHeader p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.googleLoginBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: var(--card-bg);
+  color: var(--foreground);
+  padding: 0.85rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 650;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.googleLoginBtn:hover {
+  background-color: var(--card-border);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
+}
+
+.googleLoginBtn:active {
+  transform: translateY(0);
+}
+
+.googleIcon {
+  flex-shrink: 0;
+}
+
+.cardFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: center;
+  border-top: 1px solid var(--card-border);
+  padding-top: 1.5rem;
+}
+
+.cardFooter p:first-child {
+  font-size: 0.8rem;
+  color: #34d399; /* Green success color */
+  font-weight: 500;
+}
+
+.cardFooter p:last-child {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.cardFooter a {
+  color: var(--secondary);
+  text-decoration: underline;
+}
+
+.cardFooter a:hover {
+  color: var(--foreground);
+}
+
+/* Responsiveness */
+@media screen and (max-width: 992px) {
+  .heroContent {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+
+  .leftSection {
+    align-items: center;
+    text-align: center;
+  }
+
+  .subtitle {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .featuresList {
+    max-width: 500px;
+    margin: 0 auto;
+    text-align: left;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .heroContainer {
+    padding: 7rem 1rem 3rem 1rem;
+  }
+
+  .loginCard {
+    padding: 1.75rem;
+  }
+}
+

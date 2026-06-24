@@ -1,0 +1,157 @@
+.profileContainer {
+  --black: var(--foreground);
+  --white: var(--card-bg);
+  --offwhite: var(--background);
+  background: var(--offwhite);
+  padding: 3rem;
+  max-width: 600px;
+  margin: auto;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+  color: var(--black);
+  font-family: sans-serif;
+}
+
+.status {
+  margin-bottom: 1rem;
+  color: green;
+}
+
+.formSection {
+  margin-bottom: 2rem;
+}
+
+.formGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.formGrid input,
+.formGrid select,
+.formGrid textarea {
+  padding: 0.5rem;
+  border: 1px solid var(--black);
+  border-radius: 5px;
+  background: var(--white);
+  color: var(--black);
+}
+
+.formContainer textarea {
+  padding: 0.5rem;
+  border: 1px solid var(--black);
+  border-radius: 5px;
+  background: var(--white);
+  color: var(--black);
+}
+
+
+.formContainer textarea {
+  resize: none;
+  grid-column: span 2;
+  min-height: 80px;
+}
+
+.formContainer {
+  background: var(--black);
+  color: var(--white);
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.dropdownContainer {
+  margin-top: 1rem;
+}
+
+.dropdownHeader {
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+  background: var(--black);
+  color: var(--white);
+  padding: 0.5rem;
+  border-radius: 5px;
+}
+
+.checkboxGroup {
+  background: var(--white);
+  border: 1px solid var(--black);
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.checkboxGroup label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.formContainer button {
+  background: black;
+  color: white;
+}
+
+
+.textbo{
+  width: 100%;
+  height: 10%;
+  border: 1px solid #f2f2f2;
+  border-radius: 9px;
+  font-size: 15px;
+  padding: 1rem;
+  margin-top: 1rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.update{ 
+  margin-bottom: 2rem;
+}
+
+
+
+
+/* Button Styling */
+.buttonGroup {
+  display: flex;
+  margin-top: 2rem;
+  width: 100%;
+  /* align-content: center; */
+  justify-content: center;
+}
+
+.buttonGroup {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  /* border-radius: 8px; */
+  cursor: pointer;
+  background-color: black;
+  color: white;
+  transition: background-color 0.3s ease;
+}
+
+.buttonGroup:hover {
+  background-color: var(--primary);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.formGroup label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+

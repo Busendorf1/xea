@@ -1,0 +1,81 @@
+.footer {
+  background-color: var(--sidebar-bg);
+  padding: 40px 20px;
+  border-top: 1px solid var(--card-border);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--foreground);
+}
+
+.linkList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.link {
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-bottom: 8px;
+  display: block;
+  transition: color 0.2s ease-in-out;
+}
+
+.link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.copyRight {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  padding-top: 10px;
+  border-top: 1px solid var(--card-border);
+}
+
+.faqItem {
+  margin-bottom: 10px;
+}
+
+.faqQuestion {
+  background: none;
+  font-size: 0.9rem;
+  border: none;
+  color: var(--foreground);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  padding: 5px 0;
+  width: 100%;
+  transition: color 0.2s ease-in-out;
+}
+
+.faqQuestion:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.faqAnswer {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+

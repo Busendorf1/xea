@@ -1,0 +1,124 @@
+.card {
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  max-width: 400px;
+  margin: auto;
+  padding: 1rem;
+  background-color: var(--card-bg);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.mediaBox {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background-color: var(--sidebar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mediaBox img,
+.mediaBox video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: cover;
+}
+
+.adText {
+  margin: 1rem 0;
+  font-size: 0.95rem;
+  color: var(--foreground);
+}
+
+.actionButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.iconButton {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 50%;
+  padding: 10px;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  transition: all 0.3s ease;
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.iconButton:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px var(--primary-glow);
+}
+
+/* Mutual+ Preview Section */
+.mutualPreview {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.mutualPreviewBtn {
+  background-color: var(--primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 4px 14px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: default;
+  opacity: 0.8;
+  height: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.mutualPreviewNote {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.mediaBox {
+  position: relative;
+}
+
+.arrowBtn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: #fff;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+}
+
+.arrowBtn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+}
