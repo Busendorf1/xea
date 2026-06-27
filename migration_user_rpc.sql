@@ -107,7 +107,7 @@ BEGIN
 
   UPDATE public.users SET
     username = COALESCE(p_username, username),
-    dob = COALESCE(p_dob, dob),
+    dob = COALESCE(p_dob::date, dob),
     country = COALESCE(p_country, country),
     state = COALESCE(p_state, state),
     location = COALESCE(p_location, location),

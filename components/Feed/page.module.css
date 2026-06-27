@@ -379,5 +379,19 @@
   pointer-events: none;
 }
 
+@media screen and (max-width: 600px) {
+  .feedContainer {
+    border-left: none;
+    border-right: none;
+    padding: 0;
+  }
+  .card {
+    padding: 1rem 0.75rem;
+  }
+  .adText {
+    font-size: 0.9rem;
+  }
+}
+
 
 

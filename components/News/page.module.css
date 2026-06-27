@@ -562,3 +562,23 @@
   color: var(--foreground);
   font-weight: 600;
 }
+
+@media screen and (max-width: 600px) {
+  .pageWapper {
+    padding: 1.5rem 1rem;
+  }
+  .pageWrapper {
+    padding: 1.5rem 1rem;
+    border-radius: 16px;
+  }
+  .pageWrapper h1 {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .stepLabel {
+    display: none;
+  }
+  .progressContainer {
+    margin-bottom: 1.5rem;
+  }
+}

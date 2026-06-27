@@ -1,11 +1,13 @@
 .container {
   max-width: 960px;
-  margin: 0 auto;
+  margin: 6.5rem auto 3rem auto;
   padding: 2rem;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background-color: var(--card-bg);
   color: var(--foreground);
   line-height: 1.6;
+  border-radius: 16px;
+  border: 1px solid var(--card-border);
 }
 
 .main {
@@ -18,7 +20,7 @@
   font-size: 2rem;
   font-weight: bold;
   text-align: center;
-  color: #1a1a1a;
+  color: var(--foreground);
   margin-bottom: 0.5rem;
 }
 
@@ -31,17 +33,18 @@
 .divider {
   margin: 1.5rem 0;
   border: none;
-  border-top: 2px solid #eee;
+  border-top: 1px solid var(--card-border);
 }
 
 .acknowledgment {
   margin-top: 1.5rem;
-  background-color: #f1f9ff;
-  border-left: 4px solid #1e90ff;
+  background-color: var(--primary-glow);
+  border-left: 4px solid var(--primary);
+  color: var(--foreground);
   padding: 1rem;
   font-weight: 600;
+  border-radius: 0 8px 8px 0;
 }
-
 
 .section {
   margin-bottom: 2rem;
@@ -49,8 +52,8 @@
 
 .heading {
   font-size: 1.4rem;
-  color: #1e90ff;
-  border-left: 4px solid #1e90ff;
+  color: var(--primary);
+  border-left: 4px solid var(--primary);
   padding-left: 0.75rem;
   margin-bottom: 1rem;
 }
@@ -61,4 +64,20 @@
 
 .listItem {
   margin-bottom: 0.5rem;
+}
+
+@media screen and (max-width: 768px) {
+  .container {
+    margin-top: 5.5rem;
+    padding: 1.5rem 1rem;
+    border-radius: 12px;
+  }
+  
+  .title {
+    font-size: 1.6rem;
+  }
+  
+  .heading {
+    font-size: 1.2rem;
+  }
 }

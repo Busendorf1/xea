@@ -17,7 +17,7 @@
   height: 58px;
   background-color: var(--card-bg);
   border-bottom: 1px solid var(--card-border);
-  z-index: 1000;
+  z-index: 1100;
   transition: top 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
 }
@@ -816,6 +816,29 @@
 
   .rightSidebar.hideMobileFull {
     transform: translateX(100%) !important;
+  }
+
+  .modalContainer {
+    max-width: 100% !important;
+    border-radius: 12px !important;
+  }
+
+  .modalHeader {
+    padding: 1rem !important;
+  }
+
+  .modalBody {
+    padding: 1rem !important;
+    gap: 1rem !important;
+  }
+
+  .notificationDropdown {
+    position: fixed !important;
+    top: 68px !important;
+    left: 1rem !important;
+    right: 1rem !important;
+    width: auto !important;
+    max-height: calc(100vh - 100px) !important;
   }
 }
 

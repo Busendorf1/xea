@@ -152,6 +152,18 @@
 
 .showMenu {
   display: flex;
+  animation: slideDownFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideDownFade {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .signInBtn, .logoutBtn {
@@ -174,6 +186,11 @@
 @media screen and (max-width: 768px) {
   .navbarContainer {
     padding: 1rem;
+  }
+  .mobileNav {
+    left: 1rem;
+    right: 1rem;
+    padding: 1.25rem;
   }
 }
 
@@ -372,4 +389,15 @@
   text-align: center;
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+@media screen and (max-width: 480px) {
+  .notificationDropdown {
+    position: fixed !important;
+    top: 68px !important;
+    left: 1rem !important;
+    right: 1rem !important;
+    width: auto !important;
+    max-height: calc(100vh - 100px) !important;
+  }
 }
