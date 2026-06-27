@@ -183,7 +183,7 @@
   border-radius: 12px;
   color: var(--foreground);
   padding: 0.8rem 1rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   outline: none;
   transition: all 0.2s ease;
 }
@@ -343,7 +343,7 @@
   border-radius: 12px;
   color: var(--foreground);
   padding: 0.8rem 1rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   outline: none;
   transition: all 0.2s ease;
   min-height: 80px;

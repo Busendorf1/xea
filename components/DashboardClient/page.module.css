@@ -1087,7 +1087,7 @@
   border-radius: 8px;
   padding: 0.75rem;
   color: var(--foreground);
-  font-size: 0.95rem;
+  font-size: 1rem;
   outline: none;
   transition: border-color 0.2s ease;
   width: 100%;
