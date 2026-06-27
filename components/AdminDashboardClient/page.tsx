@@ -30,7 +30,8 @@ import {
   Plus,
   Eye,
   MessageCircle,
-  Reply
+  Reply,
+  Bell
 } from "lucide-react";
 import styles from "./page.module.css";
 import { v4 as uuidv4 } from "uuid";
@@ -46,7 +47,7 @@ interface AdminDashboardClientProps {
   adminEmails: string[];
 }
 
-type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center";
+type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications";
 
 function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -114,6 +115,11 @@ function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaTyp
   );
 }
 
+const formatCurrency = (amount: number | string) => {
+  const val = typeof amount === "string" ? parseFloat(amount) : amount;
+  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export default function AdminDashboardClient({ session, adminEmails }: AdminDashboardClientProps) {
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -147,6 +153,15 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [replyingTicket, setReplyingTicket] = useState<any | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
+
+  // Notification States
+  const [notificationTarget, setNotificationTarget] = useState<"all" | "monetized" | "user">("all");
+  const [notificationTargetEmail, setNotificationTargetEmail] = useState("");
+  const [notificationTitle, setNotificationTitle] = useState("");
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationSuccessMsg, setNotificationSuccessMsg] = useState("");
+  const [notificationErrorMsg, setNotificationErrorMsg] = useState("");
 
   // Loading & Error States
   const [loading, setLoading] = useState(true);
@@ -564,6 +579,50 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
+  const handleSendNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNotificationSuccessMsg("");
+    setNotificationErrorMsg("");
+
+    if (!notificationTitle.trim() || !notificationMessage.trim()) {
+      setNotificationErrorMsg("Title and Message are required.");
+      return;
+    }
+
+    if (notificationTarget === "user" && !notificationTargetEmail.trim()) {
+      setNotificationErrorMsg("Please enter the target user email address.");
+      return;
+    }
+
+    setNotificationLoading(true);
+    try {
+      const res = await fetch("/api/admin/notifications/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: notificationTarget,
+          title: notificationTitle,
+          message: notificationMessage,
+          targetEmail: notificationTarget === "user" ? notificationTargetEmail : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setNotificationSuccessMsg(`Broadcast sent successfully!`);
+        setNotificationTitle("");
+        setNotificationMessage("");
+        setNotificationTargetEmail("");
+      } else {
+        setNotificationErrorMsg(data.error || "Failed to send notifications.");
+      }
+    } catch (err: any) {
+      setNotificationErrorMsg(err.message || "Failed to send notifications.");
+    } finally {
+      setNotificationLoading(false);
+    }
+  };
+
   // ----------------------------------------------------
   // ACCOUNT ACTIONS
   // ----------------------------------------------------
@@ -665,7 +724,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         const err = await response.json();
         alert(`Failed to update balance: ${err.error || "Server error"}`);
       } else {
-        alert(`Wallet balance adjusted by ₦${amount.toFixed(2)}. New Balance: ₦${newBalance.toFixed(2)}`);
+        alert(`Wallet balance adjusted by ${formatCurrency(amount)}. New Balance: ${formatCurrency(newBalance)}`);
         handleRefresh();
         if (selectedUser && selectedUser.id === user.id) {
           setSelectedUser({ ...selectedUser, balance: newBalance });
@@ -1232,8 +1291,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           <div><strong>Target Views:</strong> <span style={{ color: "var(--foreground)" }}>{ad.impressions}</span></div>
           <div><strong>Views Delivered:</strong> <span style={{ color: "var(--foreground)" }}>{ad.impression_count ?? 0}</span></div>
           <div><strong>Campaign Duration:</strong> <span style={{ color: "var(--foreground)" }}>{ad.campaign_days || 5} Days</span></div>
-          <div><strong>Cost/Impression:</strong> <span style={{ color: "var(--foreground)" }}>₦{(ad.cost_per_impression || ad.impression || 0).toFixed(2)}</span></div>
-          <div><strong>Total Budget:</strong> <span style={{ color: "var(--foreground)" }}>₦{(ad.total_cost || ad.cost || 0).toFixed(2)}</span></div>
+          <div><strong>Cost/Impression:</strong> <span style={{ color: "var(--foreground)" }}>{formatCurrency(ad.cost_per_impression || ad.impression || 0)}</span></div>
+          <div><strong>Total Budget:</strong> <span style={{ color: "var(--foreground)" }}>{formatCurrency(ad.total_cost || ad.cost || 0)}</span></div>
           <div><strong>Gained Mutuals:</strong> <span style={{ color: "var(--foreground)" }}>{ad.mutual_adds_count ?? 0}</span></div>
           <div><strong>Display Mutual+:</strong> <span style={{ color: ad.display_mutual_button ? "#10b981" : "#ef4444" }}>{ad.display_mutual_button ? "Enabled" : "Disabled"}</span></div>
           <div><strong>Target Gender:</strong> <span style={{ color: "var(--foreground)" }}>{ad.gender || "Both"}</span></div>
@@ -1333,6 +1392,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <span>Help Center ({helpTicketsCount})</span>
           </button>
 
+          <button onClick={() => handleTabChange("send-notifications")} className={`${styles.tabButton} ${activeTab === "send-notifications" ? styles.tabButtonActive : ""}`}>
+            <Bell size={18} />
+            <span>Send Announcements</span>
+          </button>
+
           <div style={{ marginTop: "auto", padding: "1rem", borderTop: "1px solid var(--card-border)" }}>
             <button onClick={handleRefresh} disabled={refreshing || loading} className={styles.btnAction} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
               <RefreshCw size={14} className={refreshing ? "spin" : ""} />
@@ -1380,8 +1444,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   <div className={styles.statCard}>
                     <DollarSign className={styles.statIcon} size={48} />
                     <span className={styles.statLabel}>Wallet Liability</span>
-                    <span className={styles.statValue}>₦{stats.totalBalance.toFixed(2)}</span>
-                    <span className={styles.statDesc}>₦{stats.totalWithdrawal.toFixed(2)} in withdrawals processing</span>
+                    <span className={styles.statValue}>{formatCurrency(stats.totalBalance)}</span>
+                    <span className={styles.statDesc}>{formatCurrency(stats.totalWithdrawal)} in withdrawals processing</span>
                   </div>
 
                   <div className={styles.statCard}>
@@ -1462,8 +1526,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", wordBreak: "break-all" }}>{user.email}</div>
                               </td>
                               <td className={styles.td}>
-                                <div style={{ fontWeight: "800" }}>₦{parseFloat(user.balance || 0).toFixed(2)}</div>
-                                <div style={{ fontSize: "0.75rem", color: "#3b82f6" }}>Pending: ₦{parseFloat(user.withdrawal || 0).toFixed(2)}</div>
+                                <div style={{ fontWeight: "800" }}>{formatCurrency(user.balance || 0)}</div>
+                                <div style={{ fontSize: "0.75rem", color: "#3b82f6" }}>Pending: {formatCurrency(user.withdrawal || 0)}</div>
                               </td>
                               <td className={styles.td}>
                                 <div><strong>Ads:</strong> {user.activeAdsCount} active / {user.reviewAdsCount} review</div>
@@ -2252,6 +2316,101 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             </>
           )}
 
+          {/* 9. SEND ANNOUNCEMENTS / NOTIFICATIONS TAB */}
+          {activeTab === "send-notifications" && (
+            <>
+              <h1 className={styles.sectionTitle}>Send Announcements & Payouts Notifications</h1>
+              <p className={styles.sectionSubtitle}>Broadcast push notifications directly to user segments or specific accounts.</p>
+
+              <div style={{
+                background: "var(--card-bg)",
+                border: "1px solid var(--card-border)",
+                borderRadius: "16px",
+                padding: "2rem",
+                maxWidth: "640px",
+                marginTop: "1.5rem"
+              }}>
+                <form onSubmit={handleSendNotification} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Notification Target Segment</label>
+                    <select
+                      value={notificationTarget}
+                      onChange={(e: any) => setNotificationTarget(e.target.value)}
+                      className={styles.selectField}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="all">All Registered Users</option>
+                      <option value="monetized">Monetized Users Only</option>
+                      <option value="user">Specific User by Email</option>
+                    </select>
+                  </div>
+
+                  {notificationTarget === "user" && (
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Target User Email Address</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="user@example.com"
+                        value={notificationTargetEmail}
+                        onChange={(e) => setNotificationTargetEmail(e.target.value)}
+                        className={styles.inputField}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                  )}
+
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Message Title</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Account Update 📢"
+                      value={notificationTitle}
+                      onChange={(e) => setNotificationTitle(e.target.value)}
+                      className={styles.inputField}
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Message Body Content</label>
+                    <textarea
+                      required
+                      rows={5}
+                      placeholder="Write your announcement details here..."
+                      value={notificationMessage}
+                      onChange={(e) => setNotificationMessage(e.target.value)}
+                      className={styles.textareaField}
+                      style={{ width: "100%", resize: "vertical", minHeight: "100px" }}
+                    />
+                  </div>
+
+                  {notificationSuccessMsg && (
+                    <div style={{ color: "#34d399", fontSize: "0.875rem", background: "rgba(52,211,153,0.1)", padding: "0.75rem", borderRadius: "8px", border: "1px solid rgba(52,211,153,0.2)" }}>
+                      {notificationSuccessMsg}
+                    </div>
+                  )}
+
+                  {notificationErrorMsg && (
+                    <div style={{ color: "#f87171", fontSize: "0.875rem", background: "rgba(248,113,113,0.1)", padding: "0.75rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.2)" }}>
+                      {notificationErrorMsg}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={notificationLoading}
+                    className={styles.btnSubmit}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+                  >
+                    {notificationLoading ? "Broadcasting message..." : "Broadcast Announcement"}
+                  </button>
+                </form>
+              </div>
+            </>
+          )}
+
         </main>
       </div>
 
@@ -2300,11 +2459,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               <div className={styles.gridTwoCol}>
                 <div className={styles.fieldGroup}>
                   <span className={styles.fieldLabel}>Wallet Balance</span>
-                  <span className={styles.fieldValue} style={{ color: "#10b981", fontSize: "1.1rem" }}>₦{parseFloat(selectedUser.balance || 0).toFixed(2)}</span>
+                  <span className={styles.fieldValue} style={{ color: "#10b981", fontSize: "1.1rem" }}>{formatCurrency(selectedUser.balance || 0)}</span>
                 </div>
                 <div className={styles.fieldGroup}>
                   <span className={styles.fieldLabel}>Pending Withdrawal</span>
-                  <span className={styles.fieldValue} style={{ color: "#3b82f6" }}>₦{parseFloat(selectedUser.withdrawal || 0).toFixed(2)}</span>
+                  <span className={styles.fieldValue} style={{ color: "#3b82f6" }}>{formatCurrency(selectedUser.withdrawal || 0)}</span>
                 </div>
               </div>
 

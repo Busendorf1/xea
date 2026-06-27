@@ -693,7 +693,7 @@
   cursor: pointer;
 }
 
-/* Responsive */
+/* Responsive adjustments for Admin Dashboard */
 @media screen and (max-width: 1024px) {
   .dashboardContent {
     flex-direction: column;
@@ -704,9 +704,85 @@
     flex-direction: row;
     overflow-x: auto;
     padding-bottom: 0.5rem;
+    scrollbar-width: none; /* Hide scrollbar for cleaner navigation */
+  }
+  .sidebar::-webkit-scrollbar {
+    display: none;
   }
   .tabButton {
     white-space: nowrap;
     padding: 0.6rem 1rem;
   }
 }
+
+@media screen and (max-width: 768px) {
+  .header {
+    padding: 0 1rem;
+  }
+  .userEmail {
+    display: none; /* Hide user email to save header space */
+  }
+  .badgeAdmin {
+    display: none; /* Hide text badge on smaller screens */
+  }
+  .appName {
+    font-size: 1.1rem;
+  }
+  .logoIcon {
+    width: 32px;
+    height: 32px;
+    font-size: 1.15rem;
+  }
+  .headerRight {
+    gap: 0.75rem;
+  }
+  .dashboardContent {
+    padding: 1rem;
+  }
+  .queueGrid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .header {
+    height: 56px;
+  }
+  .btnExit span {
+    display: none; /* Only show the exit icon on mobile */
+  }
+  .btnExit {
+    padding: 0.5rem;
+    border-radius: 50%; /* Make it round when it's icon-only */
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media screen and (max-width: 500px) {
+  .gridTwoCol {
+    grid-template-columns: 1fr; /* Stack columns inside forms/modals */
+    gap: 0.75rem;
+  }
+  .modalOverlay {
+    padding: 0.5rem;
+  }
+  .modalContent {
+    max-height: 95vh;
+    border-radius: 12px;
+  }
+  .modalHeader, .modalBody, .modalFooter {
+    padding: 1rem;
+  }
+  .searchBar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+

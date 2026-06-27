@@ -141,6 +141,10 @@ BEGIN
   DELETE FROM public.addsactive WHERE lower(user_email) = lower(v_email);
   DELETE FROM public.news WHERE lower(user_email) = lower(v_email);
   DELETE FROM public.newsactive WHERE lower(user_email) = lower(v_email);
+  DELETE FROM public.payments WHERE lower(user_email) = lower(v_email);
+  DELETE FROM public.notifications WHERE lower(user_email) = lower(v_email);
+  DELETE FROM public.ad_impressions WHERE lower(user_email) = lower(v_email);
+  DELETE FROM public.read_announcements WHERE lower(user_email) = lower(v_email);
   DELETE FROM public.users WHERE lower(email) = lower(v_email);
 
   RETURN TRUE;

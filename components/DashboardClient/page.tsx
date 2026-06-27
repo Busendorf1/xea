@@ -17,7 +17,8 @@ import {
   TrendingUp,
   FileText,
   Trash2,
-  X
+  X,
+  Bell
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
@@ -53,6 +54,7 @@ interface UserProfile {
   mutual_count: number;
   balance: number;
   withdrawal: number;
+  bvn_hash?: string | null;
 }
 
 interface DashboardClientProps {
@@ -60,6 +62,11 @@ interface DashboardClientProps {
   parsedInterest: string[];
   email: string;
 }
+
+const formatCurrency = (amount: number | string) => {
+  const val = typeof amount === "string" ? parseFloat(amount) : amount;
+  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 export default function DashboardClient({ user, parsedInterest, email }: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
@@ -71,10 +78,139 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const [selectedBank, setSelectedBank] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawPhone, setWithdrawPhone] = useState("");
+  const [withdrawBvn, setWithdrawBvn] = useState("");
   const [resolvedAccountName, setResolvedAccountName] = useState("");
   const [resolvingAccount, setResolvingAccount] = useState(false);
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState("");
+
+  // Notification states
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const fetchNotifications = async () => {
+    if (!email) return;
+    try {
+      const res = await fetch("/api/notifications");
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch notifications:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [email]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showNotifications && !target.closest(`.${styles.notificationContainer}`)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [showNotifications]);
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId: id }),
+      });
+      if (res.ok) {
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (res.ok) {
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const renderNotificationBell = () => (
+    <div className={styles.notificationContainer}>
+      <button
+        onClick={() => setShowNotifications(!showNotifications)}
+        className={styles.notificationBell}
+        title="Notifications"
+        aria-label="Toggle notifications panel"
+      >
+        <Bell size={18} />
+        {unreadCount > 0 && <span className={styles.notificationBadge}>{unreadCount}</span>}
+      </button>
+      
+      {showNotifications && (
+        <div className={styles.notificationDropdown}>
+          <div className={styles.notificationHeader}>
+            <h4>Notifications</h4>
+            {unreadCount > 0 && (
+              <button onClick={handleMarkAllAsRead} className={styles.markAllBtn}>
+                Mark all as read
+              </button>
+            )}
+          </div>
+          <div className={styles.notificationList}>
+            {notifications.length === 0 ? (
+              <div className={styles.emptyNotifications}>No notifications yet</div>
+            ) : (
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => handleMarkAsRead(n.id)}
+                  className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
+                >
+                  <div className={styles.notificationContent}>
+                    <div className={styles.notificationTitle}>{n.title}</div>
+                    <div className={styles.notificationMsg}>{n.message}</div>
+                    <span className={styles.notificationTime}>
+                      {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {!n.read && <span className={styles.unreadDot} />}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Initialize values when modal opens
+  useEffect(() => {
+    if (showWithdrawModal) {
+      setWithdrawAmount(user.balance.toString());
+      setWithdrawPhone("");
+      setWithdrawBvn("");
+      setWithdrawalError("");
+    }
+  }, [showWithdrawModal, user.balance]);
 
   useEffect(() => {
     if (showWithdrawModal && banks.length === 0) {
@@ -134,12 +270,22 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     }
 
     if (amountNum < 30000) {
-      setWithdrawalError("Minimum withdrawal threshold is ₦30,000");
+      setWithdrawalError(`Minimum withdrawal threshold is ${formatCurrency(30000)}`);
       return;
     }
 
-    if (amountNum > user.balance) {
-      setWithdrawalError("Withdrawal amount cannot exceed your available balance");
+    if (amountNum !== user.balance) {
+      setWithdrawalError("Withdrawals must deplete your account to zero. You must withdraw your entire balance.");
+      return;
+    }
+
+    if (!withdrawPhone.trim()) {
+      setWithdrawalError("Please enter your registered phone number");
+      return;
+    }
+
+    if (!user.bvn_hash && !/^\d{11}$/.test(withdrawBvn)) {
+      setWithdrawalError("Please enter your 11-digit Bank Verification Number (BVN)");
       return;
     }
 
@@ -159,12 +305,14 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           bankName: bank?.name || "Unknown Bank",
           accountNumber,
           amount: amountNum,
+          phone: withdrawPhone,
+          bvn: !user.bvn_hash ? withdrawBvn : undefined,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        alert(`Success! Withdrawal of ₦${amountNum.toLocaleString()} initiated.`);
+        alert("Success! Your withdrawal request has been queued for the next batch.");
         setShowWithdrawModal(false);
         window.location.reload();
       } else {
@@ -200,6 +348,37 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
       } else {
         alert("Redirecting to Paystack to complete your Standard Monetization subscription payment...");
         window.location.href = data.authorization_url;
+      }
+    } catch (e: any) {
+      alert(`An error occurred: ${e.message}`);
+    } finally {
+      setMonetizing(false);
+    }
+  };
+
+  const handleStandardMonetizeWallet = async () => {
+    if (user.balance < 28000) {
+      alert("Insufficient wallet balance. You need at least ₦28,000.00 to renew via wallet.");
+      return;
+    }
+    if (!confirm(`Deduct ${formatCurrency(28000)} from your wallet balance to renew your Standard Monetization subscription?`)) return;
+    setMonetizing(true);
+    try {
+      const response = await fetch("/api/payments/wallet-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "monetization_standard",
+          amount: 28000,
+          metadata: { type: "monetization_standard", user_email: email.toLowerCase() }
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        alert(`Payment failed: ${data.error || "Server error"}`);
+      } else {
+        alert("✅ Subscription renewed! Your Standard Monetization is now active.");
+        window.location.reload();
       }
     } catch (e: any) {
       alert(`An error occurred: ${e.message}`);
@@ -387,6 +566,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
               >
                 <User size={20} />
               </button>
+              {renderNotificationBell()}
               {renderThemeSwitcher()}
             </div>
           ) : (
@@ -406,6 +586,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 <Link href="/policy">Policies</Link>
                 <Link href="/faq">FAQ</Link>
               </div>
+              {renderNotificationBell()}
               {renderThemeSwitcher()}
             </div>
           )}
@@ -549,7 +730,10 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                     : 0;
 
                   if (isActive) {
-                    // Active subscription — show badge + renew button
+                    // Active subscription — show badge + faint renew button only
+                    const planType = user.monetization_type === "instant" ? "instant" : "standard";
+                    const renewalAmount = planType === "instant" ? 60000 : 28000;
+                    const planLabel = planType === "instant" ? "Instant subscription active" : "Standard subscription active";
                     return (
                       <div className={styles.renewalSection}>
                         <div className={styles.monetizedBadge}>
@@ -557,7 +741,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                             <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" fill="currentColor"/>
                           </svg>
                           <span>
-                            Standard subscription active
+                            {planLabel}
                             {user.monetized_until && (
                               <> · Expires {new Date(user.monetized_until).toLocaleDateString()}</>
                             )}
@@ -568,7 +752,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                           disabled
                           className={styles.renewBtnFaint}
                         >
-                          Renew Subscription (₦28,000 / month)
+                          Renew Subscription ({formatCurrency(renewalAmount)} / month)
                         </button>
                       </div>
                     );
@@ -587,21 +771,45 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                           onClick={handleStandardMonetize}
                           className={styles.renewBtn}
                         >
-                          {monetizing ? "Processing..." : "Renew Subscription (₦28,000 / month)"}
+                          {monetizing ? "Processing..." : `Renew via Card/Bank (${formatCurrency(28000)} / month)`}
                         </button>
+                        {user.balance >= 28000 && (
+                          <button
+                            type="button"
+                            disabled={monetizing}
+                            onClick={handleStandardMonetizeWallet}
+                            className={styles.renewBtn}
+                            style={{ marginTop: "0.5rem", background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}
+                          >
+                            {monetizing ? "Processing..." : `Renew with Wallet Balance (${formatCurrency(28000)})`}
+                          </button>
+                        )}
                       </div>
                     );
                   } else if (accountAgeInDays >= 90) {
                     // Never subscribed, account old enough — show first-time subscribe button
                     return (
-                      <button
-                        type="button"
-                        disabled={monetizing}
-                        onClick={handleStandardMonetize}
-                        className={styles.profileMonetizeBtn}
-                      >
-                        {monetizing ? "Activating..." : "Monetize Account (₦28,000 / month)"}
-                      </button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
+                        <button
+                          type="button"
+                          disabled={monetizing}
+                          onClick={handleStandardMonetize}
+                          className={styles.profileMonetizeBtn}
+                        >
+                          {monetizing ? "Activating..." : `Monetize via Card/Bank (${formatCurrency(28000)} / month)`}
+                        </button>
+                        {user.balance >= 28000 && (
+                          <button
+                            type="button"
+                            disabled={monetizing}
+                            onClick={handleStandardMonetizeWallet}
+                            className={styles.profileMonetizeBtn}
+                            style={{ background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}
+                          >
+                            {monetizing ? "Activating..." : `Monetize with Wallet Balance (${formatCurrency(28000)})`}
+                          </button>
+                        )}
+                      </div>
                     );
                   }
                   return null;
@@ -613,10 +821,10 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
 
             <div className={styles.walletCard}>
               <h4 className={styles.walletHeader}>Wallet Balance</h4>
-              <p className={styles.walletBalance}>₦{(user.balance ?? 0).toFixed(2)}</p>
+              <p className={styles.walletBalance}>{formatCurrency(user.balance ?? 0)}</p>
               {user.withdrawal > 0 && (
                 <p style={{ fontSize: "0.75rem", color: "#3b82f6", marginBottom: "0.5rem" }}>
-                  Pending Withdrawal: ₦{parseFloat(user.withdrawal as any).toFixed(2)}
+                  Pending Withdrawal: {formatCurrency(user.withdrawal)}
                 </p>
               )}
               <button
@@ -665,7 +873,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
               <form onSubmit={handleWithdrawSubmit} className={styles.modalBody}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--text-muted)" }}>
                   <span>Available Balance:</span>
-                  <span style={{ fontWeight: "700", color: "#10b981" }}>₦{(user.balance ?? 0).toFixed(2)}</span>
+                  <span style={{ fontWeight: "700", color: "#10b981" }}>{formatCurrency(user.balance ?? 0)}</span>
                 </div>
                 
                 <div className={styles.formGroup}>
@@ -711,21 +919,49 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   </div>
                 )}
 
-                <div className={styles.formGroup}>
+                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Amount (₦)</label>
                   <input
-                    type="number"
-                    min={30000}
-                    placeholder="Min ₦30,000"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    type="text"
+                    readOnly
+                    value={formatCurrency(withdrawAmount)}
+                    className={styles.formInput}
+                    style={{ backgroundColor: "rgba(255,255,255,0.05)", cursor: "not-allowed" }}
+                  />
+                  <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                    Note: Withdrawals must deplete your wallet to zero. Minimum threshold is {formatCurrency(30000)}.
+                  </span>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Registered Phone Number</label>
+                  <input
+                    type="text"
+                    placeholder="Enter registered phone number"
+                    value={withdrawPhone}
+                    onChange={(e) => setWithdrawPhone(e.target.value)}
                     required
                     className={styles.formInput}
                   />
-                  <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                    Note: Minimum withdrawal amount is ₦30,000.
-                  </span>
                 </div>
+
+                {!user.bvn_hash && (
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Bank Verification Number (BVN)</label>
+                    <input
+                      type="password"
+                      maxLength={11}
+                      placeholder="11-digit BVN"
+                      value={withdrawBvn}
+                      onChange={(e) => setWithdrawBvn(e.target.value.replace(/\D/g, ""))}
+                      required
+                      className={styles.formInput}
+                    />
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                      Required once for identity validation on your first withdrawal. Your BVN is hashed securely.
+                    </span>
+                  </div>
+                )}
 
                 {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
 

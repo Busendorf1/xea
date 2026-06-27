@@ -303,4 +303,120 @@ export class PaystackService {
       status: result.data.status, // e.g. 'otp', 'success', 'pending'
     };
   }
+
+  /**
+   * Resolve a BVN to get verified holder details
+   * @param bvn 11 digit Bank Verification Number
+   */
+  static async resolveBVN(bvn: string): Promise<{ first_name: string; last_name: string; phone: string; dob: string }> {
+    if (this.isMock()) {
+      console.warn("⚠️ Using Mock Paystack implementation for resolveBVN");
+      if (bvn.length !== 11) {
+        throw new Error("Invalid BVN. Must be exactly 11 digits.");
+      }
+      return {
+        first_name: "JOHN",
+        last_name: "DOE",
+        phone: "08012345678",
+        dob: "1990-01-01",
+      };
+    }
+
+    const response = await fetch(`https://api.paystack.co/bank/resolve_bvn/${bvn}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this.getSecretKey()}`,
+      },
+    });
+
+    const result = await response.json();
+    if (!response.ok || !result.status) {
+      throw new Error(result.message || "Failed to resolve BVN. Please confirm it is correct.");
+    }
+
+    return {
+      first_name: result.data.first_name,
+      last_name: result.data.last_name,
+      phone: result.data.mobile || result.data.formatted_phone || "",
+      dob: result.data.dob || "",
+    };
+  }
+
+  /**
+   * Verify if a bank account matches a BVN
+   */
+  static async matchBVN(accountNumber: string, bankCode: string, bvn: string): Promise<boolean> {
+    if (this.isMock()) {
+      console.warn("⚠️ Using Mock Paystack implementation for matchBVN");
+      if (accountNumber.includes("fail")) {
+        return false;
+      }
+      return true;
+    }
+
+    const response = await fetch(
+      `https://api.paystack.co/bank/match_bvn?account_number=${accountNumber}&bank_code=${bankCode}&bvn=${bvn}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.getSecretKey()}`,
+        },
+      }
+    );
+
+    const result = await response.json();
+    if (!response.ok || !result.status) {
+      return false;
+    }
+
+    // Paystack returns validation match details
+    return result.data.is_blacklisted === false;
+  }
+
+  /**
+   * Initiate a bulk transfer to multiple bank accounts
+   */
+  static async initiateBulkTransfer(
+    transfers: { amountInNaira: number; recipientCode: string; reference: string; reason?: string }[]
+  ): Promise<{ transfer_code: string; status: string; reference: string }[]> {
+    if (this.isMock()) {
+      console.warn("⚠️ Using Mock Paystack implementation for initiateBulkTransfer");
+      return transfers.map(t => ({
+        transfer_code: `trsf_mock_bulk_${Math.random().toString(36).substr(2, 9)}`,
+        status: "success",
+        reference: t.reference,
+      }));
+    }
+
+    const payload = {
+      source: "balance",
+      transfers: transfers.map(t => ({
+        amount: Math.round(t.amountInNaira * 100),
+        recipient: t.recipientCode,
+        reference: t.reference,
+        reason: t.reason || "Xea Payout",
+      })),
+    };
+
+    const response = await fetch("https://api.paystack.co/transfer/bulk", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.getSecretKey()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await response.json();
+    if (!response.ok || !result.status) {
+      throw new Error(result.message || "Failed to initiate bulk transfer");
+    }
+
+    // Map list of transfers from response data
+    return result.data.transfers.map((t: any) => ({
+      transfer_code: t.transfer_code,
+      status: t.status || "pending",
+      reference: t.reference,
+    }));
+  }
 }

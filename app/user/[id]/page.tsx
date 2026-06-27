@@ -46,7 +46,8 @@ export default async function UserDashboard() {
       passphrase,
       mutual_count,
       balance,
-      withdrawal
+      withdrawal,
+      bvn_hash
     `)
     .ilike("email", email)
     .maybeSingle();

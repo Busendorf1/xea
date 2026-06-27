@@ -31,6 +31,11 @@ const adRates: Record<string, number> = {
 //we can pay 60%
 const steps = ["Ad Type", "Targeting", "Location", "Ad Creative", "Summary"];
 
+const formatCurrency = (amount: number | string) => {
+  const val = typeof amount === "string" ? parseFloat(amount) : amount;
+  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 type Category =
   | "industry"
   | "interest"
@@ -42,6 +47,7 @@ type AdMediaType = "text" | "image" | "video" | "mixed";
 export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [adType, setAdType] = useState("politics");
   const [categories, setCategories] = useState<Category[]>([]);
   const [optionsMap, setOptionsMap] = useState<Record<Category, string[]>>({
@@ -86,6 +92,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     mutual_count: number;
     mutuals: string[];
     last_mutual_spent?: string;
+    balance: number;
   } | null>(null);
 
   useEffect(() => {
@@ -99,6 +106,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               mutual_count: data.mutual_count ?? 0,
               mutuals: data.mutuals ?? [],
               last_mutual_spent: data.last_mutual_spent,
+              balance: data.balance ?? 0,
             });
           }
         } catch (e) {
@@ -388,11 +396,16 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       return;
     }
 
-    setIsSubmitting(true);
-    const adId = uuidv4(); // Generate a UUID for this ad submission
+    const adId = uuidv4();
     const costPerImpression = calculateTotalCostPerImpression();
     const totalCost = calculateTotalCost();
 
+    if (paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
+      alert(`❌ Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`);
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       let mediaUrlString: string | null = null;
 
@@ -423,8 +436,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         mediaUrlString = mediaUrls.join(",");
       }
 
-      // Initialize Paystack payment instead of calling RPC directly
-      const paymentResponse = await fetch("/api/payments/initialize", {
+      // Initialize Paystack payment or wallet pay depending on selector
+      let paymentUrl = "/api/payments/initialize";
+      if (paymentMethod === "wallet") {
+        paymentUrl = "/api/payments/wallet-pay";
+      }
+
+      const paymentResponse = await fetch(paymentUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -472,11 +490,16 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
       const paymentData = await paymentResponse.json();
       if (!paymentResponse.ok || !paymentData.success) {
-        throw new Error(paymentData.error || "Failed to initialize payment");
+        throw new Error(paymentData.error || "Failed to process payment");
       }
 
-      alert("Redirecting to Paystack to complete payment for your Ad Campaign...");
-      window.location.href = paymentData.authorization_url;
+      if (paymentMethod === "wallet") {
+        alert("Success! Your Ad Campaign has been paid using your wallet balance and submitted for review.");
+        window.location.href = "/user/statement";
+      } else {
+        alert("Redirecting to Paystack to complete payment for your Ad Campaign...");
+        window.location.href = paymentData.authorization_url;
+      }
       setIsSubmitting(false);
     } catch (err: any) {
       console.error("❌ Submit error details:", {
@@ -1176,14 +1199,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       
                       <div className={styles.costRow}>
                         <span className={styles.costKey}>Cost per impression</span>
-                        <span className={styles.costVal}>₦{calculateTotalCostPerImpression().toFixed(2)}</span>
+                        <span className={styles.costVal}>{formatCurrency(calculateTotalCostPerImpression())}</span>
                       </div>
                     </div>
                     
                     <div className={styles.totalSection}>
                       <span className={styles.totalLabel}>Total cost</span>
                       <span className={styles.totalAmount}>
-                        ₦{calculateTotalCost().toLocaleString()}
+                        {formatCurrency(calculateTotalCost())}
                       </span>
                     </div>
                   </div>
@@ -1202,6 +1225,20 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   actionDetails={formSelections.actionDetails}
                   displayMutualButton={formSelections.displayMutualButton}
                 />
+                <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem", padding: "1.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
+                  <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "700", fontSize: "0.9rem" }}>Payment Method</label>
+                  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem 1rem", border: "1px solid var(--card-border)", borderRadius: "8px", backgroundColor: paymentMethod === "card" ? "rgba(255,255,255,0.05)" : "transparent" }}>
+                      <input type="radio" name="pay_method" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} />
+                      <span>Paystack (Card/Bank)</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem 1rem", border: "1px solid var(--card-border)", borderRadius: "8px", backgroundColor: paymentMethod === "wallet" ? "rgba(255,255,255,0.05)" : "transparent" }}>
+                      <input type="radio" name="pay_method" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} />
+                      <span>Wallet Balance ({formatCurrency(userProfile?.balance ?? 0)})</span>
+                    </label>
+                  </div>
+                </div>
+
                 <button
                   className={styles.submitButton}
                   onClick={submitAd}

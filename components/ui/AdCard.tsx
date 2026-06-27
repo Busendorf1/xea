@@ -79,6 +79,16 @@ interface AdCardProps {
   style?: React.CSSProperties;
 }
 
+const getHref = (type: string, value: string) => {
+  const map: Record<string, string> = {
+    action_phone: `tel:${value}`,
+    action_whatsapp: `https://wa.me/${value}`,
+    action_email: `mailto:${value}`,
+    action_website: value.startsWith("http") ? value : `https://${value}`,
+  };
+  return map[type] || "#";
+};
+
 export default function AdCard({
   ad,
   userEmail,
@@ -99,6 +109,22 @@ export default function AdCard({
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
+
+  const ADMIN_EMAILS = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
+  const isAdminAd = ad.user_email && ADMIN_EMAILS.includes(ad.user_email.toLowerCase());
+  const advertiserProfile = ad.user_email ? advertiserProfiles[ad.user_email.toLowerCase()] : null;
+  const brandName = advertiserProfile?.business_name || advertiserProfile?.firstName || "Xea";
+
+  let targetLink = "#";
+  if (ad.action_website) {
+    targetLink = getHref("action_website", ad.action_website);
+  } else if (ad.action_whatsapp) {
+    targetLink = getHref("action_whatsapp", ad.action_whatsapp);
+  } else if (ad.action_phone) {
+    targetLink = getHref("action_phone", ad.action_phone);
+  } else if (ad.action_email) {
+    targetLink = getHref("action_email", ad.action_email);
+  }
 
   const handleAction = async (type: "seen" | "earn" | "mutual", fn: () => Promise<boolean>) => {
     if (activeAction) return;
@@ -173,15 +199,7 @@ export default function AdCard({
     }
   };
 
-  const getHref = (type: string, value: string) => {
-    const map: Record<string, string> = {
-      action_phone: `tel:${value}`,
-      action_whatsapp: `https://wa.me/${value}`,
-      action_email: `mailto:${value}`,
-      action_website: value.startsWith("http") ? value : `https://${value}`,
-    };
-    return map[type] || "#";
-  };
+
 
   const getIcon = (type: string): React.ReactNode => {
     const icons: Record<string, React.ReactNode> = {
@@ -390,6 +408,7 @@ export default function AdCard({
         )}
 
         {/* Action bar */}
+        {/* Action bar */}
         <div className={styles.actionButtons}>
           {/* Contact / link buttons */}
           {actionButtons.map((type) => (
@@ -416,91 +435,104 @@ export default function AdCard({
           </button>
 
           {/* Interaction buttons – only for non-owners, non-seen */}
-          {!seenAds.includes(ad.id) &&
+          {isAdminAd ? (
+            <div className={styles.earnContainer}>
+              <a
+                href={targetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.visitBrandBtn}
+              >
+                Visit {brandName}
+              </a>
+            </div>
+          ) : (
+            !seenAds.includes(ad.id) &&
             ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
-            isSuspended ? (
-              <div className={styles.suspendedBadge}>Suspended</div>
-            ) : (
-              <div className={styles.earnContainer}>
-                {/* Seen / Dismiss – always visible to non-owners */}
-                <button
-                  className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
-                  type="button"
-                  disabled={isProcessing || !!activeAction}
-                  onClick={() => handleAction("seen", () => onMarkSeen(ad))}
-                  title="Dismiss this ad"
-                >
-                  {successAction === "seen" ? (
-                    <>
-                      <FaCheck className={styles.tickIcon} />
-                      <span>Dismissed</span>
-                    </>
-                  ) : (
-                    <>
-                      <FaEye />
-                      <span>Seen</span>
-                    </>
+              isSuspended ? (
+                <div className={styles.suspendedBadge}>Suspended</div>
+              ) : (
+                <div className={styles.earnContainer}>
+                  {/* Seen / Dismiss – always visible to non-owners */}
+                  <button
+                    className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
+                    type="button"
+                    disabled={isProcessing || !!activeAction}
+                    onClick={() => handleAction("seen", () => onMarkSeen(ad))}
+                    title="Dismiss this ad"
+                  >
+                    {successAction === "seen" ? (
+                      <>
+                        <FaCheck className={styles.tickIcon} />
+                        <span>Dismissed</span>
+                      </>
+                    ) : (
+                      <>
+                        <FaEye />
+                        <span>Seen</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Earn+ – hidden for mutual targets (they get a free impression) */}
+                  {!isMutualTarget && (
+                    <button
+                      className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
+                      type="button"
+                      disabled={isProcessing || !!activeAction}
+                      onClick={() => handleAction("earn", () => onAdEarn(ad))}
+                      title="Earn from this ad"
+                    >
+                      {successAction === "earn" ? (
+                        <>
+                          <FaCheck className={styles.tickIcon} />
+                          <span>Earned</span>
+                        </>
+                      ) : (
+                        <>
+                          <FaCoins />
+                          <span>Earn+</span>
+                        </>
+                      )}
+                    </button>
                   )}
-                </button>
- 
-                {/* Earn+ – hidden for mutual targets (they get a free impression) */}
-                {!isMutualTarget && (
-                  <button
-                    className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
-                    type="button"
-                    disabled={isProcessing || !!activeAction}
-                    onClick={() => handleAction("earn", () => onAdEarn(ad))}
-                    title="Earn from this ad"
-                  >
-                    {successAction === "earn" ? (
-                      <>
-                        <FaCheck className={styles.tickIcon} />
-                        <span>Earned</span>
-                      </>
-                    ) : (
-                      <>
-                        <FaCoins />
-                        <span>Earn+</span>
-                      </>
-                    )}
-                  </button>
-                )}
- 
-                {/* Mutual+ – only when advertiser enabled it and user hasn't mutualised them yet */}
-                {ad.display_mutual_button === true && !isAlreadyMutual && (
-                  <button
-                    className={
-                      viewerProfile && viewerProfile.mutual_count >= 50
-                        ? styles.mutualBtnDisabled
-                        : `${styles.mutualBtn} ${successAction === "mutual" ? styles.successBtn : ""}`
-                    }
-                    type="button"
-                    disabled={isProcessing || !!activeAction}
-                    onClick={() => {
-                      if (viewerProfile && viewerProfile.mutual_count >= 50) {
-                        alert(
-                          "⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals."
-                        );
-                      } else {
-                        handleAction("mutual", () => onAdMutual(ad));
+
+                  {/* Mutual+ – only when advertiser enabled it and user hasn't mutualised them yet */}
+                  {ad.display_mutual_button === true && !isAlreadyMutual && (
+                    <button
+                      className={
+                        viewerProfile && viewerProfile.mutual_count >= 50
+                          ? styles.mutualBtnDisabled
+                          : `${styles.mutualBtn} ${successAction === "mutual" ? styles.successBtn : ""}`
                       }
-                    }}
-                    title="Add advertiser to mutuals"
-                  >
-                    {successAction === "mutual" ? (
-                      <>
-                        <FaCheck className={styles.tickIcon} />
-                        <span>Added</span>
-                      </>
-                    ) : (
-                      <>
-                        <FaUserPlus />
-                        <span>Mutual+</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+                      type="button"
+                      disabled={isProcessing || !!activeAction}
+                      onClick={() => {
+                        if (viewerProfile && viewerProfile.mutual_count >= 50) {
+                          alert(
+                            "⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals."
+                          );
+                        } else {
+                          handleAction("mutual", () => onAdMutual(ad));
+                        }
+                      }}
+                      title="Add advertiser to mutuals"
+                    >
+                      {successAction === "mutual" ? (
+                        <>
+                          <FaCheck className={styles.tickIcon} />
+                          <span>Added</span>
+                        </>
+                      ) : (
+                        <>
+                          <FaUserPlus />
+                          <span>Mutual+</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )
             )
           )}
         </div>

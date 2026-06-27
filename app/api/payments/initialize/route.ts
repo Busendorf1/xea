@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     } else if (type === "monetization_instant") {
       verifiedAmount = 60000;
     } else if (type === "highlight") {
-      verifiedAmount = 10000;
+      verifiedAmount = 1000;
     } else if (type === "ad") {
       // Ads have dynamic prices. We expect the client to pass the calculated amount.
       verifiedAmount = parseFloat(amount);

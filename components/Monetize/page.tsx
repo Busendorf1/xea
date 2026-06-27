@@ -17,6 +17,11 @@ type MonetizeProps = {
   session: Session;
 };
 
+const formatCurrency = (amount: number | string) => {
+  const val = typeof amount === "string" ? parseFloat(amount) : amount;
+  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export default function Monetize({ session }: MonetizeProps) {
   const email = session?.user?.email;
 
@@ -27,10 +32,12 @@ export default function Monetize({ session }: MonetizeProps) {
   const [monetizedUntil, setMonetizedUntil] = useState<string | null>(null);
   const [monetizedAt, setMonetizedAt] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const [actionLoading, setActionLoading] = useState(false);
+  const [cardLoading, setCardLoading] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [confirmEmailInput, setConfirmEmailInput] = useState("");
   const [cancelError, setCancelError] = useState("");
+  const [walletBalance, setWalletBalance] = useState(0);
 
   const fetchStatus = async () => {
     if (!email) return;
@@ -58,6 +65,7 @@ export default function Monetize({ session }: MonetizeProps) {
         (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now())
       );
       setIsCurrentlyMonetized(active);
+      setWalletBalance(parseFloat(data.balance ?? 0));
     } catch (e) {
       console.error(e);
       setMessage("Error loading monetization status.");
@@ -72,7 +80,7 @@ export default function Monetize({ session }: MonetizeProps) {
 
   const handleInstantMonetize = async () => {
     if (!email) return;
-    setActionLoading(true);
+    setCardLoading(true);
     try {
       const response = await fetch("/api/payments/initialize", {
         method: "POST",
@@ -98,7 +106,39 @@ export default function Monetize({ session }: MonetizeProps) {
     } catch (e: any) {
       setMessage(`An unexpected error occurred: ${e.message}`);
     } finally {
-      setActionLoading(false);
+      setCardLoading(false);
+    }
+  };
+
+  const handleInstantMonetizeWallet = async () => {
+    if (!email) return;
+    if (walletBalance < 60000) {
+      setMessage(`Insufficient wallet balance. You need at least ${formatCurrency(60000)} to pay with wallet.`);
+      return;
+    }
+    if (!confirm(`Deduct ${formatCurrency(60000)} from your wallet balance for Instant Monetization?`)) return;
+    setWalletLoading(true);
+    try {
+      const response = await fetch("/api/payments/wallet-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "monetization_instant",
+          amount: 60000,
+          metadata: { type: "monetization_instant", user_email: email.toLowerCase() }
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setMessage(`Payment failed: ${data.error || "Server error"}`);
+      } else {
+        alert("✅ Instant Monetization activated! Your subscription is now live.");
+        fetchStatus();
+      }
+    } catch (e: any) {
+      setMessage(`An unexpected error occurred: ${e.message}`);
+    } finally {
+      setWalletLoading(false);
     }
   };
 
@@ -108,7 +148,7 @@ export default function Monetize({ session }: MonetizeProps) {
       setCancelError("Please type your exact email to confirm cancellation.");
       return;
     }
-    setActionLoading(true);
+    setCardLoading(true);
     setCancelError("");
     try {
       const response = await fetch("/api/monetize", {
@@ -129,7 +169,7 @@ export default function Monetize({ session }: MonetizeProps) {
     } catch (e: any) {
       setCancelError(`An unexpected error occurred: ${e.message}`);
     } finally {
-      setActionLoading(false);
+      setCardLoading(false);
     }
   };
 
@@ -193,21 +233,12 @@ export default function Monetize({ session }: MonetizeProps) {
           </div>
 
           {monetizationType === "instant" ? (
-            <div>
-              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-                You are currently on the Instant plan. You can renew your subscription early or check back when it expires.
-              </p>
-              <button
-                disabled={actionLoading}
-                onClick={handleInstantMonetize}
-                className={styles.actionBtn}
-              >
-                {actionLoading ? "Processing..." : "Renew Instant Plan (₦60,000 / month)"}
-              </button>
-            </div>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", textAlign: "center" }}>
+              You are on the Instant plan ({formatCurrency(60000)} / month). Renewal options will appear when your subscription is close to expiry.
+            </p>
           ) : (
             <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", textAlign: "center" }}>
-              Your standard subscription is active. Renewals (₦28,000 / month) are available directly on your Profile page.
+              Your standard subscription is active. Renewals ({formatCurrency(28000)} / month) are available directly on your Profile page.
             </p>
           )}
 
@@ -239,12 +270,12 @@ export default function Monetize({ session }: MonetizeProps) {
               <div className={styles.cancelActions}>
                 <button
                   type="button"
-                  disabled={actionLoading}
+                  disabled={cardLoading}
                   onClick={handleCancelMonetization}
                   className={`${styles.actionBtn} ${styles.dangerBtn}`}
                   style={{ width: "auto" }}
                 >
-                  {actionLoading ? "Cancelling..." : "Confirm Cancellation"}
+                  {cardLoading ? "Cancelling..." : "Confirm Cancellation"}
                 </button>
                 <button
                   type="button"
@@ -291,11 +322,11 @@ export default function Monetize({ session }: MonetizeProps) {
             <div className={styles.optionCard}>
               <div className={styles.optionHeader}>
                 <div className={styles.optionTitle}>Standard Path</div>
-                <div className={styles.optionPrice}>₦28,000</div>
+                <div className={styles.optionPrice}>{formatCurrency(28000)}</div>
                 <div className={styles.optionPeriod}>Per 30 Days</div>
               </div>
               <div className={styles.optionDescription}>
-                Available for established accounts active for at least 90 days. Once eligible, pay ₦28,000 monthly to stay monetized.
+                Available for established accounts active for at least 90 days. Once eligible, pay {formatCurrency(28000)} monthly to stay monetized.
               </div>
               
               {daysRemainingUntilStandard > 0 ? (
@@ -319,20 +350,30 @@ export default function Monetize({ session }: MonetizeProps) {
             <div className={styles.optionCard} style={{ borderColor: "rgba(16, 185, 129, 0.4)", backgroundColor: "rgba(16, 185, 129, 0.02)" }}>
               <div className={styles.optionHeader}>
                 <div className={styles.optionTitle} style={{ color: "#10b981" }}>Instant Activation</div>
-                <div className={styles.optionPrice}>₦60,000</div>
+                <div className={styles.optionPrice}>{formatCurrency(60000)}</div>
                 <div className={styles.optionPeriod}>Per 30 Days</div>
               </div>
               <div className={styles.optionDescription}>
-                Skip the 90-day waiting period and activate monetization immediately. Pay ₦60,000 monthly to receive ad earnings.
+                Skip the 90-day waiting period and activate monetization immediately. Pay {formatCurrency(60000)} monthly to receive ad earnings.
               </div>
               <button
-                disabled={actionLoading}
+                disabled={cardLoading || walletLoading}
                 onClick={handleInstantMonetize}
                 className={styles.actionBtn}
                 style={{ backgroundColor: "#10b981" }}
               >
-                {actionLoading ? "Processing..." : "Monetize Instantly"}
+                {cardLoading ? "Processing..." : "Monetize via Card/Bank"}
               </button>
+              {walletBalance >= 60000 && (
+                <button
+                  disabled={cardLoading || walletLoading}
+                  onClick={handleInstantMonetizeWallet}
+                  className={styles.actionBtn}
+                  style={{ backgroundColor: "#059669", marginTop: "0.5rem" }}
+                >
+                  {walletLoading ? "Processing..." : `Pay with Wallet (${formatCurrency(60000)})`}
+                </button>
+              )}
             </div>
           </div>
         </div>

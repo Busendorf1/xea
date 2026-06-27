@@ -68,10 +68,7 @@ export default function StatementPage() {
 
   const formatAmount = (amt: number | string) => {
     const parsed = typeof amt === "string" ? parseFloat(amt) : amt;
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-    }).format(parsed || 0);
+    return isNaN(parsed) ? "₦0.00" : "₦" + parsed.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   const formatDate = (dateStr: string) => {

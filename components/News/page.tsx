@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import supabase from "@/lib/utils/db"; // Adjust path to your Supabase client
 import styles from "../News/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
@@ -26,6 +26,10 @@ const interests = [
 ];
 const steps = ["Media", "Title", "Content", "Interest", "Preview"];
 
+const formatCurrency = (amount: number | string) => {
+  const val = typeof amount === "string" ? parseFloat(amount) : amount;
+  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 export default function News({ session }: NewsProps) {
   const [step, setStep] = useState(0);
@@ -36,6 +40,25 @@ export default function News({ session }: NewsProps) {
   const [content, setContent] = useState("");
   const [interest, setInterest] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [balance, setBalance] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (session?.user?.email) {
+        try {
+          const res = await fetch("/api/profile");
+          if (res.ok) {
+            const data = await res.json();
+            setBalance(data.balance ?? 0);
+          }
+        } catch (e) {
+          console.error("Failed to fetch profile balance:", e);
+        }
+      }
+    };
+    fetchBalance();
+  }, [session]);
 
   const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -73,6 +96,12 @@ export default function News({ session }: NewsProps) {
     }
 
     if (!isFormComplete()) return alert("Complete all fields.");
+
+    if (paymentMethod === "wallet" && balance < 1000) {
+      alert(`❌ Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but highlights cost ${formatCurrency(1000)}.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     let uploadedFilename: string | null = null;
@@ -94,13 +123,17 @@ export default function News({ session }: NewsProps) {
         .from("news")
         .getPublicUrl(filename);
         
-      // Initialize Paystack payment instead of inserting directly
-      const paymentResponse = await fetch("/api/payments/initialize", {
+      let paymentUrl = "/api/payments/initialize";
+      if (paymentMethod === "wallet") {
+        paymentUrl = "/api/payments/wallet-pay";
+      }
+
+      const paymentResponse = await fetch(paymentUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "highlight",
-          amount: 10000,
+          amount: 1000,
           metadata: {
             type: "highlight",
             user_email: session.user.email?.toLowerCase(),
@@ -115,11 +148,17 @@ export default function News({ session }: NewsProps) {
 
       const paymentData = await paymentResponse.json();
       if (!paymentResponse.ok || !paymentData.success) {
-        throw new Error(paymentData.error || "Failed to initialize payment");
+        throw new Error(paymentData.error || "Failed to process payment");
       }
 
-      alert("Redirecting to Paystack to complete payment for your Highlight...");
-      window.location.href = paymentData.authorization_url;
+      if (paymentMethod === "wallet") {
+        alert("Success! Your news highlight has been paid using your wallet balance and submitted for review.");
+        window.location.href = "/user/statement";
+      } else {
+        alert("Redirecting to Paystack to complete payment for your Highlight...");
+        window.location.href = paymentData.authorization_url;
+      }
+      
       // reset
       setStep(0);
       setMediaFile(null);
@@ -323,12 +362,12 @@ export default function News({ session }: NewsProps) {
                   <div className={styles.summaryTitle}>Highlights Pricing Details</div>
                   <div className={styles.summaryRow}>
                     <span>Publishing Fee</span>
-                    <span className={styles.summaryValue}>₦1,000.00</span>
+                    <span className={styles.summaryValue}>{formatCurrency(1000)}</span>
                   </div>
                   <div className={styles.summaryDivider} />
                   <div className={styles.summaryRowTotal}>
                     <span>Total Due</span>
-                    <span>₦1,000.00</span>
+                    <span>{formatCurrency(1000)}</span>
                   </div>
                   <div className={styles.checklist}>
                     <div className={styles.checkItem}>
@@ -385,6 +424,20 @@ export default function News({ session }: NewsProps) {
                     </p>
                   </div>
                 </div>
+
+                <div style={{ marginTop: "1.5rem", padding: "1.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
+                  <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "700", fontSize: "0.9rem" }}>Payment Method</label>
+                  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem 1rem", border: "1px solid var(--card-border)", borderRadius: "8px", backgroundColor: paymentMethod === "card" ? "rgba(255,255,255,0.05)" : "transparent" }}>
+                      <input type="radio" name="pay_method" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} />
+                      <span>Paystack (Card/Bank)</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem 1rem", border: "1px solid var(--card-border)", borderRadius: "8px", backgroundColor: paymentMethod === "wallet" ? "rgba(255,255,255,0.05)" : "transparent" }}>
+                      <input type="radio" name="pay_method" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} />
+                      <span>Wallet Balance ({formatCurrency(balance)})</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -416,7 +469,7 @@ export default function News({ session }: NewsProps) {
                   disabled={!isFormComplete() || isSubmitting}
                   onClick={handleSubmit}
                 >
-                  {isSubmitting ? "Submitting..." : "Pay ₦1,000 & Submit"}
+                  {isSubmitting ? "Submitting..." : `Pay ${formatCurrency(1000)} & Submit`}
                 </button>
               )}
             </div>
