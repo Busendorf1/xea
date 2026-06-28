@@ -95,6 +95,10 @@
   color: var(--foreground);
 }
 
+.titleLine {
+  display: block;
+}
+
 .gradientText {
   background: linear-gradient(135deg, var(--primary) 0%, #4facfe 50%, var(--primary) 100%);
   -webkit-background-clip: text;
@@ -261,15 +265,48 @@
     text-align: center;
   }
 
+  .title {
+    text-align: center;
+  }
+
+  .titleLine {
+    text-align: center;
+  }
+
   .subtitle {
     margin-left: auto;
     margin-right: auto;
+    text-align: center;
   }
 
   .featuresList {
     max-width: 500px;
     margin: 0 auto;
     text-align: left;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .title {
+    font-size: clamp(2rem, 8vw, 2.5rem);
+    line-height: 1.2;
+    text-align: left;
+    margin-bottom: 1.5rem;
+    width: 100%;
+  }
+
+  .titleLine {
+    text-align: left;
+    display: block;
+    width: 100%;
+  }
+
+  .subtitle {
+    font-size: 1.05rem;
+    line-height: 1.5;
+    text-align: left;
+    margin-bottom: 2rem;
+    padding: 0;
   }
 }
 

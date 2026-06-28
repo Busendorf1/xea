@@ -16,7 +16,7 @@ export async function GET() {
 
     const { data: user, error } = await supabaseAdmin
       .from("users")
-      .select("balance, mutual_count, mutuals, monetized, interest, suspended_until, last_mutual_spent, created_at, monetized_at, monetized_until, monetization_type")
+      .select("*")
       .ilike("email", email)
       .maybeSingle();
 

@@ -14,6 +14,7 @@ interface LocationSelectorProps {
   cityGroupClass?: string; // e.g. custom layout for city/province wrapper
   cityLabel?: string; // e.g. "Province" or "City/Location details"
   showLabels?: boolean;
+  disabled?: boolean;
 }
 
 export default function LocationSelector({
@@ -27,6 +28,7 @@ export default function LocationSelector({
   cityGroupClass = "",
   cityLabel = "City/Location details",
   showLabels = true,
+  disabled = false,
 }: LocationSelectorProps) {
   const isPredefinedCountry = countryList.includes(country);
   const selectedCountryOption = country ? (isPredefinedCountry ? country : "Other") : "";
@@ -76,6 +78,7 @@ export default function LocationSelector({
           onChange={handleCountryChange}
           className={inputClass}
           style={{ width: "100%" }}
+          disabled={disabled}
           required
         >
           <option value="">Select Country</option>
@@ -96,6 +99,7 @@ export default function LocationSelector({
             }
             className={inputClass}
             style={{ width: "100%", marginTop: "0.5rem" }}
+            disabled={disabled}
             required
           />
         )}
@@ -111,6 +115,7 @@ export default function LocationSelector({
               onChange={handleStateChange}
               className={inputClass}
               style={{ width: "100%" }}
+              disabled={disabled}
               required
             >
               <option value="">Select State</option>
@@ -131,6 +136,7 @@ export default function LocationSelector({
                 }
                 className={inputClass}
                 style={{ width: "100%", marginTop: "0.5rem" }}
+                disabled={disabled}
                 required
               />
             )}
@@ -145,6 +151,7 @@ export default function LocationSelector({
             }
             className={inputClass}
             style={{ width: "100%" }}
+            disabled={disabled}
             required
           />
         )}
@@ -160,6 +167,7 @@ export default function LocationSelector({
               onChange={handleCityChange}
               className={inputClass}
               style={{ width: "100%" }}
+              disabled={disabled}
               required
             >
               <option value="">Select {cityLabel}</option>
@@ -180,6 +188,7 @@ export default function LocationSelector({
                 }
                 className={inputClass}
                 style={{ width: "100%", marginTop: "0.5rem" }}
+                disabled={disabled}
                 required
               />
             )}
@@ -194,6 +203,7 @@ export default function LocationSelector({
             }
             className={inputClass}
             style={{ width: "100%" }}
+            disabled={disabled}
             required
           />
         )}

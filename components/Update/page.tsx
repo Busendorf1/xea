@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
-import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
 import { useRouter } from "next/navigation";
 import Footer from "../Footer/page";
 import HeaderJoin from "../HeaderJoin/page";
@@ -174,6 +173,7 @@ const personalityTraits = [
   "Observer",
   "Strategic",
 ];
+
 interface Props {
   email: string;
 }
@@ -186,7 +186,6 @@ interface UserProfileData {
   country: string;
   state: string;
   location: string;
-  passphrase: string;
   industry: string[];
   interest: string[];
   behavior: string[];
@@ -201,13 +200,14 @@ interface UserProfileData {
   lastName: string;
   bio: string;
   profileImage: string;
-  lastUpdated: Timestamp;
+  lastUpdated: string;
   business_name?: string;
   has_updated_profile?: boolean;
 }
 
 export default function Update({ email }: Props) {
-  const [profile, setProfile] = useState<UserProfileData | null>(null);
+  const [dbProfile, setDbProfile] = useState<UserProfileData | null>(null);
+  const [formData, setFormData] = useState<Partial<UserProfileData>>({});
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [openDropdowns, setOpenDropdowns] = useState({
@@ -218,6 +218,8 @@ export default function Update({ email }: Props) {
     personality: false,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [countdownText, setCountdownText] = useState("");
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const router = useRouter();
 
   const toggleDropdown = (key: keyof typeof openDropdowns) => {
@@ -252,7 +254,19 @@ export default function Update({ email }: Props) {
           }
         });
 
-        setProfile(data);
+        setDbProfile(data);
+        setFormData({
+          industry: data.industry || [],
+          interest: data.interest || [],
+          behavior: data.behavior || [],
+          lifestyle: data.lifestyle || [],
+          personality: data.personality || [],
+          gender: data.gender || "",
+          employment: data.employment || "",
+          intlTravel: data.intl_travel === true || data.intl_travel === "yes" ? "yes" : "no",
+          localTravel: data.local_travel === true || data.local_travel === "yes" ? "yes" : "no",
+          dob: data.dob || "",
+        });
       } catch (e) {
         console.error("Error fetching profile:", e);
         setStatus("❌ Failed to fetch profile.");
@@ -264,28 +278,61 @@ export default function Update({ email }: Props) {
     fetchProfile();
   }, [email]);
 
+  useEffect(() => {
+    if (!dbProfile || !dbProfile.has_updated_profile) return;
+
+    const lastUpdated = new Date(dbProfile.lastUpdated || 0);
+    const nextAvailableDate = new Date(lastUpdated.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const updateCountdown = () => {
+      const diff = nextAvailableDate.getTime() - Date.now();
+      if (diff <= 0) {
+        setTimeRemaining(null);
+        setCountdownText("");
+      } else {
+        setTimeRemaining(diff);
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        setCountdownText(
+          `${days}d ${hours}h ${minutes}m ${seconds}s`
+        );
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [dbProfile]);
+
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
     >
   ) => {
-    if (!profile) return;
     const { name, value, type } = e.target;
 
     if (type === "checkbox") {
       const checked = (e.target as HTMLInputElement).checked;
-      const current = (profile as any)[name] || [];
+      const current = (formData as any)[name] || [];
       const updated = checked
         ? [...current, value]
         : current.filter((v: string) => v !== value);
-      setProfile({ ...profile, [name]: updated });
+      setFormData((prev) => ({ ...prev, [name]: updated }));
     } else {
-      setProfile({ ...profile, [name]: value });
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
   const handleUpdate = async () => {
-    if (!profile) return;
+    if (!dbProfile) return;
+
+    if (timeRemaining !== null && timeRemaining > 0) {
+      setStatus("⚠️ You can only update your profile once every 30 days.");
+      return;
+    }
 
     setLoading(true);
     setStatus("⏳ Checking update eligibility...");
@@ -324,16 +371,16 @@ export default function Update({ email }: Props) {
     }
 
     // 2. Upload new image if provided
-    let imageUrl = profile.profileImage;
+    let imageUrl = dbProfile.profileImage;
 
     if (imageFile) {
       const fileExt = imageFile.name.split(".").pop();
-      const fileName = `${Date.now()}-${profile.email}.${fileExt}`;
+      const fileName = `${Date.now()}-${dbProfile.email}.${fileExt}`;
       const filePath = `public/${fileName}`;
 
       // Remove old image (optional)
-      if (profile.profileImage?.includes("storage.supabase")) {
-        const parts = profile.profileImage.split("/");
+      if (dbProfile.profileImage?.includes("storage.supabase")) {
+        const parts = dbProfile.profileImage.split("/");
         const existingPath = `${parts.at(-2)}/${parts.at(-1)}`;
         await supabase.storage.from("dp").remove([existingPath]);
       }
@@ -358,17 +405,29 @@ export default function Update({ email }: Props) {
       imageUrl = publicUrlData?.publicUrl || imageUrl;
     }
 
-    // 3. Prepare payload
+    // 3. Prepare payload, substituting placeholder values for empty form fields
     const payload = {
-      ...profile,
+      ...dbProfile,
+      ...formData,
+      username: formData.username?.trim() ? formData.username.trim() : dbProfile.username,
+      firstName: formData.firstName?.trim() ? formData.firstName.trim() : dbProfile.firstName,
+      lastName: formData.lastName?.trim() ? formData.lastName.trim() : dbProfile.lastName,
+      business_name: formData.business_name?.trim() ? formData.business_name.trim() : dbProfile.business_name,
+      phone: formData.phone?.trim() ? formData.phone.trim() : dbProfile.phone,
+      email: formData.email?.trim() ? formData.email.trim() : dbProfile.email,
+      dob: formData.dob || dbProfile.dob,
+      bio: formData.bio !== undefined ? formData.bio.trim() : dbProfile.bio,
+      country: formData.country ? formData.country : dbProfile.country,
+      state: formData.state ? formData.state : dbProfile.state,
+      location: formData.location ? formData.location : dbProfile.location,
       profileImage: imageUrl,
       has_updated_profile: true,
-      industry: profile.industry,
-      interest: profile.interest,
-      behavior: profile.behavior,
-      lifestyle: profile.lifestyle,
-      personality: profile.personality,
     };
+
+    // Remove passphrase if any in payload
+    if ('passphrase' in payload) {
+      delete (payload as any).passphrase;
+    }
 
     // 4. Update Supabase via secure API
     try {
@@ -392,7 +451,6 @@ export default function Update({ email }: Props) {
     // 5. Reset state and show success
     setStatus("✅ Profile updated successfully. Redirecting...");
     setImageFile(null); // Reset image
-    setProfile(null); // Optional: Clear form or re-fetch
     setLoading(false);
 
     // Optional delay for user to see the message
@@ -422,8 +480,9 @@ export default function Update({ email }: Props) {
                 type="checkbox"
                 name={name}
                 value={opt}
-                checked={profile?.[name]?.includes(opt)}
+                checked={formData[name]?.includes(opt) || false}
                 onChange={handleChange}
+                disabled={timeRemaining !== null && timeRemaining > 0}
               />
               {opt}
             </label>
@@ -434,13 +493,31 @@ export default function Update({ email }: Props) {
   );
 
   if (loading) return <p>Loading profile...</p>;
-  if (!profile) return <p>Profile not found.</p>;
+  if (!dbProfile) return <p>Profile not found.</p>;
+
+  const isFormDisabled = timeRemaining !== null && timeRemaining > 0;
 
   return (
     <>
     <HeaderJoin />
     <div className={styles.profileContainer}>
       <h1 className={styles.update}>Update Profile</h1>
+      
+      {isFormDisabled && (
+        <div style={{
+          background: "rgba(16, 185, 129, 0.1)",
+          border: "1px solid #10b981",
+          borderRadius: "8px",
+          padding: "1rem",
+          marginBottom: "1.5rem",
+          textAlign: "center",
+          color: "#10b981",
+          fontWeight: "600"
+        }}>
+          ⏱️ Next update available in: <span style={{ fontFamily: "monospace", fontSize: "1.1rem" }}>{countdownText}</span>
+        </div>
+      )}
+
       {status && <p className={styles.status}>{status}</p>}
 
       {/* Section 1: Personal & Contact Info */}
@@ -450,9 +527,10 @@ export default function Update({ email }: Props) {
             <label>Username</label>
             <input
               name="username"
-              placeholder="Username (Email)"
-              value={profile.username || ""}
+              placeholder={dbProfile.username || "Username (Email)"}
+              value={formData.username || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
           <div className={styles.formGroup}>
@@ -460,36 +538,40 @@ export default function Update({ email }: Props) {
             <input
               type="date"
               name="dob"
-              value={profile.dob || ""}
+              value={formData.dob || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
           <div className={styles.formGroup}>
             <label>First Name</label>
             <input
               name="firstName"
-              placeholder="First Name"
-              value={profile.firstName || ""}
+              placeholder={dbProfile.firstName || "First Name"}
+              value={formData.firstName || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
           <div className={styles.formGroup}>
             <label>Last Name</label>
             <input
               name="lastName"
-              placeholder="Last Name"
-              value={profile.lastName || ""}
+              placeholder={dbProfile.lastName || "Last Name"}
+              value={formData.lastName || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
           <div className={styles.formGroup}>
             <label>Business Name (Optional)</label>
             <input
               name="business_name"
-              placeholder="Business Name"
+              placeholder={dbProfile.business_name || "Business Name"}
               maxLength={25}
-              value={profile.business_name || ""}
+              value={formData.business_name || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
           <div className={styles.formGroup}>
@@ -497,9 +579,10 @@ export default function Update({ email }: Props) {
             <input
               name="phone"
               type="tel"
-              placeholder="Phone"
-              value={profile.phone || ""}
+              placeholder={dbProfile.phone || "Phone"}
+              value={formData.phone || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
           <div className={styles.formGroup}>
@@ -507,38 +590,30 @@ export default function Update({ email }: Props) {
             <input
               name="email"
               type="email"
-              placeholder="Email"
-              value={profile.email || ""}
+              placeholder={dbProfile.email || "Email"}
+              value={formData.email || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             />
           </div>
 
           <LocationSelector
-            country={profile.country || ""}
-            state={profile.state || ""}
-            location={profile.location || ""}
+            country={formData.country !== undefined ? formData.country : (dbProfile.country || "")}
+            state={formData.state !== undefined ? formData.state : (dbProfile.state || "")}
+            location={formData.location !== undefined ? formData.location : (dbProfile.location || "")}
             onChange={({ country, state, location }) =>
-              setProfile((prev) => prev ? ({ ...prev, country, state, location }) : null)
+              setFormData((prev) => ({ ...prev, country, state, location }))
             }
             showLabels={true}
             groupClass={styles.formGroup}
             cityGroupClass={styles.formGroup}
             cityLabel="City/Location"
+            disabled={isFormDisabled}
           />
 
           <div className={styles.formGroup}>
-            <label>Passphrase</label>
-            <input
-              name="passphrase"
-              placeholder="Passphrase"
-              value={profile.passphrase || ""}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div className={styles.formGroup}>
             <label>Gender</label>
-            <select name="gender" value={profile.gender || ""} onChange={handleChange}>
+            <select name="gender" value={formData.gender || ""} onChange={handleChange} disabled={isFormDisabled}>
               <option value="">Select Gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
@@ -551,8 +626,9 @@ export default function Update({ email }: Props) {
             <label>Employment Status</label>
             <select
               name="employment"
-              value={profile.employment || ""}
+              value={formData.employment || ""}
               onChange={handleChange}
+              disabled={isFormDisabled}
             >
               <option value="">Select Employment</option>
               <option value="employed">Employed</option>
@@ -573,8 +649,9 @@ export default function Update({ email }: Props) {
           <label>International Traveller?</label>
           <select
             name="intlTravel"
-            value={profile.intlTravel || "no"}
+            value={formData.intlTravel || "no"}
             onChange={handleChange}
+            disabled={isFormDisabled}
           >
             <option value="no">No</option>
             <option value="yes">Yes</option>
@@ -583,14 +660,15 @@ export default function Update({ email }: Props) {
           <label>Local Traveller by Air?</label>
           <select
             name="localTravel"
-            value={profile.localTravel || "no"}
+            value={formData.localTravel || "no"}
             onChange={handleChange}
+            disabled={isFormDisabled}
           >
             <option value="no">No</option>
             <option value="yes">Yes</option>
           </select>
 
-          <label className={styles.fileUpload}>
+          <label className={styles.fileUpload} style={{ opacity: isFormDisabled ? 0.6 : 1, cursor: isFormDisabled ? "not-allowed" : "pointer" }}>
             Upload Profile Picture
             <input
               type="file"
@@ -599,6 +677,7 @@ export default function Update({ email }: Props) {
                 const file = e.target.files?.[0];
                 if (file) setImageFile(file);
               }}
+              disabled={isFormDisabled}
             />
           </label>
         </div>
@@ -612,24 +691,32 @@ export default function Update({ email }: Props) {
 
         <textarea
           name="bio"
-          placeholder="Short Bio (max 90 characters)"
+          placeholder={dbProfile.bio || "Short Bio (max 90 characters)"}
           maxLength={90}
-          value={profile.bio || ""}
+          value={formData.bio || ""}
           onChange={handleChange}
+          disabled={isFormDisabled}
           className={styles.textbo}
         />
       </div>
-      {profile && !profile.has_updated_profile && (
+      
+      {dbProfile && !dbProfile.has_updated_profile && (
         <p style={{ fontSize: "0.8rem", color: "#d97706", marginTop: "1rem", marginBottom: "0.5rem", textAlign: "center", fontWeight: "600" }}>
           Note: After this initial update, you can only update your profile once every 30 days.
         </p>
       )}
+
       <button
         className={styles.buttonGroup}
         onClick={handleUpdate}
-        disabled={loading}
+        disabled={loading || isFormDisabled}
+        style={{
+          cursor: isFormDisabled ? "not-allowed" : "pointer",
+          background: isFormDisabled ? "#374151" : undefined,
+          color: isFormDisabled ? "#9ca3af" : undefined
+        }}
       >
-        {loading ? "Updating..." : "Update"}
+        {loading ? "Updating..." : isFormDisabled ? `Locked (Cooldown)` : "Update"}
       </button>
     </div>
     <Footer />

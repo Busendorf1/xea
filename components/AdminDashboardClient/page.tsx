@@ -1031,8 +1031,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
     setUploading(true);
     const adId = uuidv4();
-    const costPerImpression = adForm.costPerImpression;
-    const totalCost = costPerImpression * adForm.impressions;
+    const costPerImpression = 0;
+    const totalCost = 0;
 
     try {
       let mediaUrlString: string | null = null;
@@ -2037,11 +2037,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     <label className={styles.formLabel}>Cost per Impression (₦)</label>
                     <input 
                       type="number" 
-                      required 
-                      min="1"
-                      value={adForm.costPerImpression}
-                      onChange={(e) => setAdForm({...adForm, costPerImpression: parseInt(e.target.value) || 25})}
+                      disabled
+                      value="0"
                       className={styles.inputField} 
+                      style={{ opacity: 0.7, cursor: "not-allowed" }}
                     />
                   </div>
                 </div>

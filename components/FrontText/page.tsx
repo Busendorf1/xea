@@ -17,15 +17,15 @@ export default function FrontText() {
             <span>Attention Monetization Platform</span>
           </div> */}
           <h1 className={styles.title}>
-            Advertize your business.<br />
-            <span className={styles.gradientText}>Reward your audience.</span>
+            <span className={styles.titleLine}>Advertise your business.</span>
+            <span className={`${styles.titleLine} ${styles.gradientText}`}>Reward your audience.</span>
           </h1>
            {/* <h1 className={styles.title}>
             Your Attention Is Valuable.<br />
             <span className={styles.gradientText}>Get Rewarded For It.</span>
           </h1> */}
           <p className={styles.subtitle}>
-          100% Ads deliverability. We share 60% of ads revenue with geniune ads listeners.
+          100% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
           </p>
            {/* <p className={styles.subtitle}>
             Discover curated offers, jobs, and announcements tailored specifically to your background and interests. Earn guaranteed cash payouts for every second of your engagement.

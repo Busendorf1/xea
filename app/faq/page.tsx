@@ -57,11 +57,7 @@ const faqs = [
     answer:
       "Yes, you can refer others to join. However, we currently do not offer referral incentives."
   },
-  {
-    question: "What is a passphrase and why is it important?",
-    answer:
-      "A passphrase adds an extra layer of security to your account. Do not forget it — you’ll need it to recover or verify account access."
-  },
+
   {
     question: "Where can I learn more about privacy and security?",
     answer:

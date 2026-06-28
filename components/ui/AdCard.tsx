@@ -110,8 +110,7 @@ export default function AdCard({
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
 
-  const ADMIN_EMAILS = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
-  const isAdminAd = ad.user_email && ADMIN_EMAILS.includes(ad.user_email.toLowerCase());
+  const isPlatformPost = !ad.cost_per_impression || Number(ad.cost_per_impression) === 0;
   const advertiserProfile = ad.user_email ? advertiserProfiles[ad.user_email.toLowerCase()] : null;
   const brandName = advertiserProfile?.business_name || advertiserProfile?.firstName || "Xea";
 
@@ -434,104 +433,105 @@ export default function AdCard({
             <FaShareAlt />
           </button>
 
-          {/* Interaction buttons – only for non-owners, non-seen */}
-          {isAdminAd ? (
-            <div className={styles.earnContainer}>
-              <a
-                href={targetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.visitBrandBtn}
-              >
-                Visit {brandName}
-              </a>
-            </div>
-          ) : (
-            !seenAds.includes(ad.id) &&
-            ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
-              isSuspended ? (
-                <div className={styles.suspendedBadge}>Suspended</div>
-              ) : (
-                <div className={styles.earnContainer}>
-                  {/* Seen / Dismiss – always visible to non-owners */}
-                  <button
-                    className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
-                    type="button"
-                    disabled={isProcessing || !!activeAction}
-                    onClick={() => handleAction("seen", () => onMarkSeen(ad))}
-                    title="Dismiss this ad"
-                  >
-                    {successAction === "seen" ? (
-                      <>
-                        <FaCheck className={styles.tickIcon} />
-                        <span>Dismissed</span>
-                      </>
-                    ) : (
-                      <>
-                        <FaEye />
-                        <span>Seen</span>
-                      </>
+          {/* Interaction buttons – only for non-owners */}
+          {ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
+            isPlatformPost ? (
+              <div className={styles.earnContainer}>
+                <a
+                  href={targetLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.visitBrandBtn}
+                >
+                  Visit {brandName}
+                </a>
+              </div>
+            ) : (
+              !seenAds.includes(ad.id) && (
+                isSuspended ? (
+                  <div className={styles.suspendedBadge}>Suspended</div>
+                ) : (
+                  <div className={styles.earnContainer}>
+                    {/* Seen / Dismiss – always visible to non-owners */}
+                    <button
+                      className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
+                      type="button"
+                      disabled={isProcessing || !!activeAction}
+                      onClick={() => handleAction("seen", () => onMarkSeen(ad))}
+                      title="Dismiss this ad"
+                    >
+                      {successAction === "seen" ? (
+                        <>
+                          <FaCheck className={styles.tickIcon} />
+                          <span>Dismissed</span>
+                        </>
+                      ) : (
+                        <>
+                          <FaEye />
+                          <span>Seen</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Earn+ – hidden for mutual targets (they get a free impression) */}
+                    {!isMutualTarget && (
+                      <button
+                        className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
+                        type="button"
+                        disabled={isProcessing || !!activeAction}
+                        onClick={() => handleAction("earn", () => onAdEarn(ad))}
+                        title="Earn from this ad"
+                      >
+                        {successAction === "earn" ? (
+                          <>
+                            <FaCheck className={styles.tickIcon} />
+                            <span>Earned</span>
+                          </>
+                        ) : (
+                          <>
+                            <FaCoins />
+                            <span>Earn+</span>
+                          </>
+                        )}
+                      </button>
                     )}
-                  </button>
 
-                  {/* Earn+ – hidden for mutual targets (they get a free impression) */}
-                  {!isMutualTarget && (
-                    <button
-                      className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
-                      type="button"
-                      disabled={isProcessing || !!activeAction}
-                      onClick={() => handleAction("earn", () => onAdEarn(ad))}
-                      title="Earn from this ad"
-                    >
-                      {successAction === "earn" ? (
-                        <>
-                          <FaCheck className={styles.tickIcon} />
-                          <span>Earned</span>
-                        </>
-                      ) : (
-                        <>
-                          <FaCoins />
-                          <span>Earn+</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-
-                  {/* Mutual+ – only when advertiser enabled it and user hasn't mutualised them yet */}
-                  {ad.display_mutual_button === true && !isAlreadyMutual && (
-                    <button
-                      className={
-                        viewerProfile && viewerProfile.mutual_count >= 50
-                          ? styles.mutualBtnDisabled
-                          : `${styles.mutualBtn} ${successAction === "mutual" ? styles.successBtn : ""}`
-                      }
-                      type="button"
-                      disabled={isProcessing || !!activeAction}
-                      onClick={() => {
-                        if (viewerProfile && viewerProfile.mutual_count >= 50) {
-                          alert(
-                            "⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals."
-                          );
-                        } else {
-                          handleAction("mutual", () => onAdMutual(ad));
+                    {/* Mutual+ – only when advertiser enabled it and user hasn't mutualised them yet */}
+                    {ad.display_mutual_button === true && !isAlreadyMutual && (
+                      <button
+                        className={
+                          viewerProfile && viewerProfile.mutual_count >= 50
+                            ? styles.mutualBtnDisabled
+                            : `${styles.mutualBtn} ${successAction === "mutual" ? styles.successBtn : ""}`
                         }
-                      }}
-                      title="Add advertiser to mutuals"
-                    >
-                      {successAction === "mutual" ? (
-                        <>
-                          <FaCheck className={styles.tickIcon} />
-                          <span>Added</span>
-                        </>
-                      ) : (
-                        <>
-                          <FaUserPlus />
-                          <span>Mutual+</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
+                        type="button"
+                        disabled={isProcessing || !!activeAction}
+                        onClick={() => {
+                          if (viewerProfile && viewerProfile.mutual_count >= 50) {
+                            alert(
+                              "⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals."
+                            );
+                          } else {
+                            handleAction("mutual", () => onAdMutual(ad));
+                          }
+                        }}
+                        title="Add advertiser to mutuals"
+                      >
+                        {successAction === "mutual" ? (
+                          <>
+                            <FaCheck className={styles.tickIcon} />
+                            <span>Added</span>
+                          </>
+                        ) : (
+                          <>
+                            <FaUserPlus />
+                            <span>Mutual+</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )
               )
             )
           )}

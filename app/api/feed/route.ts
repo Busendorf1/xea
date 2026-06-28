@@ -31,9 +31,47 @@ export async function GET() {
 
     const servedAt = Date.now();
     const userId = session.user.sub || email;
+    const now = new Date();
 
-    // Sign each ad in memory
-    const signedAds = (ads || []).map((ad: any) => {
+    const activeAds: any[] = [];
+    const adsToUpdate: string[] = [];
+
+    (ads || []).forEach((ad: any) => {
+      if (ad.completed_at) return;
+
+      const isPlatformAd = !ad.cost_per_impression || Number(ad.cost_per_impression) === 0;
+      if (isPlatformAd && ad.created_at && ad.campaign_days) {
+        const createdAt = new Date(ad.created_at);
+        const diffTime = now.getTime() - createdAt.getTime();
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        if (diffDays > ad.campaign_days) {
+          adsToUpdate.push(ad.id);
+          return; // Exclude from feed
+        }
+      }
+      activeAds.push(ad);
+    });
+
+    // Update expired ads in the background
+    if (adsToUpdate.length > 0) {
+      const completedTimestamp = now.toISOString();
+      supabaseAdmin.from("addsactive")
+        .update({ completed_at: completedTimestamp })
+        .in("id", adsToUpdate)
+        .then(({ error: err1 }) => {
+          if (err1) console.error("❌ Failed to auto-complete expired active ads:", err1);
+        });
+
+      supabaseAdmin.from("adds")
+        .update({ completed_at: completedTimestamp })
+        .in("id", adsToUpdate)
+        .then(({ error: err2 }) => {
+          if (err2) console.error("❌ Failed to auto-complete expired ads in queue:", err2);
+        });
+    }
+
+    // Sign each active ad in memory
+    const signedAds = activeAds.map((ad: any) => {
       const payload = `${ad.id}:${userId}:${servedAt}`;
       const token = crypto.createHmac("sha256", SECRET_KEY).update(payload).digest("hex");
       return {

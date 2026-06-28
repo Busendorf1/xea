@@ -55,7 +55,7 @@ export default function PolicyPage() {
             <li className={styles.listItem}>Inactivity exceeding 48 hours results in automatic account suspension. Suspended accounts may lose monetization privileges.</li>
             <li className={styles.listItem}>Referral is permitted, but no financial or reward-based incentive is attached at this time.</li>
             <li className={styles.listItem}>Upon monetization, user earnings are reset to zero for accurate tracking.</li>
-            <li className={styles.listItem}>Users are responsible for securing their account with a passphrase. Forgotten passphrases may result in permanent loss of access.</li>
+
           </ol>
         </section>
 

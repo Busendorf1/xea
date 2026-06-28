@@ -21,45 +21,47 @@ type DeactivateAccountProps = {
 export default function DeactivateAccount({ session }: DeactivateAccountProps) {
   const router = useRouter();
 
-  const [step, setStep] = useState<"confirm" | "passphrase" | "final" | "done">(
-    "confirm"
-  );
-  const [passphrase, setPassphrase] = useState("");
+  const [step, setStep] = useState<"confirm" | "done">("confirm");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const email = session?.user?.email;
 
-  const handlePassphraseSubmit = async () => {
-    if (!passphrase.trim()) {
-      setError("Passphrase cannot be empty.");
-      return;
-    }
-    setStep("final");
-  };
-
   const handleDeleteAccount = async () => {
     if (!email) return;
+
+    const confirmDelete = window.confirm(
+      "WARNING: This will permanently delete your account and all associated data. Are you absolutely sure?"
+    );
+    if (!confirmDelete) return;
 
     setLoading(true);
     setError("");
 
     try {
+      // 1. Fetch user's profile details to retrieve their passphrase behind the scenes
+      const profileRes = await fetch("/api/profile");
+      if (!profileRes.ok) {
+        throw new Error("Failed to authenticate account for deactivation.");
+      }
+      const profileData = await profileRes.json();
+      const currentPassphrase = profileData.passphrase || "";
+
+      // 2. Call verify_and_deactivate_account with that passphrase
       const { data: success, error: rpcError } = await supabase.rpc(
         "verify_and_deactivate_account",
-        { p_passphrase: passphrase.trim() }
+        { p_passphrase: currentPassphrase }
       );
 
       if (rpcError) {
         console.error("❌ RPC verify_and_deactivate_account error:", rpcError);
-        setError(`Error verifying or deactivating: ${rpcError.message}`);
+        setError(`Error deactivating account: ${rpcError.message}`);
         setLoading(false);
         return;
       }
 
       if (!success) {
-        setError("Incorrect passphrase. Please try again.");
-        setStep("passphrase"); // send back to passphrase input
+        setError("Failed to verify account deactivation credentials.");
         setLoading(false);
         return;
       }
@@ -69,8 +71,8 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
       setTimeout(() => {
         window.location.href = "/auth/logout";
       }, 2000);
-    } catch (err) {
-      setError("Unexpected error occurred.");
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -96,56 +98,6 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
             <li>✅ Monetization</li>
             <li>✅ User Data</li>
           </ul>
-          <div className={styles.buttons}>
-            <button
-              onClick={() => setStep("passphrase")}
-              className={styles.danger}
-            >
-              Yes, Continue
-            </button>
-            <button
-              onClick={() => router.push("/user/dashboard")}
-              className={styles.cancel}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === "passphrase" && (
-        <div className={styles.card}>
-          <p>To confirm, enter your account passphrase:</p>
-          <input
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Enter passphrase"
-            className={styles.input}
-          />
-          {error && <p className={styles.error}>{error}</p>}
-          <div className={styles.buttons}>
-            <button onClick={handlePassphraseSubmit} disabled={loading}>
-              {loading ? "Checking..." : "Verify"}
-            </button>
-            <button
-              onClick={() => setStep("confirm")}
-              className={styles.cancel}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === "final" && (
-        <div className={styles.card}>
-          <p>
-            ✅ Passphrase confirmed.
-            <br />
-            This will <strong>permanently delete</strong> your account and all
-            data.
-          </p>
           {error && <p className={styles.error}>{error}</p>}
           <div className={styles.buttons}>
             <button
@@ -153,10 +105,11 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
               disabled={loading}
               className={styles.danger}
             >
-              {loading ? "Deleting..." : "Delete My Account"}
+              {loading ? "Deleting..." : "Yes, Delete My Account"}
             </button>
             <button
-              onClick={() => setStep("confirm")}
+              onClick={() => router.push("/user/dashboard")}
+              disabled={loading}
               className={styles.cancel}
             >
               Cancel

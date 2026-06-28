@@ -631,8 +631,9 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           </div>
         </aside>
 
-        {/* Center Section - Feed Area */}
-        <main className={styles.feedArea}>
+        <main className={`${styles.feedArea} ${
+          isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
+        }`}>
           <Feed userEmail={email} />
         </main>
 
