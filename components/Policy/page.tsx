@@ -59,50 +59,55 @@ export default function PolicyPage() {
           </ol>
         </section>
 
-        <section>
-          <h2 className={styles.heading}>V. Advertiser Terms</h2>
+        <section id="advertiser-terms">
+          <h2 className={styles.heading}>V. Advertiser Terms, Ads, and Highlights</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>Advertisers are guaranteed 100% ad deliverability to active, verified users.</li>
-            <li className={styles.listItem}>Each ad must promote a legitimate product, service, or cause.</li>
-            <li className={styles.listItem}>Content must be honest, respectful, and compliant with laws.</li>
-            <li className={styles.listItem}>Banned content includes:
+            <li className={styles.listItem} id="misleading-ads">Each ad or highlight must promote a legitimate product, service, or cause. Misleading ads will be removed immediately and may result in campaign suspension.</li>
+            <li className={styles.listItem}><strong>Creating Campaigns</strong>: Advertisers can create standard interactive feed Ads supporting text, images, and videos, or select sidebar flash Highlights.</li>
+            <li className={styles.listItem}><strong>Highlights System</strong>: Highlights are short promotional assets displayed on the sidebar/mobile overlay interfaces. Highlights rotate every 10 minutes and automatically expire 24 hours after launch.</li>
+            <li className={styles.listItem}>Content must be honest, respectful, and compliant with local laws. Banned content includes:
               <ul className={styles.list}>
-                <li className={styles.listItem}>False endorsements</li>
-                <li className={styles.listItem}>Counterfeit goods</li>
-                <li className={styles.listItem}>Adult or explicit material</li>
-                <li className={styles.listItem}>Weapons and related paraphernalia</li>
-                <li className={styles.listItem}>Gambling solicitations (unless permitted by law)</li>
+                <li className={styles.listItem}>False endorsements or misleading claims</li>
+                <li className={styles.listItem}>Counterfeit goods or pirated services</li>
+                <li className={styles.listItem}>Adult, explicit, or sexually suggestive material</li>
+                <li className={styles.listItem}>Weapons, ammunition, and related paraphernalia</li>
+                <li className={styles.listItem}>Illegal substances, unverified pharmaceuticals, or gambling solicitations</li>
               </ul>
             </li>
             <li className={styles.listItem}>Ad creatives must be optimized for attention, engagement, and compliance.</li>
             <li className={styles.listItem}>Advertisers agree to honor all offers or claims made in ads.</li>
-            <li className={styles.listItem}>Misleading ads will be removed and may result in legal action.</li>
           </ol>
         </section>
 
-        <section>
+        <section id="monetization">
           <h2 className={styles.heading}>VI. Monetization and Payouts</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Monetization is free. No subscription or payment is required to earn.</li>
+            <li className={styles.listItem}><strong>Adoption Paths</strong>: There are two paths to activate account monetization:
+              <ul className={styles.list}>
+                <li className={styles.listItem}><em>Standard Monetization</em>: Automatically unlocked for free after 90 days of active account age and engagement.</li>
+                <li className={styles.listItem}><em>Instant Monetization</em>: Available immediately for an activation subscription fee of ₦60,000, payable via card or direct wallet balance deduction.</li>
+              </ul>
+            </li>
+            <li className={styles.listItem}><strong>Mandatory Ad-Watching Requirement</strong>: To deliver on the 100% genuine human attention promise we guarantee to our advertisers, monetized users are mandatorily required to watch and verify (click "Seen" on) the ads presented in their feed.</li>
             <li className={styles.listItem}>Users earn 40% of ad revenue per valid impression.</li>
-            <li className={styles.listItem}>No minimum withdrawal threshold. Withdrawals are allowed anytime.</li>
-            <li className={styles.listItem}>Earnings are transparently processed and tracked.</li>
-            <li className={styles.listItem}>Attempts to manipulate the system will result in bans and forfeited funds.</li>
+            <li className={styles.listItem}>No minimum withdrawal threshold. Verified earnings can be requested for withdrawal anytime, subject to active monetization status.</li>
+            <li className={styles.listItem}>Attempts to manipulate or bypass ad views using automation, click bots, or spoofing will result in immediate bans and forfeited funds.</li>
           </ol>
         </section>
 
-        <section>
+        <section id="privacy">
           <h2 className={styles.heading}>VII. Privacy and Data Security</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>Xea does <strong>not</strong> sell, trade, or exploit user data.</li>
             <li className={styles.listItem}>Data is used only for operations, analytics, and service improvements.</li>
             <li className={styles.listItem}>Behavioral and interest-based data match users with relevant ads.</li>
-            <li className={styles.listItem}>See our <a href="/privacy">Privacy Policy</a> for full details.</li>
+            <li className={styles.listItem}>See our Privacy Policy section for full details.</li>
             <li className={styles.listItem}>Users can request data audits or deletion anytime.</li>
           </ol>
         </section>
 
-        <section>
+        <section id="cookies">
           <h2 className={styles.heading}>VIII. Cookies and Tracking</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>We use cookies to:
@@ -117,8 +122,8 @@ export default function PolicyPage() {
           </ol>
         </section>
 
-        <section>
-          <h2 className={styles.heading}>IX. Infringement and Intellectual Property</h2>
+        <section id="infringement">
+          <h2 className={styles.heading} id="copyright">IX. Infringement and Intellectual Property</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>Users must respect copyright and intellectual property laws.</li>
             <li className={styles.listItem}>Only original or licensed content may be uploaded.</li>
@@ -127,7 +132,7 @@ export default function PolicyPage() {
           </ol>
         </section>
 
-        <section>
+        <section id="abuse">
           <h2 className={styles.heading}>X. Abuse, Fraud, and Platform Integrity</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>Fraud includes:
@@ -167,8 +172,8 @@ export default function PolicyPage() {
           </ol>
         </section>
 
-        <section>
-          <h2 className={styles.heading}>XIII. Dispute Resolution</h2>
+        <section id="terms">
+          <h2 className={styles.heading}>XIII. Dispute Resolution and Terms of Service</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>All disputes must first be reported to Xea’s support team.</li>
             <li className={styles.listItem}>Unresolved disputes within 30 days may proceed to arbitration.</li>
@@ -185,8 +190,17 @@ export default function PolicyPage() {
           </ol>
         </section>
 
+        <section id="help-center">
+          <h2 className={styles.heading}>XV. Help Center Policy</h2>
+          <ol className={styles.list}>
+            <li className={styles.listItem}><strong>Support Ticket Requests</strong>: Users can submit support tickets for specific issues, including Account Issues, Ad/Highlight Problems, Payment/Earnings, Suspensions, Bug Reports, and Collaboration requests.</li>
+            <li className={styles.listItem}><strong>Response Times</strong>: Tickets are processed sequentially. We aim to respond to all valid support queries within 24-48 business hours.</li>
+            <li className={styles.listItem}><strong>Integrity and Respect</strong>: Users are expected to maintain respectful, honest communication. Spamming tickets, filing fraudulent complaints, or harassing support agents will lead to account suspension.</li>
+          </ol>
+        </section>
+
         <section>
-          <h2 className={styles.heading}>XV. Contact</h2>
+          <h2 className={styles.heading}>XVI. Contact</h2>
           <p>
             For questions or clarifications, please visit our <a href="/help">Help Center</a>.
           </p>

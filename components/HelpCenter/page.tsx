@@ -58,6 +58,17 @@ export default function HelpCenter({ session }: HelpCenterProps) {
     fetchTickets();
   }, [userEmail, success]);
 
+  // Auto-select category from URL query parameters
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const cat = params.get("category");
+      if (cat && CATEGORIES.includes(cat)) {
+        setForm((prev) => ({ ...prev, category: cat }));
+      }
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.subject.trim() || !form.message.trim() || !form.email.trim()) {

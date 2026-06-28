@@ -51,10 +51,9 @@ export default function Footer() {
         <div className={styles.section}>
           <h4 className={styles.heading}>Our Services</h4>
           <ul className={styles.linkList}>
-            <li><Link href="/advert" className={styles.link}>Advert</Link></li>
-            <li><Link href="/monetize" className={styles.link}>Monetization</Link></li>
+            <li><Link href="/user/adPage" className={styles.link}>Advert</Link></li>
+            <li><Link href="/user/monetize" className={styles.link}>Monetization</Link></li>
             <li><Link href="/business-update" className={styles.link}>Business Update</Link></li>
-            <li><Link href="/market-value" className={styles.link}>Real Time Market Value</Link></li>
           </ul>
         </div>
 
@@ -85,13 +84,13 @@ export default function Footer() {
         <div className={styles.section}>
           <h4 className={styles.heading}>Policies</h4>
           <ul className={styles.linkList}>
-            <li><Link href="/privacy" className={styles.link}>Privacy</Link></li>
-            <li><Link href="/policy/infringement" className={styles.link}>Infringement</Link></li>
-            <li><Link href="/policy/stealing" className={styles.link}>Stealing</Link></li>
-            <li><Link href="/policy/misleading-ads" className={styles.link}>Misleading Advert</Link></li>
-            <li><Link href="/policy/cookies" className={styles.link}>Cookies</Link></li>
-            <li><Link href="/terms" className={styles.link}>Terms of Service</Link></li>
-            <li><Link href="/policy/copyright" className={styles.link}>Copyrights</Link></li>
+            <li><Link href="/policy#privacy" className={styles.link}>Privacy</Link></li>
+            <li><Link href="/policy#infringement" className={styles.link}>Infringement</Link></li>
+            <li><Link href="/policy#abuse" className={styles.link}>Stealing / Abuse</Link></li>
+            <li><Link href="/policy#misleading-ads" className={styles.link}>Misleading Advert</Link></li>
+            <li><Link href="/policy#cookies" className={styles.link}>Cookies</Link></li>
+            <li><Link href="/policy#terms" className={styles.link}>Terms of Service</Link></li>
+            <li><Link href="/policy#copyright" className={styles.link}>Copyrights</Link></li>
           </ul>
         </div>
 
@@ -100,11 +99,11 @@ export default function Footer() {
           <h4 className={styles.heading}><Link href="/help" className={styles.link}>Help Center</Link></h4>
           <ul className={styles.linkList}>
             <li><Link href="/help" className={styles.link}>Contact & Support</Link></li>
-            <li><Link href="/help" className={styles.link}>Suspended Account</Link></li>
+            <li><Link href="/help?category=Suspended+Account" className={styles.link}>Suspended Account</Link></li>
             <li><Link href="/careers" className={styles.link}>Careers</Link></li>
-            <li><Link href="/help" className={styles.link}>Collaboration</Link></li>
-            <li><Link href="/help" className={styles.link}>Report Account or Ads</Link></li>
-            <li><Link href="/help" className={styles.link}>Request for Information</Link></li>
+            <li><Link href="/help?category=Collaboration" className={styles.link}>Collaboration</Link></li>
+            <li><Link href="/help?category=Ad+or+Highlight+Problem" className={styles.link}>Report Account or Ads</Link></li>
+            <li><Link href="/help?category=Information+Request" className={styles.link}>Request for Information</Link></li>
           </ul>
         </div>
       </div>

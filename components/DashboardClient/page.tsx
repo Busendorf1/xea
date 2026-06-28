@@ -391,7 +391,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const [showProfileTablet, setShowProfileTablet] = useState(false);
   const [showProfileMobile, setShowProfileMobile] = useState(false);
   const [showHighlightsMobile, setShowHighlightsMobile] = useState(false);
-  const [showAccountMenuLeft, setShowAccountMenuLeft] = useState(true);
+  const [showAccountMenuLeft, setShowAccountMenuLeft] = useState(false);
 
   // Responsive device state
   const [isMobile, setIsMobile] = useState(false);
