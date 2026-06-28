@@ -445,7 +445,7 @@ const Feed = ({ userEmail }: FeedProps) => {
       }
 
       if (viewerProfile && !viewerProfile.monetized) {
-        alert("Urgent: Monetize your account now to start earning from your ad views! Since your account is not monetized, this view did not credit your wallet balance.");
+        alert("Monetize to start earning.");
       }
 
       return true;

@@ -851,19 +851,17 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 </p>
               )}
               <button
-                onClick={() => {
-                  const isActive = !!(
-                    (user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
-                    (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
-                  );
-                  if (!isActive) {
-                    alert("Urgent: Monetize your account now to start earning from your ad views and maximize your revenue payouts!");
-                  }
-                  setShowWithdrawModal(true);
-                }}
+                onClick={() => setShowWithdrawModal(true)}
                 className={styles.withdrawBtn}
+                disabled={
+                  !((user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
+                    (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now()))
+                }
               >
-                Request Withdrawal
+                {(user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
+                (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
+                  ? "Request Withdrawal"
+                  : "Monetize to withdraw earnings"}
               </button>
               <Link href="/user/statement" className={styles.statementLink}>
                 View Account Statement

@@ -161,6 +161,7 @@
   overflow-y: auto;
   height: 100%;
   scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -173,6 +174,7 @@
   height: 100%;
   overflow-y: auto;
   scrollbar-width: none;
+  -ms-overflow-style: none; /* IE and Edge */
   box-sizing: border-box;
 }
 
@@ -192,6 +194,7 @@
   overflow-y: auto;
   height: 100%;
   scrollbar-width: none;
+  -ms-overflow-style: none; /* IE and Edge */
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -570,6 +573,15 @@
   background-color: var(--primary);
   color: white;
   box-shadow: 0 4px 10px var(--primary-glow);
+}
+
+.withdrawBtn:disabled {
+  background-color: var(--card-border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+  pointer-events: none;
+  box-shadow: none;
 }
 
 /* Tags card */

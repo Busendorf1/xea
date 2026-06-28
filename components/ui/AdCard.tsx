@@ -106,6 +106,7 @@ export default function AdCard({
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [avatarError, setAvatarError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
+  const [mediaAspectRatios, setMediaAspectRatios] = useState<Record<number, number>>({});
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
@@ -275,6 +276,7 @@ export default function AdCard({
   const currentUrl = mediaUrls[currentMediaIndex] || "";
   // Detect type per individual URL so mixed ads (images + video) render correctly
   const mediaType = /\.(mp4|webm|mov|avi)$/i.test(currentUrl) ? "video" : "image";
+  const activeAspectRatio = Math.max(0.75, (mediaAspectRatios[0] || 16 / 9) * 0.85);
 
   const touchStartX = React.useRef<number | null>(null);
 
@@ -391,7 +393,7 @@ export default function AdCard({
                   : "@xea_sponsor";
               })()}
             </span>
-            <span className={styles.dot}>·</span>
+            <span className={styles.dot}></span>
             <span className={styles.adTime}>
               {formatTimestamp(ad.created_at)}
             </span>
@@ -409,18 +411,59 @@ export default function AdCard({
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onClick={handleMediaClick}
-            style={{ cursor: mediaType === "image" ? "pointer" : "default" }}
+            style={{ 
+              aspectRatio: activeAspectRatio,
+              cursor: mediaType === "image" ? "pointer" : "default" 
+            }}
           >
-            {mediaType === "image" ? (
-              <img
-                src={currentUrl}
-                alt="Ad Media"
-                className={styles.adImgElement}
-                onError={() => setMediaError(true)}
-              />
-            ) : (
-              <video key={currentUrl} src={currentUrl} controls className={styles.mediaVideo} />
-            )}
+            <div 
+              className={styles.mediaTrack}
+              style={{
+                transform: `translateX(-${currentMediaIndex * 100}%)`,
+              }}
+            >
+              {mediaUrls.map((url, index) => {
+                const isVideo = /\.(mp4|webm|mov|avi)$/i.test(url);
+                return (
+                  <div key={index} className={styles.mediaWrapper}>
+                    {isVideo ? (
+                      <video 
+                        key={url}
+                        src={url} 
+                        controls 
+                        className={styles.mediaVideo} 
+                        onClick={(e) => e.stopPropagation()} 
+                        onLoadedMetadata={(e) => {
+                          const { videoWidth, videoHeight } = e.currentTarget;
+                          if (videoWidth && videoHeight) {
+                            setMediaAspectRatios((prev) => ({
+                              ...prev,
+                              [index]: videoWidth / videoHeight,
+                            }));
+                          }
+                        }}
+                      />
+                    ) : (
+                      <img
+                        src={url}
+                        alt="Ad Media"
+                        className={styles.adImgElement}
+                        onError={() => setMediaError(true)}
+                        onLoad={(e) => {
+                          const { naturalWidth, naturalHeight } = e.currentTarget;
+                          if (naturalWidth && naturalHeight) {
+                            setMediaAspectRatios((prev) => ({
+                              ...prev,
+                              [index]: naturalWidth / naturalHeight,
+                            }));
+                          }
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
             {mediaUrls.length > 1 && (
               <div className={styles.dotsContainer} onClick={(e) => e.stopPropagation()}>
