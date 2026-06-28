@@ -290,6 +290,16 @@
 }
 
 @media (max-width: 768px) {
+  .pageWapper {
+    padding: 0;
+  }
+  .pageWrapper {
+    margin: 1rem auto;
+    padding: 1.25rem 1rem;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
   .summaryGrid {
     grid-template-columns: 1fr;
     gap: 2rem;

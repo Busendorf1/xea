@@ -301,8 +301,15 @@
 }
 
 @media (max-width: 600px) {
+  .container {
+    padding: 0;
+    margin: 1rem auto;
+  }
   .premiumCard {
-    padding: 1.5rem 1.25rem;
+    padding: 1.5rem 1rem;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
   }
   .heading {
     font-size: 1.75rem;
