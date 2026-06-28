@@ -165,7 +165,8 @@ const Feed = ({ userEmail }: FeedProps) => {
           balance: parseFloat(data.balance ?? 0),
           mutual_count: data.mutual_count ?? 0,
           mutuals: Array.isArray(data.mutuals) ? data.mutuals : [],
-          monetized: data.monetized === "yes" || data.monetized === true,
+          monetized: (data.monetized === "yes" || data.monetized === "true" || data.monetized === true) &&
+                     (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now()),
           suspended_until: data.suspended_until || null,
         });
 
@@ -442,6 +443,11 @@ const Feed = ({ userEmail }: FeedProps) => {
       if (rate > 0 && viewerProfile) {
         setViewerProfile((prev) => prev ? ({ ...prev, balance: prev.balance + rate }) : null);
       }
+
+      if (viewerProfile && !viewerProfile.monetized) {
+        alert("Urgent: Monetize your account now to start earning from your ad views! Since your account is not monetized, this view did not credit your wallet balance.");
+      }
+
       return true;
     } catch (e: any) {
       console.error("Unexpected error in handleAdEarn:", e);

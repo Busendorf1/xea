@@ -443,6 +443,28 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     return () => window.removeEventListener("scroll", handleScroll);
   }, [lastScrollY, isMobile]);
 
+  // Lock body scroll when mobile side menu is open
+  useEffect(() => {
+    if (isMobile && (showProfileMobile || showHighlightsMobile)) {
+      const originalOverflow = document.body.style.overflow;
+      const originalHeight = document.body.style.height;
+      const originalHtmlOverflow = document.documentElement.style.overflow;
+      const originalHtmlHeight = document.documentElement.style.height;
+
+      document.body.style.overflow = "hidden";
+      document.body.style.height = "100%";
+      document.documentElement.style.overflow = "hidden";
+      document.documentElement.style.height = "100%";
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.height = originalHeight;
+        document.documentElement.style.overflow = originalHtmlOverflow;
+        document.documentElement.style.height = originalHtmlHeight;
+      };
+    }
+  }, [isMobile, showProfileMobile, showHighlightsMobile]);
+
   // Close all mobile sidebars
   const closeAllToggles = () => {
     setShowProfileMobile(false);
@@ -829,7 +851,16 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 </p>
               )}
               <button
-                onClick={() => setShowWithdrawModal(true)}
+                onClick={() => {
+                  const isActive = !!(
+                    (user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
+                    (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
+                  );
+                  if (!isActive) {
+                    alert("Urgent: Monetize your account now to start earning from your ad views and maximize your revenue payouts!");
+                  }
+                  setShowWithdrawModal(true);
+                }}
                 className={styles.withdrawBtn}
               >
                 Request Withdrawal

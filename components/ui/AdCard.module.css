@@ -122,20 +122,23 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 6px;
+  padding: 4px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   transition: all 0.2s ease;
   text-decoration: none;
+  width: 28px;
+  height: 28px;
 }
 
 .iconButton svg {
   color: var(--text-muted);
   transition: color 0.2s ease;
+  stroke-width: 1.5px;
 }
 
 .iconButton:hover {
@@ -160,15 +163,15 @@
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
+  padding: 3px 8px;
+  font-size: 0.65rem;
   font-weight: 700;
   cursor: pointer;
   transition: background-color 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  height: 26px;
+  gap: 0.25rem;
+  height: 22px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -182,15 +185,15 @@
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
+  padding: 3px 8px;
+  font-size: 0.65rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  height: 26px;
+  gap: 0.25rem;
+  height: 22px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -205,14 +208,14 @@
   color: #64748b;
   border: none;
   border-radius: 9999px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
+  padding: 3px 8px;
+  font-size: 0.65rem;
   font-weight: 700;
   cursor: not-allowed;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  height: 26px;
+  gap: 0.25rem;
+  height: 22px;
   line-height: 1;
   opacity: 0.7;
   white-space: nowrap;
@@ -230,15 +233,15 @@
   color: var(--text-muted);
   border: 1px solid var(--card-border);
   border-radius: 9999px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
+  padding: 3px 8px;
+  font-size: 0.65rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  height: 26px;
+  gap: 0.25rem;
+  height: 22px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -354,4 +357,38 @@
 .visitBrandBtn:hover {
   background-color: var(--primary-hover);
   transform: translateY(-1px);
+}
+
+.dotsContainer {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  background-color: rgba(11, 15, 25, 0.6);
+  padding: 4px 8px;
+  border-radius: 12px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(148, 163, 184, 0.4);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.dot:hover {
+  background-color: rgba(248, 250, 252, 0.8);
+}
+
+.dotActive {
+  background-color: #ffffff;
+  transform: scale(1.1);
 }

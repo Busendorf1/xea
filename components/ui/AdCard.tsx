@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import {
-  FaPhone,
-  FaWhatsapp,
-  FaGlobe,
-  FaEnvelope,
-  FaShareAlt,
-  FaEye,
-  FaCoins,
-  FaUserPlus,
-  FaCheck,
-} from "react-icons/fa";
+  Phone,
+  MessageCircle,
+  Globe,
+  Mail,
+  Share2,
+  Eye,
+  Coins,
+  UserPlus,
+  Check,
+} from "lucide-react";
 import styles from "./AdCard.module.css";
 
 
@@ -202,10 +202,10 @@ export default function AdCard({
 
   const getIcon = (type: string): React.ReactNode => {
     const icons: Record<string, React.ReactNode> = {
-      action_phone: <FaPhone />,
-      action_whatsapp: <FaWhatsapp />,
-      action_website: <FaGlobe />,
-      action_email: <FaEnvelope />,
+      action_phone: <Phone size={14} strokeWidth={1.5} />,
+      action_whatsapp: <MessageCircle size={14} strokeWidth={1.5} />,
+      action_website: <Globe size={14} strokeWidth={1.5} />,
+      action_email: <Mail size={14} strokeWidth={1.5} />,
     };
     return icons[type] || null;
   };
@@ -275,6 +275,32 @@ export default function AdCard({
   const currentUrl = mediaUrls[currentMediaIndex] || "";
   // Detect type per individual URL so mixed ads (images + video) render correctly
   const mediaType = /\.(mp4|webm|mov|avi)$/i.test(currentUrl) ? "video" : "image";
+
+  const touchStartX = React.useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX.current - touchEndX;
+    const threshold = 50;
+
+    if (diff > threshold) {
+      setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
+    } else if (diff < -threshold) {
+      setCurrentMediaIndex((prev) => (prev - 1 + mediaUrls.length) % mediaUrls.length);
+    }
+    touchStartX.current = null;
+  };
+
+  const handleMediaClick = (e: React.MouseEvent) => {
+    if (mediaType === "video") return;
+    e.stopPropagation();
+    setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
+  };
 
   const actionButtons = [
     "action_phone",
@@ -378,7 +404,13 @@ export default function AdCard({
 
         {/* Media Section */}
         {mediaUrls.length > 0 && !mediaError && (
-          <div className={styles.mediaBox}>
+          <div 
+            className={styles.mediaBox}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onClick={handleMediaClick}
+            style={{ cursor: mediaType === "image" ? "pointer" : "default" }}
+          >
             {mediaType === "image" ? (
               <img
                 src={currentUrl}
@@ -391,17 +423,20 @@ export default function AdCard({
             )}
 
             {mediaUrls.length > 1 && (
-              <button
-                type="button"
-                className={styles.arrowBtn}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
-                }}
-                title="Next Media"
-              >
-                &gt;
-              </button>
+              <div className={styles.dotsContainer} onClick={(e) => e.stopPropagation()}>
+                {mediaUrls.map((_, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className={`${styles.dot} ${index === currentMediaIndex ? styles.dotActive : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCurrentMediaIndex(index);
+                    }}
+                    aria-label={`Go to media ${index + 1}`}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -430,7 +465,7 @@ export default function AdCard({
             type="button"
             onClick={() => onShare(ad.id)}
           >
-            <FaShareAlt />
+            <Share2 size={14} strokeWidth={1.5} />
           </button>
 
           {/* Interaction buttons – only for non-owners */}
@@ -462,12 +497,12 @@ export default function AdCard({
                     >
                       {successAction === "seen" ? (
                         <>
-                          <FaCheck className={styles.tickIcon} />
+                          <Check size={11} strokeWidth={2} className={styles.tickIcon} />
                           <span>Dismissed</span>
                         </>
                       ) : (
                         <>
-                          <FaEye />
+                          <Eye size={11} strokeWidth={2} />
                           <span>Seen</span>
                         </>
                       )}
@@ -484,12 +519,12 @@ export default function AdCard({
                       >
                         {successAction === "earn" ? (
                           <>
-                            <FaCheck className={styles.tickIcon} />
+                            <Check size={11} strokeWidth={2} className={styles.tickIcon} />
                             <span>Earned</span>
                           </>
                         ) : (
                           <>
-                            <FaCoins />
+                            <Coins size={11} strokeWidth={2} />
                             <span>Earn+</span>
                           </>
                         )}
@@ -519,12 +554,12 @@ export default function AdCard({
                       >
                         {successAction === "mutual" ? (
                           <>
-                            <FaCheck className={styles.tickIcon} />
+                            <Check size={11} strokeWidth={2} className={styles.tickIcon} />
                             <span>Added</span>
                           </>
                         ) : (
                           <>
-                            <FaUserPlus />
+                            <UserPlus size={11} strokeWidth={2} />
                             <span>Mutual+</span>
                           </>
                         )}
