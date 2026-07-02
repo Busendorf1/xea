@@ -1,6 +1,5 @@
-// app/api/withdrawals/initiate/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth0";
+import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { createHash } from "crypto";
@@ -9,14 +8,9 @@ const MIN_WITHDRAWAL_THRESHOLD = 30000; // 30,000 NGN
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth0.getSession();
-    if (!session || !session.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const email = session.user.email?.toLowerCase();
+    const email = await getAuthenticatedEmail(req);
     if (!email) {
-      return NextResponse.json({ error: "No email associated with session" }, { status: 400 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json();

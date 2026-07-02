@@ -11,6 +11,7 @@ import {
   Check,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
+import AdInteractionHandler from "./AdInteractionHandler";
 
 
 export interface Ad {
@@ -511,106 +512,27 @@ export default function AdCard({
             <Share2 size={14} strokeWidth={1.5} />
           </button>
 
-          {/* Interaction buttons – only for non-owners */}
+          {/* Interaction buttons – only for non-owners and unseen ads */}
           {ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
-            isPlatformPost ? (
-              <div className={styles.earnContainer}>
-                <a
-                  href={targetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.visitBrandBtn}
-                >
-                  Visit {brandName}
-                </a>
-              </div>
-            ) : (
-              !seenAds.includes(ad.id) && (
-                isSuspended ? (
-                  <div className={styles.suspendedBadge}>Suspended</div>
-                ) : (
-                  <div className={styles.earnContainer}>
-                    {/* Seen / Dismiss – always visible to non-owners */}
-                    <button
-                      className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
-                      type="button"
-                      disabled={isProcessing || !!activeAction}
-                      onClick={() => handleAction("seen", () => onMarkSeen(ad))}
-                      title="Dismiss this ad"
-                    >
-                      {successAction === "seen" ? (
-                        <>
-                          <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                          <span>Dismissed</span>
-                        </>
-                      ) : (
-                        <>
-                          <Eye size={11} strokeWidth={2} />
-                          <span>Seen</span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Earn+ – hidden for mutual targets (they get a free impression) */}
-                    {!isMutualTarget && (
-                      <button
-                        className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
-                        type="button"
-                        disabled={isProcessing || !!activeAction}
-                        onClick={() => handleAction("earn", () => onAdEarn(ad))}
-                        title="Earn from this ad"
-                      >
-                        {successAction === "earn" ? (
-                          <>
-                            <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                            <span>Earned</span>
-                          </>
-                        ) : (
-                          <>
-                            <Coins size={11} strokeWidth={2} />
-                            <span>Earn+</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    {/* Mutual+ – only when advertiser enabled it and user hasn't mutualised them yet */}
-                    {ad.display_mutual_button === true && !isAlreadyMutual && (
-                      <button
-                        className={
-                          viewerProfile && viewerProfile.mutual_count >= 50
-                            ? styles.mutualBtnDisabled
-                            : `${styles.mutualBtn} ${successAction === "mutual" ? styles.successBtn : ""}`
-                        }
-                        type="button"
-                        disabled={isProcessing || !!activeAction}
-                        onClick={() => {
-                          if (viewerProfile && viewerProfile.mutual_count >= 50) {
-                            alert(
-                              "⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals."
-                            );
-                          } else {
-                            handleAction("mutual", () => onAdMutual(ad));
-                          }
-                        }}
-                        title="Add advertiser to mutuals"
-                      >
-                        {successAction === "mutual" ? (
-                          <>
-                            <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                            <span>Added</span>
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus size={11} strokeWidth={2} />
-                            <span>Mutual+</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                )
-              )
+            !seenAds.includes(ad.id) && (
+              <AdInteractionHandler
+                ad={ad}
+                userEmail={userEmail}
+                isPlatformPost={isPlatformPost}
+                isMutualTarget={isMutualTarget}
+                isAlreadyMutual={isAlreadyMutual}
+                viewerProfile={viewerProfile}
+                isProcessing={isProcessing}
+                isSuspended={isSuspended}
+                successAction={successAction}
+                activeAction={activeAction}
+                handleAction={handleAction}
+                onMarkSeen={onMarkSeen}
+                onAdEarn={onAdEarn}
+                onAdMutual={onAdMutual}
+                brandName={brandName}
+                targetLink={targetLink}
+              />
             )
           )}
         </div>

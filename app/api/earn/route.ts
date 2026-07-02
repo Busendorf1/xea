@@ -1,22 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
+import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 
 const SECRET_KEY = process.env.AUTH0_SECRET || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const session = await auth0.getSession();
-    if (!session || !session.user) {
+    const email = await getAuthenticatedEmail(request);
+    if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const email = session.user.email?.toLowerCase();
-    if (!email) {
-      return NextResponse.json({ error: "No email associated with session" }, { status: 400 });
-    }
-
+    const session = await auth0.getSession();
     const body = await request.json();
     const { adId, token, servedAt, type, turnstileToken } = body;
 
@@ -65,7 +62,7 @@ export async function POST(request: Request) {
     }
     */
 
-    const userId = session.user.sub || email;
+    const userId = session?.user?.sub || email;
 
     // 1. Verify PoV Token signature
     const payload = `${adId}:${userId}:${servedAt}`;

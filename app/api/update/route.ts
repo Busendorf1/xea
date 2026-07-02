@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { auth0 } from "@/lib/auth0";
+import { getAuthenticatedEmail } from "@/lib/authHelper";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth0.getSession();
-    if (!session || !session.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const email = session.user.email?.toLowerCase();
+    const email = await getAuthenticatedEmail(req);
     if (!email) {
-      return NextResponse.json({ error: "No email associated with session" }, { status: 400 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const data = await req.json();

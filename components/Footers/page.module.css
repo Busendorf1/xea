@@ -1,0 +1,14 @@
+.footer {
+  background-color: var(--sidebar-bg);
+  /* padding: 20px 5px; */
+  border-top: 1px solid var(--card-border);
+}
+
+.copyRight {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  padding-bottom: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--card-border);
+}

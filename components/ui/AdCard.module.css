@@ -409,3 +409,225 @@
   background-color: #ffffff;
   transform: scale(1.1);
 }
+
+/* AdInteractionHandler styles */
+.interactionContainer {
+  margin-top: 0.5rem;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.countdownContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem 0.25rem 0.25rem;
+  align-self: flex-end;
+  max-width: max-content;
+}
+
+.progressRingWrapper {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progressRingSvg {
+  transform: rotate(-90deg);
+}
+
+.lockIconOverlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lockIcon {
+  color: #94a3b8;
+}
+
+.countdownText {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.challengeContainer {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(99, 102, 241, 0.25);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.challengeHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.shieldIcon {
+  color: #6366f1;
+}
+
+.challengeTitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Swipe Challenge styles */
+.swipeTrack {
+  position: relative;
+  height: 40px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+  width: 100%;
+}
+
+.swipeHandle {
+  position: absolute;
+  left: 2px;
+  width: 36px;
+  height: 36px;
+  background-color: #6366f1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: grab;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+  transition: background-color 0.2s ease;
+  z-index: 5;
+}
+
+.swipeHandle:active {
+  cursor: grabbing;
+  background-color: #4f46e5;
+}
+
+.swipeText {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  letter-spacing: 0.05em;
+  animation: pulseSwipeText 2s infinite ease-in-out;
+}
+
+@keyframes pulseSwipeText {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Hold Challenge styles */
+.holdBtn {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.holdProgressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background-color: rgba(16, 185, 129, 0.2);
+  border-right: 2px solid #10b981;
+}
+
+.holdBtnText {
+  position: relative;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f8fafc;
+  z-index: 2;
+}
+
+/* Tap Challenge styles */
+.tapBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 40px;
+  background-color: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 8px;
+  padding: 0 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.tapBtn:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.tapBtnText {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.tapIndicatorRow {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.tapDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.tapDotActive {
+  background-color: #6366f1;
+  transform: scale(1.2);
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.6);
+}
+
+/* Unlocked Row */
+.unlockedRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  width: 100%;
+}

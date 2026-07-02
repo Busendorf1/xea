@@ -25,6 +25,7 @@ import InviteLink from "@/components/InviteLink/page";
 import Feed from "@/components/Feed/page";
 import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
+import Footer from "../Footers/page";
 
 interface UserProfile {
   id: string;
@@ -1007,6 +1008,8 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           </div>
         )}
       </div>
+      
+    <Footer />
     </div>
   );
 }
@@ -1020,6 +1023,7 @@ function TagGroup({
 }) {
   if (!items || items.length === 0) return null;
   return (
+    <>
     <div className={styles.tagGroup}>
       <h5>{label}:</h5>
       <div className={styles.tagsContainer}>
@@ -1030,5 +1034,6 @@ function TagGroup({
         ))}
       </div>
     </div>
+    </>
   );
 }

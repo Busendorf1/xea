@@ -1,21 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
+import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 
 const SECRET_KEY = process.env.AUTH0_SECRET || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const session = await auth0.getSession();
-    if (!session || !session.user) {
+    const email = await getAuthenticatedEmail(req);
+    if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const email = session.user.email?.toLowerCase();
-    if (!email) {
-      return NextResponse.json({ error: "No email associated with session" }, { status: 400 });
-    }
+    const session = await auth0.getSession();
 
     // Call Supabase RPC get_user_feed using admin key
     const { data: ads, error } = await supabaseAdmin.rpc("get_user_feed", {
@@ -30,7 +28,7 @@ export async function GET() {
     }
 
     const servedAt = Date.now();
-    const userId = session.user.sub || email;
+    const userId = session?.user?.sub || email;
     const now = new Date();
 
     const activeAds: any[] = [];

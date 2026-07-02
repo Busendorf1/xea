@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import Link from "next/link";
+import Footer from "../Footers/page";
 
 interface Session {
   user?: {
@@ -196,6 +197,7 @@ export default function Monetize({ session }: MonetizeProps) {
   const daysRemainingUntilStandard = Math.max(90 - accountAgeInDays, 0);
 
   return (
+    <>
     <div className={styles.container}>
       <h1 className={styles.heading}>Account Monetization</h1>
       <p className={styles.subheading}>Maximize your attention. Earn from views and engagement.</p>
@@ -378,6 +380,9 @@ export default function Monetize({ session }: MonetizeProps) {
           </div>
         </div>
       )}
+      
     </div>
+    <Footer />
+    </>
   );
 }
