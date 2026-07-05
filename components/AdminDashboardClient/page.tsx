@@ -1103,14 +1103,17 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         seen_users: []
       };
 
-      const { error: dbError } = await supabase
-        .from("addsactive")
-        .insert([newAd]);
+      const response = await fetch("/api/campaigns/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "ad", payload: newAd })
+      });
 
-      if (dbError) {
-        alert(`Direct insert failed: ${dbError.message}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(`Ad creation failed: ${errorData.error || "Server error"}`);
       } else {
-        alert("Ad campaign posted and activated directly!");
+        alert("Ad campaign creation enqueued successfully!");
         setAdForm({
           adType: "business",
           industry: [],
@@ -1184,14 +1187,17 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         is_paused: false
       };
 
-      const { error: dbError } = await supabase
-        .from("newsactive")
-        .insert([newHighlight]);
+      const response = await fetch("/api/campaigns/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "highlight", payload: newHighlight })
+      });
 
-      if (dbError) {
-        alert(`Direct post failed: ${dbError.message}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(`Highlight posting failed: ${errorData.error || "Server error"}`);
       } else {
-        alert("Business highlight posted and activated directly!");
+        alert("Business highlight creation enqueued successfully!");
         setHighlightForm({
           title: "",
           content: "",

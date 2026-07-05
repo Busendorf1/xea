@@ -1,14 +1,14 @@
 // app/api/payments/verify/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth0";
+import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { PaystackService } from "@/lib/payment/paystack";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth0.getSession();
-    if (!session || !session.user) {
+    const email = await getAuthenticatedEmail(req);
+    if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
     }
 
     // 1. Fetch payment from DB to make sure it belongs to the current user
-    const email = session.user.email?.toLowerCase();
     const { data: payment, error: dbError } = await supabaseAdmin
       .from("payments")
       .select("*")
@@ -63,6 +62,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       status: "success",
+      type: payment.type,
       alreadyProcessed: !!processResult.alreadyProcessed,
     });
   } catch (err: any) {

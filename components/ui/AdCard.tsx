@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Phone,
   MessageCircle,
@@ -9,6 +9,9 @@ import {
   Coins,
   UserPlus,
   Check,
+  Play,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -108,6 +111,29 @@ export default function AdCard({
   const [avatarError, setAvatarError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [mediaAspectRatios, setMediaAspectRatios] = useState<Record<number, number>>({});
+
+  const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    }
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
@@ -428,22 +454,51 @@ export default function AdCard({
                 return (
                   <div key={index} className={styles.mediaWrapper}>
                     {isVideo ? (
-                      <video 
-                        key={url}
-                        src={url} 
-                        controls 
-                        className={styles.mediaVideo} 
-                        onClick={(e) => e.stopPropagation()} 
-                        onLoadedMetadata={(e) => {
-                          const { videoWidth, videoHeight } = e.currentTarget;
-                          if (videoWidth && videoHeight) {
-                            setMediaAspectRatios((prev) => ({
-                              ...prev,
-                              [index]: videoWidth / videoHeight,
-                            }));
-                          }
-                        }}
-                      />
+                      <div className={styles.webVideoContainer} onClick={(e) => e.stopPropagation()}>
+                        <video 
+                          ref={videoRef}
+                          key={url}
+                          src={url} 
+                          loop
+                          autoPlay
+                          playsInline
+                          muted={isMuted}
+                          className={styles.mediaVideo} 
+                          onClick={togglePlay}
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                          onLoadedMetadata={(e) => {
+                            const { videoWidth, videoHeight } = e.currentTarget;
+                            if (videoWidth && videoHeight) {
+                              setMediaAspectRatios((prev) => ({
+                                ...prev,
+                                [index]: videoWidth / videoHeight,
+                              }));
+                            }
+                          }}
+                        />
+
+                        {/* Custom sleek play/pause overlays */}
+                        <div className={styles.webVideoClickable} onClick={togglePlay}>
+                          {!isPlaying && (
+                            <div className={styles.webPlayButtonOverlay}>
+                              <Play size={24} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Custom sleek mute/unmute overlay */}
+                        <button 
+                          type="button"
+                          className={styles.webMuteButtonOverlay} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMute();
+                          }}
+                        >
+                          {isMuted ? <VolumeX size={14} color="#fff" /> : <Volume2 size={14} color="#fff" />}
+                        </button>
+                      </div>
                     ) : (
                       <img
                         src={url}

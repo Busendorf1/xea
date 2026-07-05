@@ -68,7 +68,10 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
     }
   };
 
-  const isVideo = mediaFiles[currentMediaIndex]?.type.startsWith("video/") || false;
+  const currentFile = mediaFiles[currentMediaIndex];
+  const isVideo = currentFile
+    ? currentFile.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(currentFile.name)
+    : false;
 
   return (
     <div className={styles.card}>
@@ -76,7 +79,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
       {mediaURLs.length > 0 && (
         <div className={styles.mediaBox}>
           {isVideo ? (
-            <video key={mediaURLs[currentMediaIndex]} src={mediaURLs[currentMediaIndex]} controls />
+            <video key={mediaURLs[currentMediaIndex]} src={mediaURLs[currentMediaIndex]} controls playsInline />
           ) : (
             <img src={mediaURLs[currentMediaIndex]} alt={adContent || "Ad Preview"} />
           )}

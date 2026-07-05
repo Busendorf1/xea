@@ -55,10 +55,15 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Rule C: Phone matching user profile (Secure Obfuscation on Failure)
-    if (!user.phone || user.phone.trim() !== phone.trim()) {
-      console.warn(`❌ Security Block: Phone mismatch. Input: "${phone}", Profile: "${user.phone}"`);
-      return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
+    // Rule C: Phone matching user profile (Normalized comparison of the last 10 digits)
+    const normalizePhone = (num: string) => {
+      const cleaned = num.replace(/\D/g, "");
+      return cleaned.slice(-10);
+    };
+
+    if (!user.phone || normalizePhone(user.phone) !== normalizePhone(phone)) {
+      console.warn(`❌ Security Block: Phone mismatch. Input: "${phone}" (normalized: "${normalizePhone(phone)}"), Profile: "${user.phone}" (normalized: "${normalizePhone(user.phone)}")`);
+      return NextResponse.json({ error: "Verification failed. Phone number must match your registered account phone number." }, { status: 400 });
     }
 
     // Rule D: Bank account uniqueness (no multi-accounting)
@@ -82,60 +87,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
     }
 
-    // Rule E: BVN verification (first time only)
-    if (!user.bvn_hash) {
-      if (!bvn) {
-        return NextResponse.json({ error: "Identity verification required. Please provide your BVN." }, { status: 400 });
-      }
+    // Rule E: First Bank Account Enforcement (Fraud Prevention)
+    const { data: pastWithdrawal, error: pastWithdrawalErr } = await supabaseAdmin
+      .from("payments")
+      .select("metadata")
+      .eq("user_email", email)
+      .eq("type", "withdrawal")
+      .in("status", ["success", "pending"])
+      .order("created_at", { ascending: true })
+      .limit(1);
 
-      if (!/^\d{11}$/.test(bvn)) {
-        console.warn(`❌ Security Block: Invalid BVN format (must be 11 digits)`);
-        return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
-      }
+    if (pastWithdrawalErr) {
+      console.error("❌ Database error checking past withdrawals:", pastWithdrawalErr);
+      return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 500 });
+    }
 
-      try {
-        // Resolve names and mobile on Paystack
-        console.log(`🏦 Resolving BVN ${bvn.slice(0, 4)}******* via Paystack`);
-        await PaystackService.resolveBVN(bvn);
+    if (pastWithdrawal && pastWithdrawal.length > 0) {
+      const firstMeta = pastWithdrawal[0].metadata as any;
+      const firstAccNum = firstMeta?.accountNumber;
+      const firstBankCode = firstMeta?.bankCode;
 
-        // Check if bank account belongs to BVN holder
-        console.log(`🏦 Verifying if bank account ${accountNumber} matches BVN`);
-        const isBvnMatch = await PaystackService.matchBVN(accountNumber, bankCode, bvn);
-        if (!isBvnMatch) {
-          console.warn(`❌ Security Block: Bank account does not match the BVN owner.`);
-          return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
+      if (firstAccNum && firstBankCode) {
+        if (firstAccNum.trim() !== accountNumber.trim() || firstBankCode.trim() !== bankCode.trim()) {
+          console.warn(`❌ Security Block: Bank mismatch for ${email}. First: ${firstAccNum} (${firstBankCode}), Input: ${accountNumber} (${bankCode})`);
+          return NextResponse.json({ error: "For security and fraud prevention, you must continue to withdraw to the bank account used on your first withdrawal. Please contact support to update your bank details." }, { status: 400 });
         }
-
-        // Hash BVN
-        const bvnHash = createHash("sha256").update(bvn).digest("hex");
-
-        // Verify BVN uniqueness across database
-        const { data: duplicateBvnUser } = await supabaseAdmin
-          .from("users")
-          .select("email")
-          .eq("bvn_hash", bvnHash)
-          .maybeSingle();
-
-        if (duplicateBvnUser) {
-          console.warn(`❌ Security Block: BVN already registered by user: ${duplicateBvnUser.email}`);
-          return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
-        }
-
-        // Update user profile with the hashed BVN
-        const { error: bvnUpdateErr } = await supabaseAdmin
-          .from("users")
-          .update({ bvn_hash: bvnHash })
-          .ilike("email", email);
-
-        if (bvnUpdateErr) {
-          console.error("❌ Database error saving BVN hash:", bvnUpdateErr);
-          return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 500 });
-        }
-
-        console.log(`✅ Security: BVN successfully verified and linked to ${email}`);
-      } catch (bvnErr: any) {
-        console.error("❌ Security Block: Paystack BVN verification exception:", bvnErr);
-        return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
       }
     }
 

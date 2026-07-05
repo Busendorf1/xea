@@ -3,6 +3,8 @@ import { auth0 } from "@/lib/auth0";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
+import { feedQueue } from "@/lib/queue";
+import redisConnection from "@/lib/redis";
 
 const SECRET_KEY = process.env.AUTH0_SECRET || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
 
@@ -23,6 +25,13 @@ export async function POST(request: NextRequest) {
 
     if (type !== "earn" && type !== "mutual") {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+    }
+
+    // Server-side double click check (NX lock in Redis)
+    const lockKey = `lock:click:${email.toLowerCase().trim()}:${adId}:${type}`;
+    const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
+    if (!lockAcquired) {
+      return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
     }
 
     // 1. Verify Cloudflare Turnstile CAPTCHA token (Disabled temporarily per user request)
@@ -85,32 +94,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Proof-of-View token has expired. Please refresh the feed." }, { status: 400 });
     }
 
-    // 4. Execute database RPC securely via admin client
-    if (type === "earn") {
-      const { data: creditResult, error } = await supabaseAdmin.rpc("handle_earn_click", {
-        p_ad_id: adId,
-        p_user_email: email
-      });
+    // 4. Enqueue the task to Redis Queue for high-concurrency buffering
+    await feedQueue.add(`${type}-click`, {
+      adId,
+      email: email.toLowerCase().trim(),
+      type
+    });
 
-      if (error) {
-        console.error("❌ RPC handle_earn_click error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, result: creditResult });
-    } else {
-      const { data: mutualResult, error } = await supabaseAdmin.rpc("handle_mutual_click", {
-        p_ad_id: adId,
-        p_user_email: email
-      });
-
-      if (error) {
-        console.error("❌ RPC handle_mutual_click error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, result: mutualResult });
-    }
+    return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/earn:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useTheme } from "../ThemeProvider";
 import supabase from "@/lib/utils/db";
@@ -80,7 +80,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const [accountNumber, setAccountNumber] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawPhone, setWithdrawPhone] = useState("");
-  const [withdrawBvn, setWithdrawBvn] = useState("");
   const [resolvedAccountName, setResolvedAccountName] = useState("");
   const [resolvingAccount, setResolvingAccount] = useState(false);
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
@@ -203,12 +202,10 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     </div>
   );
 
-  // Initialize values when modal opens
   useEffect(() => {
     if (showWithdrawModal) {
       setWithdrawAmount(user.balance.toString());
       setWithdrawPhone("");
-      setWithdrawBvn("");
       setWithdrawalError("");
     }
   }, [showWithdrawModal, user.balance]);
@@ -285,11 +282,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
       return;
     }
 
-    if (!user.bvn_hash && !/^\d{11}$/.test(withdrawBvn)) {
-      setWithdrawalError("Please enter your 11-digit Bank Verification Number (BVN)");
-      return;
-    }
-
     if (!resolvedAccountName) {
       setWithdrawalError("Please resolve bank account details before submitting");
       return;
@@ -307,7 +299,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           accountNumber,
           amount: amountNum,
           phone: withdrawPhone,
-          bvn: !user.bvn_hash ? withdrawBvn : undefined,
         }),
       });
 
@@ -388,6 +379,9 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     }
   };
   
+  const feedAreaRef = useRef<HTMLElement>(null);
+  const highlightsRef = useRef<HTMLDivElement>(null);
+
   // Toggles for Tablet and Mobile views
   const [showProfileTablet, setShowProfileTablet] = useState(false);
   const [showProfileMobile, setShowProfileMobile] = useState(false);
@@ -465,6 +459,37 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
       };
     }
   }, [isMobile, showProfileMobile, showHighlightsMobile]);
+
+  // Handle highlights fade behavior on scroll
+  useEffect(() => {
+    const feedEl = feedAreaRef.current;
+    
+    const updateOpacity = () => {
+      const scrollTop = feedEl ? feedEl.scrollTop : window.scrollY;
+      const threshold = 200; // pixels to fade in completely
+      const opacity = Math.min(1, Math.max(0, scrollTop / threshold));
+
+      if (highlightsRef.current) {
+        highlightsRef.current.style.opacity = opacity.toString();
+        highlightsRef.current.style.pointerEvents = opacity === 0 ? "none" : "auto";
+      }
+    };
+
+    // Run once on mount to set correct initial opacity
+    updateOpacity();
+
+    window.addEventListener("scroll", updateOpacity, { passive: true });
+    if (feedEl) {
+      feedEl.addEventListener("scroll", updateOpacity, { passive: true });
+    }
+
+    return () => {
+      window.removeEventListener("scroll", updateOpacity);
+      if (feedEl) {
+        feedEl.removeEventListener("scroll", updateOpacity);
+      }
+    };
+  }, []);
 
   // Close all mobile sidebars
   const closeAllToggles = () => {
@@ -649,14 +674,27 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             <Collapsible isOpen={showAccountMenuLeft}>
               {renderAccountLinks()}
             </Collapsible>
-            <p className={styles.offerArea}>Daily Business Highlights:</p>
-            <Newsdisplay userInterest={parsedInterest} />
+            <div 
+              ref={highlightsRef} 
+              style={{ 
+                opacity: 0,
+                transition: "opacity 0.15s ease-out", 
+                willChange: "opacity",
+                pointerEvents: "none"
+              }}
+            >
+              <p className={styles.offerArea}>Daily Business Highlights:</p>
+              <Newsdisplay userInterest={parsedInterest} />
+            </div>
           </div>
         </aside>
 
-        <main className={`${styles.feedArea} ${
-          isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
-        }`}>
+        <main 
+          ref={feedAreaRef}
+          className={`${styles.feedArea} ${
+            isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
+          }`}
+        >
           <Feed userEmail={email} />
         </main>
 
@@ -976,23 +1014,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   />
                 </div>
 
-                {!user.bvn_hash && (
-                  <div className={styles.formGroup}>
-                    <label className={styles.formLabel}>Bank Verification Number (BVN)</label>
-                    <input
-                      type="password"
-                      maxLength={11}
-                      placeholder="11-digit BVN"
-                      value={withdrawBvn}
-                      onChange={(e) => setWithdrawBvn(e.target.value.replace(/\D/g, ""))}
-                      required
-                      className={styles.formInput}
-                    />
-                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                      Required once for identity validation on your first withdrawal. Your BVN is hashed securely.
-                    </span>
-                  </div>
-                )}
+
 
                 {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
 

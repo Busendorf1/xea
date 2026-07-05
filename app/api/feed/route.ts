@@ -15,10 +15,10 @@ export async function GET(req: NextRequest) {
 
     const session = await auth0.getSession();
 
-    // Call Supabase RPC get_user_feed using admin key
+    // Call Supabase RPC get_user_feed using admin key with 15 ads batch limit (scaling optimization)
     const { data: ads, error } = await supabaseAdmin.rpc("get_user_feed", {
       p_user_email: email,
-      p_limit: 100,
+      p_limit: 15,
       p_offset: 0
     });
 
@@ -68,12 +68,21 @@ export async function GET(req: NextRequest) {
         });
     }
 
-    // Sign each active ad in memory
+    // Sign each active ad in memory and prune unnecessary targeting fields
     const signedAds = activeAds.map((ad: any) => {
       const payload = `${ad.id}:${userId}:${servedAt}`;
       const token = crypto.createHmac("sha256", SECRET_KEY).update(payload).digest("hex");
       return {
-        ...ad,
+        id: ad.id,
+        ad_content: ad.ad_content || "",
+        ad_media: ad.ad_media || null,
+        action_phone: ad.action_phone || null,
+        action_email: ad.action_email || null,
+        action_website: ad.action_website || null,
+        action_whatsapp: ad.action_whatsapp || null,
+        display_mutual_button: ad.display_mutual_button === true,
+        mutual_targets: ad.mutual_targets || [],
+        user_email: ad.user_email || null,
         verification_token: token,
         served_at: servedAt,
       };

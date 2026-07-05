@@ -137,7 +137,8 @@ const Feed = ({ userEmail }: FeedProps) => {
         .select("id, title, content, image_url, interest, created_at")
         .in("interest", userInterests)
         .gte("created_at", yesterday)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(15);
       if (!error && data) {
         const hItems = data.map((item: any) => ({
           id: item.id,
@@ -297,17 +298,26 @@ const Feed = ({ userEmail }: FeedProps) => {
       alert("This is your own ad. Seen action is disabled.");
       return false;
     }
+    if (processingRef.current.has(ad.id)) return false;
+    processingRef.current.add(ad.id);
+    setProcessingAds((prev) => [...prev, ad.id]);
     setSeenAds((prev) => [...prev, ad.id]);
     try {
-      const { error } = await supabase.rpc("record_ad_seen", {
-        p_ad_id: ad.id,
-        p_user_email: userEmail.toLowerCase(),
+      const response = await fetch("/api/seen", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ adId: ad.id })
       });
-      if (error) throw error;
+      if (!response.ok) throw new Error("Failed to record ad seen via API");
       return true;
     } catch (e) {
-      console.error("Error recording ad seen:", e);
+      console.error("Error recording ad seen via queue API:", e);
       return false;
+    } finally {
+      processingRef.current.delete(ad.id);
+      setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
     }
   };
 

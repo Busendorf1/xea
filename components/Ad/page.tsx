@@ -832,12 +832,12 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   )}
                   {formSelections.adMediaType === "video" && (
                     <small className={styles.info}>
-                      Max size: 50MB • Max duration: 60s • Format: MP4 only. Select exactly 1 video.
+                      Max size: 200MB • Max duration: 5mins • Format: Video formats. Select exactly 1 video.
                     </small>
                   )}
                   {formSelections.adMediaType === "mixed" && (
                     <small className={styles.info}>
-                      Up to 3 images (max 6MB each) and exactly 1 video (max 50MB, 60s, MP4).
+                      Up to 3 images (max 6MB each) and exactly 1 video (max 200MB, 5mins).
                     </small>
                   )}
                 </div>
@@ -850,7 +850,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       multiple={formSelections.adMediaType !== "video"}
                       accept={
                         formSelections.adMediaType === "video"
-                          ? "video/mp4"
+                          ? "video/*"
                           : formSelections.adMediaType === "image"
                           ? "image/*"
                           : "image/*,video/*"
@@ -861,8 +861,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         const fileArray = Array.from(files);
 
                         // Separate images and videos
-                        const images = fileArray.filter(f => f.type.startsWith("image/"));
-                        const videos = fileArray.filter(f => f.type.startsWith("video/"));
+                        const images = fileArray.filter(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name));
+                        const videos = fileArray.filter(f => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name));
 
                         // Validation checks
                         if (formSelections.adMediaType === "image") {
@@ -907,15 +907,18 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                         // Size and video duration checks
                         for (const file of fileArray) {
-                          if (file.type.startsWith("image/")) {
+                          const isImage = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+                          const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
+
+                          if (isImage) {
                             if (file.size > 6 * 1024 * 1024) {
                               alert(`Image ${file.name} exceeds 6MB limit.`);
                               e.target.value = "";
                               return;
                             }
-                          } else if (file.type.startsWith("video/")) {
-                            if (file.size > 50 * 1024 * 1024) {
-                              alert(`Video ${file.name} exceeds 50MB limit.`);
+                          } else if (isVideo) {
+                            if (file.size > 200 * 1024 * 1024) {
+                              alert(`Video ${file.name} exceeds 200MB limit.`);
                               e.target.value = "";
                               return;
                             }
@@ -924,13 +927,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               const videoEl = document.createElement("video");
                               videoEl.preload = "metadata";
                               videoEl.onloadedmetadata = () => {
-                                resolve(videoEl.duration <= 60);
+                                resolve(videoEl.duration <= 300);
                               };
                               videoEl.onerror = () => resolve(false);
                               videoEl.src = URL.createObjectURL(file);
                             });
                             if (!durationOk) {
-                              alert(`Video ${file.name} must be less than or equal to 60 seconds.`);
+                              alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
                               e.target.value = "";
                               return;
                             }

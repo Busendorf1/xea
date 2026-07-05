@@ -9,16 +9,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fetch user profile from Supabase
-    let { data: user, error } = await supabaseAdmin
-      .from("users")
-      .select("*")
-      .ilike("email", email)
-      .maybeSingle();
+    // Fetch user profile from Supabase with retries (resilience to flaky hotspot networks)
+    let user = null;
+    let error = null;
+    const attempts = 3;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const { data, error: dbErr } = await supabaseAdmin
+          .from("users")
+          .select("*")
+          .ilike("email", email)
+          .maybeSingle();
+
+        if (dbErr) {
+          error = dbErr;
+          console.warn(`⚠️ Supabase fetch attempt ${i + 1} failed:`, dbErr.message);
+        } else {
+          user = data;
+          error = null;
+          break;
+        }
+      } catch (err: any) {
+        error = err;
+        console.warn(`⚠️ Supabase fetch attempt ${i + 1} encountered exception:`, err.message || err);
+      }
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 1000)); // wait 1s before retrying
+      }
+    }
 
     if (error) {
-      console.error("❌ Error fetching user profile:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("❌ Error fetching user profile after all attempts:", error);
+      return NextResponse.json({ error: error.message || "Database connection failure" }, { status: 500 });
     }
 
     // Auto-provision if user does not exist in DB (secure signup flow)
