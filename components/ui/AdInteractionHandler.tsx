@@ -320,14 +320,16 @@ export default function AdInteractionHandler({
       {stage === "unlocked" && (
         <div className={styles.unlockedRow}>
           {isPlatformPost ? (
-            <a
-              href={targetLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.visitBrandBtn}
-            >
-              Visit {brandName}
-            </a>
+            ad.ad_type === "product_sales" ? null : (
+              <a
+                href={targetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.visitBrandBtn}
+              >
+                Visit {brandName}
+              </a>
+            )
           ) : (
             <>
               {/* Seen / Dismiss Button */}
