@@ -104,14 +104,30 @@ const Feed = ({ userEmail }: FeedProps) => {
         return;
       }
 
+      // 2-second timeout to prevent promise from hanging if Turnstile widget is blocked/fails
+      const timeout = setTimeout(() => {
+        pendingTokenResolverRef.current = null;
+        resolve("no-turnstile-script");
+      }, 2000);
+
       (window as any).turnstile.reset(turnstileWidgetIdRef.current);
       
-      pendingTokenResolverRef.current = { resolve, reject };
+      pendingTokenResolverRef.current = {
+        resolve: (token: string) => {
+          clearTimeout(timeout);
+          resolve(token);
+        },
+        reject: (err: any) => {
+          clearTimeout(timeout);
+          reject(err);
+        }
+      };
 
       try {
         (window as any).turnstile.execute(turnstileWidgetIdRef.current);
       } catch (err) {
         console.error("Error executing Turnstile widget:", err);
+        clearTimeout(timeout);
         pendingTokenResolverRef.current = null;
         resolve("no-turnstile-script");
       }
