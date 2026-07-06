@@ -36,6 +36,7 @@ const flushBatch = async () => {
   const earns = currentBatch.filter(j => j.job.data.type === "earn");
   const mutuals = currentBatch.filter(j => j.job.data.type === "mutual");
   const seens = currentBatch.filter(j => j.job.data.type === "seen");
+  const actions = currentBatch.filter(j => j.job.data.type === "action-click");
 
   try {
     // 1. Process Seen clicks in bulk
@@ -75,6 +76,16 @@ const flushBatch = async () => {
         await supabaseAdmin.rpc("handle_mutual_click", {
           p_ad_id: m.job.data.adId,
           p_user_email: m.job.data.email
+        });
+      }));
+    }
+
+    // 4. Process Action redirect clicks
+    if (actions.length > 0) {
+      await Promise.all(actions.map(async (act) => {
+        await supabaseAdmin.rpc("increment_ad_click", {
+          p_ad_id: act.job.data.adId,
+          p_click_type: act.job.data.clickType
         });
       }));
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { feedQueue } from "@/lib/queue";
+import redisConnection from "@/lib/redis";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,18 +22,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid clickType" }, { status: 400 });
     }
 
-    // Call Supabase RPC increment_ad_click
-    const { error } = await supabaseAdmin.rpc("increment_ad_click", {
-      p_ad_id: adId,
-      p_click_type: clickType
-    });
-
-    if (error) {
-      console.error("❌ Error incrementing click in DB:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    // Server-side double click prevention (NX lock in Redis)
+    const lockKey = `lock:click:${email.toLowerCase().trim()}:${adId}:${clickType}`;
+    const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
+    if (!lockAcquired) {
+      return NextResponse.json({ error: "Duplicate click detected." }, { status: 429 });
     }
 
-    return NextResponse.json({ success: true });
+    // Enqueue Action click to Upstash Redis queue
+    await feedQueue.add("action-click", {
+      adId,
+      clickType,
+      email: email.toLowerCase().trim(),
+      type: "action-click"
+    });
+
+    return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/campaigns/click:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
