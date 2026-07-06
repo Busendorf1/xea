@@ -137,6 +137,7 @@ export default function AdCard({
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
+  const [isDismissing, setIsDismissing] = useState(false);
 
   const ADMIN_EMAILS = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
   const isPlatformPost = ad.user_email ? ADMIN_EMAILS.includes(ad.user_email.toLowerCase()) : false;
@@ -161,7 +162,9 @@ export default function AdCard({
       const success = await fn();
       if (success) {
         setSuccessAction(type);
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        setIsDismissing(true);
+        await new Promise((resolve) => setTimeout(resolve, 400));
         onDismiss(ad.id);
       }
     } catch (err) {
@@ -352,7 +355,7 @@ export default function AdCard({
     .includes((ad.user_email ?? "").toLowerCase());
 
   return (
-    <div key={ad.id} className={styles.card} style={style}>
+    <div key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""}`} style={style}>
       {/* Left Column: Avatar */}
       <div className={styles.avatarCol}>
         <div className={styles.avatar}>
