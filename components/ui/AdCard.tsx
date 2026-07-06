@@ -556,6 +556,14 @@ export default function AdCard({
               rel="noopener noreferrer"
               className={styles.iconButton}
               title={type.replace("action_", "")}
+              onClick={() => {
+                const clickType = type.replace("action_", "");
+                fetch("/api/campaigns/click", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ adId: ad.id, clickType })
+                }).catch(err => console.error("Failed to log click:", err));
+              }}
             >
               {getIcon(type)}
             </a>

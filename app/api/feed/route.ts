@@ -85,6 +85,7 @@ export async function GET(req: NextRequest) {
         user_email: ad.user_email || null,
         verification_token: token,
         served_at: servedAt,
+        created_at: ad.created_at || null,
       };
     });
 

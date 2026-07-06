@@ -221,6 +221,10 @@ type Ad = {
   display_mutual_button?: boolean | null;
   mutual_targets?: string[] | null;
   mutual_adds_count?: number | null;
+  clicks_phone?: number | null;
+  clicks_whatsapp?: number | null;
+  clicks_website?: number | null;
+  clicks_email?: number | null;
 };
 
 function getHref(type: string, value: string): string {
@@ -365,7 +369,32 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       const shareUrl = `${window.location.origin}/login?view&Earn Ads by Xea=${encodedId}`;
       navigator.clipboard.writeText(shareUrl)
         .then(() => alert("Ad share link copied to clipboard."))
-        .catch((err) => console.error("Failed to copy link:", err));
+        .catch((err) => console.error("Failed to copy link:"));
+    }
+  };
+
+  const handleCancelAd = async (adId: string) => {
+    const confirmCancel = window.confirm(
+      "⚠️ WARNING: Are you sure you want to stop this campaign immediately?\n\nNo refunds will be issued for any unused budget/impressions under our standard cancellation policy."
+    );
+    if (!confirmCancel) return;
+
+    try {
+      const response = await fetch("/api/campaigns/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adId })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to cancel campaign");
+      }
+
+      alert("Campaign successfully cancelled. It will stop delivering immediately.");
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || "An error occurred while cancelling your campaign.");
     }
   };
 
@@ -379,9 +408,18 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
     const daysInfo = getCampaignDaysInfo(ad);
     const seenCount = ad.impression_count ?? 0;
-    const clicksCount = seenCount;
+    
+    // Calculate click tracking counters
+    const phoneClicks = ad.clicks_phone ?? 0;
+    const whatsappClicks = ad.clicks_whatsapp ?? 0;
+    const websiteClicks = ad.clicks_website ?? 0;
+    const emailClicks = ad.clicks_email ?? 0;
+    const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks;
+    const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
+    
     const targetImpressions = ad.impressions ?? 1000;
     const remainingImpressions = Math.max(0, targetImpressions - seenCount);
+    const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
     
     const isCompleted = !!ad.completed_at || seenCount >= targetImpressions;
 
@@ -410,6 +448,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         </div>
         <div className={styles.cardContent}>
           <p className={styles.adDescription}>{ad.ad_content}</p>
+
+          {/* Delivery Progress Bar */}
+          <div style={{ margin: "12px 0", display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", fontWeight: "600", color: "var(--text-muted)" }}>
+              <span>Delivery Progress</span>
+              <span>{deliveryPercent}% ({seenCount}/{targetImpressions})</span>
+            </div>
+            <div style={{ height: "6px", backgroundColor: "var(--card-border)", borderRadius: "3px", overflow: "hidden", position: "relative" }}>
+              <div style={{ height: "100%", backgroundColor: "var(--primary)", width: `${deliveryPercent}%`, borderRadius: "3px", transition: "width 0.3s ease" }} />
+            </div>
+          </div>
           
           <div className={styles.statsSection}>
             <div className={styles.statRow}>
@@ -442,9 +491,18 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             </div>
 
             <div className={styles.statRow}>
-              <span className={styles.statLabel}>Clicks:</span>
-              <span className={styles.statValue}>{clicksCount}</span>
+              <span className={styles.statLabel}>Total clicks:</span>
+              <span className={styles.statValue}>{clicksCount} ({ctr}% CTR)</span>
             </div>
+
+            {clicksCount > 0 && (
+              <div style={{ paddingLeft: "10px", fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid var(--card-border)", margin: "4px 0" }}>
+                {phoneClicks > 0 ? <span>📞 Phone Clicks: {phoneClicks}</span> : null}
+                {whatsappClicks > 0 ? <span>💬 WhatsApp Clicks: {whatsappClicks}</span> : null}
+                {websiteClicks > 0 ? <span>🌐 Website Clicks: {websiteClicks}</span> : null}
+                {emailClicks > 0 ? <span>✉️ Email Clicks: {emailClicks}</span> : null}
+              </div>
+            )}
           </div>
 
           {/* Mutual Settings */}
@@ -487,13 +545,22 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             
             <div className={styles.cardFooter}>
               {status === "active" && !isCompleted && (
-                <button
-                  type="button"
-                  onClick={() => handleShare(ad.id)}
-                  className={styles.shareAdBtn}
-                >
-                  Share Ad
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => handleShare(ad.id)}
+                    className={styles.shareAdBtn}
+                  >
+                    Share Ad
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCancelAd(ad.id)}
+                    style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#ef4444", padding: "6px 12px", borderRadius: "8px", fontSize: "0.8rem", fontWeight: "600", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               )}
               <p className={styles.adTime}>
                 Posted {formatTimestamp(ad.created_at)}

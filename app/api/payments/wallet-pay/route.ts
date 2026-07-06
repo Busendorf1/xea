@@ -25,6 +25,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
     }
 
+    // Cost verification check to prevent parameter manipulation
+    if (type === "ad") {
+      const adData = metadata?.adData;
+      if (!adData) {
+        return NextResponse.json({ error: "Ad details missing from metadata" }, { status: 400 });
+      }
+      const rate = parseFloat(adData.costPerImpression || 15);
+      const impressions = parseInt(adData.impressions || 1000, 10);
+      const expectedCost = rate * impressions;
+      if (Math.abs(amountNum - expectedCost) > 0.01) {
+        return NextResponse.json({ error: "Cost validation mismatch. Payment amount does not match campaign configurations." }, { status: 400 });
+      }
+    }
+
     // 1. Fetch current user balance
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
