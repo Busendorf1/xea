@@ -11,6 +11,11 @@ interface AdPreviewCardProps {
   actionDetails: Record<string, string>;
   adContent: string;
   displayMutualButton?: boolean;
+  adType?: string;
+  productName?: string;
+  productPrice?: string | number;
+  productCtaType?: string;
+  productCtaLink?: string;
 }
 
 const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
@@ -20,6 +25,11 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   actionDetails = {},
   adContent = "",
   displayMutualButton = false,
+  adType = "",
+  productName = "",
+  productPrice = "",
+  productCtaType = "Buy Now",
+  productCtaLink = "",
 }) => {
   const [mediaURLs, setMediaURLs] = useState<string[]>([]);
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
@@ -68,6 +78,11 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
     }
   };
 
+  const formatCurrency = (amount: number | string) => {
+    const val = typeof amount === "string" ? parseFloat(amount) : amount;
+    return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   const currentFile = mediaFiles[currentMediaIndex];
   const isVideo = currentFile
     ? currentFile.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(currentFile.name)
@@ -75,6 +90,11 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
 
   return (
     <div className={styles.card}>
+      {/* Product Name (if product sales) */}
+      {adType === "product_sales" && (
+        <h4 className={styles.productNameTitle}>{productName || "Product Name"}</h4>
+      )}
+
       {/* Media Preview (only if there are media URLs) */}
       {mediaURLs.length > 0 && (
         <div className={styles.mediaBox}>
@@ -100,36 +120,83 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
         </div>
       )}
 
-      {/* Ad Content */}
-      <p className={styles.adText}>{adContent}</p>
+      {/* Product Description / Ad Content */}
+      <p className={styles.adText}>{adContent || (adType === "product_sales" ? "Product Description" : "Ad Message")}</p>
 
-      {/* Action Buttons */}
-      <div className={styles.actionButtons}>
-        {actionButtons.map((type) => (
-          <a
-            key={`${type}-${actionDetails?.[type] || ""}`}
-            href={getHref(type)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.iconButton}
-            aria-label={`Contact via ${type}`}
-            title={type}
-          >
-            {getIcon(type)}
-          </a>
-        ))}
-      </div>
+      {/* Action Bar / Buttons */}
+      {adType === "product_sales" ? (
+        <div className={styles.productSalesActionBar}>
+          {/* Left side: Price & CTA button */}
+          <div className={styles.productLeftGroup}>
+            <span className={styles.productPriceText}>
+              {formatCurrency(productPrice || 0)}
+            </span>
+            <a
+              href={productCtaLink ? (productCtaLink.startsWith("http") ? productCtaLink : `https://${productCtaLink}`) : "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.productCtaButton}
+            >
+              {productCtaType || "Buy Now"}
+            </a>
+          </div>
 
-      {/* Mutual+ Button Preview */}
-      {displayMutualButton && (
-        <div className={styles.mutualPreview}>
-          <button className={styles.mutualPreviewBtn} type="button">
-            Mutual+
-          </button>
-          <span className={styles.mutualPreviewNote}>
-            Viewers will see this button and can add you as a mutual
-          </span>
+          {/* Middle: Secondary buttons */}
+          <div className={styles.productMiddleGroup}>
+            {actionButtons.map((type) => (
+              <a
+                key={`${type}-${actionDetails?.[type] || ""}`}
+                href={getHref(type)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.iconButton}
+                aria-label={`Contact via ${type}`}
+                title={type}
+              >
+                {getIcon(type)}
+              </a>
+            ))}
+          </div>
+
+          {/* Right: Mutual Preview */}
+          {displayMutualButton && (
+            <div className={styles.productRightGroup}>
+              <button className={styles.mutualPreviewBtn} type="button">
+                Mutual+
+              </button>
+            </div>
+          )}
         </div>
+      ) : (
+        <>
+          <div className={styles.actionButtons}>
+            {actionButtons.map((type) => (
+              <a
+                key={`${type}-${actionDetails?.[type] || ""}`}
+                href={getHref(type)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.iconButton}
+                aria-label={`Contact via ${type}`}
+                title={type}
+              >
+                {getIcon(type)}
+              </a>
+            ))}
+          </div>
+
+          {/* Mutual+ Button Preview */}
+          {displayMutualButton && (
+            <div className={styles.mutualPreview}>
+              <button className={styles.mutualPreviewBtn} type="button">
+                Mutual+
+              </button>
+              <span className={styles.mutualPreviewNote}>
+                Viewers will see this button and can add you as a mutual
+              </span>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

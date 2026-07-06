@@ -108,6 +108,10 @@ export async function processSuccessfulPayment(reference: string, metadata: any,
       p_user_email: user_email,
       p_ad_media: adData.adMedia || null,
       p_display_mutual_button: adData.displayMutualButton ?? true,
+      p_product_price: adData.productPrice || null,
+      p_product_name: adData.productName || null,
+      p_product_cta_type: adData.productCtaType || null,
+      p_product_cta_link: adData.productCtaLink || null,
     });
 
     if (rpcError) {

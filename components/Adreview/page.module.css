@@ -131,3 +131,69 @@
   background: var(--primary);
   border-color: var(--primary);
 }
+
+/* Product Sales Ad Layout Styles for Preview */
+.productNameTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+  margin-bottom: 0.5rem;
+  margin-top: 0.25rem;
+  width: 100%;
+  text-align: center;
+}
+
+.productSalesActionBar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--card-border, #333);
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.productLeftGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.productPriceText {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.productCtaButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary, #6366f1);
+  color: #ffffff;
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
+  cursor: default;
+}
+
+.productMiddleGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.productRightGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: auto;
+}

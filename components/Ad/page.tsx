@@ -27,6 +27,7 @@ const adRates: Record<string, number> = {
   government: 1500,
   individual: 15,
   religion: 1500,
+  product_sales: 40,
 };
 //we can pay 60%
 const steps = ["Ad Type", "Targeting", "Location", "Ad Creative", "Summary"];
@@ -85,6 +86,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       email: "",
     },
     displayMutualButton: false,
+    productName: "",
+    productPrice: "",
+    productCtaType: "Buy Now",
+    productCtaLink: "",
   });
 
   const [mediaError, setMediaError] = useState("");
@@ -371,6 +376,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         email: "",
       },
       displayMutualButton: false,
+      productName: "",
+      productPrice: "",
+      productCtaType: "Buy Now",
+      productCtaLink: "",
     });
     setAdType("politics");
   };
@@ -385,7 +394,17 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     if (!formSelections.adMediaType) return false;
     if (formSelections.adMediaType !== "text" && formSelections.adMediaFiles.length === 0) return false;
     if (containsLink(formSelections.adContent)) return false;
-    if (formSelections.adActionButtons.length > 3) return false;
+    
+    if (adType === "product_sales") {
+      if (!formSelections.productName.trim() || formSelections.productName.length > 80) return false;
+      const price = parseFloat(formSelections.productPrice);
+      if (isNaN(price) || price <= 0) return false;
+      if (!formSelections.productCtaLink.trim() || !formSelections.productCtaLink.startsWith("https://")) return false;
+      if (!formSelections.adContent.trim() || formSelections.adContent.length > 200) return false;
+      if (formSelections.adActionButtons.length > 2) return false;
+    } else {
+      if (formSelections.adActionButtons.length > 3) return false;
+    }
     return true;
   };
 
@@ -481,7 +500,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               costPerImpression,
               totalCost,
               adMedia: mediaUrlString,
-              displayMutualButton: formSelections.displayMutualButton ?? true
+              displayMutualButton: formSelections.displayMutualButton ?? true,
+              productName: adType === "product_sales" ? formSelections.productName : null,
+              productPrice: adType === "product_sales" ? parseFloat(formSelections.productPrice) : null,
+              productCtaType: adType === "product_sales" ? formSelections.productCtaType : null,
+              productCtaLink: adType === "product_sales" ? formSelections.productCtaLink : null,
             }
           },
           callbackUrl: `${window.location.origin}/user/statement`
@@ -533,7 +556,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 >
                   {Object.keys(adRates).map((key) => (
                     <option key={key} value={key}>
-                      {key.charAt(0).toUpperCase() + key.slice(1)}
+                      {key === "product_sales" ? "Product Sales" : key.charAt(0).toUpperCase() + key.slice(1)}
                     </option>
                   ))}
                 </select>
@@ -806,6 +829,94 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
             {step === 3 && (
               <div className={styles.adCreativeSection}>
+                {adType === "product_sales" && (
+                  <>
+                    <div className={styles.formGroup}>
+                      <label>
+                        Product Name{" "}
+                        <span className={styles.charCount}>
+                          {formSelections.productName.length}/80
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={80}
+                        value={formSelections.productName}
+                        placeholder="Enter product name (max 80 characters)"
+                        onChange={(e) =>
+                          setFormSelections({
+                            ...formSelections,
+                            productName: e.target.value,
+                          })
+                        }
+                        className={styles.inputBox}
+                      />
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label>Product Price (₦)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formSelections.productPrice}
+                        placeholder="Enter product price in Naira"
+                        onChange={(e) =>
+                          setFormSelections({
+                            ...formSelections,
+                            productPrice: e.target.value,
+                          })
+                        }
+                        className={styles.inputBox}
+                      />
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label>Primary CTA Button Text</label>
+                      <select
+                        value={formSelections.productCtaType}
+                        onChange={(e) =>
+                          setFormSelections({
+                            ...formSelections,
+                            productCtaType: e.target.value,
+                          })
+                        }
+                        className={styles.inputBox}
+                      >
+                        <option value="Buy Now">Buy Now</option>
+                        <option value="Shop">Shop</option>
+                        <option value="Order">Order</option>
+                        <option value="Visit Website">Visit Website</option>
+                      </select>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label>Primary CTA Link (Secure HTTPS)</label>
+                      <input
+                        type="text"
+                        value={formSelections.productCtaLink}
+                        placeholder="e.g. https://yourstore.com/product or https://wa.me/..."
+                        onChange={(e) =>
+                          setFormSelections({
+                            ...formSelections,
+                            productCtaLink: e.target.value,
+                          })
+                        }
+                        className={`${styles.inputBox} ${
+                          formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://")
+                            ? styles.inputError
+                            : ""
+                        }`}
+                      />
+                      {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && (
+                        <p className={styles.error}>
+                          The link must be a secure link starting with https://
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <div className={styles.formGroup}>
                   <label>Ad Content Type</label>
                   <select
@@ -957,15 +1068,15 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                 <div className={styles.formGroup}>
                   <label>
-                    Ad Message{" "}
+                    {adType === "product_sales" ? "Product Description" : "Ad Message"}{" "}
                     <span className={styles.charCount}>
-                      {formSelections.adContent.length}/190
+                      {formSelections.adContent.length}/{adType === "product_sales" ? 200 : 190}
                     </span>
                   </label>
                   <textarea
-                    maxLength={190}
+                    maxLength={adType === "product_sales" ? 200 : 190}
                     value={formSelections.adContent}
-                    placeholder="Write your ad message here (no links allowed)"
+                    placeholder={adType === "product_sales" ? "Write product description here (no links allowed)" : "Write your ad message here (no links allowed)"}
                     onChange={(e) =>
                       setFormSelections({
                         ...formSelections,
@@ -986,7 +1097,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label>Action Buttons (Max 3)</label>
+                  <label>Action Buttons (Max {adType === "product_sales" ? 2 : 3})</label>
                   {(["phone", "whatsapp", "website", "email"] as const).map(
                     (type) => {
                       const isSelected =
@@ -1015,7 +1126,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                                 const updated = [
                                   ...formSelections.adActionButtons,
                                 ];
-                                if (e.target.checked && updated.length < 3)
+                                const maxButtons = adType === "product_sales" ? 2 : 3;
+                                if (e.target.checked && updated.length < maxButtons)
                                   updated.push(type);
                                 else if (!e.target.checked)
                                   updated.splice(updated.indexOf(type), 1);
@@ -1166,6 +1278,28 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         </span>
                       </div>
                     </div>
+
+                    {adType === "product_sales" && (
+                      <>
+                        <h3 className={styles.sectionTitle} style={{ marginTop: "2rem" }}>Product details</h3>
+                        <div className={styles.detailsList}>
+                          <div className={styles.detailsRow}>
+                            <span className={styles.detailsKey}>Product name</span>
+                            <span className={styles.detailsVal}>{formSelections.productName}</span>
+                          </div>
+                          <div className={styles.detailsRow}>
+                            <span className={styles.detailsKey}>Product price</span>
+                            <span className={styles.detailsVal}>{formatCurrency(formSelections.productPrice)}</span>
+                          </div>
+                          <div className={styles.detailsRow}>
+                            <span className={styles.detailsKey}>CTA action</span>
+                            <span className={styles.detailsVal}>
+                              {formSelections.productCtaType} &rarr; <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", wordBreak: "break-all" }}>{formSelections.productCtaLink}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   
                   {/* Right Column: Pricing breakdown (Stripe Invoice/Receipt Card) */}
@@ -1227,6 +1361,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   actionButtons={formSelections.adActionButtons}
                   actionDetails={formSelections.actionDetails}
                   displayMutualButton={formSelections.displayMutualButton}
+                  adType={adType}
+                  productName={formSelections.productName}
+                  productPrice={formSelections.productPrice}
+                  productCtaType={formSelections.productCtaType}
+                  productCtaLink={formSelections.productCtaLink}
                 />
                 <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem", padding: "1.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
                   <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "700", fontSize: "0.9rem" }}>Payment Method</label>
@@ -1261,7 +1400,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   onClick={() => {
                     if (step === 3 && !validateStep3()) {
                       alert(
-                        "Please complete all required fields in Ad Creative."
+                        adType === "product_sales"
+                          ? "Please complete all required fields in Ad Creative. Note: Product name (max 80 chars), price (> 0), description (max 200 chars, no links), and secure CTA link (starts with https://) are required. Max 2 secondary action buttons."
+                          : "Please complete all required fields in Ad Creative."
                       );
                       return;
                     }

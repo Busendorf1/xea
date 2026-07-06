@@ -57,6 +57,12 @@ export interface Ad {
   title?: string;
   verification_token?: string;
   served_at?: number;
+  ad_type?: string;
+  product_name?: string | null;
+  product_price?: number | null;
+  product_cta_type?: string | null;
+  product_cta_link?: string | null;
+  clicks_product_cta?: number | null;
 }
 
 interface AdCardProps {
@@ -115,6 +121,11 @@ export default function AdCard({
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const formatCurrency = (amount: number | string) => {
+    const val = typeof amount === "string" ? parseFloat(amount) : amount;
+    return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const togglePlay = () => {
     if (videoRef.current) {
@@ -432,8 +443,15 @@ export default function AdCard({
           <span className={styles.sponsorLabel}>Sponsored</span>
         </div>
 
-        {/* Content Message */}
-        <p className={styles.adText}>{ad.ad_content}</p>
+        {/* Product Name (if product sales) */}
+        {ad.ad_type === "product_sales" && ad.product_name && (
+          <h4 className={styles.productNameTitle}>{ad.product_name}</h4>
+        )}
+
+        {/* Content Message (if NOT product sales) */}
+        {ad.ad_type !== "product_sales" && (
+          <p className={styles.adText}>{ad.ad_content}</p>
+        )}
 
         {/* Media Section */}
         {mediaUrls.length > 0 && !mediaError && (
@@ -546,63 +564,156 @@ export default function AdCard({
 
         {/* Action bar */}
         {/* Action bar */}
-        <div className={styles.actionButtons}>
-          {/* Contact / link buttons */}
-          {actionButtons.map((type) => (
-            <a
-              key={`${type}-${ad.id}`}
-              href={getHref(type, ad[type as keyof Ad] as string)}
-              target="_blank"
-              rel="noopener noreferrer"
+        {/* Product Description (if product sales - rendered below media) */}
+        {ad.ad_type === "product_sales" && (
+          <p className={styles.adText} style={{ marginTop: "0.75rem", marginBottom: "0.5rem" }}>
+            {ad.ad_content}
+          </p>
+        )}
+
+        {/* Action bar */}
+        {ad.ad_type === "product_sales" ? (
+          <div className={styles.productSalesActionBar}>
+            {/* Left side: Price & CTA button */}
+            <div className={styles.productLeftGroup}>
+              <span className={styles.productPriceText}>
+                {formatCurrency(ad.product_price || 0)}
+              </span>
+              <a
+                href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.productCtaButton}
+                onClick={() => {
+                  fetch("/api/campaigns/click", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ adId: ad.id, clickType: (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_") })
+                  }).catch(err => console.error("Failed to log CTA click:", err));
+                }}
+              >
+                {ad.product_cta_type || "Buy Now"}
+              </a>
+            </div>
+
+            {/* Middle side: Secondary action buttons (up to 2) and Share button */}
+            <div className={styles.productMiddleGroup}>
+              {actionButtons.map((type) => (
+                <a
+                  key={`${type}-${ad.id}`}
+                  href={getHref(type, ad[type as keyof Ad] as string)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.iconButton}
+                  title={type.replace("action_", "")}
+                  onClick={() => {
+                    const clickType = type.replace("action_", "");
+                    fetch("/api/campaigns/click", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ adId: ad.id, clickType })
+                    }).catch(err => console.error("Failed to log click:", err));
+                  }}
+                >
+                  {getIcon(type)}
+                </a>
+              ))}
+
+              <button
+                title="Share Ad"
+                className={styles.iconButton}
+                type="button"
+                onClick={() => onShare(ad.id)}
+              >
+                <Share2 size={14} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            {/* Right side: Interaction buttons (seen, earn+, mutual) */}
+            <div className={styles.productRightGroup}>
+              {ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
+                !seenAds.includes(ad.id) && (
+                  <AdInteractionHandler
+                    ad={ad}
+                    userEmail={userEmail}
+                    isPlatformPost={isPlatformPost}
+                    isMutualTarget={isMutualTarget}
+                    isAlreadyMutual={isAlreadyMutual}
+                    viewerProfile={viewerProfile}
+                    isProcessing={isProcessing}
+                    isSuspended={isSuspended}
+                    successAction={successAction}
+                    activeAction={activeAction}
+                    handleAction={handleAction}
+                    onMarkSeen={onMarkSeen}
+                    onAdEarn={onAdEarn}
+                    onAdMutual={onAdMutual}
+                    brandName={brandName}
+                    targetLink={targetLink}
+                  />
+                )
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.actionButtons}>
+            {/* Contact / link buttons */}
+            {actionButtons.map((type) => (
+              <a
+                key={`${type}-${ad.id}`}
+                href={getHref(type, ad[type as keyof Ad] as string)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.iconButton}
+                title={type.replace("action_", "")}
+                onClick={() => {
+                  const clickType = type.replace("action_", "");
+                  fetch("/api/campaigns/click", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ adId: ad.id, clickType })
+                  }).catch(err => console.error("Failed to log click:", err));
+                }}
+              >
+                {getIcon(type)}
+              </a>
+            ))}
+
+            {/* Share */}
+            <button
+              title="Share Ad"
               className={styles.iconButton}
-              title={type.replace("action_", "")}
-              onClick={() => {
-                const clickType = type.replace("action_", "");
-                fetch("/api/campaigns/click", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ adId: ad.id, clickType })
-                }).catch(err => console.error("Failed to log click:", err));
-              }}
+              type="button"
+              onClick={() => onShare(ad.id)}
             >
-              {getIcon(type)}
-            </a>
-          ))}
+              <Share2 size={14} strokeWidth={1.5} />
+            </button>
 
-          {/* Share */}
-          <button
-            title="Share Ad"
-            className={styles.iconButton}
-            type="button"
-            onClick={() => onShare(ad.id)}
-          >
-            <Share2 size={14} strokeWidth={1.5} />
-          </button>
-
-          {/* Interaction buttons – only for non-owners and unseen ads */}
-          {ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
-            !seenAds.includes(ad.id) && (
-              <AdInteractionHandler
-                ad={ad}
-                userEmail={userEmail}
-                isPlatformPost={isPlatformPost}
-                isMutualTarget={isMutualTarget}
-                isAlreadyMutual={isAlreadyMutual}
-                viewerProfile={viewerProfile}
-                isProcessing={isProcessing}
-                isSuspended={isSuspended}
-                successAction={successAction}
-                activeAction={activeAction}
-                handleAction={handleAction}
-                onMarkSeen={onMarkSeen}
-                onAdEarn={onAdEarn}
-                onAdMutual={onAdMutual}
-                brandName={brandName}
-                targetLink={targetLink}
-              />
-            )
-          )}
-        </div>
+            {/* Interaction buttons – only for non-owners and unseen ads */}
+            {ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
+              !seenAds.includes(ad.id) && (
+                <AdInteractionHandler
+                  ad={ad}
+                  userEmail={userEmail}
+                  isPlatformPost={isPlatformPost}
+                  isMutualTarget={isMutualTarget}
+                  isAlreadyMutual={isAlreadyMutual}
+                  viewerProfile={viewerProfile}
+                  isProcessing={isProcessing}
+                  isSuspended={isSuspended}
+                  successAction={successAction}
+                  activeAction={activeAction}
+                  handleAction={handleAction}
+                  onMarkSeen={onMarkSeen}
+                  onAdEarn={onAdEarn}
+                  onAdMutual={onAdMutual}
+                  brandName={brandName}
+                  targetLink={targetLink}
+                />
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

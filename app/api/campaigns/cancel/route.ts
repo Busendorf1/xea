@@ -10,20 +10,44 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { adId } = body;
+    console.log("📥 Cancel Ad Request parsed body:", body);
 
-    if (!adId) {
+    const adIdInput = body.adId || body.id;
+    if (!adIdInput) {
       return NextResponse.json({ error: "Missing adId" }, { status: 400 });
     }
 
-    // 1. Verify ad ownership and current state
-    const { data: ad, error: fetchError } = await supabaseAdmin
+    // Clean UUID string if it has surrounding quotes or whitespace
+    const adId = String(adIdInput).replace(/^["']|["']$/g, "").trim();
+    console.log(`🔍 Cleaned adId for cancel lookup: "${adId}"`);
+
+    // 1. Try finding in 'adds' master table
+    let { data: ad, error: fetchError } = await supabaseAdmin
       .from("adds")
       .select("user_email, completed_at")
       .eq("id", adId)
       .maybeSingle();
 
-    if (fetchError || !ad) {
+    if (fetchError) {
+      console.error("❌ Error fetching from adds table:", fetchError.message);
+    }
+
+    // 2. Fallback to 'addsactive' table
+    if (!ad) {
+      const { data: activeAd, error: activeFetchError } = await supabaseAdmin
+        .from("addsactive")
+        .select("user_email, completed_at")
+        .eq("id", adId)
+        .maybeSingle();
+
+      if (activeFetchError) {
+        console.error("❌ Error fetching from addsactive table:", activeFetchError.message);
+      }
+      ad = activeAd;
+    }
+
+    if (!ad) {
+      console.error(`❌ Ad campaign ${adId} not found in adds or addsactive. User email: ${email}`);
       return NextResponse.json({ error: "Ad campaign not found" }, { status: 404 });
     }
 

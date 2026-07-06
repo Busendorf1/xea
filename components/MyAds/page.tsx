@@ -225,6 +225,7 @@ type Ad = {
   clicks_whatsapp?: number | null;
   clicks_website?: number | null;
   clicks_email?: number | null;
+  clicks_product_cta?: number | null;
 };
 
 function getHref(type: string, value: string): string {
@@ -414,7 +415,8 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     const whatsappClicks = ad.clicks_whatsapp ?? 0;
     const websiteClicks = ad.clicks_website ?? 0;
     const emailClicks = ad.clicks_email ?? 0;
-    const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks;
+    const productCtaClicks = ad.clicks_product_cta ?? 0;
+    const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productCtaClicks;
     const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
     
     const targetImpressions = ad.impressions ?? 1000;
@@ -497,6 +499,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
             {clicksCount > 0 && (
               <div style={{ paddingLeft: "10px", fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid var(--card-border)", margin: "4px 0" }}>
+                {productCtaClicks > 0 ? <span>🛒 Product CTA Clicks: {productCtaClicks}</span> : null}
                 {phoneClicks > 0 ? <span>📞 Phone Clicks: {phoneClicks}</span> : null}
                 {whatsappClicks > 0 ? <span>💬 WhatsApp Clicks: {whatsappClicks}</span> : null}
                 {websiteClicks > 0 ? <span>🌐 Website Clicks: {websiteClicks}</span> : null}

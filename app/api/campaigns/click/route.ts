@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing adId or clickType" }, { status: 400 });
     }
 
-    const validClickTypes = ["phone", "whatsapp", "website", "email"];
+    const validClickTypes = ["phone", "whatsapp", "website", "email", "buy_now", "shop", "order", "visit_website", "product_cta"];
     if (!validClickTypes.includes(clickType)) {
       return NextResponse.json({ error: "Invalid clickType" }, { status: 400 });
     }
