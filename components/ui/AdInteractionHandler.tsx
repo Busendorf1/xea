@@ -352,27 +352,25 @@ export default function AdInteractionHandler({
               </button>
 
               {/* Earn+ Button */}
-              {!isMutualTarget && (
-                <button
-                  className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
-                  type="button"
-                  disabled={isProcessing || !!activeAction}
-                  onClick={() => handleAction("earn", () => onAdEarn(ad))}
-                  title="Earn from this ad"
-                >
-                  {successAction === "earn" ? (
-                    <>
-                      <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                      <span>Earned</span>
-                    </>
-                  ) : (
-                    <>
-                      <Coins size={11} strokeWidth={2} />
-                      <span>Earn+</span>
-                    </>
-                  )}
-                </button>
-              )}
+              <button
+                className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
+                type="button"
+                disabled={isProcessing || !!activeAction}
+                onClick={() => handleAction("earn", () => onAdEarn(ad))}
+                title="Earn from this ad"
+              >
+                {successAction === "earn" ? (
+                  <>
+                    <Check size={11} strokeWidth={2} className={styles.tickIcon} />
+                    <span>Earned</span>
+                  </>
+                ) : (
+                  <>
+                    <Coins size={11} strokeWidth={2} />
+                    <span>Earn+</span>
+                  </>
+                )}
+              </button>
 
               {/* Mutual+ Button */}
               {ad.display_mutual_button === true && !isAlreadyMutual && (
