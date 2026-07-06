@@ -282,11 +282,16 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           supabase.from("addsactive").select("*").ilike("user_email", email).order("created_at", { ascending: false }),
         ]);
 
-        if (reviewRes.error || activeRes.error) throw new Error();
+        if (reviewRes.error || activeRes.error) {
+          console.error("adds table select error:", reviewRes.error);
+          console.error("addsactive table select error:", activeRes.error);
+          throw new Error("Query failed");
+        }
 
         setReviewAds(reviewRes.data || []);
         setActiveAds(activeRes.data || []);
       } catch (err) {
+        console.error("Error in fetchAds:", err);
         setError(true);
       } finally {
         setLoading(false);

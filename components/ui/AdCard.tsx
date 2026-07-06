@@ -574,78 +574,131 @@ export default function AdCard({
         {/* Action bar */}
         {ad.ad_type === "product_sales" ? (
           <div className={styles.productSalesActionBar}>
-            {/* Left side: Price & CTA button */}
-            <div className={styles.productLeftGroup}>
-              <span className={styles.productPriceText}>
-                {formatCurrency(ad.product_price || 0)}
-              </span>
-              <a
-                href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.productCtaButton}
-                onClick={() => {
-                  const clickType = (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_");
-                  fetch("/api/campaigns/click", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ adId: ad.id, clickType })
-                  }).catch(err => console.error("Failed to log CTA click:", err));
-                }}
-              >
-                {ad.product_cta_type || "Buy Now"}
-              </a>
-            </div>
+            {isPlatformPost ? (
+              <>
+                {/* Admin Ad: Price, CTA, and action buttons in a row */}
+                <div className={styles.adminRowGroup}>
+                  <span className={styles.productPriceText}>
+                    {formatCurrency(ad.product_price || 0)}
+                  </span>
+                  <a
+                    href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.productCtaButton}
+                    onClick={() => {
+                      const clickType = (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_");
+                      fetch("/api/campaigns/click", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ adId: ad.id, clickType })
+                      }).catch(err => console.error("Failed to log CTA click:", err));
+                    }}
+                  >
+                    {ad.product_cta_type || "Buy Now"}
+                  </a>
+                </div>
 
-            {/* Middle side: Secondary action buttons (up to 2) */}
-            <div className={styles.productMiddleGroup}>
-              {actionButtons.map((type) => (
-                <a
-                  key={`${type}-${ad.id}`}
-                  href={getHref(type, ad[type as keyof Ad] as string)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.productActionButton}
-                  title={type.replace("action_", "")}
-                  onClick={() => {
-                    const clickType = type.replace("action_", "");
-                    fetch("/api/campaigns/click", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ adId: ad.id, clickType })
-                    }).catch(err => console.error("Failed to log click:", err));
-                  }}
-                >
-                  {getIcon(type)}
-                </a>
-              ))}
-            </div>
+                {/* Middle side: Secondary action buttons (up to 2) */}
+                <div className={styles.productMiddleGroup}>
+                  {actionButtons.map((type) => (
+                    <a
+                      key={`${type}-${ad.id}`}
+                      href={getHref(type, ad[type as keyof Ad] as string)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.productActionButton}
+                      title={type.replace("action_", "")}
+                      onClick={() => {
+                        const clickType = type.replace("action_", "");
+                        fetch("/api/campaigns/click", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ adId: ad.id, clickType })
+                        }).catch(err => console.error("Failed to log click:", err));
+                      }}
+                    >
+                      {getIcon(type)}
+                    </a>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Standard User Ad: Price stacked on top of CTA button */}
+                <div className={styles.productLeftGroup}>
+                  <span className={styles.productPriceText}>
+                    {formatCurrency(ad.product_price || 0)}
+                  </span>
+                  <a
+                    href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.productCtaButton}
+                    onClick={() => {
+                      const clickType = (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_");
+                      fetch("/api/campaigns/click", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ adId: ad.id, clickType })
+                      }).catch(err => console.error("Failed to log CTA click:", err));
+                    }}
+                  >
+                    {ad.product_cta_type || "Buy Now"}
+                  </a>
+                </div>
 
-            {/* Right side: Interaction buttons (seen, earn+, mutual) */}
-            <div className={styles.productRightGroup}>
-              {ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
-                !seenAds.includes(ad.id) && (
-                  <AdInteractionHandler
-                    ad={ad}
-                    userEmail={userEmail}
-                    isPlatformPost={isPlatformPost}
-                    isMutualTarget={isMutualTarget}
-                    isAlreadyMutual={isAlreadyMutual}
-                    viewerProfile={viewerProfile}
-                    isProcessing={isProcessing}
-                    isSuspended={isSuspended}
-                    successAction={successAction}
-                    activeAction={activeAction}
-                    handleAction={handleAction}
-                    onMarkSeen={onMarkSeen}
-                    onAdEarn={onAdEarn}
-                    onAdMutual={onAdMutual}
-                    brandName={brandName}
-                    targetLink={targetLink}
-                  />
-                )
-              )}
-            </div>
+                {/* Middle Group: Secondary buttons */}
+                <div className={styles.productMiddleGroup}>
+                  {actionButtons.map((type) => (
+                    <a
+                      key={`${type}-${ad.id}`}
+                      href={getHref(type, ad[type as keyof Ad] as string)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.productActionButton}
+                      title={type.replace("action_", "")}
+                      onClick={() => {
+                        const clickType = type.replace("action_", "");
+                        fetch("/api/campaigns/click", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ adId: ad.id, clickType })
+                        }).catch(err => console.error("Failed to log click:", err));
+                      }}
+                    >
+                      {getIcon(type)}
+                    </a>
+                  ))}
+                </div>
+
+                {/* Right Group: Unlocked Interaction buttons */}
+                <div className={styles.productRightGroup}>
+                  {ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
+                    !seenAds.includes(ad.id) && (
+                      <AdInteractionHandler
+                        ad={ad}
+                        userEmail={userEmail}
+                        isPlatformPost={isPlatformPost}
+                        isMutualTarget={isMutualTarget}
+                        isAlreadyMutual={isAlreadyMutual}
+                        viewerProfile={viewerProfile}
+                        isProcessing={isProcessing}
+                        isSuspended={isSuspended}
+                        successAction={successAction}
+                        activeAction={activeAction}
+                        handleAction={handleAction}
+                        onMarkSeen={onMarkSeen}
+                        onAdEarn={onAdEarn}
+                        onAdMutual={onAdMutual}
+                        brandName={brandName}
+                        targetLink={targetLink}
+                      />
+                    )
+                  )}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className={styles.actionButtons}>
