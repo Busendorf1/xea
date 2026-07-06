@@ -938,17 +938,17 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   </select>
                   {formSelections.adMediaType === "image" && (
                     <small className={styles.info}>
-                      Max size: 6MB per image (JPG, PNG, etc). You can select up to 4 images.
+                      Max size: 5MB per image (JPG, PNG, etc). You can select up to 4 images.
                     </small>
                   )}
                   {formSelections.adMediaType === "video" && (
                     <small className={styles.info}>
-                      Max size: 200MB • Max duration: 5mins • Format: Video formats. Select exactly 1 video.
+                      Max size: 60MB • Max duration: 5mins • Format: Video formats. Select exactly 1 video.
                     </small>
                   )}
                   {formSelections.adMediaType === "mixed" && (
                     <small className={styles.info}>
-                      Up to 3 images (max 6MB each) and exactly 1 video (max 200MB, 5mins).
+                      Up to 3 images (max 5MB each) and exactly 1 video (max 60MB, 5mins).
                     </small>
                   )}
                 </div>
@@ -1022,14 +1022,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                           const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
 
                           if (isImage) {
-                            if (file.size > 6 * 1024 * 1024) {
-                              alert(`Image ${file.name} exceeds 6MB limit.`);
+                            if (file.size > 5 * 1024 * 1024) {
+                              alert(`Image ${file.name} exceeds 5MB limit.`);
                               e.target.value = "";
                               return;
                             }
                           } else if (isVideo) {
-                            if (file.size > 200 * 1024 * 1024) {
-                              alert(`Video ${file.name} exceeds 200MB limit.`);
+                            if (file.size > 60 * 1024 * 1024) {
+                              alert(`Video ${file.name} exceeds 60MB limit.`);
                               e.target.value = "";
                               return;
                             }
@@ -1401,7 +1401,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     if (step === 3 && !validateStep3()) {
                       alert(
                         adType === "product_sales"
-                          ? "Please complete all required fields in Ad Creative. Note: Product name (max 80 chars), price (> 0), description (max 200 chars, no links), and secure CTA link (starts with https://) are required. Max 2 secondary action buttons."
+                          ? "Please complete all required fields in Ad Creative."
                           : "Please complete all required fields in Ad Creative."
                       );
                       return;

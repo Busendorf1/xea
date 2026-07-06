@@ -585,14 +585,15 @@ export default function AdCard({
                 rel="noopener noreferrer"
                 className={styles.productCtaButton}
                 onClick={() => {
+                  const clickType = (isPlatformPost ? `visit_${brandName}` : (ad.product_cta_type || "Buy Now")).toLowerCase().replace(/\s+/g, "_");
                   fetch("/api/campaigns/click", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ adId: ad.id, clickType: (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_") })
+                    body: JSON.stringify({ adId: ad.id, clickType })
                   }).catch(err => console.error("Failed to log CTA click:", err));
                 }}
               >
-                {ad.product_cta_type || "Buy Now"}
+                {isPlatformPost ? `Visit ${brandName}` : (ad.product_cta_type || "Buy Now")}
               </a>
             </div>
 

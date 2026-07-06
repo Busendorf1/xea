@@ -70,8 +70,8 @@ export default function News({ session }: NewsProps) {
         }
         setMediaType("image");
       } else if (file.type.startsWith("video/")) {
-        if (file.size > 50 * 1024 * 1024) {
-          alert("Cover video must be smaller than 50MB.");
+        if (file.size > 60 * 1024 * 1024) {
+          alert("Cover video must be smaller than 60MB.");
           return;
         }
         setMediaType("video");
@@ -230,7 +230,7 @@ export default function News({ session }: NewsProps) {
                       {mediaFile ? mediaFile.name : "Choose an image/video or drag it here"}
                     </span>
                     <span className={styles.uploadSubtext}>
-                      Supports JPG, PNG, WEBP (Max 5MB) or MP4, WEBM (Max 50MB)
+                      Supports JPG, PNG, WEBP (Max 5MB) or MP4, WEBM (Max 60MB)
                     </span>
                   </div>
                 </label>

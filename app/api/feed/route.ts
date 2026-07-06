@@ -74,6 +74,11 @@ export async function GET(req: NextRequest) {
       const token = crypto.createHmac("sha256", SECRET_KEY).update(payload).digest("hex");
       return {
         id: ad.id,
+        ad_type: ad.ad_type || null,
+        product_name: ad.product_name || null,
+        product_price: ad.product_price || null,
+        product_cta_type: ad.product_cta_type || null,
+        product_cta_link: ad.product_cta_link || null,
         ad_content: ad.ad_content || "",
         ad_media: ad.ad_media || null,
         action_phone: ad.action_phone || null,
