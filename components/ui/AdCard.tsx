@@ -443,9 +443,18 @@ export default function AdCard({
           <span className={styles.sponsorLabel}>Sponsored</span>
         </div>
 
-        {/* Product Name (if product sales) */}
-        {ad.ad_type === "product_sales" && ad.product_name && (
-          <h4 className={styles.productNameTitle}>{ad.product_name}</h4>
+        {/* Product Name & Description (if product sales) */}
+        {ad.ad_type === "product_sales" && (
+          <>
+            {ad.product_name && (
+              <h4 className={styles.productNameTitle}>{ad.product_name}</h4>
+            )}
+            {ad.ad_content && (
+              <p className={styles.productDescriptionText} style={{ marginTop: "4px", marginBottom: "12px", fontSize: "0.92rem", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+                {ad.ad_content}
+              </p>
+            )}
+          </>
         )}
 
         {/* Content Message (if NOT product sales) */}
@@ -563,15 +572,6 @@ export default function AdCard({
         )}
 
         {/* Action bar */}
-        {/* Action bar */}
-        {/* Product Description (if product sales - rendered below media) */}
-        {ad.ad_type === "product_sales" && (
-          <p className={styles.adText} style={{ marginTop: "0.75rem", marginBottom: "0.5rem" }}>
-            {ad.ad_content}
-          </p>
-        )}
-
-        {/* Action bar */}
         {ad.ad_type === "product_sales" ? (
           <div className={styles.productSalesActionBar}>
             {/* Left side: Price & CTA button */}
@@ -597,7 +597,7 @@ export default function AdCard({
               </a>
             </div>
 
-            {/* Middle side: Secondary action buttons (up to 2) and Share button */}
+            {/* Middle side: Secondary action buttons (up to 2) */}
             <div className={styles.productMiddleGroup}>
               {actionButtons.map((type) => (
                 <a
@@ -605,7 +605,7 @@ export default function AdCard({
                   href={getHref(type, ad[type as keyof Ad] as string)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={styles.iconButton}
+                  className={styles.productActionButton}
                   title={type.replace("action_", "")}
                   onClick={() => {
                     const clickType = type.replace("action_", "");
@@ -619,20 +619,11 @@ export default function AdCard({
                   {getIcon(type)}
                 </a>
               ))}
-
-              <button
-                title="Share Ad"
-                className={styles.iconButton}
-                type="button"
-                onClick={() => onShare(ad.id)}
-              >
-                <Share2 size={14} strokeWidth={1.5} />
-              </button>
             </div>
 
             {/* Right side: Interaction buttons (seen, earn+, mutual) */}
             <div className={styles.productRightGroup}>
-              {ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
+              {!isPlatformPost && ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
                 !seenAds.includes(ad.id) && (
                   <AdInteractionHandler
                     ad={ad}

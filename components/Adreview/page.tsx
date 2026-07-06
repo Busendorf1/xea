@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FaPhone, FaWhatsapp, FaGlobe, FaEnvelope } from "react-icons/fa";
+import { Eye, Coins, UserPlus } from "lucide-react";
 import styles from "../Adreview/page.module.css"; // Your CSS module
 
 interface AdPreviewCardProps {
@@ -90,9 +91,16 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
 
   return (
     <div className={styles.card}>
-      {/* Product Name (if product sales) */}
+      {/* Product Name & Description (if product sales) */}
       {adType === "product_sales" && (
-        <h4 className={styles.productNameTitle}>{productName || "Product Name"}</h4>
+        <>
+          <h4 className={styles.productNameTitle}>{productName || "Product Name"}</h4>
+          {adContent && (
+            <p className={styles.productDescriptionText} style={{ marginTop: "4px", marginBottom: "12px", fontSize: "0.92rem", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+              {adContent}
+            </p>
+          )}
+        </>
       )}
 
       {/* Media Preview (only if there are media URLs) */}
@@ -120,8 +128,10 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
         </div>
       )}
 
-      {/* Product Description / Ad Content */}
-      <p className={styles.adText}>{adContent || (adType === "product_sales" ? "Product Description" : "Ad Message")}</p>
+      {/* Product Description / Ad Content (if NOT product sales) */}
+      {adType !== "product_sales" && (
+        <p className={styles.adText}>{adContent || "Ad Message"}</p>
+      )}
 
       {/* Action Bar / Buttons */}
       {adType === "product_sales" ? (
@@ -149,7 +159,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
                 href={getHref(type)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={styles.iconButton}
+                className={styles.productActionButton}
                 aria-label={`Contact via ${type}`}
                 title={type}
               >
@@ -158,14 +168,23 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
             ))}
           </div>
 
-          {/* Right: Mutual Preview */}
-          {displayMutualButton && (
-            <div className={styles.productRightGroup}>
-              <button className={styles.mutualPreviewBtn} type="button">
-                Mutual+
+          {/* Right Group: Live Preview interaction buttons */}
+          <div className={styles.productRightGroup}>
+            <button className={styles.seenBtn} type="button" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <Eye size={11} strokeWidth={2} />
+              <span>Seen</span>
+            </button>
+            <button className={styles.earnBtn} type="button" style={{ display: "flex", alignItems: "center", gap: "4px" }} disabled>
+              <Coins size={11} strokeWidth={2} />
+              <span>Earn+</span>
+            </button>
+            {displayMutualButton && (
+              <button className={styles.mutualBtn} type="button" style={{ display: "flex", alignItems: "center", gap: "4px" }} disabled>
+                <UserPlus size={11} strokeWidth={2} />
+                <span>Mutual+</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ) : (
         <>
@@ -186,7 +205,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
           </div>
 
           {/* Mutual+ Button Preview */}
-          {displayMutualButton && (
+          {adType !== "product_sales" && displayMutualButton && (
             <div className={styles.mutualPreview}>
               <button className={styles.mutualPreviewBtn} type="button">
                 Mutual+
