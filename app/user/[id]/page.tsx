@@ -1,7 +1,8 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import DashboardClient from "@/components/DashboardClient/page";
+import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 
 export default async function UserDashboard() {
   const session = await auth0.getSession();
@@ -16,41 +17,60 @@ export default async function UserDashboard() {
     return <div>Access Denied: No account associated with session.</div>;
   }
 
-  // Fetch user profile from Supabase using admin client
-  const { data: user, error } = await supabaseAdmin
-    .from("users")
-    .select(`
-      id,
-      "profileImage",
-      username,
-      "firstName",
-      "lastName",
-      "lastUpdated",
-      bio,
-      interest,
-      email,
-      industry,
-      behavior,
-      lifestyle,
-      personality,
-      monetized,
-      monetized_at,
-      created_at,
-      monetized_until,
-      monetization_type,
-      country,
-      state,
-      location,
-      phone,
-      business_name,
-      passphrase,
-      mutual_count,
-      balance,
-      withdrawal,
-      bvn_hash
-    `)
-    .ilike("email", email)
-    .maybeSingle();
+  // Attempt to fetch from Redis cache first
+  let user = await getCachedProfile(email);
+  let error = null;
+
+  if (user) {
+    console.log(`🚀 Profile cache hit in Server Component for: ${email}`);
+  } else {
+    console.log(`🔄 Profile cache miss in Server Component for: ${email}. Fetching from Supabase...`);
+    // Fetch user profile from Supabase using admin client
+    const { data: dbData, error: dbError } = await supabaseReadOnly
+      .from("users")
+      .select(`
+        id,
+        "profileImage",
+        username,
+        "firstName",
+        "lastName",
+        "lastUpdated",
+        bio,
+        interest,
+        email,
+        industry,
+        behavior,
+        lifestyle,
+        personality,
+        monetized,
+        monetized_at,
+        created_at,
+        monetized_until,
+        monetization_type,
+        country,
+        state,
+        location,
+        phone,
+        business_name,
+        passphrase,
+        mutual_count,
+        balance,
+        withdrawal,
+        bvn_hash
+      `)
+      .ilike("email", email)
+      .maybeSingle();
+
+    if (dbError) {
+      error = dbError;
+    } else {
+      user = dbData;
+      if (user) {
+        // Cache the loaded profile in Redis
+        await setCachedProfile(email, user);
+      }
+    }
+  }
 
   if (error) {
     console.error("❌ Error fetching user profile from database:", error);

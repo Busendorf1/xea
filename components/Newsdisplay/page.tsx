@@ -105,6 +105,7 @@ export default function AdDisplay({
 }) {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
@@ -117,44 +118,47 @@ export default function AdDisplay({
 
     if (!isLoadMore) {
       setLoading(true);
+      setError(false);
       setPage(0);
       setHasMore(true);
     }
 
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    console.log(`➡️ Fetching active highlights page ${pageNum} via API...`);
 
-    console.log(`➡️ Fetching active ads page ${pageNum} from newsactive...`);
-
-    const ITEMS_PER_PAGE = 20;
-    const fromOffset = pageNum * ITEMS_PER_PAGE;
-    const toOffset = fromOffset + ITEMS_PER_PAGE - 1;
-
-    // Fetch active/posted highlights only from the 'newsactive' table
-    const { data: matchedAds, error: adsError } = await supabase
-      .from("newsactive")
-      .select("id, title, content, image_url, interest, created_at")
-      .in("interest", userInterest)
-      .gte("created_at", yesterday)
-      .order("created_at", { ascending: false })
-      .range(fromOffset, toOffset);
-
-    if (adsError) {
-      console.error("❌ Error fetching ads:", adsError);
-    } else if (matchedAds) {
-      console.log("📣 Matched active ads page fetched:", matchedAds);
-      const typedAds = matchedAds as unknown as Ad[];
-      if (isLoadMore) {
-        setAds((prev) => [...prev, ...typedAds]);
-      } else {
-        setAds(typedAds);
-      }
+    try {
+      const interestsQuery = userInterest.join(",");
+      const response = await fetch(`/api/highlights?interests=${encodeURIComponent(interestsQuery)}`);
       
-      if (matchedAds.length < ITEMS_PER_PAGE) {
-        setHasMore(false);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch highlights: ${response.status}`);
       }
-    }
 
-    setLoading(false);
+      const allMatchedHighlights = await response.json();
+      console.log("📣 Highlights fetched from API:", allMatchedHighlights.length);
+
+      const ITEMS_PER_PAGE = 20;
+      const fromOffset = pageNum * ITEMS_PER_PAGE;
+      const toOffset = fromOffset + ITEMS_PER_PAGE;
+      
+      const pagedHighlights = allMatchedHighlights.slice(fromOffset, toOffset);
+
+      if (isLoadMore) {
+        setAds((prev) => [...prev, ...pagedHighlights]);
+      } else {
+        setAds(pagedHighlights);
+      }
+
+      if (toOffset >= allMatchedHighlights.length) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
+      }
+    } catch (err: any) {
+      console.error("❌ Error fetching highlights:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLoadMore = () => {
@@ -191,6 +195,22 @@ export default function AdDisplay({
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(255, 0, 0, 0.05)", borderRadius: "8px", border: "1px solid rgba(255, 0, 0, 0.1)", marginBottom: "1.5rem" }}>
+        <p style={{ color: "#ff4d4d", marginBottom: "10px", fontSize: "14px", fontWeight: "500" }}>Failed to load highlights.</p>
+        <button 
+          type="button" 
+          onClick={() => fetchAll(0, false)} 
+          style={{ padding: "6px 12px", background: "#ff4d4d", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   if (ads.length === 0) return <p className={styles.noAds}>No active highlights match your interests right now.</p>;
 
   return (

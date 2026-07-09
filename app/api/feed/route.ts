@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 
 const SECRET_KEY = process.env.AUTH0_SECRET || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const session = await auth0.getSession();
 
     // Call Supabase RPC get_user_feed using admin key with 15 ads batch limit (scaling optimization)
-    const { data: ads, error } = await supabaseAdmin.rpc("get_user_feed", {
+    const { data: ads, error } = await supabaseReadOnly.rpc("get_user_feed", {
       p_user_email: email,
       p_limit: 15,
       p_offset: 0
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     const profilesMap: Record<string, { business_name?: string; firstName?: string; profileImage?: string }> = {};
 
     if (publisherEmails.length > 0) {
-      const { data: profiles, error: profilesError } = await supabaseAdmin
+      const { data: profiles, error: profilesError } = await supabaseReadOnly
         .from("users")
         .select('email, business_name, "firstName", "profileImage"')
         .in("email", publisherEmails);

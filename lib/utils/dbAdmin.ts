@@ -11,11 +11,30 @@ if (typeof window === "undefined" && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   );
 }
 
-const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
+export const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
   },
 });
+
+// Configure Read Replica Client
+const supabaseReadUrl = process.env.SUPABASE_READONLY_URL;
+const supabaseReadServiceKey = process.env.SUPABASE_READONLY_SERVICE_ROLE_KEY;
+
+export const supabaseReadOnly = (supabaseReadUrl && supabaseReadServiceKey)
+  ? createClient(supabaseReadUrl, supabaseReadServiceKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+  : supabaseAdmin;
+
+if (supabaseReadUrl && supabaseReadServiceKey) {
+  console.log("🚀 Database Read Replication enabled: Routing reads to replica.");
+} else {
+  console.log("ℹ️ Read Replica config not found. Routing reads to primary database.");
+}
 
 export default supabaseAdmin;

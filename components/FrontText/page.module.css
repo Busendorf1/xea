@@ -320,3 +320,117 @@
   }
 }
 
+/* How Xea Works Button and Dropdown Styles */
+.howItWorksWrapper {
+  width: 100%;
+  max-width: 600px;
+  margin-bottom: 2.5rem;
+  z-index: 10;
+}
+
+.howItWorksBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.75rem 1.25rem;
+  border-radius: 12px;
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.howItWorksBtn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.arrowIcon {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.howItWorksDropdown {
+  margin-top: 1rem;
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: slideDown 0.25s ease-out;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stepItem {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.stepNum {
+  background: rgba(138, 43, 226, 0.15);
+  color: var(--primary);
+  border: 1px solid var(--primary-glow);
+  font-weight: 800;
+  font-size: 0.9rem;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stepText {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  text-align: left;
+}
+
+.stepText strong {
+  color: var(--foreground);
+  font-weight: 600;
+  display: inline-block;
+  margin-right: 0.25rem;
+}
+
+.termsCallout {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.termsLink {
+  color: var(--secondary) !important;
+  text-decoration: underline !important;
+}
+
+.termsLink:hover {
+  color: var(--foreground) !important;
+}
+
+

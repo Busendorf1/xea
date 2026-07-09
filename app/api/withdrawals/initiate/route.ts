@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { createHash } from "crypto";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 const MIN_WITHDRAWAL_THRESHOLD = 30000; // 30,000 NGN
 
@@ -138,6 +139,9 @@ export async function POST(req: NextRequest) {
       console.error("❌ Error updating user balance during withdrawal (OCC check failed):", userUpdateErr);
       return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
     }
+
+    // Invalidate cached profile in Redis
+    await invalidateCachedProfile(email);
 
     // Generate a unique transaction reference
     const reference = `trsf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

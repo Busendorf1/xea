@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,13 +10,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Attempt to fetch from Redis cache first
+    let user = await getCachedProfile(email);
+    if (user) {
+      console.log(`🚀 Profile cache hit in /api/profile for: ${email}`);
+      return NextResponse.json(user);
+    }
+
+    console.log(`🔄 Profile cache miss in /api/profile for: ${email}. Fetching from Supabase...`);
+
     // Fetch user profile from Supabase with retries (resilience to flaky hotspot networks)
-    let user = null;
     let error = null;
     const attempts = 3;
     for (let i = 0; i < attempts; i++) {
       try {
-        const { data, error: dbErr } = await supabaseAdmin
+        const { data, error: dbErr } = await supabaseReadOnly
           .from("users")
           .select("*")
           .ilike("email", email)
@@ -74,8 +83,11 @@ export async function GET(req: NextRequest) {
       if (fetchError) {
         return NextResponse.json({ error: fetchError.message }, { status: 500 });
       }
-
       user = newUser;
+    }
+
+    if (user) {
+      await setCachedProfile(email, user);
     }
 
     return NextResponse.json(user);

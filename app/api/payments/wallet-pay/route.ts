@@ -1,8 +1,8 @@
-// app/api/payments/wallet-pay/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { v4 as uuidv4 } from "uuid";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 export async function POST(req: NextRequest) {
   try {
@@ -191,6 +191,8 @@ export async function POST(req: NextRequest) {
         message: `Your account monetization is now active on the ${planType} plan. Payment was deducted from your wallet balance.`,
       });
     }
+    // Invalidate cached profile in Redis
+    await invalidateCachedProfile(email);
 
     return NextResponse.json({
       success: true,

@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import styles from "../FrontText/page.module.css";
 import Link from "next/link";
 
 export default function FrontText() {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <div className={styles.heroContainer}>
       {/* Background Glowing Blobs */}
@@ -27,6 +30,60 @@ export default function FrontText() {
           <p className={styles.subtitle}>
           100% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
           </p>
+
+          <div className={styles.howItWorksWrapper}>
+            <button 
+              onClick={() => setIsOpen(!isOpen)} 
+              className={styles.howItWorksBtn}
+            >
+              <span>How Xea Works</span>
+              <span className={styles.arrowIcon}>{isOpen ? "▲" : "▼"}</span>
+            </button>
+            
+            {isOpen && (
+              <div className={styles.howItWorksDropdown}>
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNum}>1</div>
+                  <p className={styles.stepText}>
+                    <strong>Attention Marketplace:</strong> We connect advertisers seeking high-quality organic views with audiences who value their own time.
+                  </p>
+                </div>
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNum}>2</div>
+                  <p className={styles.stepText}>
+                    <strong>Targeted Ads (Advertisers):</strong> Create campaigns target-locked directly to user interest arrays. Pay only for actual, verified human views.
+                  </p>
+                </div>
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNum}>3</div>
+                  <p className={styles.stepText}>
+                    <strong>Conversion Engine (Advertisers):</strong> Your ad budget goes directly to genuine listeners who watch for a minimum of 16 seconds. By having earning viewers, purchasing is easier, boosting your sales.
+                  </p>
+                </div>
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNum}>4</div>
+                  <p className={styles.stepText}>
+                    <strong>Earn Rewards (Listeners):</strong> Select your real interests, scroll your personalized campaign feeds, and view matched ads for at least 16 seconds to earn payouts directly to your wallet.
+                  </p>
+                </div>
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNum}>5</div>
+                  <p className={styles.stepText}>
+                    <strong>Compensatory Program:</strong> Payouts are entirely compensatory and belong to the platform. We reserve the right to withdraw, modify, or suspend the payout program at any time, sharing rewards only with genuine listeners.
+                  </p>
+                </div>
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNum}>6</div>
+                  <p className={styles.stepText}>
+                    <strong>Eligibility for Earning:</strong> Only monetized profiles (Standard or Instant standings) with active, genuine interest settings are eligible for payout withdrawals. Suspicious click velocity, bots, or farming activity will trigger automated suspensions.
+                  </p>
+                </div>
+                <div className={styles.termsCallout}>
+                  📖 Please read our <Link href="/policy" className={styles.termsLink}>Terms and Conditions</Link> for detailed rules and expectations.
+                </div>
+              </div>
+            )}
+          </div>
            {/* <p className={styles.subtitle}>
             Discover curated offers, jobs, and announcements tailored specifically to your background and interests. Earn guaranteed cash payouts for every second of your engagement.
           </p> */}

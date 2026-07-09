@@ -1,7 +1,6 @@
-// app/api/notifications/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,7 +10,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 1. Fetch user's signup date and monetization status
-    const { data: user, error: userErr } = await supabaseAdmin
+    const { data: user, error: userErr } = await supabaseReadOnly
       .from("users")
       .select("created_at, monetized")
       .ilike("email", email)
@@ -26,7 +25,7 @@ export async function GET(req: NextRequest) {
     const isMonetized = user.monetized === "yes" || user.monetized === true;
 
     // 2. Fetch private notifications
-    const { data: privateNotifications, error: privErr } = await supabaseAdmin
+    const { data: privateNotifications, error: privErr } = await supabaseReadOnly
       .from("notifications")
       .select("*")
       .ilike("user_email", email);
@@ -37,7 +36,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Fetch active global announcements
-    let announcementQuery = supabaseAdmin
+    let announcementQuery = supabaseReadOnly
       .from("global_announcements")
       .select("*")
       .gte("created_at", userSignupDate); // Only fetch announcements made since user registered
@@ -56,7 +55,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 4. Fetch user's read announcements logs
-    const { data: readLogs, error: logErr } = await supabaseAdmin
+    const { data: readLogs, error: logErr } = await supabaseReadOnly
       .from("read_announcements")
       .select("announcement_id")
       .ilike("user_email", email);

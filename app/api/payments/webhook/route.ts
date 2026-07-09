@@ -1,8 +1,8 @@
-// app/api/payments/webhook/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
 
       try {
         await processSuccessfulPayment(reference, metadata, amount);
+        const userEmail = metadata.user_email || metadata.userEmail || metadata.email;
+        if (userEmail) {
+          await invalidateCachedProfile(userEmail);
+        }
       } catch (procErr: any) {
         console.error("❌ Error processing webhook charge.success:", procErr);
         // Return 200 so Paystack doesn't keep retrying, but we log the error
@@ -68,11 +72,13 @@ export async function POST(req: NextRequest) {
           const currentWithdrawal = parseFloat(user.withdrawal || 0);
           const newWithdrawal = Math.max(0, currentWithdrawal - amount);
 
-          // Update user withdrawal balance
+           // Update user withdrawal balance
           await supabaseAdmin
             .from("users")
             .update({ withdrawal: newWithdrawal })
             .ilike("email", userEmail);
+
+          await invalidateCachedProfile(userEmail);
         }
 
         // Update payment status
@@ -126,6 +132,8 @@ export async function POST(req: NextRequest) {
             .from("users")
             .update({ balance: newBalance, withdrawal: newWithdrawal })
             .ilike("email", userEmail);
+
+          await invalidateCachedProfile(userEmail);
         }
 
         // Update payment status to failed or reversed

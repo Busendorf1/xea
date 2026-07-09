@@ -84,9 +84,9 @@ export async function POST(request: NextRequest) {
     const now = Date.now();
     const viewDuration = now - parseInt(servedAt, 10);
 
-    // 2. Enforce 15-second minimum view duration
-    if (viewDuration < 15000) {
-      return NextResponse.json({ error: "View duration too short. Please watch the ad for at least 15 seconds." }, { status: 400 });
+    // 2. Enforce 16-second minimum view duration
+    if (viewDuration < 16000) {
+      return NextResponse.json({ error: "View duration too short. Please watch the ad for at least 16 seconds." }, { status: 400 });
     }
 
     // 3. Enforce 30-minute maximum token age

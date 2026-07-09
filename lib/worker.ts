@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import supabaseAdmin from "./utils/dbAdmin";
+import { invalidateCachedProfile, invalidateAllHighlights } from "./utils/cache";
 
 const connectionOptions = {
   host: process.env.REDIS_HOST || "127.0.0.1",
@@ -90,6 +91,21 @@ const flushBatch = async () => {
       }));
     }
 
+    // Invalidate profile caches in Redis for processed earn and mutual actions
+    const emailsToInvalidate = new Set<string>();
+    earns.forEach(e => {
+      if (e.job.data.email) emailsToInvalidate.add(e.job.data.email);
+    });
+    mutuals.forEach(m => {
+      if (m.job.data.email) emailsToInvalidate.add(m.job.data.email);
+    });
+
+    await Promise.all(
+      Array.from(emailsToInvalidate).map(async (email) => {
+        await invalidateCachedProfile(email);
+      })
+    );
+
     // Resolve all jobs in this batch on success
     currentBatch.forEach(j => j.resolve());
   } catch (err: any) {
@@ -144,6 +160,7 @@ const campaignsWorker = new Worker("campaigns-events", async (job) => {
         .from("newsactive")
         .insert([payload]);
       if (error) throw new Error(error.message);
+      await invalidateAllHighlights();
     }
   } catch (err: any) {
     console.error(`❌ Campaigns Worker: Failed to create ${type}:`, err.message);

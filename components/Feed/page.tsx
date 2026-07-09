@@ -11,10 +11,11 @@ import Skeleton from "../ui/Skeleton";
 
 interface FeedProps {
   userEmail: string;
+  initialProfile?: any;
 }
 
 
-const Feed = ({ userEmail }: FeedProps) => {
+const Feed = ({ userEmail, initialProfile }: FeedProps) => {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -29,7 +30,19 @@ const Feed = ({ userEmail }: FeedProps) => {
     mutuals: string[];
     monetized: boolean;
     suspended_until?: string | null;
-  } | null>(null);
+  } | null>(() => {
+    if (initialProfile) {
+      return {
+        balance: parseFloat(initialProfile.balance ?? 0),
+        mutual_count: initialProfile.mutual_count ?? 0,
+        mutuals: Array.isArray(initialProfile.mutuals) ? initialProfile.mutuals : [],
+        monetized: (initialProfile.monetized === "yes" || initialProfile.monetized === "true" || initialProfile.monetized === true) &&
+                   (!initialProfile.monetized_until || new Date(initialProfile.monetized_until).getTime() > Date.now()),
+        suspended_until: initialProfile.suspended_until || null,
+      };
+    }
+    return null;
+  });
 
   const [processingAds, setProcessingAds] = useState<string[]>([]);
   const processingRef = useRef<Set<string>>(new Set());
@@ -205,9 +218,21 @@ const Feed = ({ userEmail }: FeedProps) => {
 
   useEffect(() => {
     if (userEmail) {
-      fetchViewerProfile();
+      if (!viewerProfile) {
+        fetchViewerProfile();
+      } else if (isMobile && highlights.length === 0) {
+        const rawInterest = initialProfile?.interest;
+        const parsedInterests = Array.isArray(rawInterest)
+          ? rawInterest
+          : typeof rawInterest === "string"
+          ? rawInterest.split(",").map((v: string) => v.trim())
+          : [];
+        if (parsedInterests.length > 0) {
+          fetchHighlights(parsedInterests);
+        }
+      }
     }
-  }, [userEmail, fetchViewerProfile]);
+  }, [userEmail, viewerProfile, isMobile, highlights.length, fetchViewerProfile, fetchHighlights, initialProfile]);
 
   const handleShare = (adId: string) => {
     if (typeof window !== "undefined") {
@@ -412,12 +437,12 @@ const Feed = ({ userEmail }: FeedProps) => {
     fetchRelevantAds(0, false);
   }, [fetchRelevantAds]);
 
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore) return;
     const nextPage = page + 1;
     setPage(nextPage);
     fetchRelevantAds(nextPage, true);
-  };
+  }, [loading, loadingMore, hasMore, page, fetchRelevantAds]);
 
   // markSeen is an alias kept for prop compatibility
   const markSeen = handleAdSeen;
@@ -578,6 +603,17 @@ const Feed = ({ userEmail }: FeedProps) => {
     overscan: 5,
   });
 
+  const virtualItems = virtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (virtualItems.length > 0 && hasMore && !loadingMore && !loading) {
+      const lastItemIndex = virtualItems[virtualItems.length - 1].index;
+      if (lastItemIndex >= displayFeed.length - 2) {
+        loadMore();
+      }
+    }
+  }, [virtualItems, hasMore, loadingMore, loading, displayFeed.length, loadMore]);
+
   return (
     <div ref={parentRef} className={styles.feedContainer}>
       {loading && (
@@ -645,15 +681,9 @@ const Feed = ({ userEmail }: FeedProps) => {
         </div>
       )}
 
-      {hasMore && ads.length > 0 && (
+      {loadingMore && (
         <div className={styles.loadMoreContainer}>
-          <button
-            onClick={loadMore}
-            disabled={loadingMore}
-            className={styles.loadMoreBtn}
-          >
-            {loadingMore ? <span className={styles.loadingSpinner}></span> : "Load More"}
-          </button>
+          <span className={styles.loadingSpinner}></span>
         </div>
       )}
       <div ref={turnstileContainerRef} style={{ width: 0, height: 0, overflow: "hidden", position: "absolute" }} />

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 export async function POST(req: NextRequest) {
   try {
@@ -98,6 +99,9 @@ export async function POST(req: NextRequest) {
       console.error("Update error:", error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Invalidate cached profile in Redis
+    await invalidateCachedProfile(email);
 
     return NextResponse.json({ message: "User registered successfully" }, { status: 201 });
   } catch (err: any) {

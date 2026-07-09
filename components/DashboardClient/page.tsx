@@ -695,7 +695,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
           }`}
         >
-          <Feed userEmail={email} />
+          <Feed userEmail={email} initialProfile={user} />
         </main>
 
         {/* Right Sidebar - Profile & Wallet details */}
