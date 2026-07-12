@@ -12,10 +12,12 @@ import Skeleton from "../ui/Skeleton";
 interface FeedProps {
   userEmail: string;
   initialProfile?: any;
+  onEarnSuccess?: () => void;
+  onMutualSuccess?: () => void;
 }
 
 
-const Feed = ({ userEmail, initialProfile }: FeedProps) => {
+const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: FeedProps) => {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -499,6 +501,7 @@ const Feed = ({ userEmail, initialProfile }: FeedProps) => {
         alert("Monetize to start earning.");
       }
 
+      onEarnSuccess?.();
       return true;
     } catch (e: any) {
       console.error("Unexpected error in handleAdEarn:", e);
@@ -566,6 +569,7 @@ const Feed = ({ userEmail, initialProfile }: FeedProps) => {
           setViewerProfile((prev) => prev ? ({ ...prev, mutuals: newMutuals, mutual_count: newMutuals.length }) : null);
         }
       }
+      onMutualSuccess?.();
       return true;
     } catch (e: any) {
       console.error("Unexpected error in handleAdMutual:", e);

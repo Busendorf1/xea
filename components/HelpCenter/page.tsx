@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { MessageCircle, Send, Inbox } from "lucide-react";
+import { helpSchema } from "@/lib/validationSchemas";
 
 interface HelpCenterProps {
   session: {
@@ -39,6 +40,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [tickets, setTickets] = useState<any[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
 
@@ -71,12 +73,22 @@ export default function HelpCenter({ session }: HelpCenterProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.subject.trim() || !form.message.trim() || !form.email.trim()) {
-      setError("Please fill in all required fields.");
+    setFieldErrors({});
+    setError("");
+
+    const result = helpSchema.safeParse(form);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        const key = issue.path[0] as string;
+        if (!errs[key]) errs[key] = issue.message;
+      });
+      setFieldErrors(errs);
+      setError("Please fix the errors below before submitting.");
       return;
     }
+
     setSubmitting(true);
-    setError("");
 
     const { error: insertErr } = await supabase.from("help_tickets").insert([
       {
@@ -134,6 +146,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
                 type="text"
                 className={styles.inputField}
                 placeholder="Full name"
+                maxLength={100}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
@@ -150,6 +163,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 readOnly={!!userEmail}
               />
+              {fieldErrors.email && <span className={styles.fieldError}>{fieldErrors.email}</span>}
             </div>
 
             <div className={styles.formGroup}>
@@ -172,22 +186,26 @@ export default function HelpCenter({ session }: HelpCenterProps) {
               <input
                 type="text"
                 required
+                maxLength={150}
                 className={styles.inputField}
                 placeholder="Brief description of your issue"
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
               />
+              {fieldErrors.subject && <span className={styles.fieldError}>{fieldErrors.subject}</span>}
             </div>
 
             <div className={styles.formGroupFull}>
               <label className={styles.formLabel}>Message *</label>
               <textarea
                 required
+                maxLength={2000}
                 className={styles.textareaField}
                 placeholder="Describe your issue in detail..."
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
               />
+              {fieldErrors.message && <span className={styles.fieldError}>{fieldErrors.message}</span>}
             </div>
           </div>
 

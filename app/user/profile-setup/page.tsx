@@ -7,6 +7,7 @@ import styles from "./page.module.css";
 import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
 import LocationSelector from "@/components/LocationSelector";
+import { profileSetupStep1Schema } from "@/lib/validationSchemas";
 
 const industries = [
   "Technology", "Healthcare", "Finance", "Education", "Retail", "Construction",
@@ -64,6 +65,7 @@ export default function ProfileSetup() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
     dob: "",
@@ -117,25 +119,18 @@ export default function ProfileSetup() {
   };
 
   const validateStep1 = () => {
-    if (!formData.dob || !formData.phone || !formData.country || !formData.state || !formData.location || !formData.gender || !formData.employment) {
-      setErrorMessage("Please fill in all fields.");
+    setFieldErrors({});
+    const result = profileSetupStep1Schema.safeParse(formData);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        const key = issue.path[0] as string;
+        if (!errs[key]) errs[key] = issue.message;
+      });
+      setFieldErrors(errs);
+      setErrorMessage(result.error.issues[0]?.message ?? "Please fix the errors below.");
       return false;
     }
-
-    // Check age >= 18
-    const dobDate = new Date(formData.dob);
-    const today = new Date();
-    let age = today.getFullYear() - dobDate.getFullYear();
-    const m = today.getMonth() - dobDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) {
-      age--;
-    }
-
-    if (age < 18) {
-      setErrorMessage("You must be at least 18 years old to complete registration.");
-      return false;
-    }
-
     setErrorMessage(null);
     return true;
   };
@@ -264,6 +259,7 @@ export default function ProfileSetup() {
                       onChange={handleInputChange}
                       className={styles.inputField}
                     />
+                    {fieldErrors.dob && <span className={styles.fieldError}>{fieldErrors.dob}</span>}
                   </div>
 
                   <div className={styles.inputGroup}>
@@ -274,10 +270,12 @@ export default function ProfileSetup() {
                       name="phone"
                       placeholder="e.g. +2348012345678"
                       required
+                      maxLength={20}
                       value={formData.phone}
                       onChange={handleInputChange}
                       className={styles.inputField}
                     />
+                    {fieldErrors.phone && <span className={styles.fieldError}>{fieldErrors.phone}</span>}
                   </div>
 
                   <div className={styles.inputGroup}>
@@ -293,9 +291,8 @@ export default function ProfileSetup() {
                       <option value="">Select Gender</option>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
-                      {/* <option value="nonbinary">Non-Binary</option>
-                      <option value="prefer_not">Prefer not to say</option> */}
                     </select>
+                    {fieldErrors.gender && <span className={styles.fieldError}>{fieldErrors.gender}</span>}
                   </div>
 
                   <div className={styles.inputGroup}>

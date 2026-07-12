@@ -12,16 +12,22 @@ export async function GET(req: NextRequest) {
     console.log(`🔍 Fetching campaigns list for: ${email}`);
 
     // Query all queues in parallel on read replica database
-    const [adsQueue, adsActive, highlightsQueue, highlightsActive] = await Promise.all([
+    const [adsQueue, adsActiveReal, adsCompleted, highlightsQueue, highlightsActive] = await Promise.all([
       supabaseReadOnly.from("adds").select("*").ilike("user_email", email),
       supabaseReadOnly.from("addsactive").select("*").ilike("user_email", email),
+      supabaseReadOnly.from("completed_ads").select("*").ilike("user_email", email),
       supabaseReadOnly.from("news").select("*").ilike("user_email", email),
       supabaseReadOnly.from("newsactive").select("*").ilike("user_email", email),
     ]);
 
+    const combinedActive = [
+      ...(adsActiveReal.data || []),
+      ...(adsCompleted.data || [])
+    ];
+
     return NextResponse.json({
       adsQueue: adsQueue.data || [],
-      adsActive: adsActive.data || [],
+      adsActive: combinedActive,
       highlightsQueue: highlightsQueue.data || [],
       highlightsActive: highlightsActive.data || [],
     });

@@ -1,13 +1,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import styles from "../Ad/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
 import { v4 as uuidv4 } from "uuid";
 import supabase from "@/lib/utils/db";
 import AdPreviewCard from "../Adreview/page";
+import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/lib/categoryTargetingMap";
+import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
 
 interface Session {
   user?: {
@@ -50,14 +52,18 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [adType, setAdType] = useState("politics");
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [optionsMap, setOptionsMap] = useState<Record<Category, string[]>>({
-    industry: [],
-    interest: [],
-    lifestyle: [],
-    behavior: [],
-    personality: [],
-  });
+
+  // Derive targeting options from the selected ad type — zero overlap guaranteed
+  const optionsMap = useMemo(
+    () => categoryTargetingMap[adType as AdCategory] ?? categoryTargetingMap["individual"],
+    [adType]
+  );
+
+  // Only show dimensions that have options for this category
+  const activeCategories = useMemo(
+    () => TARGETING_DIMENSIONS.filter((dim) => optionsMap[dim]?.length > 0),
+    [optionsMap]
+  );
 
   const [formSelections, setFormSelections] = useState({
     industry: [] as string[],
@@ -93,6 +99,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   });
 
   const [mediaError, setMediaError] = useState("");
+  const [stepError, setStepError] = useState("");
   const [userProfile, setUserProfile] = useState<{
     mutual_count: number;
     mutuals: string[];
@@ -122,182 +129,17 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     fetchUserProfile();
   }, [session]);
 
+  // Clear targeting selections whenever the ad type changes
   useEffect(() => {
-    const fetchedCategories: Category[] = [
-      "industry",
-      "interest",
-      "lifestyle",
-      "behavior",
-      "personality",
-    ];
-
-    const fetchedOptionsMap: Record<Category, string[]> = {
-      industry: [
-        "Technology",
-        "Healthcare",
-        "Finance",
-        "Education",
-        "Retail",
-        "Construction",
-        "Real Estate",
-        "Hospitality",
-        "Transportation",
-        "Media",
-        "Entertainment",
-        "Telecommunications",
-        "Energy",
-        "Legal",
-        "Marketing",
-        "Insurance",
-        "Government",
-        "Nonprofit",
-        "Manufacturing",
-        "Logistics",
-        "Security",
-        "Consulting",
-        "Design",
-        "Agriculture",
-        "Automotive",
-        "Mining",
-        "Politics",
-        "Religion",
-        "NGO",
-        "Environmental",
-        "Diversity & Inclusion",
-      ],
-      interest: [
-        "Jobs",
-        "Business",
-        "Investing",
-        "Fashion",
-        "Fitness",
-        "Sports",
-        "Health",
-        "Travel",
-        "Education",
-        "Tech",
-        "Gaming",
-        "Politics",
-        "Religion",
-        "Movies",
-        "Music",
-        "Lifestyle",
-        "Shopping",
-        "Books",
-        "Beauty",
-        "Home Decor",
-        "Parenting",
-        "Spirituality",
-        "Cars",
-        "Cooking",
-        "Photography",
-        "Volunteering",
-        "Environment",
-        "Dating",
-        "Finance",
-        "Online Courses",
-      ],
-      lifestyle: [
-        "Luxury‑Seeking",
-        "Minimalist",
-        "Eco‑Conscious",
-        "Fitness‑Oriented",
-        "Family‑Oriented",
-        "Adventurous",
-        "Spiritual",
-        "Career‑Driven",
-        "Budget‑Conscious",
-        "Tech‑Savvy",
-        "Pet Lover",
-        "Urban Dweller",
-        "Countryside Living",
-        "Night Owl",
-        "Early Riser",
-        "Remote Worker",
-        "Frequent Flyer",
-        "Homebody",
-        "Volunteer‑Minded",
-        "Art Enthusiast",
-        "Foodie",
-        "DIYer",
-        "Health Nut",
-        "Social Butterfly",
-        "Solo Traveler",
-        "Workaholic",
-        "Balanced Life",
-        "Digital Nomad",
-        "Collector",
-        "Gamer",
-      ],
-      behavior: [
-        "Online Shopper",
-        "Window Shopper",
-        "Impulsive Buyer",
-        "Researcher",
-        "High Engagement",
-        "Clicks Ads",
-        "Saves Products",
-        "Abandons Cart",
-        "Subscribes Newsletters",
-        "Downloads Freebies",
-        "Shares Content",
-        "Buys via Referral",
-        "Attends Webinars",
-        "Engages with Polls",
-        "Searches Reviews",
-        "Watches How‑To Videos",
-        "Follows Brands",
-        "Uses Coupons",
-        "Buys in Sales",
-        "Daily App User",
-        "Loyal Customer",
-        "Early Adopter",
-        "Price‑Sensitive",
-        "Mobile‑first",
-        "Night User",
-        "Seeks Deals",
-        "Prefers Premium",
-        "Needs Instant Response",
-        "Reviews Often",
-        "Follows Influencers",
-      ],
-      personality: [
-        "Introvert",
-        "Extrovert",
-        "Ambitious",
-        "Creative",
-        "Analytical",
-        "Empathetic",
-        "Pragmatic",
-        "Optimistic",
-        "Pessimistic",
-        "Curious",
-        "Disciplined",
-        "Spontaneous",
-        "Confident",
-        "Cautious",
-        "Assertive",
-        "Playful",
-        "Serious",
-        "Flexible",
-        "Meticulous",
-        "Innovative",
-        "Traditional",
-        "Adventurous",
-        "Skeptical",
-        "Dependable",
-        "Perfectionist",
-        "Kind‑Hearted",
-        "Leader",
-        "Follower",
-        "Observer",
-        "Strategic",
-      ],
-    };
-
-    setCategories(fetchedCategories);
-    setOptionsMap(fetchedOptionsMap);
-  }, []);
+    setFormSelections((prev) => ({
+      ...prev,
+      industry: [],
+      interest: [],
+      lifestyle: [],
+      behavior: [],
+      personality: [],
+    }));
+  }, [adType]);
 
   const toggleSelection = (type: Category, value: string) => {
     setFormSelections((prev) => {
@@ -334,7 +176,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const handleTargetAll = (cat: Category) => {
     setFormSelections((prev) => ({
       ...prev,
-      [cat]: optionsMap[cat],
+      [cat]: optionsMap[cat] ?? [],
     }));
   };
 
@@ -390,20 +232,62 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     );
   };
 
-  const validateStep3 = () => {
-    if (!formSelections.adMediaType) return false;
-    if (formSelections.adMediaType !== "text" && formSelections.adMediaFiles.length === 0) return false;
-    if (containsLink(formSelections.adContent)) return false;
-    
+  /** Step 2 — audience / budget numeric validation */
+  const validateStep2 = (): boolean => {
+    setStepError("");
+    const result = adAudienceSchema.safeParse({
+      impressions: formSelections.impressions,
+      campaignDays: formSelections.campaignDays,
+      userFrequencyCap: formSelections.userFrequencyCap,
+      minAge: formSelections.ageRange[0],
+      maxAge: formSelections.ageRange[1],
+    });
+    if (!result.success) {
+      setStepError(result.error.issues[0]?.message ?? "Please fix the audience details.");
+      return false;
+    }
+    return true;
+  };
+
+  /** Step 3 — ad creative validation */
+  const validateStep3 = (): boolean => {
+    setStepError("");
+    if (!formSelections.adMediaType) {
+      setStepError("Please select an ad media type.");
+      return false;
+    }
+    if (formSelections.adMediaType !== "text" && formSelections.adMediaFiles.length === 0) {
+      setStepError("Please upload at least one media file.");
+      return false;
+    }
+
+    const maxButtons = adType === "product_sales" ? 2 : 3;
+    if (formSelections.adActionButtons.length > maxButtons) {
+      setStepError(`For ${adType.replace("_", " ")} ads, you can select at most ${maxButtons} contact buttons.`);
+      return false;
+    }
+
     if (adType === "product_sales") {
-      if (!formSelections.productName.trim() || formSelections.productName.length > 80) return false;
-      const price = parseFloat(formSelections.productPrice);
-      if (isNaN(price) || price <= 0) return false;
-      if (!formSelections.productCtaLink.trim() || !formSelections.productCtaLink.startsWith("https://")) return false;
-      if (!formSelections.adContent.trim() || formSelections.adContent.length > 200) return false;
-      if (formSelections.adActionButtons.length > 2) return false;
+      const result = adCreativeProductSchema.safeParse({
+        adContent: formSelections.adContent,
+        productName: formSelections.productName,
+        productPrice: formSelections.productPrice,
+        productCtaLink: formSelections.productCtaLink,
+        actionDetails: formSelections.actionDetails,
+      });
+      if (!result.success) {
+        setStepError(result.error.issues[0]?.message ?? "Please fix the ad creative.");
+        return false;
+      }
     } else {
-      if (formSelections.adActionButtons.length > 3) return false;
+      const result = adCreativeSchema.safeParse({
+        adContent: formSelections.adContent,
+        actionDetails: formSelections.actionDetails,
+      });
+      if (!result.success) {
+        setStepError(result.error.issues[0]?.message ?? "Please fix the ad content.");
+        return false;
+      }
     }
     return true;
   };
@@ -563,33 +447,46 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               </>
             )}
 
-            {/* Step 1 */}
-            {step === 1 &&
-              categories.map((cat) => (
-                <div key={cat} className={styles.dropdownContainer}>
-                  <details>
-                    <summary>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                      <button
-                        type="button"
-                        onClick={() => handleTargetAll(cat)}
-                      >
-                        Target All
-                      </button>
-                    </summary>
-                    {optionsMap[cat]?.map((item, i) => (
-                      <label key={i}>
-                        <input
-                          type="checkbox"
-                          checked={formSelections[cat]?.includes(item)}
-                          onChange={() => toggleSelection(cat, item)}
-                        />
-                        {item}
-                      </label>
-                    ))}
-                  </details>
-                </div>
-              ))}
+            {/* Step 1 — targeting options scoped to the chosen ad category */}
+            {step === 1 && (
+              <>
+                <p className={styles.targetingNote}>
+                  Showing targeting options for{" "}
+                  <strong>{adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1)}</strong>{" "}
+                  ads. Switch category in Step 1 to see different options.
+                </p>
+                {activeCategories.map((cat) => (
+                  <div key={cat} className={styles.dropdownContainer}>
+                    <details>
+                      <summary>
+                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                        <button
+                          type="button"
+                          onClick={() => handleTargetAll(cat)}
+                        >
+                          Target All
+                        </button>
+                      </summary>
+                      {optionsMap[cat]?.map((item, i) => (
+                        <label key={i}>
+                          <input
+                            type="checkbox"
+                            checked={formSelections[cat]?.includes(item)}
+                            onChange={() => toggleSelection(cat, item)}
+                          />
+                          {item}
+                        </label>
+                      ))}
+                    </details>
+                  </div>
+                ))}
+                {activeCategories.length === 0 && (
+                  <p className={styles.targetingNote}>
+                    No granular targeting available for Individual ads — your ad will reach a broad general audience.
+                  </p>
+                )}
+              </>
+            )}
 
             {/* Step 2 */}
             {step === 2 && (
@@ -1393,19 +1290,17 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
             <div className={styles.buttonGroup}>
               {step > 0 && (
-                <button onClick={() => setStep(step - 1)}>Back</button>
+                <button onClick={() => { setStepError(""); setStep(step - 1); }}>Back</button>
+              )}
+              {stepError && (
+                <span className={styles.stepValidationError}>⚠ {stepError}</span>
               )}
               {step < 5 && (
                 <button
                   onClick={() => {
-                    if (step === 3 && !validateStep3()) {
-                      alert(
-                        adType === "product_sales"
-                          ? "Please complete all required fields in Ad Creative."
-                          : "Please complete all required fields in Ad Creative."
-                      );
-                      return;
-                    }
+                    if (step === 2 && !validateStep2()) return;
+                    if (step === 3 && !validateStep3()) return;
+                    setStepError("");
                     setStep(step + 1);
                   }}
                 >

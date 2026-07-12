@@ -52,7 +52,7 @@ export default function FrontText() {
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>6</div>
             <p className={styles.stepText}>
-              <strong>Eligibility for Earning:</strong> Only monetized profiles (Standard or Instant standings) with active, genuine interest settings are eligible for payout withdrawals. Suspicious click velocity, bots, or farming activity will trigger automated suspensions.
+              <strong>Eligibility for Earning:</strong> Only monetized profiles (Standard or Instant Monetization) with active, genuine interest settings are eligible for payout withdrawals. Suspicious click velocity, bots, or farming activity will trigger automated suspensions.
             </p>
           </div>
           <div className={styles.termsCallout}>

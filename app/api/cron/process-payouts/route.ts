@@ -146,6 +146,15 @@ async function handleCron(req: NextRequest) {
 
     console.log(`✅ Cron: Completed processing. Processed: ${processedCount}, Failed: ${failedCount}`);
 
+    // 4. Run database cleanup for completed/expired ads
+    try {
+      console.log("🧹 Cron: Running database cleanup for completed/expired ads...");
+      await supabaseAdmin.rpc("delete_expired_completed_ads");
+      console.log("🧹 Cron: Cleanup completed successfully.");
+    } catch (cleanupErr: any) {
+      console.error("❌ Cron: Failed to run expired ads cleanup:", cleanupErr.message);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Completed processing. Processed: ${processedCount}, Failed: ${failedCount}`,

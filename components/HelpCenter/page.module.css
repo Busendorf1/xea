@@ -304,3 +304,12 @@
   font-weight: 600;
   text-decoration: underline;
 }
+
+/* -- Zod inline field error -- */
+.fieldError {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #ef4444;
+  font-weight: 500;
+}

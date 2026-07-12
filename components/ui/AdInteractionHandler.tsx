@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck } from "lucide-react";
+import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2 } from "lucide-react";
 import styles from "./AdCard.module.css";
 
 import { Ad } from "./AdCard";
@@ -340,7 +340,12 @@ export default function AdInteractionHandler({
                 onClick={() => handleAction("seen", () => onMarkSeen(ad))}
                 title="Dismiss this ad"
               >
-                {successAction === "seen" ? (
+                {activeAction === "seen" ? (
+                  <>
+                    <Loader2 size={11} className={styles.spinner} />
+                    <span>Seen...</span>
+                  </>
+                ) : successAction === "seen" ? (
                   <>
                     <Check size={11} strokeWidth={2} className={styles.tickIcon} />
                     <span>Dismissed</span>
@@ -361,7 +366,12 @@ export default function AdInteractionHandler({
                 onClick={() => handleAction("earn", () => onAdEarn(ad))}
                 title="Earn from this ad"
               >
-                {successAction === "earn" ? (
+                {activeAction === "earn" ? (
+                  <>
+                    <Loader2 size={11} className={styles.spinner} />
+                    <span>Earn...</span>
+                  </>
+                ) : successAction === "earn" ? (
                   <>
                     <Check size={11} strokeWidth={2} className={styles.tickIcon} />
                     <span>Earned</span>
@@ -395,7 +405,12 @@ export default function AdInteractionHandler({
                   }}
                   title="Add advertiser to mutuals"
                 >
-                  {successAction === "mutual" ? (
+                  {activeAction === "mutual" ? (
+                    <>
+                      <Loader2 size={11} className={styles.spinner} />
+                      <span>Mutual...</span>
+                    </>
+                  ) : successAction === "mutual" ? (
                     <>
                       <Check size={11} strokeWidth={2} className={styles.tickIcon} />
                       <span>Added</span>

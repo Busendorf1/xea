@@ -18,7 +18,9 @@ import {
   FileText,
   Trash2,
   X,
-  Bell
+  Bell,
+  Coins,
+  Plus
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
@@ -89,6 +91,20 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // Custom header feedback states
+  const [showEarnFeedback, setShowEarnFeedback] = useState(false);
+  const [showMutualFeedback, setShowMutualFeedback] = useState(false);
+
+  const triggerEarnFeedback = () => {
+    setShowEarnFeedback(true);
+    setTimeout(() => setShowEarnFeedback(false), 2500);
+  };
+
+  const triggerMutualFeedback = () => {
+    setShowMutualFeedback(true);
+    setTimeout(() => setShowMutualFeedback(false), 2500);
+  };
+
   const fetchNotifications = async () => {
     if (!email) return;
     try {
@@ -154,7 +170,17 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const renderNotificationBell = () => (
-    <div className={styles.notificationContainer}>
+    <div className={styles.notificationContainer} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+      {showEarnFeedback && (
+        <span style={{ display: "flex", alignItems: "center", paddingRight: "4px" }} title="Earnings enqueued">
+          <Coins size={18} color="#f59e0b" style={{ animation: "fadeIn 0.2s" }} />
+        </span>
+      )}
+      {showMutualFeedback && (
+        <span style={{ display: "flex", alignItems: "center", paddingRight: "4px" }} title="Mutual connected">
+          <Plus size={18} color="#6366f1" style={{ animation: "fadeIn 0.2s" }} />
+        </span>
+      )}
       <button
         onClick={() => setShowNotifications(!showNotifications)}
         className={styles.notificationBell}
@@ -695,7 +721,12 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
           }`}
         >
-          <Feed userEmail={email} initialProfile={user} />
+          <Feed 
+            userEmail={email} 
+            initialProfile={user} 
+            onEarnSuccess={triggerEarnFeedback} 
+            onMutualSuccess={triggerMutualFeedback} 
+          />
         </main>
 
         {/* Right Sidebar - Profile & Wallet details */}
