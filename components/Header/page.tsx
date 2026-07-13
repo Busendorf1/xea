@@ -199,7 +199,7 @@ export default function Header() {
     <header className={styles.navbarContainer}>
       <div className={styles.navbar}>
         <Link href="/" className={styles.logo}>
-          <span className={styles.logoText}>Xea</span>
+          <span className={styles.logoText}>Paayh</span>
           <span className={styles.logoDot}>.</span>
         </Link>
 

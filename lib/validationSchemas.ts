@@ -115,12 +115,42 @@ const actionDetailsSchema = z.object({
     .string().max(150)
     .email("Enter a valid email address")
     .optional().or(z.literal("")),
+  ios: z
+    .string().max(150)
+    .refine((v) => !v || v.startsWith("https://"), "iOS app link must start with https://")
+    .refine(
+      (v) => !v || (!v.startsWith("javascript:") && !v.startsWith("data:") && !v.startsWith("file:")),
+      "Invalid link scheme"
+    )
+    .optional().or(z.literal("")),
+  android: z
+    .string().max(150)
+    .refine((v) => !v || v.startsWith("https://"), "Android app link must start with https://")
+    .refine(
+      (v) => !v || (!v.startsWith("javascript:") && !v.startsWith("data:") && !v.startsWith("file:")),
+      "Invalid link scheme"
+    )
+    .optional().or(z.literal("")),
 }).optional();
 
 /** Step 3 — ad creative (non-product_sales) */
 export const adCreativeSchema = z.object({
-  adContent: safeStr("Ad content", 190).min(5, "Ad content is too short"),
+  adContent: z.string().min(5, "Ad content is too short"),
   actionDetails: actionDetailsSchema,
+  adActionButtons: z.array(z.string()).optional(),
+}).refine((data) => {
+  const hasReadMore = data.adActionButtons?.includes("read_more");
+  const maxLen = hasReadMore ? 500 : 220;
+  return data.adContent.length <= maxLen;
+}, {
+  message: "Ad content must be 220 characters or fewer (or up to 500 characters if 'Read More' button is selected)",
+  path: ["adContent"]
+}).refine((data) => !hasLinks(data.adContent), {
+  message: "Links are not allowed in Ad content",
+  path: ["adContent"]
+}).refine((data) => !hasInjection(data.adContent), {
+  message: "Ad content contains disallowed content",
+  path: ["adContent"]
 });
 
 /** Step 3 extra fields for product_sales */

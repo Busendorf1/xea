@@ -12,6 +12,8 @@ import {
   Play,
   Volume2,
   VolumeX,
+  Apple,
+  ChevronDown,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -25,6 +27,9 @@ export interface Ad {
   action_whatsapp?: string;
   action_email?: string;
   action_website?: string;
+  action_ios?: string;
+  action_android?: string;
+  ad_action_buttons?: string[];
   ad_action_button?: string;
   interest: string[] | string | null;
   industry: string[] | string | null;
@@ -95,6 +100,8 @@ const getHref = (type: string, value: string) => {
     action_whatsapp: `https://wa.me/${value}`,
     action_email: `mailto:${value}`,
     action_website: value.startsWith("http") ? value : `https://${value}`,
+    action_ios: value.startsWith("http") ? value : `https://${value}`,
+    action_android: value.startsWith("http") ? value : `https://${value}`,
   };
   return map[type] || "#";
 };
@@ -117,6 +124,7 @@ export default function AdCard({
   const [avatarError, setAvatarError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [mediaAspectRatios, setMediaAspectRatios] = useState<Record<number, number>>({});
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -153,7 +161,7 @@ export default function AdCard({
   const ADMIN_EMAILS = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
   const isPlatformPost = ad.user_email ? ADMIN_EMAILS.includes(ad.user_email.toLowerCase()) : false;
   const advertiserProfile = ad.user_email ? advertiserProfiles[ad.user_email.toLowerCase()] : null;
-  const brandName = advertiserProfile?.business_name || advertiserProfile?.firstName || "Xea";
+  const brandName = advertiserProfile?.business_name || advertiserProfile?.firstName || "Paayh";
 
   let targetLink = "#";
   if (ad.action_website) {
@@ -249,6 +257,9 @@ export default function AdCard({
       action_whatsapp: <MessageCircle size={14} strokeWidth={1.5} />,
       action_website: <Globe size={14} strokeWidth={1.5} />,
       action_email: <Mail size={14} strokeWidth={1.5} />,
+      action_ios: <Apple size={14} strokeWidth={1.5} />,
+      action_android: <Play size={14} strokeWidth={1.5} />,
+      action_read_more: <ChevronDown size={14} strokeWidth={1.5} />,
     };
     return icons[type] || null;
   };
@@ -351,7 +362,12 @@ export default function AdCard({
     "action_whatsapp",
     "action_email",
     "action_website",
-  ].filter((key) => ad[key as keyof Ad]) as string[];
+    "action_ios",
+    "action_android",
+    ...(ad.ad_action_buttons?.includes("read_more") ? ["action_read_more"] : []),
+  ].filter((key) => key === "action_read_more" || ad[key as keyof Ad]) as string[];
+
+  const isVerified = seenAds.includes(ad.id) || ad.user_email?.toLowerCase() === userEmail.toLowerCase() || isPlatformPost;
 
   const isProcessing = processingAds.includes(ad.id);
 
@@ -459,7 +475,11 @@ export default function AdCard({
 
         {/* Content Message (if NOT product sales) */}
         {ad.ad_type !== "product_sales" && (
-          <p className={styles.adText}>{ad.ad_content}</p>
+          <p className={styles.adText}>
+            {ad.ad_action_buttons?.includes("read_more") && !isExpanded
+              ? ad.ad_content.slice(0, 220) + "..."
+              : ad.ad_content}
+          </p>
         )}
 
         {/* Media Section */}
@@ -703,26 +723,52 @@ export default function AdCard({
         ) : (
           <div className={styles.actionButtons}>
             {/* Contact / link buttons */}
-            {actionButtons.map((type) => (
-              <a
-                key={`${type}-${ad.id}`}
-                href={getHref(type, ad[type as keyof Ad] as string)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.iconButton}
-                title={type.replace("action_", "")}
-                onClick={() => {
-                  const clickType = type.replace("action_", "");
-                  fetch("/api/campaigns/click", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ adId: ad.id, clickType })
-                  }).catch(err => console.error("Failed to log click:", err));
-                }}
-              >
-                {getIcon(type)}
-              </a>
-            ))}
+            {actionButtons.map((type) => {
+              const isReadMore = type === "action_read_more";
+              if (!isReadMore && !isVerified) return null;
+
+              if (isReadMore) {
+                return (
+                  <button
+                    key={`${type}-${ad.id}`}
+                    type="button"
+                    className={`${styles.iconButton} ${isExpanded ? styles.expandedButton : ""}`}
+                    title="Read More"
+                    onClick={() => {
+                      setIsExpanded(!isExpanded);
+                      fetch("/api/campaigns/click", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ adId: ad.id, clickType: "read_more" })
+                      }).catch(err => console.error("Failed to log click:", err));
+                    }}
+                  >
+                    {getIcon(type)}
+                  </button>
+                );
+              }
+
+              return (
+                <a
+                  key={`${type}-${ad.id}`}
+                  href={getHref(type, ad[type as keyof Ad] as string)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.iconButton}
+                  title={type.replace("action_", "")}
+                  onClick={() => {
+                    const clickType = type.replace("action_", "");
+                    fetch("/api/campaigns/click", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ adId: ad.id, clickType })
+                    }).catch(err => console.error("Failed to log click:", err));
+                  }}
+                >
+                  {getIcon(type)}
+                </a>
+              );
+            })}
 
             {/* Share */}
             <button

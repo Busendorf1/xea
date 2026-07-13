@@ -25,11 +25,11 @@ type MultiStepAdFormProps = {
 
 const adRates: Record<string, number> = {
   politics: 1500,
-  business: 25,
-  government: 1500,
-  individual: 15,
+  business: 45,
+  government: 2000,
+  individual: 25,
   religion: 1500,
-  product_sales: 40,
+  product_sales: 55,
 };
 //we can pay 60%
 const steps = ["Ad Type", "Targeting", "Location", "Ad Creative", "Summary"];
@@ -84,12 +84,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     adMediaType: "" as AdMediaType | "",
     adContent: "",
     adMediaFiles: [] as File[],
-    adActionButtons: [] as ("phone" | "whatsapp" | "website" | "email")[],
+    adActionButtons: [] as ("phone" | "whatsapp" | "website" | "email" | "ios" | "android" | "read_more")[],
     actionDetails: {
       phone: "",
       whatsapp: "",
       website: "",
       email: "",
+      ios: "",
+      android: "",
     },
     displayMutualButton: false,
     productName: "",
@@ -283,6 +285,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       const result = adCreativeSchema.safeParse({
         adContent: formSelections.adContent,
         actionDetails: formSelections.actionDetails,
+        adActionButtons: formSelections.adActionButtons,
       });
       if (!result.success) {
         setStepError(result.error.issues[0]?.message ?? "Please fix the ad content.");
@@ -381,6 +384,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               actionWhatsapp: formSelections.actionDetails.whatsapp || null,
               actionWebsite: formSelections.actionDetails.website || null,
               actionEmail: formSelections.actionDetails.email || null,
+              actionIos: formSelections.actionDetails.ios || null,
+              actionAndroid: formSelections.actionDetails.android || null,
               costPerImpression,
               totalCost,
               adMedia: mediaUrlString,
@@ -593,7 +598,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   })}
                 </div>
                 <label htmlFor="impression-input" style={{ display: "block", marginBottom: "0.5rem" }}>
-                  Impressions
+                  Audience or Real Human Attention
                 </label>
                 <div style={{ display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1rem" }}>
                   <input
@@ -657,7 +662,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   placeholder="e.g. 5"
                 />
                 <p style={{ fontSize: "0.85rem", color: "#666", marginTop: "0.25rem" }}>
-                  Daily Impression Cap: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} impressions/day
+                  Daily Attention Cap: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} attentions/day
                 </p>
                 <label style={{ marginTop: "1rem", display: "block" }}>
                   Target Views Per User: {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""}
@@ -713,8 +718,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       flexDirection: "column",
                       gap: "0.25rem"
                     }}>
-                      <strong style={{ fontWeight: "700" }}> Free Mutual Impressions Activated!</strong>
-                      <span>Ticking this box will add your <strong>{userProfile.mutual_count} mutuals</strong> as free impressions to this campaign.</span>
+                      <strong style={{ fontWeight: "700" }}> Free Mutual Attention Activated!</strong>
+                      <span>Ticking this box will add your <strong>{userProfile.mutual_count} mutuals</strong> as free attention to this campaign.</span>
                       <span style={{ fontSize: "0.8rem", opacity: 0.9 }}>
                         Total target: <strong>{(formSelections.impressions + userProfile.mutual_count).toLocaleString()} views</strong> (You only pay for {formSelections.impressions.toLocaleString()} views). Your {userProfile.mutual_count} mutuals will be targeted first, and your mutual count will be spent.
                       </span>
@@ -963,29 +968,32 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   </div>
                 )}
 
-                <div className={styles.formGroup}>
-                  <label>
-                    {adType === "product_sales" ? "Product Description" : "Ad Message"}{" "}
-                    <span className={styles.charCount}>
-                      {formSelections.adContent.length}/{adType === "product_sales" ? 200 : 190}
-                    </span>
-                  </label>
-                  <textarea
-                    maxLength={adType === "product_sales" ? 200 : 190}
-                    value={formSelections.adContent}
-                    placeholder={adType === "product_sales" ? "Write product description here (no links allowed)" : "Write your ad message here (no links allowed)"}
-                    onChange={(e) =>
-                      setFormSelections({
-                        ...formSelections,
-                        adContent: e.target.value,
-                      })
-                    }
-                    className={`${styles.inputBox} ${
-                      containsLink(formSelections.adContent)
-                        ? styles.inputError
-                        : ""
-                    }`}
-                  />
+                 <div className={styles.formGroup}>
+                   <label>
+                     {adType === "product_sales" ? "Product Description" : "Ad Message"}{" "}
+                     <span className={styles.charCount}>
+                       {formSelections.adContent.length}/{adType === "product_sales" ? 200 : (formSelections.adActionButtons.includes("read_more") ? 500 : 220)}
+                     </span>
+                   </label>
+                   <textarea
+                     maxLength={adType === "product_sales" ? 200 : (formSelections.adActionButtons.includes("read_more") ? 500 : 220)}
+                     value={formSelections.adContent}
+                     placeholder={adType === "product_sales" ? "Write product description here (no links allowed)" : "Write your ad message here (no links allowed)"}
+                     onChange={(e) => {
+                       e.target.style.height = "auto";
+                       e.target.style.height = `${e.target.scrollHeight}px`;
+                       setFormSelections({
+                         ...formSelections,
+                         adContent: e.target.value,
+                       });
+                     }}
+                     style={{ overflow: "hidden", resize: "none" }}
+                     className={`${styles.inputBox} ${
+                       containsLink(formSelections.adContent)
+                         ? styles.inputError
+                         : ""
+                     }`}
+                   />
                   {containsLink(formSelections.adContent) && (
                     <p className={styles.error}>
                       Links are not allowed in the ad content.
@@ -995,73 +1003,85 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                 <div className={styles.formGroup}>
                   <label>Action Buttons (Max {adType === "product_sales" ? 2 : 3})</label>
-                  {(["phone", "whatsapp", "website", "email"] as const).map(
-                    (type) => {
-                      const isSelected =
-                        formSelections.adActionButtons.includes(type);
-                      const placeholderMap = {
-                        phone: "e.g. 2349031887771",
-                        whatsapp: "e.g. 2349031887771",
-                        email: "e.g. someone@example.com",
-                        website: "e.g. https://yourwebsite.com",
-                      };
-
-                      const isEmail = type === "email";
-                      const value = formSelections.actionDetails[type];
-                      const isEmailInvalid =
-                        isEmail &&
-                        value &&
-                        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-                      return (
-                        <div key={type}>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={(e) => {
-                                const updated = [
-                                  ...formSelections.adActionButtons,
-                                ];
-                                const maxButtons = adType === "product_sales" ? 2 : 3;
-                                if (e.target.checked && updated.length < maxButtons)
-                                  updated.push(type);
-                                else if (!e.target.checked)
-                                  updated.splice(updated.indexOf(type), 1);
-                                setFormSelections({
-                                  ...formSelections,
-                                  adActionButtons: updated,
-                                });
-                              }}
-                            />
-                            {type.toUpperCase()}
-                          </label>
-                          {isSelected && (
-                            <input
-                              type={isEmail ? "email" : "text"}
-                              placeholder={placeholderMap[type]}
-                              value={value}
-                              onChange={(e) =>
-                                setFormSelections({
-                                  ...formSelections,
-                                  actionDetails: {
-                                    ...formSelections.actionDetails,
-                                    [type]: e.target.value,
-                                  },
-                                })
-                              }
-                              className={`${styles.inputBox} ${
-                                isEmailInvalid ? styles.inputError : ""
-                              }`}
-                            />
-                          )}
-                          {isSelected && isEmailInvalid && (
-                            <p className={styles.error}>Invalid email format</p>
-                          )}
-                        </div>
-                      );
+                  {(() => {
+                    const baseButtons: string[] = ["phone", "whatsapp", "website", "email"];
+                    if (adType === "business") {
+                      baseButtons.push("ios", "android");
                     }
-                  )}
+                    if (formSelections.adMediaType === "text") {
+                      baseButtons.push("read_more");
+                    }
+                    return baseButtons.map(
+                      (type) => {
+                        const isSelected =
+                          formSelections.adActionButtons.includes(type as any);
+                        const placeholderMap: Record<string, string> = {
+                          phone: "e.g. 2349031887771",
+                          whatsapp: "e.g. 2349031887771",
+                          email: "e.g. someone@example.com",
+                          website: "e.g. https://yourwebsite.com",
+                          ios: "e.g. https://apps.apple.com/us/app/your-app",
+                          android: "e.g. https://play.google.com/store/apps/details?id=your.app",
+                          read_more: "",
+                        };
+
+                        const isEmail = type === "email";
+                        const value = type !== "read_more" ? formSelections.actionDetails[type as keyof typeof formSelections.actionDetails] || "" : "";
+                        const isEmailInvalid =
+                          isEmail &&
+                          value &&
+                          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+                        return (
+                          <div key={type}>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const updated = [
+                                    ...formSelections.adActionButtons,
+                                  ];
+                                  const maxButtons = adType === "product_sales" ? 2 : 3;
+                                  if (e.target.checked && updated.length < maxButtons)
+                                    updated.push(type as any);
+                                  else if (!e.target.checked)
+                                    updated.splice(updated.indexOf(type as any), 1);
+                                  setFormSelections({
+                                    ...formSelections,
+                                    adActionButtons: updated,
+                                  });
+                                }}
+                              />
+                              {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type.toUpperCase().replace("_", " ")}
+                            </label>
+                            {isSelected && type !== "read_more" && (
+                              <input
+                                type={isEmail ? "email" : "text"}
+                                placeholder={placeholderMap[type]}
+                                value={value}
+                                onChange={(e) =>
+                                  setFormSelections({
+                                    ...formSelections,
+                                    actionDetails: {
+                                      ...formSelections.actionDetails,
+                                      [type]: e.target.value,
+                                    },
+                                  })
+                                }
+                                className={`${styles.inputBox} ${
+                                  isEmailInvalid ? styles.inputError : ""
+                                }`}
+                              />
+                            )}
+                            {isSelected && isEmailInvalid && (
+                              <p className={styles.error}>Invalid email format</p>
+                            )}
+                          </div>
+                        );
+                      }
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1165,13 +1185,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         </span>
                       </div>
                       <div className={styles.detailsRow}>
-                        <span className={styles.detailsKey}>Daily impression cap</span>
+                        <span className={styles.detailsKey}>Daily attention cap</span>
                         <span className={styles.detailsVal}>
                           ~{Math.ceil(
                             (formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0
                               ? formSelections.impressions + userProfile.mutual_count
                               : formSelections.impressions) / formSelections.campaignDays
-                          ).toLocaleString()} impressions/day
+                          ).toLocaleString()} attentions/day
                         </span>
                       </div>
                     </div>
@@ -1205,7 +1225,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     
                     <div className={styles.costRows}>
                       <div className={styles.costRow}>
-                        <span className={styles.costKey}>Paid impressions</span>
+                        <span className={styles.costKey}>Paid attention</span>
                         <span className={styles.costVal}>
                           {formSelections.impressions.toLocaleString()} views
                         </span>
@@ -1213,7 +1233,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       
                       {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
                         <div className={styles.costRow} style={{ color: "#16a34a" }}>
-                          <span className={styles.costKey} style={{ color: "#16a34a" }}>Free mutual impressions</span>
+                          <span className={styles.costKey} style={{ color: "#16a34a" }}>Free mutual attention</span>
                           <span className={styles.costVal}>
                             +{userProfile.mutual_count.toLocaleString()} views
                           </span>
@@ -1232,7 +1252,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       </div>
                       
                       <div className={styles.costRow}>
-                        <span className={styles.costKey}>Cost per impression</span>
+                        <span className={styles.costKey}>Cost per attention</span>
                         <span className={styles.costVal}>{formatCurrency(calculateTotalCostPerImpression())}</span>
                       </div>
                     </div>

@@ -8,12 +8,12 @@ const faqs = [
   {
     question: "Know More About Us",
     answer:
-      "Xea is a platform that turns your attention into income. We deliver ads with 100% deliverability & transparency, and you earn for engaging with content you actually care about.",
+      "Paayh is a platform that turns your attention into income. We deliver ads with 100% deliverability & transparency, and you earn for engaging with content you actually care about.",
   },
   {
     question: "What is UBI?",
     answer:
-      "UBI (Universal Basic Income) is a consistent income provided to all individuals regardless of status. At Xea, we simulate this by rewarding users for their time and attention.",
+      "UBI (Universal Basic Income) is a consistent income provided to all individuals regardless of status. At Paayh, we simulate this by rewarding users for their time and attention.",
   },
   {
     question: "Why Shared Revenue?",
@@ -28,12 +28,12 @@ const faqs = [
   {
     question: "Who is Eligible?",
     answer:
-      "Anyone above the age of 18 with a valid email can use Xea. Monetization becomes available once you meet basic engagement and authenticity checks.",
+      "Anyone above the age of 18 with a valid email can use Paayh. Monetization becomes available once you meet basic engagement and authenticity checks.",
   },
   {
     question: "Where Services are Available?",
     answer:
-      "Xea is accessible globally. Monetization features are rolling out regionally, starting in countries with reliable digital payment systems.",
+      "Paayh is accessible globally. Monetization features are rolling out regionally, starting in countries with reliable digital payment systems.",
   },
 ];
 
@@ -113,7 +113,7 @@ export default function Footer() {
       </div>
 
       <div className={styles.copyRight}>
-        &copy; {new Date().getFullYear()} Xea! All rights reserved.
+        &copy; {new Date().getFullYear()} Paayh! All rights reserved.
       </div>
     </footer>
   );
