@@ -21,7 +21,7 @@ startWorker();
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Xea queue worker is active and listening.\n");
+  res.end("Paayh queue worker is active and listening.\n");
 }).listen(PORT, () => {
   console.log(`📡 Render Health Check server listening on port ${PORT}`);
 });

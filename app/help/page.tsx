@@ -4,7 +4,7 @@ import Header from "@/components/Header/page";
 import Footer from "@/components/Footer/page";
 
 export const metadata = {
-  title: "Help Center | Xea",
+  title: "Help Center | Paayh",
   description: "Submit a complaint, report an issue, or request information. Our team will respond as soon as possible.",
 };
 

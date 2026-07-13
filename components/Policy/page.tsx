@@ -7,7 +7,7 @@ export default function PolicyPage() {
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <h1 className={styles.title}>Xea Policies and Terms of Service</h1>
+        <h1 className={styles.title}>Paayh Policies and Terms of Service</h1>
         <p className={styles.updatedDate}><em>Last Updated: June 22, 2025</em></p>
 
         <hr className={styles.divider} />
@@ -15,17 +15,17 @@ export default function PolicyPage() {
         <section>
           <h2 className={styles.heading}>I. Introduction</h2>
           <p>
-            Welcome to Xea, a digital advertising platform designed to fairly connect advertisers with genuine human attention.
+            Welcome to Paayh, a digital advertising platform designed to fairly connect advertisers with genuine human attention.
             By using our platform, you agree to abide by the policies, conditions, and terms outlined herein.
             These policies apply to all users—advertisers, content viewers, and business partners. The document includes our comprehensive terms of service, platform usage policies, privacy commitments, content rules, and legal protections.
-            If you do not agree to these terms, please refrain from using Xea.
+            If you do not agree to these terms, please refrain from using Paayh.
           </p>
         </section>
 
         <section>
           <h2 className={styles.heading}>II. Definitions</h2>
           <ul className={styles.list}>
-            <li className={styles.listItem} ><strong>"Xea"</strong>: the digital platform, its legal entity, services, domains, trademarks, and content.</li>
+            <li className={styles.listItem} ><strong>"Paayh"</strong>: the digital platform, its legal entity, services, domains, trademarks, and content.</li>
             <li className={styles.listItem}><strong>"Advertiser"</strong>: any individual or organization posting promotional content or campaigns.</li>
             <li className={styles.listItem}><strong>"User"</strong>: anyone registered to view content or interact with services.</li>
             <li className={styles.listItem}><strong>"Highlights"</strong>: flash content displayed every 10 minutes, expiring after 24 hours.</li>
@@ -37,13 +37,13 @@ export default function PolicyPage() {
         <section>
           <h2 className={styles.heading}>III. General Platform Usage</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Xea provides space for advertisers to post ads and for users to interact with them.</li>
+            <li className={styles.listItem}>Paayh provides space for advertisers to post ads and for users to interact with them.</li>
             <li className={styles.listItem}>Users agree not to exploit or manipulate impression tracking or monetization mechanisms.</li>
             <li className={styles.listItem}>Advertisements must not contain misleading information, deceptive offers, harmful content, or violate any law.</li>
             <li className={styles.listItem}>Each impression is user-specific. Ads are never shown more than once to the same user per campaign.</li>
             <li className={styles.listItem}>Users are required to click "Seen" to verify genuine viewing of an ad. Failure to comply may result in suspension.</li>
             <li className={styles.listItem}>All ads appear on a clean slate and are not embedded within unrelated content.</li>
-            <li className={styles.listItem}>Users agree not to use automation, bots, or spoofing tools on Xea.</li>
+            <li className={styles.listItem}>Users agree not to use automation, bots, or spoofing tools on Paayh.</li>
           </ol>
         </section>
 
@@ -99,7 +99,7 @@ export default function PolicyPage() {
         <section id="privacy">
           <h2 className={styles.heading}>VII. Privacy and Data Security</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Xea does <strong>not</strong> sell, trade, or exploit user data.</li>
+            <li className={styles.listItem}>Paayh does <strong>not</strong> sell, trade, or exploit user data.</li>
             <li className={styles.listItem}>Data is used only for operations, analytics, and service improvements.</li>
             <li className={styles.listItem}>Behavioral and interest-based data match users with relevant ads.</li>
             <li className={styles.listItem}>See our Privacy Policy section for full details.</li>
@@ -128,7 +128,7 @@ export default function PolicyPage() {
             <li className={styles.listItem}>Users must respect copyright and intellectual property laws.</li>
             <li className={styles.listItem}>Only original or licensed content may be uploaded.</li>
             <li className={styles.listItem}>Reported infringements will be investigated and may lead to takedown.</li>
-            <li className={styles.listItem}>Xea reserves the right to suspend violators.</li>
+            <li className={styles.listItem}>Paayh reserves the right to suspend violators.</li>
           </ol>
         </section>
 
@@ -143,7 +143,7 @@ export default function PolicyPage() {
                 <li className={styles.listItem}>Fake testimonials</li>
               </ul>
             </li>
-            <li className={styles.listItem}>Xea uses AI and moderators to detect abuse.</li>
+            <li className={styles.listItem}>Paayh uses AI and moderators to detect abuse.</li>
             <li className={styles.listItem}>Violators will be banned and may face legal consequences.</li>
           </ol>
         </section>
@@ -160,7 +160,7 @@ export default function PolicyPage() {
         <section>
           <h2 className={styles.heading}>XII. Limitation of Liability</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Xea is not liable for:
+            <li className={styles.listItem}>Paayh is not liable for:
               <ul className={styles.list}>
                 <li className={styles.listItem}>Loss of earnings due to technical issues</li>
                 <li className={styles.listItem}>Suspension from inactivity</li>
@@ -175,16 +175,16 @@ export default function PolicyPage() {
         <section id="terms">
           <h2 className={styles.heading}>XIII. Dispute Resolution and Terms of Service</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>All disputes must first be reported to Xea’s support team.</li>
+            <li className={styles.listItem}>All disputes must first be reported to Paayh’s support team.</li>
             <li className={styles.listItem}>Unresolved disputes within 30 days may proceed to arbitration.</li>
-            <li className={styles.listItem}>The governing law is that of the Federal Republic of Nigeria, or where Xea operates officially.</li>
+            <li className={styles.listItem}>The governing law is that of the Federal Republic of Nigeria, or where Paayh operates officially.</li>
           </ol>
         </section>
 
         <section>
           <h2 className={styles.heading}>XIV. Changes to These Terms</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Xea may update these policies at any time.</li>
+            <li className={styles.listItem}>Paayh may update these policies at any time.</li>
             <li className={styles.listItem}>We will notify users of material changes.</li>
             <li className={styles.listItem}>Continued use implies acceptance of new terms.</li>
           </ol>
@@ -205,7 +205,7 @@ export default function PolicyPage() {
             For questions or clarifications, please visit our <a href="/help">Help Center</a>.
           </p>
           <p className={styles.acknowledgment}>
-            <strong>By using Xea, you acknowledge that you have read, understood, and agree to be bound by these policies and terms.</strong>
+            <strong>By using Paayh, you acknowledge that you have read, understood, and agree to be bound by these policies and terms.</strong>
           </p>
         </section>
       </main>

@@ -8,9 +8,9 @@ import Footer from "@/components/Footer/page";
 
 const faqs = [
   {
-    question: "What is Xea and how does it work?",
+    question: "What is Paayh and how does it work?",
     answer:
-      "Xea is a platform that rewards users with a share of ad revenue in exchange for their genuine attention. Advertisers receive 100% ad deliverability, and users are paid for viewing ads aligned with their interests."
+      "Paayh is a platform that rewards users with a share of ad revenue in exchange for their genuine attention. Advertisers receive 100% ad deliverability, and users are paid for viewing ads aligned with their interests."
   },
   {
     question: "Can I post both Ads and Highlights?",
@@ -61,7 +61,7 @@ const faqs = [
   {
     question: "Where can I learn more about privacy and security?",
     answer:
-      "Your data is safe with Xea. We never sell or misuse user data. Learn more on our Privacy Policy page."
+      "Your data is safe with Paayh. We never sell or misuse user data. Learn more on our Privacy Policy page."
   }
 ];
 

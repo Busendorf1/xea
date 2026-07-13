@@ -264,7 +264,7 @@ export class PaystackService {
   static async initiateTransfer(
     recipientCode: string,
     amountInNaira: number,
-    reason: string = "Xea Wallet Withdrawal",
+    reason: string = "Paayh Wallet Withdrawal",
     reference?: string
   ): Promise<{ transfer_code: string; status: string }> {
     const amountInKobo = Math.round(amountInNaira * 100);
@@ -394,7 +394,7 @@ export class PaystackService {
         amount: Math.round(t.amountInNaira * 100),
         recipient: t.recipientCode,
         reference: t.reference,
-        reason: t.reason || "Xea Payout",
+        reason: t.reason || "Paayh Payout",
       })),
     };
 

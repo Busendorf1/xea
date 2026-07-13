@@ -610,7 +610,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           >
             <div className={styles.logoIcon}>X</div>
             <div className={styles.nameBlock}>
-              <span className={styles.appName}>Xea</span>
+              <span className={styles.appName}>Paayh</span>
               {!isMobile && <span className={styles.appSub}>Your feeds are ads</span>}
             </div>
           </div>

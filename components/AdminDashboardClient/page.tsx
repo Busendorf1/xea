@@ -211,7 +211,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     actionWebsite: "",
     actionEmail: "",
     costPerImpression: 25,
-    userEmail: "admin@xea.com"
+    userEmail: "admin@paayh.com"
   });
   const [adFormFiles, setAdFormFiles] = useState<File[]>([]);
 
@@ -219,7 +219,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     title: "",
     content: "",
     interest: "Business",
-    userEmail: "admin@xea.com"
+    userEmail: "admin@paayh.com"
   });
   const [highlightFormFile, setHighlightFormFile] = useState<File | null>(null);
 
@@ -1132,7 +1132,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           actionWebsite: "",
           actionEmail: "",
           costPerImpression: 25,
-          userEmail: "admin@xea.com"
+          userEmail: "admin@paayh.com"
         });
         setAdFormFiles([]);
         handleTabChange("active-ads");
@@ -1202,7 +1202,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           title: "",
           content: "",
           interest: "Business",
-          userEmail: "admin@xea.com"
+          userEmail: "admin@paayh.com"
         });
         setHighlightFormFile(null);
         handleTabChange("active-highlights");
@@ -1328,7 +1328,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         <div className={styles.headerContent}>
           <div className={styles.logoGroup}>
             <div className={styles.logoIcon}>X</div>
-            <span className={styles.appName}>Xea Admin Portal</span>
+            <span className={styles.appName}>Paayh Admin Portal</span>
             <span className={styles.badgeAdmin}>Database Controller</span>
           </div>
 
@@ -2102,7 +2102,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     <label className={styles.formLabel}>Action Email Link</label>
                     <input 
                       type="email" 
-                      placeholder="business@xea.com" 
+                      placeholder="business@paayh.com" 
                       value={adForm.actionEmail}
                       onChange={(e) => setAdForm({...adForm, actionEmail: e.target.value})}
                       className={styles.inputField} 

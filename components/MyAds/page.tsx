@@ -372,7 +372,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   const handleShare = (adId: string) => {
     if (typeof window !== "undefined") {
       const encodedId = btoa(adId.toString());
-      const shareUrl = `${window.location.origin}/login?view&Earn Ads by Xea=${encodedId}`;
+      const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
       navigator.clipboard.writeText(shareUrl)
         .then(() => alert("Ad share link copied to clipboard."))
         .catch((err) => console.error("Failed to copy link:"));

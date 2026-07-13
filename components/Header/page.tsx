@@ -25,16 +25,16 @@ export default function Header() {
 
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
-      const earnAdsXea = urlParams.get("Earn Ads by Xea");
+      const earnAdsPaayh = urlParams.get("Earn Ads by Paayh");
       const blurb = urlParams.get("blurb");
       const adId = urlParams.get("adId");
       
-      const targetParam = earnAdsXea || blurb;
+      const targetParam = earnAdsPaayh || blurb;
       if (targetParam) {
         try {
           const decodedId = atob(targetParam);
           localStorage.setItem("sharedAdId", decodedId);
-          console.log("Captured and decoded sharedAdId from Earn Ads by Xea / blurb:", decodedId);
+          console.log("Captured and decoded sharedAdId from Earn Ads by Paayh / blurb:", decodedId);
         } catch (e) {
           console.error("Failed to decode parameter:", e);
         }

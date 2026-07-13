@@ -23,16 +23,16 @@ export default function HeaderJoin() {
 
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
-      const earnAdsXea = urlParams.get("Earn Ads by Xea");
+      const earnAdsPaayh = urlParams.get("Earn Ads by Paayh");
       const blurb = urlParams.get("blurb");
       const adId = urlParams.get("adId");
       
-      const targetParam = earnAdsXea || blurb;
+      const targetParam = earnAdsPaayh || blurb;
       if (targetParam) {
         try {
           const decodedId = atob(targetParam);
           localStorage.setItem("sharedAdId", decodedId);
-          console.log("Captured and decoded sharedAdId (HeaderJoin) from Earn Ads by Xea / blurb:", decodedId);
+          console.log("Captured and decoded sharedAdId (HeaderJoin) from Earn Ads by Paayh / blurb:", decodedId);
         } catch (e) {
           console.error("Failed to decode parameter:", e);
         }
@@ -98,7 +98,7 @@ export default function HeaderJoin() {
     <div className={styles.header}>
       <Link href={"/"}>
         <div className={styles.name}>
-          <p className={styles.baggyt}>Xea</p>
+          <p className={styles.baggyt}>Paayh</p>
           <span className={styles.bag}>Your feeds are ads</span>
         </div>
       </Link>

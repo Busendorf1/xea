@@ -28,7 +28,7 @@ export default function InviteLink({ username }: { username: string }) {
   return (
     <div className={styles.inviteCard}>
       <h4 className={styles.inviteHeader}>Invite Friends</h4>
-      <p className={styles.inviteText}>Share Xea with your network and earn together.</p>
+      <p className={styles.inviteText}>Share Paayh with your network and earn together.</p>
       <div className={styles.inviteLinkContainer}>
         <input 
           type="text" 

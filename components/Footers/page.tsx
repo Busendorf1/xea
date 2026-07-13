@@ -18,7 +18,7 @@ export default function Footer() {
       </div> */}
 
       <div className={styles.copyRight}>
-        &copy; {new Date().getFullYear()} Xea! All rights reserved.
+        &copy; {new Date().getFullYear()} Paayh! All rights reserved.
       </div>
     </footer>
   );

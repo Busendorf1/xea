@@ -310,7 +310,7 @@ export default function Monetize({ session }: MonetizeProps) {
         <div className={styles.premiumCard}>
           <div style={{ marginBottom: "2.5rem", fontSize: "0.95rem", lineHeight: "1.6", color: "var(--text-muted)" }}>
             <p style={{ marginBottom: "1rem" }}>
-              Xea values your attention. Monetized members receive <strong>60%</strong> of ad campaign values for impressions they view.
+              Paayh values your attention. Monetized members receive <strong>60%</strong> of ad campaign values for impressions they view.
             </p>
             <p>
               Choose between normal eligibility or skip the queue with instant activation.

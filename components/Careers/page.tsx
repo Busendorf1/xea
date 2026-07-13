@@ -7,7 +7,7 @@ export default function Careers() {
   return (
     <div className={styles.container}>
       <div className={styles.hero}>
-        <h1 className={styles.title}>Careers at Xea</h1>
+        <h1 className={styles.title}>Careers at Paayh</h1>
         <p className={styles.subtitle}>
           Join us in building a fair, transparent attention economy for everyone.
         </p>
@@ -16,7 +16,7 @@ export default function Careers() {
       <div className={styles.card}>
         <h2 className={styles.heading}>Why Work With Us?</h2>
         <p className={styles.text}>
-          Xea is a revolutionary digital platform connecting advertisers with genuine human engagement. 
+          Paayh is a revolutionary digital platform connecting advertisers with genuine human engagement. 
           We believe in revenue sharing, platform integrity, and high-fidelity user experiences. We are 
           building the future of monetization, advertisement delivery, and instant payout infrastructure.
         </p>
@@ -33,8 +33,8 @@ export default function Careers() {
           <p className={styles.text} style={{ marginBottom: "1rem", color: "var(--foreground)" }}>
             All interested candidates should send their resume, cover letter, or portfolio directly to our recruiting inbox:
           </p>
-          <a href="mailto:xea@xea.com" className={styles.emailAddress}>
-            xea@xea.com
+          <a href="mailto:xea@paayh.com" className={styles.emailAddress}>
+            xea@paayh.com
           </a>
         </div>
       </div>

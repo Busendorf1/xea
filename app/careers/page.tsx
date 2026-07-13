@@ -4,8 +4,8 @@ import Careers from "@/components/Careers/page";
 import styles from "../join/page.module.css";
 
 export const metadata = {
-  title: "Careers | Xea",
-  description: "Join the Xea team. We are building the future of the attention economy.",
+  title: "Careers | Paayh",
+  description: "Join the Paayh team. We are building the future of the attention economy.",
 };
 
 export default function CareersPage() {

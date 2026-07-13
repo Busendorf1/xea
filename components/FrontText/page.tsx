@@ -15,7 +15,7 @@ export default function FrontText() {
     <div className={styles.modalOverlay} onClick={() => setIsOpen(false)}>
       <div className={styles.modalDialog} onClick={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
-          <h2 className={styles.modalTitle}>How Xea Works</h2>
+          <h2 className={styles.modalTitle}>How Paayh Works</h2>
           <button className={styles.modalClose} onClick={() => setIsOpen(false)} aria-label="Close">✕</button>
         </div>
         <div className={styles.modalBody}>
@@ -93,7 +93,7 @@ export default function FrontText() {
               onClick={() => setIsOpen(true)} 
               className={styles.howItWorksBtn}
             >
-              <span>How Xea Works</span>
+              <span>How Paayh Works</span>
               <span className={styles.arrowIcon}>▶</span>
             </button>
           </div>
