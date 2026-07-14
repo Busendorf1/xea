@@ -20,7 +20,8 @@ import {
   X,
   Bell,
   Coins,
-  Plus
+  Plus,
+  Home
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
@@ -445,11 +446,11 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       
-      // Scroll down shows header, scroll up hides header (as requested)
+      // Scroll down hides header, scroll up (opposite direction) shows header
       if (currentScrollY > lastScrollY && currentScrollY > 60) {
-        setShowHeader(true);
-      } else if (currentScrollY < lastScrollY) {
         setShowHeader(false);
+      } else if (currentScrollY < lastScrollY) {
+        setShowHeader(true);
       }
       
       // Keep it visible at the very top
@@ -532,31 +533,38 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     ? `${Math.floor((Date.now() - new Date(user.lastUpdated).getTime()) / (1000 * 60 * 60 * 24))} day(s) ago`
     : "Never";
 
-  const renderThemeSwitcher = () => (
-    <div className={styles.themeSwitcher}>
-      <button
-        onClick={() => setTheme("white")}
-        className={`${styles.themeBtn} ${theme === "white" ? styles.themeBtnActive : ""}`}
-        title="White Mode"
-      >
-        <Sun size={14} />
-      </button>
-      <button
-        onClick={() => setTheme("dark")}
-        className={`${styles.themeBtn} ${theme === "dark" ? styles.themeBtnActive : ""}`}
-        title="Dark Mode"
-      >
-        <Moon size={14} />
-      </button>
-      <button
-        onClick={() => setTheme("semi-dark")}
-        className={`${styles.themeBtn} ${theme === "semi-dark" ? styles.themeBtnActive : ""}`}
-        title="Semi Dark Mode"
-      >
-        <Contrast size={14} />
-      </button>
-    </div>
-  );
+  const renderThemeSwitcher = () => {
+    const cycleTheme = () => {
+      if (theme === "white") {
+        setTheme("semi-dark");
+      } else if (theme === "semi-dark") {
+        setTheme("dark");
+      } else {
+        setTheme("white");
+      }
+    };
+
+    return (
+      <div className={styles.themeSwitcher}>
+        <button
+          onClick={cycleTheme}
+          className={`${styles.themeBtn} ${styles.themeBtnActive}`}
+          title={
+            theme === "white"
+              ? "Switch to Dim Mode"
+              : theme === "semi-dark"
+              ? "Switch to Dark Mode"
+              : "Switch to Light Mode"
+          }
+          aria-label="Toggle Theme"
+        >
+          {theme === "white" && <Sun size={14} />}
+          {theme === "semi-dark" && <Contrast size={14} />}
+          {theme === "dark" && <Moon size={14} />}
+        </button>
+      </div>
+    );
+  };
 
   const renderAccountLinks = () => (
     <div className={styles.menuButtonGroup}>
@@ -608,7 +616,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             }}
             title={isMobile ? "Go to Feed" : isTablet ? "Toggle Profile View" : undefined}
           >
-            <div className={styles.logoIcon}>X</div>
             <div className={styles.nameBlock}>
               <span className={styles.appName}>Paayh</span>
               {!isMobile && <span className={styles.appSub}>Your feeds are ads</span>}
@@ -620,14 +627,42 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             <div className={styles.mobileControls}>
               <button 
                 onClick={() => {
+                  closeAllToggles();
+                  if (typeof window !== "undefined") {
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }
+                }} 
+                className={`${styles.controlBtn} ${(!showHighlightsMobile && !showProfileMobile) ? styles.controlBtnActive : ""}`}
+                title="Home Feed"
+              >
+                <Home size={20} />
+              </button>
+              <button 
+                onClick={() => {
                   const current = showHighlightsMobile;
                   closeAllToggles();
                   setShowHighlightsMobile(!current);
                 }} 
                 className={`${styles.controlBtn} ${showHighlightsMobile ? styles.controlBtnActive : ""}`}
-                title="Business Highlights"
+                title="Campaigns"
               >
                 <Compass size={20} />
+              </button>
+              <button 
+                onClick={() => {
+                  closeAllToggles();
+                  setShowProfileMobile(true);
+                  setTimeout(() => {
+                    const el = document.querySelector(`.${styles.walletCard}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                  }, 300);
+                }} 
+                className={styles.controlBtn}
+                title="Monetization"
+              >
+                <Coins size={20} />
               </button>
               <button 
                 onClick={() => {

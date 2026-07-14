@@ -65,34 +65,38 @@ export default function HeaderJoin() {
     }
   };
 
-  const renderThemeSwitcher = () => (
-    <div className={styles.themeSwitcher}>
-      <button
-        onClick={() => setTheme("white")}
-        className={`${styles.themeBtn} ${theme === "white" ? styles.themeBtnActive : ""}`}
-        title="White Mode"
-        aria-label="Switch to White Mode"
-      >
-        <Sun size={15} />
-      </button>
-      <button
-        onClick={() => setTheme("dark")}
-        className={`${styles.themeBtn} ${theme === "dark" ? styles.themeBtnActive : ""}`}
-        title="Dark Mode"
-        aria-label="Switch to Dark Mode"
-      >
-        <Moon size={15} />
-      </button>
-      <button
-        onClick={() => setTheme("semi-dark")}
-        className={`${styles.themeBtn} ${theme === "semi-dark" ? styles.themeBtnActive : ""}`}
-        title="Semi Dark Mode"
-        aria-label="Switch to Semi Dark Mode"
-      >
-        <Contrast size={15} />
-      </button>
-    </div>
-  );
+  const renderThemeSwitcher = () => {
+    const cycleTheme = () => {
+      if (theme === "white") {
+        setTheme("semi-dark");
+      } else if (theme === "semi-dark") {
+        setTheme("dark");
+      } else {
+        setTheme("white");
+      }
+    };
+
+    return (
+      <div className={styles.themeSwitcher}>
+        <button
+          onClick={cycleTheme}
+          className={`${styles.themeBtn} ${styles.themeBtnActive}`}
+          title={
+            theme === "white"
+              ? "Switch to Dim Mode"
+              : theme === "semi-dark"
+              ? "Switch to Dark Mode"
+              : "Switch to Light Mode"
+          }
+          aria-label="Toggle Theme"
+        >
+          {theme === "white" && <Sun size={15} />}
+          {theme === "semi-dark" && <Contrast size={15} />}
+          {theme === "dark" && <Moon size={15} />}
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className={styles.header}>

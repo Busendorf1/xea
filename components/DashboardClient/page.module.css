@@ -14,7 +14,7 @@
   position: fixed;
   left: 0;
   width: 100%;
-  height: 58px;
+  height: 68px;
   background-color: var(--card-bg);
   border-bottom: 1px solid var(--card-border);
   z-index: 1100;
@@ -27,7 +27,7 @@
 }
 
 .headerHidden {
-  top: -58px;
+  top: -68px;
 }
 
 .headerContent {
@@ -141,8 +141,8 @@
 .dashboardContainer {
   display: flex;
   width: 100%;
-  height: calc(100vh - 58px);
-  margin-top: 58px;
+  height: calc(100vh - 68px);
+  margin-top: 68px;
   box-sizing: border-box;
   overflow: hidden;
   position: relative;
@@ -685,10 +685,10 @@
 /* Mobile Account settings panel */
 .mobileAccountMenu {
   position: fixed;
-  top: 58px;
+  top: 68px;
   right: 0;
   width: 70%;
-  height: calc(100vh - 58px);
+  height: calc(100vh - 68px);
   background-color: var(--card-bg);
   border-left: 1px solid var(--card-border);
   z-index: 1100;
@@ -734,10 +734,10 @@
 /* Backdrop */
 .backdrop {
   position: fixed;
-  top: 58px;
+  top: 68px;
   left: 0;
   width: 100vw;
-  height: calc(100vh - 58px);
+  height: calc(100vh - 68px);
   background-color: rgba(0, 0, 0, 0.4);
   z-index: 990;
   backdrop-filter: blur(2px);
@@ -809,11 +809,11 @@
   .leftSidebar,
   .rightSidebar {
     position: fixed;
-    top: 58px;
+    top: 68px;
     left: 0;
     width: 100% !important;
     max-width: 100% !important;
-    height: calc(100vh - 58px);
+    height: calc(100vh - 68px);
     z-index: 1000;
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     background-color: var(--card-bg);

@@ -830,3 +830,53 @@
     transform: rotate(360deg);
   }
 }
+
+/* White Theme Adjustments for Proof of View / Verification */
+[data-theme='white'] .countdownContainer {
+  background-color: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='white'] .countdownText {
+  color: var(--text-muted);
+}
+
+[data-theme='white'] .challengeContainer {
+  background-color: rgba(0, 0, 0, 0.02);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+[data-theme='white'] .challengeTitle {
+  color: var(--foreground);
+}
+
+[data-theme='white'] .swipeTrack {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='white'] .swipeText {
+  color: var(--text-muted);
+}
+
+[data-theme='white'] .holdBtn {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='white'] .holdBtnText {
+  color: var(--foreground);
+}
+
+[data-theme='white'] .tapBtn {
+  background-color: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+[data-theme='white'] .tapBtnText {
+  color: var(--foreground);
+}
+
+[data-theme='white'] .tapDot {
+  background-color: rgba(0, 0, 0, 0.15);
+}
