@@ -40,7 +40,7 @@ async function handleCron(req: NextRequest) {
     }
 
     if (!pendingPayments || pendingPayments.length === 0) {
-      return NextResponse.json({ success: true, message: "No pending payouts to process." });
+      return NextResponse.json({ success: true, message: "No pending payouts to process.." });
     }
 
     console.log(`🏦 Cron: Found ${pendingPayments.length} pending payouts. Starting batch execution.`);
