@@ -43,8 +43,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Extend window to 7 days for broader coverage
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // Strict 24-hour expiration window for daily highlights
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     // If user has interests, try interest-filtered query first
     if (interests.length > 0) {
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
         .from("newsactive")
         .select("id, title, content, image_url, interest, created_at")
         .in("interest", interests)
-        .gte("created_at", sevenDaysAgo)
+        .gte("created_at", twentyFourHoursAgo)
         .order("created_at", { ascending: false })
         .limit(100);
 
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     const { data: allHighlights, error: fallbackError } = await supabaseReadOnly
       .from("newsactive")
       .select("id, title, content, image_url, interest, created_at")
-      .gte("created_at", sevenDaysAgo)
+      .gte("created_at", twentyFourHoursAgo)
       .order("created_at", { ascending: false })
       .limit(20);
 

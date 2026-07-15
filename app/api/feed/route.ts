@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
     const now = new Date();
 
     const activeAds: any[] = [];
-    const adsToUpdate: string[] = [];
 
     (ads || []).forEach((ad: any) => {
       if (ad.completed_at) return;
@@ -43,30 +42,11 @@ export async function GET(req: NextRequest) {
         const diffTime = now.getTime() - createdAt.getTime();
         const diffDays = diffTime / (1000 * 60 * 60 * 24);
         if (diffDays > ad.campaign_days) {
-          adsToUpdate.push(ad.id);
-          return; // Exclude from feed
+          return; // Exclude from feed (database archiving is handled by hourly cron)
         }
       }
       activeAds.push(ad);
     });
-
-    // Update expired ads in the background
-    if (adsToUpdate.length > 0) {
-      const completedTimestamp = now.toISOString();
-      supabaseAdmin.from("addsactive")
-        .update({ completed_at: completedTimestamp })
-        .in("id", adsToUpdate)
-        .then(({ error: err1 }) => {
-          if (err1) console.error("❌ Failed to auto-complete expired active ads:", err1);
-        });
-
-      supabaseAdmin.from("adds")
-        .update({ completed_at: completedTimestamp })
-        .in("id", adsToUpdate)
-        .then(({ error: err2 }) => {
-          if (err2) console.error("❌ Failed to auto-complete expired ads in queue:", err2);
-        });
-    }
 
     // Sign each active ad in memory and prune unnecessary targeting fields
     const signedAds = activeAds.map((ad: any) => {
