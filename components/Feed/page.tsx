@@ -382,8 +382,10 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         throw new Error(errData.error || "Failed to claim earnings");
       }
 
-      const { result: creditResult } = await response.json();
-      const rate = parseFloat(creditResult ?? 0);
+      const resData = await response.json();
+      const rate = resData.result !== undefined 
+        ? parseFloat(resData.result ?? 0) 
+        : (ad.cost_per_impression ?? 0.50);
 
       // Suspension: do NOT dismiss the ad
       if (rate === -1 || rate === -2) {
@@ -450,7 +452,8 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         throw new Error(errData.error || "Failed to add mutual");
       }
 
-      const { result: mutualResult } = await response.json();
+      const resData = await response.json();
+      const mutualResult = resData.result !== undefined ? resData.result : 1;
 
       // Suspension: do NOT dismiss the ad
       if (mutualResult === -1 || mutualResult === -2) {

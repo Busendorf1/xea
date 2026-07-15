@@ -19,7 +19,8 @@ import {
   Trash2,
   X,
   Bell,
-  Plus
+  Plus,
+  Coins
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";

@@ -218,6 +218,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         whatsapp: "",
         website: "",
         email: "",
+        ios: "",
+        android: "",
       },
       displayMutualButton: false,
       productName: "",
