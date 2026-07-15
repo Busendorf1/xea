@@ -1,6 +1,6 @@
 /* Wrapper Styling */
 .pageWapper {
-  font-family: Arial, sans-serif;
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
   background-color: var(--sidebar-bg);
   min-height: 100vh;
   padding: 2rem;

@@ -348,7 +348,7 @@
   transition: all 0.2s ease;
   min-height: 80px;
   resize: vertical;
-  font-family: inherit;
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
   width: 100%;
 }
 

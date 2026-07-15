@@ -4,7 +4,7 @@
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
-  font-family: sans-serif;
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
 }
 
 .title {

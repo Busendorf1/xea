@@ -513,7 +513,7 @@ padding: "2rem"
   margin-top: 0.9rem;
   margin-bottom: 0;
   font-weight: 700;
-  /* font-family: Georgia, 'Times New Roman', Times, serif; */
+  /* font-family: var(--font-geist-sans), "Inter", sans-serif; */
   /* letter-spacing: 2px; */
 }
 

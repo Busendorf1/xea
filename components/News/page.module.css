@@ -1,6 +1,6 @@
 /* Page Background Wrapper */
 .pageWapper {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
   background-color: var(--background);
   min-height: 100vh;
   padding: 3rem 1.5rem;
@@ -164,7 +164,7 @@
   box-sizing: border-box;
   resize: none;
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  font-family: inherit;
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
 }
 
 .textareaBox:focus {

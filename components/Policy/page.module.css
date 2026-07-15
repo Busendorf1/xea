@@ -2,7 +2,7 @@
   max-width: 960px;
   margin: 6.5rem auto 3rem auto;
   padding: 2rem;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
   background-color: var(--card-bg);
   color: var(--foreground);
   line-height: 1.6;
