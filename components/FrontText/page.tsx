@@ -56,7 +56,7 @@ export default function FrontText() {
             </p>
           </div>
           <div className={styles.termsCallout}>
-            📖 Please read our <Link href="/policy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations.
+            📖 Please read our <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations.
           </div>
         </div>
       </div>
@@ -168,7 +168,7 @@ export default function FrontText() {
 
             <div className={styles.cardFooter}>
               <p>🔒 Secured by Auth0 Universal Identity System.</p>
-              <p>By signing in, you agree to our <Link href="/policy">Terms &amp; Conditions</Link>.</p>
+              <p>By signing in, you agree to our <Link href="/privacy">Terms &amp; Conditions</Link>.</p>
               <p style={{ fontSize: "0.7rem", opacity: 0.45, marginTop: "0.25rem", fontStyle: "italic" }}>
                 We are all humans here!
               </p>

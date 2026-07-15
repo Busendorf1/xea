@@ -1104,69 +1104,65 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       <div className={styles.detailsRow}>
                         <span className={styles.detailsKey}>Audience type</span>
                         <span className={styles.detailsVal}>
-                          {formSelections.targetingAll ? "All users (Broad targeting)" : "Custom targeted audience"}
+                          Custom targeted audience
                         </span>
                       </div>
                       
-                      {!formSelections.targetingAll && (
-                        <>
-                          {formSelections.gender && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Gender</span>
-                              <span className={styles.detailsVal}>
-                                {formSelections.gender.charAt(0).toUpperCase() + formSelections.gender.slice(1)}
-                              </span>
-                            </div>
-                          )}
-                          {formSelections.ageRange && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Age range</span>
-                              <span className={styles.detailsVal}>
-                                {formSelections.ageRange[0]} – {formSelections.ageRange[1]} years
-                              </span>
-                            </div>
-                          )}
-                          {(formSelections.country || formSelections.state || formSelections.province) && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Target location</span>
-                              <span className={styles.detailsVal}>
-                                {[formSelections.province, formSelections.state, formSelections.country]
-                                  .filter(Boolean)
-                                  .join(", ")}
-                              </span>
-                            </div>
-                          )}
-                          {formSelections.industry.length > 0 && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Industries</span>
-                              <span className={styles.detailsVal}>{formSelections.industry.join(", ")}</span>
-                            </div>
-                          )}
-                          {formSelections.interest.length > 0 && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Interests</span>
-                              <span className={styles.detailsVal}>{formSelections.interest.join(", ")}</span>
-                            </div>
-                          )}
-                          {formSelections.behavior.length > 0 && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Behaviors</span>
-                              <span className={styles.detailsVal}>{formSelections.behavior.join(", ")}</span>
-                            </div>
-                          )}
-                          {formSelections.lifestyle.length > 0 && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Lifestyles</span>
-                              <span className={styles.detailsVal}>{formSelections.lifestyle.join(", ")}</span>
-                            </div>
-                          )}
-                          {formSelections.personality.length > 0 && (
-                            <div className={styles.detailsRow}>
-                              <span className={styles.detailsKey}>Personality traits</span>
-                              <span className={styles.detailsVal}>{formSelections.personality.join(", ")}</span>
-                            </div>
-                          )}
-                        </>
+                      {formSelections.gender && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Gender</span>
+                          <span className={styles.detailsVal}>
+                            {formSelections.gender.charAt(0).toUpperCase() + formSelections.gender.slice(1)}
+                          </span>
+                        </div>
+                      )}
+                      {formSelections.ageRange && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Age range</span>
+                          <span className={styles.detailsVal}>
+                            {formSelections.ageRange[0]} – {formSelections.ageRange[1]} years
+                          </span>
+                        </div>
+                      )}
+                      {(formSelections.country || formSelections.state || formSelections.province) && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Target location</span>
+                          <span className={styles.detailsVal}>
+                            {[formSelections.province, formSelections.state, formSelections.country]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </span>
+                        </div>
+                      )}
+                      {formSelections.industry.length > 0 && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Industries</span>
+                          <span className={styles.detailsVal}>{formSelections.industry.join(", ")}</span>
+                        </div>
+                      )}
+                      {formSelections.interest.length > 0 && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Interests</span>
+                          <span className={styles.detailsVal}>{formSelections.interest.join(", ")}</span>
+                        </div>
+                      )}
+                      {formSelections.behavior.length > 0 && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Behaviors</span>
+                          <span className={styles.detailsVal}>{formSelections.behavior.join(", ")}</span>
+                        </div>
+                      )}
+                      {formSelections.lifestyle.length > 0 && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Lifestyles</span>
+                          <span className={styles.detailsVal}>{formSelections.lifestyle.join(", ")}</span>
+                        </div>
+                      )}
+                      {formSelections.personality.length > 0 && (
+                        <div className={styles.detailsRow}>
+                          <span className={styles.detailsKey}>Personality traits</span>
+                          <span className={styles.detailsVal}>{formSelections.personality.join(", ")}</span>
+                        </div>
                       )}
                     </div>
                     

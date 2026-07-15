@@ -692,7 +692,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
               )}
               <div className={styles.desktopNav}>
                 <Link href="/">Home</Link>
-                <Link href="/policy">Policies</Link>
+                <Link href="/privacy">Policies</Link>
                 <Link href="/faq">FAQ</Link>
               </div>
               {renderNotificationBell()}

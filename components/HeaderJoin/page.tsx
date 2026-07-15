@@ -135,7 +135,7 @@ export default function HeaderJoin() {
               <Link href={"/"}>Home</Link>
             </div>
             <div className={styles.create}>
-              <Link href={"/../policy"}>Policies</Link>
+              <Link href={"/../privacy"}>Policies</Link>
             </div>
             <div className={styles.create}>
               <Link href={"/../faq"}>Faq</Link>
@@ -148,7 +148,7 @@ export default function HeaderJoin() {
             <Link href={"/"}>Home</Link>
           </div>
           <div className={styles.create}>
-            <Link href={"/../policy"}>Policies</Link>
+            <Link href={"/../privacy"}>Policies</Link>
           </div>
           <div className={styles.create}>
             <Link href={"/../faq"}>Faq</Link>

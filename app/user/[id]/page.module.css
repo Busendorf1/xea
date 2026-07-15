@@ -65,9 +65,9 @@ padding: "2rem"
 }
 
 .menuButton:hover {
-  background-color: var(--background);
-  color: #ffffff;
-  border-color: #000000;
+  background-color: var(--card-border-hover);
+  color: var(--foreground);
+  border-color: var(--card-border-hover);
 }
 
 .menuButton:active {
@@ -445,7 +445,7 @@ padding: "2rem"
 }
 
 .tag:hover {
-  background-color: #e2e8f0;
+  background-color: var(--card-border-hover);
   color: var(--foreground);
   transform: scale(1.04);
 }

@@ -84,13 +84,13 @@ export default function Footer() {
         <div className={styles.section}>
           <h4 className={styles.heading}>Policies</h4>
           <ul className={styles.linkList}>
-            <li><Link href="/policy#privacy" className={styles.link}>Privacy</Link></li>
-            <li><Link href="/policy#infringement" className={styles.link}>Infringement</Link></li>
-            <li><Link href="/policy#abuse" className={styles.link}>Stealing / Abuse</Link></li>
-            <li><Link href="/policy#misleading-ads" className={styles.link}>Misleading Advert</Link></li>
-            <li><Link href="/policy#cookies" className={styles.link}>Cookies</Link></li>
-            <li><Link href="/policy#terms" className={styles.link}>Terms of Service</Link></li>
-            <li><Link href="/policy#copyright" className={styles.link}>Copyrights</Link></li>
+            <li><Link href="/privacy#privacy" className={styles.link}>Privacy</Link></li>
+            <li><Link href="/privacy#infringement" className={styles.link}>Infringement</Link></li>
+            <li><Link href="/privacy#abuse" className={styles.link}>Stealing / Abuse</Link></li>
+            <li><Link href="/privacy#misleading-ads" className={styles.link}>Misleading Advert</Link></li>
+            <li><Link href="/privacy#cookies" className={styles.link}>Cookies</Link></li>
+            <li><Link href="/privacy#terms" className={styles.link}>Terms of Service</Link></li>
+            <li><Link href="/privacy#copyright" className={styles.link}>Copyrights</Link></li>
           </ul>
         </div>
 

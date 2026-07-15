@@ -99,26 +99,62 @@ export default function PolicyPage() {
         <section id="privacy">
           <h2 className={styles.heading}>VII. Privacy and Data Security</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Paayh does <strong>not</strong> sell, trade, or exploit user data.</li>
-            <li className={styles.listItem}>Data is used only for operations, analytics, and service improvements.</li>
-            <li className={styles.listItem}>Behavioral and interest-based data match users with relevant ads.</li>
-            <li className={styles.listItem}>See our Privacy Policy section for full details.</li>
-            <li className={styles.listItem}>Users can request data audits or deletion anytime.</li>
+            <li className={styles.listItem}>
+              <strong>Commitment to Privacy:</strong> Paayh does <strong>not</strong> sell, rent, trade, or exploit user personal data. We collect and process data solely to manage your profile, secure your account, track ad impressions, and calculate payouts.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Google Account and OAuth Data Collection:</strong> If you sign up or log in using your Google account via our secure authentication provider (Auth0), we request only basic, non-sensitive profile permissions (specifically <code>openid</code>, <code>email</code>, and <code>profile</code>). The specific Google user data we collect and store includes:
+              <ul className={styles.list}>
+                <li className={styles.listItem}>Your Gmail/Google email address (used for account authentication and communications).</li>
+                <li className={styles.listItem}>Your Google display name (used to set up your public profile name).</li>
+                <li className={styles.listItem}>Your Google profile picture URL (used as your display avatar).</li>
+              </ul>
+              We do not request, access, or store any sensitive Google data (such as emails, files, or calendar events).
+            </li>
+            <li className={styles.listItem}>
+              <strong>Use of Google OAuth Data:</strong> Your Google OAuth data is used strictly for authentication, account management, and profile display purposes. We do not use this data for marketing or any other secondary purpose, and we never share it with unauthorized third parties.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Third-Party Service Disclosures:</strong> We share and process personal data only with trusted service providers essential to running our platform under strict confidentiality agreements:
+              <ul className={styles.list}>
+                <li className={styles.listItem}><strong>Auth0</strong> (for secure authentication, login system, and identity management).</li>
+                <li className={styles.listItem}><strong>Database services</strong> (for secure cloud database storage and user profiles).</li>
+                <li className={styles.listItem}><strong>Third-party payment services</strong> (for processing monetization subscriptions and bank/wallet payouts).</li>
+                <li className={styles.listItem}><strong>Task queuing services</strong> (for managing background application jobs).</li>
+              </ul>
+            </li>
+            <li className={styles.listItem}>
+              <strong>GDPR Data Protection Rights:</strong> If you are a user in the European Economic Area (EEA) or the United Kingdom, you have the following rights under the General Data Protection Regulation (GDPR):
+              <ul className={styles.list}>
+                <li className={styles.listItem}>The right to access, update, or rectify the personal data we hold about you.</li>
+                <li className={styles.listItem}>The right to request erasure ("right to be forgotten") of your personal data.</li>
+                <li className={styles.listItem}>The right to object to or restrict processing of your data.</li>
+                <li className={styles.listItem}>The right to data portability (receiving a copy of your data in a structured, readable format).</li>
+                <li className={styles.listItem}>The right to withdraw your consent to data processing at any time.</li>
+                <li className={styles.listItem}>The right to lodge a complaint with a Data Protection Authority if you believe your rights have been violated.</li>
+              </ul>
+            </li>
+            <li className={styles.listItem}>
+              <strong>Data Deletion and Consent Revocation:</strong> Users can request the complete deletion of their account and all associated personal data at any time by submitting a deletion request through the Help Center. Additionally, you can revoke Paayh's access to your Google account at any time via your Google Security Settings page.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Data Retention:</strong> We retain your personal data only for as long as necessary to provide our services and satisfy legal obligations. Once your account is deleted or terminated, all associated data is permanently erased from our active database and authentication records.
+            </li>
           </ol>
         </section>
 
         <section id="cookies">
           <h2 className={styles.heading}>VIII. Cookies and Tracking</h2>
           <ol className={styles.list}>
-            <li className={styles.listItem}>We use cookies to:
-              <ul className={styles.list}>
-                <li className={styles.listItem}>Maintain session security</li>
-                <li className={styles.listItem}>Track ad impressions</li>
-                <li className={styles.listItem}>Customize content and ads</li>
-              </ul>
+            <li className={styles.listItem}>
+              <strong>Use of Cookies:</strong> We use cookies and similar tracking technologies to maintain secure user sessions, track ad impressions (essential for monetization payouts), and save your theme/preference configurations.
             </li>
-            <li className={styles.listItem}>You may disable cookies, but it may affect functionality.</li>
-            <li className={styles.listItem}>Cookies do not store personal identifiable information (PII).</li>
+            <li className={styles.listItem}>
+              <strong>Managing Cookies:</strong> You can manage or disable cookies through your browser settings. However, please note that disabling essential session cookies will prevent you from logging in, navigating the dashboard, or completing monetization activities.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Personal Information:</strong> The cookies we use for tracking impressions and sessions do not store unencrypted Personally Identifiable Information (PII) on your device.
+            </li>
           </ol>
         </section>
 
