@@ -28,12 +28,21 @@ export const metadata: Metadata = {
     url: "https://paayh.com",
     siteName: "Paayh",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Paayh - Ads For Listeners",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Paayh | Ads For Listeners",
     description:
       "A digital advertising platform designed to fairly connect advertisers with genuine human attention.",
+    images: ["/og-image.png"],
   },
   keywords: ["Paayh", "digital advertising", "attention marketplace"],
 };

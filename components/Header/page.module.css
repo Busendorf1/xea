@@ -5,6 +5,7 @@
   width: 100%;
   padding: 1.5rem 2rem;
   z-index: 100;
+  transition: all 0.3s ease;
 }
 
 .navbar {
@@ -14,12 +15,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.85rem 1.5rem;
-  background: rgba(10, 10, 15, 0.4);
+  background: var(--card-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
   border-radius: 16px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
 }
 
 .logo {
@@ -28,19 +30,19 @@
   font-size: 1.6rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: #ffffff;
+  color: var(--foreground);
   text-transform: none;
 }
 
 .logoText {
-  background: linear-gradient(135deg, #ffffff 50%, #dcdcdc 100%);
+  background: linear-gradient(135deg, var(--foreground) 50%, var(--text-muted) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .logoDot {
   color: var(--primary);
-  text-shadow: 0 0 10px rgba(138, 43, 226, 0.5);
+  text-shadow: 0 0 10px var(--primary-glow);
 }
 
 .desktopNav {
@@ -50,7 +52,7 @@
 }
 
 .navLink {
-  color: #e2e8f0;
+  color: var(--text-muted);
   font-size: 0.95rem;
   font-weight: 500;
   text-transform: none;
@@ -59,7 +61,7 @@
 }
 
 .navLink:hover {
-  color: var(--secondary);
+  color: var(--foreground);
 }
 
 .ctaBtn, .dashboardBtn {
@@ -83,20 +85,20 @@
 }
 
 .signOutBtn {
-  color: #cbd5e0;
+  color: var(--text-muted);
   font-size: 0.95rem;
   font-weight: 500;
   padding: 0.6rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--card-border);
   border-radius: 10px;
   text-transform: none;
   transition: all 0.2s ease;
 }
 
 .signOutBtn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: white;
+  background: var(--secondary-glow);
+  border-color: var(--card-border-hover);
+  color: var(--foreground);
 }
 
 /* Hamburger Menu */
@@ -115,7 +117,7 @@
 .bar {
   height: 2px;
   width: 100%;
-  background-color: white;
+  background-color: var(--foreground);
   transition: all 0.3s ease;
   border-radius: 2px;
 }
@@ -138,16 +140,16 @@
   top: 100%;
   left: 2rem;
   right: 2rem;
-  background: rgba(15, 15, 20, 0.95);
+  background: var(--card-bg);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--card-border);
   border-radius: 16px;
   padding: 1.5rem;
   display: none;
   flex-direction: column;
   gap: 1.25rem;
   margin-top: 0.5rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
 }
 
 .showMenu {
@@ -179,18 +181,47 @@
 }
 
 .logoutBtn {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
 }
 
 @media screen and (max-width: 768px) {
   .navbarContainer {
-    padding: 1rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0;
+    z-index: 1000;
+  }
+  .navbar {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    border-bottom: 1px solid var(--card-border);
+    background: var(--background);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0.75rem 1rem;
+    width: 100%;
+    max-width: 100%;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   }
   .mobileNav {
-    left: 1rem;
-    right: 1rem;
-    padding: 1.25rem;
+    position: fixed;
+    top: 52px; /* Adjusted to fit the navbar height nicely */
+    left: 0;
+    right: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    border-bottom: 1px solid var(--card-border);
+    background: var(--background);
+    margin-top: 0;
+    padding: 1.5rem;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
   }
 }
 
