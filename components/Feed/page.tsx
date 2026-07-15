@@ -370,6 +370,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     } else {
       setLoading(true);
       setPage(0);
+      setSeenAds([]); // Reset client-side seen ads array on initial load / refresh
     }
     setError(false);
 
@@ -396,8 +397,11 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         }
       }
 
-      // Fetch pre-filtered and signed ads from secure API route
-      const response = await fetch(`/api/feed`);
+      // Fetch paginated ads from secure API route with Redis caching
+      const LIMIT = 10;
+      const offset = pageNum * LIMIT;
+      const refreshParam = pageNum === 0 ? "&refresh=true" : "";
+      const response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}`);
       if (!response.ok) {
         throw new Error("Failed to fetch ad feed");
       }
@@ -414,17 +418,13 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         finalAds = [sharedAdPrepend, ...feedAds.filter((a: Ad) => a.id !== sharedAdPrepend!.id)];
       }
 
-      const LIMIT = 10;
-      const offset = pageNum * LIMIT;
-      const paginatedAds = finalAds.slice(offset, offset + LIMIT);
-
-      if (offset + LIMIT >= finalAds.length) {
+      if (feedAds.length < LIMIT) {
         setHasMore(false);
       } else {
         setHasMore(true);
       }
 
-      setAds((prev) => isLoadMore ? [...prev, ...paginatedAds] : paginatedAds);
+      setAds((prev) => isLoadMore ? [...prev, ...finalAds] : finalAds);
       setLoading(false);
       setLoadingMore(false);
     } catch (err) {

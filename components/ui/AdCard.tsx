@@ -182,9 +182,8 @@ export default function AdCard({
       if (success) {
         setSuccessAction(type);
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        setIsDismissing(true);
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        onDismiss(ad.id);
+        // Keep the card in view in its verified/disabled state to prevent list layout shifts.
+        // It will be removed from the feed on the next refresh/reload.
       }
     } catch (err) {
       console.error("Action error:", err);

@@ -31,6 +31,13 @@ export async function POST(request: NextRequest) {
       type: "seen"
     });
 
+    // Invalidate user's feed cache immediately so the next load/refresh excludes this ad
+    const emailKey = email.toLowerCase().trim();
+    await Promise.all([
+      redisConnection.del(`feed:ads:${emailKey}`),
+      redisConnection.del(`feed:profiles:${emailKey}`),
+    ]).catch((err) => console.error("❌ Redis feed cache delete error:", err));
+
     return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/seen:", err);
