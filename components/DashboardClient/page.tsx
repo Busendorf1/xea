@@ -19,9 +19,7 @@ import {
   Trash2,
   X,
   Bell,
-  Coins,
-  Plus,
-  Home
+  Plus
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
@@ -627,18 +625,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             <div className={styles.mobileControls}>
               <button 
                 onClick={() => {
-                  closeAllToggles();
-                  if (typeof window !== "undefined") {
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }
-                }} 
-                className={`${styles.controlBtn} ${(!showHighlightsMobile && !showProfileMobile) ? styles.controlBtnActive : ""}`}
-                title="Home Feed"
-              >
-                <Home size={20} />
-              </button>
-              <button 
-                onClick={() => {
                   const current = showHighlightsMobile;
                   closeAllToggles();
                   setShowHighlightsMobile(!current);
@@ -647,22 +633,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 title="Campaigns"
               >
                 <Compass size={20} />
-              </button>
-              <button 
-                onClick={() => {
-                  closeAllToggles();
-                  setShowProfileMobile(true);
-                  setTimeout(() => {
-                    const el = document.querySelector(`.${styles.walletCard}`);
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }
-                  }, 300);
-                }} 
-                className={styles.controlBtn}
-                title="Monetization"
-              >
-                <Coins size={20} />
               </button>
               <button 
                 onClick={() => {
