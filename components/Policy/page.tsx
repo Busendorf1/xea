@@ -89,8 +89,8 @@ export default function PolicyPage() {
                 <li className={styles.listItem}><em>Instant Monetization</em>: Available immediately for an activation subscription fee of ₦60,000, payable via card or direct wallet balance deduction.</li>
               </ul>
             </li>
-            <li className={styles.listItem}><strong>Mandatory Ad-Watching Requirement</strong>: To deliver on the 100% genuine human attention promise we guarantee to our advertisers, monetized users are mandatorily required to watch and verify (click "Seen" on) the ads presented in their feed.</li>
-            <li className={styles.listItem}>Users earn 40% of ad revenue per valid impression.</li>
+            <li className={styles.listItem}><strong>Mandatory Ad-Watching Requirement</strong>: To deliver on the 100% genuine human attention promise we guarantee to our advertisers, monetized users are mandatorily required to watch and verify (click "Seen" or "Earn" or "Mutual" on) the ads presented in their feed.</li>
+            <li className={styles.listItem}>Users earn 60% of ad revenue per valid impression.</li>
             <li className={styles.listItem}>No minimum withdrawal threshold. Verified earnings can be requested for withdrawal anytime, subject to active monetization status.</li>
             <li className={styles.listItem}>Attempts to manipulate or bypass ad views using automation, click bots, or spoofing will result in immediate bans and forfeited funds.</li>
           </ol>
@@ -135,7 +135,7 @@ export default function PolicyPage() {
               </ul>
             </li>
             <li className={styles.listItem}>
-              <strong>Data Deletion and Consent Revocation:</strong> Users can request the complete deletion of their account and all associated personal data at any time by submitting a deletion request through the Help Center. Additionally, you can revoke Paayh's access to your Google account at any time via your Google Security Settings page.
+              <strong>Data Deletion and Consent Revocation:</strong> Users can request the complete deletion of their account and all associated personal data at any time by submitting a deletion request through deactivation option or via the Help Center. Additionally, you can revoke Paayh's access to your Google account at any time via your Google Security Settings page.
             </li>
             <li className={styles.listItem}>
               <strong>Data Retention:</strong> We retain your personal data only for as long as necessary to provide our services and satisfy legal obligations. Once your account is deleted or terminated, all associated data is permanently erased from our active database and authentication records.
@@ -177,6 +177,7 @@ export default function PolicyPage() {
                 <li className={styles.listItem}>Automated ad viewing</li>
                 <li className={styles.listItem}>Multiple account abuse</li>
                 <li className={styles.listItem}>Fake testimonials</li>
+                <li className={styles.listItem}>Fake or false or illegal Adverts</li>
               </ul>
             </li>
             <li className={styles.listItem}>Paayh uses AI and moderators to detect abuse.</li>
