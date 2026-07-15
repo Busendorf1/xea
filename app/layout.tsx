@@ -14,8 +14,28 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Paayh",
-  description: "Ads For Listeners",
+  metadataBase: new URL("https://paayh.com"),
+  alternates: {
+    canonical: "/",
+  },
+  title: "Paayh | Ads For Listeners",
+  description:
+    "Paayh is an attention-based digital advertising platform that fairly connects advertisers with genuine human attention. Secure ad deliverability or earn rewards for verified ad engagement.",
+  openGraph: {
+    title: "Paayh | Ads For Listeners",
+    description:
+      "A digital advertising platform designed to fairly connect advertisers with genuine human attention.",
+    url: "https://paayh.com",
+    siteName: "Paayh",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Paayh | Ads For Listeners",
+    description:
+      "A digital advertising platform designed to fairly connect advertisers with genuine human attention.",
+  },
+  keywords: ["Paayh", "digital advertising", "attention marketplace"],
 };
 
 export default function RootLayout({
