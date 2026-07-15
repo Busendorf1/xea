@@ -52,134 +52,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   const [highlights, setHighlights] = useState<Ad[]>([]);
   const [isMobile, setIsMobile] = useState(false);
 
-  const turnstileContainerRef = useRef<HTMLDivElement>(null);
-  const turnstileWidgetIdRef = useRef<string | null>(null);
-  const pendingTokenResolverRef = useRef<{
-    resolve: (token: string) => void;
-    reject: (err: any) => void;
-  } | null>(null);
 
-  const initTurnstile = useCallback(() => {
-    if (typeof window !== "undefined" && (window as any).turnstile && turnstileContainerRef.current) {
-      try {
-        if (turnstileWidgetIdRef.current) {
-          try {
-            (window as any).turnstile.remove(turnstileWidgetIdRef.current);
-          } catch (removeErr) {
-            console.warn("Error removing old Turnstile widget:", removeErr);
-          }
-          turnstileWidgetIdRef.current = null;
-        }
-
-        turnstileContainerRef.current.innerHTML = "";
-
-        turnstileWidgetIdRef.current = (window as any).turnstile.render(turnstileContainerRef.current, {
-          sitekey: process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA",
-          size: "invisible",
-          appearance: "interaction-only",
-          callback: (token: string) => {
-            if (pendingTokenResolverRef.current) {
-              pendingTokenResolverRef.current.resolve(token);
-              pendingTokenResolverRef.current = null;
-            }
-          },
-          "error-callback": (err: any) => {
-            console.error("Turnstile challenge error callback:", err);
-            if (pendingTokenResolverRef.current) {
-              pendingTokenResolverRef.current.reject(new Error("Security check failed"));
-              pendingTokenResolverRef.current = null;
-            }
-          },
-          "expired-callback": () => {
-            if (turnstileWidgetIdRef.current) {
-              (window as any).turnstile.reset(turnstileWidgetIdRef.current);
-            }
-          }
-        });
-      } catch (e) {
-        console.error("Error rendering Turnstile widget:", e);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    let checkInterval: NodeJS.Timeout;
-
-    if (typeof window !== "undefined") {
-      if ((window as any).turnstile) {
-        initTurnstile();
-      } else {
-        checkInterval = setInterval(() => {
-          if ((window as any).turnstile) {
-            initTurnstile();
-            clearInterval(checkInterval);
-          }
-        }, 500);
-      }
-    }
-
-    return () => {
-      if (checkInterval) clearInterval(checkInterval);
-    };
-  }, [initTurnstile]);
-
-  const getFreshTurnstileToken = (): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      if (typeof window === "undefined" || !(window as any).turnstile) {
-        resolve("no-turnstile-script");
-        return;
-      }
-
-      // Re-initialize widget if DOM is cleared or widget identifier is missing
-      if (!turnstileWidgetIdRef.current || !turnstileContainerRef.current || turnstileContainerRef.current.children.length === 0) {
-        console.warn("⚠️ Turnstile widget or container DOM children missing. Re-initializing widget...");
-        initTurnstile();
-      }
-
-      if (!turnstileWidgetIdRef.current) {
-        resolve("no-turnstile-script");
-        return;
-      }
-
-      // 2-second timeout to prevent promise from hanging if Turnstile widget is blocked/fails
-      const timeout = setTimeout(() => {
-        pendingTokenResolverRef.current = null;
-        resolve("no-turnstile-script");
-      }, 2000);
-
-      try {
-        (window as any).turnstile.reset(turnstileWidgetIdRef.current);
-      } catch (resetErr) {
-        console.warn("⚠️ Failed to reset Turnstile widget. Attempting re-initialization...", resetErr);
-        initTurnstile();
-        if (!turnstileWidgetIdRef.current) {
-          clearTimeout(timeout);
-          resolve("no-turnstile-script");
-          return;
-        }
-      }
-      
-      pendingTokenResolverRef.current = {
-        resolve: (token: string) => {
-          clearTimeout(timeout);
-          resolve(token);
-        },
-        reject: (err: any) => {
-          clearTimeout(timeout);
-          reject(err);
-        }
-      };
-
-      try {
-        (window as any).turnstile.execute(turnstileWidgetIdRef.current);
-      } catch (err) {
-        console.error("Error executing Turnstile widget:", err);
-        clearTimeout(timeout);
-        pendingTokenResolverRef.current = null;
-        resolve("no-turnstile-script");
-      }
-    });
-  };
 
   // Sync window size state
   useEffect(() => {
@@ -492,8 +365,6 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     setProcessingAds((prev) => [...prev, ad.id]);
 
     try {
-      const turnstileToken = await getFreshTurnstileToken();
-
       const response = await fetch("/api/earn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -502,7 +373,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
           token: ad.verification_token,
           servedAt: ad.served_at,
           type: "earn",
-          turnstileToken: turnstileToken
+          turnstileToken: "no-turnstile-script"
         })
       });
 
@@ -562,8 +433,6 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     const publisherEmail = ad.user_email.toLowerCase();
 
     try {
-      const turnstileToken = await getFreshTurnstileToken();
-
       const response = await fetch("/api/earn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -572,7 +441,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
           token: ad.verification_token,
           servedAt: ad.served_at,
           type: "mutual",
-          turnstileToken: turnstileToken
+          turnstileToken: "no-turnstile-script"
         })
       });
 
@@ -722,7 +591,6 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
           <span className={styles.loadingSpinner}></span>
         </div>
       )}
-      <div ref={turnstileContainerRef} dangerouslySetInnerHTML={{ __html: "" }} style={{ width: 0, height: 0, overflow: "hidden", position: "absolute" }} />
     </div>
   );
 };
