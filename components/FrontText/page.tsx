@@ -28,19 +28,19 @@ export default function FrontText() {
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>2</div>
             <p className={styles.stepText}>
-              <strong>Targeted Ads (Advertisers):</strong> Create campaigns target-locked directly to user interest arrays. Pay only for actual, verified human views.
+              <strong>Targeted Ads (Advertisers):</strong> Create campaigns target-locked directly to user interest. Pay only for actual, verified human views.
             </p>
           </div>
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>3</div>
             <p className={styles.stepText}>
-              <strong>Conversion Engine (Advertisers):</strong> Your ad budget goes directly to genuine listeners who watch for a minimum of 16 seconds. By having earning viewers, purchasing is easier, boosting your sales.
+              <strong>Conversion (Advertisers):</strong> We guarantee attention, not conversions. Every ad receives a minimum of 16 seconds of genuine viewer attention, but result depends on the quality of your offer and creative. Use that time wisely.
             </p>
           </div>
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>4</div>
             <p className={styles.stepText}>
-              <strong>Earn Rewards (Listeners):</strong> Select your real interests, scroll your personalized campaign feeds, and view matched ads for at least 16 seconds to earn payouts directly to your wallet.
+              <strong>Earn Rewards:</strong> Select your real interests, scroll your personalized campaign feeds, and view matched ads to earn payouts directly to your wallet.
             </p>
           </div>
           <div className={styles.stepItem}>
@@ -56,7 +56,7 @@ export default function FrontText() {
             </p>
           </div>
           <div className={styles.termsCallout}>
-            📖 Please read our <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations.
+            📖 Please read our <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations. We only decide to share rewards with genuine listeners.
           </div>
         </div>
       </div>
