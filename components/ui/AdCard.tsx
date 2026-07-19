@@ -455,7 +455,7 @@ export default function AdCard({
               {formatTimestamp(ad.created_at)}
             </span>
           </div>
-          <span className={styles.sponsorLabel}>Sponsored</span>
+          <span className={styles.sponsorLabel}>Ad</span>
         </div>
 
         {/* Product Name & Description (if product sales) */}
