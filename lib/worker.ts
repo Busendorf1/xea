@@ -179,4 +179,40 @@ campaignsWorker.on("failed", (job, err) => {
   console.error(`❌ Campaigns Worker: Job [${job?.name}] failed:`, err.message);
 });
 
-export default { feedWorker, campaignsWorker };
+// ----------------------------------------------------
+// HLS TRANSCODING QUEUE: ADAPTIVE BITRATE VIDEO JOBS
+// ----------------------------------------------------
+
+const hlsWorker = new Worker("hls-transcode-events", async (job) => {
+  const { sourceUrl, mediaId, bucketName, tableName, recordId } = job.data;
+  console.log(`🎥 HLS Worker: Transcoding video [${mediaId}] from ${sourceUrl}...`);
+
+  const { transcodeVideoToHLS } = await import("./utils/transcoder");
+  const result = await transcodeVideoToHLS(sourceUrl, mediaId, bucketName || "ad-media");
+
+  if (result.success && result.masterPlaylistUrl) {
+    console.log(`✅ HLS Worker: Successfully generated HLS for [${mediaId}]. Updating DB table [${tableName}]...`);
+    if (tableName && recordId) {
+      await supabaseAdmin
+        .from(tableName)
+        .update({ hls_url: result.masterPlaylistUrl })
+        .eq("id", recordId);
+    }
+  } else {
+    console.warn(`⚠️ HLS Worker: Transcoding did not produce HLS URL. Reason: ${result.error}`);
+  }
+}, {
+  connection: connectionOptions,
+  concurrency: 1, // CPU intensive task, transcode 1 video at a time per worker instance
+});
+
+hlsWorker.on("completed", (job) => {
+  console.log(`✅ HLS Worker: Job [${job.name}] finished transcoding.`);
+});
+
+hlsWorker.on("failed", (job, err) => {
+  console.error(`❌ HLS Worker: Job [${job?.name}] failed:`, err.message);
+});
+
+export default { feedWorker, campaignsWorker, hlsWorker };
+

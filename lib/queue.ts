@@ -40,3 +40,16 @@ export const campaignsQueue = new Queue("campaigns-events", {
     },
   },
 });
+
+export const hlsQueue = new Queue("hls-transcode-events", {
+  connection: connectionOptions,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 5000,
+    },
+    removeOnComplete: true,
+  },
+});
+

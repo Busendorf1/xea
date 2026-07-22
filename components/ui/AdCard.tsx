@@ -17,11 +17,13 @@ import {
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
-
+import HlsVideoPlayer from "./HlsVideoPlayer";
 
 export interface Ad {
   id: string;
   ad_media: string | null;
+  hls_url?: string | null;
+
   ad_content: string;
   action_phone?: string;
   action_whatsapp?: string;
@@ -500,19 +502,19 @@ export default function AdCard({
               }}
             >
               {mediaUrls.map((url, index) => {
-                const isVideo = /\.(mp4|webm|mov|avi)$/i.test(url);
+                const isVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(url);
                 return (
                   <div key={index} className={styles.mediaWrapper}>
                     {isVideo ? (
                       <div className={styles.webVideoContainer} onClick={(e) => e.stopPropagation()}>
-                        <video 
-                          ref={videoRef}
+                        <HlsVideoPlayer 
                           key={url}
-                          src={url} 
+                          src={url}
+                          hlsSrc={ad.hls_url || (url.endsWith(".m3u8") ? url : undefined)}
                           loop
                           autoPlay
-                          playsInline
                           muted={isMuted}
+                          controls={false}
                           className={styles.mediaVideo} 
                           onClick={togglePlay}
                           onPlay={() => setIsPlaying(true)}
@@ -527,6 +529,7 @@ export default function AdCard({
                             }
                           }}
                         />
+
 
                         {/* Custom sleek play/pause overlays */}
                         <div className={styles.webVideoClickable} onClick={togglePlay}>
