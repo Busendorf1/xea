@@ -21,6 +21,11 @@ export const metadata: Metadata = {
   title: "Paayh | Ads For Listeners",
   description:
     "Paayh is an attention-based digital advertising platform that fairly connects advertisers with genuine human attention. Secure ad deliverability or earn rewards for verified ad engagement.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
   openGraph: {
     title: "Paayh | Ads For Listeners",
     description:
@@ -30,19 +35,17 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
+        url: "/favicon.ico",
         alt: "Paayh - Ads For Listeners",
       },
     ],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "Paayh | Ads For Listeners",
     description:
       "A digital advertising platform designed to fairly connect advertisers with genuine human attention.",
-    images: ["/og-image.png"],
+    images: ["/favicon.ico"],
   },
   keywords: ["Paayh", "digital advertising", "attention marketplace"],
 };
