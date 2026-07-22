@@ -5,8 +5,14 @@ import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 import redisConnection from "@/lib/redis";
 
-const SECRET_KEY = process.env.AUTH0_SECRET || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
-const CACHE_TTL_SECONDS = 1800; // 30 minutes
+const SECRET_KEY = process.env.AUTH0_SECRET;
+if (!SECRET_KEY && process.env.NODE_ENV === "production") {
+  console.warn("⚠️ AUTH0_SECRET environment variable is missing.");
+}
+
+// Optimized TTLs for high-scalability candidate ID caching
+const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
+const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,33 +26,86 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const servedAt = Date.now();
 
-    // 1. Parse pagination and refresh parameters
+    // Parse pagination and refresh parameters
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get("limit") || "15", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
     const refresh = searchParams.get("refresh") === "true";
 
-    const emailKey = email.toLowerCase();
-    const adsCacheKey = `feed:ads:${emailKey}`;
+    const emailKey = email.toLowerCase().trim();
+    const adIdsCacheKey = `feed:ad_ids:${emailKey}`;
+    const legacyAdsCacheKey = `feed:ads:${emailKey}`;
     const profilesCacheKey = `feed:profiles:${emailKey}`;
 
-    let cachedAds: any[] = [];
+    let pageAds: any[] = [];
     let profilesMap: Record<string, any> = {};
 
-    // 2. Try to get cached feed from Redis unless refreshing or fetching page 0 with refresh
     let cacheHit = false;
+
+    // Try to retrieve cached candidate ad IDs and profiles unless refresh is requested
     if (!refresh) {
       try {
-        const [cachedAdsStr, cachedProfilesStr] = await Promise.all([
-          redisConnection.get(adsCacheKey),
+        const [cachedAdIdsStr, cachedProfilesStr] = await Promise.all([
+          redisConnection.get(adIdsCacheKey),
           redisConnection.get(profilesCacheKey),
         ]);
 
-        if (cachedAdsStr && cachedProfilesStr) {
-          cachedAds = JSON.parse(cachedAdsStr);
+        if (cachedAdIdsStr && cachedProfilesStr) {
+          const cachedAdIds: string[] = JSON.parse(cachedAdIdsStr);
           profilesMap = JSON.parse(cachedProfilesStr);
+
+          // Extract slice of IDs for the requested page
+          const slicedIds = cachedAdIds.slice(offset, offset + limit);
+
+          if (slicedIds.length > 0) {
+            // Fetch shared ad details from Redis in bulk
+            const detailKeys = slicedIds.map((id) => `ad:detail:${id}`);
+            const cachedDetailsRaw = await redisConnection.mget(...detailKeys);
+
+            const missingIds: string[] = [];
+            const fetchedDetailsMap: Record<string, any> = {};
+
+            cachedDetailsRaw.forEach((raw, idx) => {
+              const adId = slicedIds[idx];
+              if (raw) {
+                try {
+                  fetchedDetailsMap[adId] = JSON.parse(raw);
+                } catch {
+                  missingIds.push(adId);
+                }
+              } else {
+                missingIds.push(adId);
+              }
+            });
+
+            // Backfill missing ad details from Supabase if evicted from Redis
+            if (missingIds.length > 0) {
+              const { data: dbMissing, error: dbErr } = await supabaseReadOnly
+                .from("addsactive")
+                .select("*")
+                .in("id", missingIds);
+
+              if (!dbErr && dbMissing) {
+                const setPromises = dbMissing.map((ad: any) => {
+                  fetchedDetailsMap[ad.id] = ad;
+                  return redisConnection.set(
+                    `ad:detail:${ad.id}`,
+                    JSON.stringify(ad),
+                    "EX",
+                    AD_DETAIL_TTL_SECONDS
+                  );
+                });
+                await Promise.all(setPromises).catch((err) =>
+                  console.error("❌ Redis write error backfilling ad details:", err)
+                );
+              }
+            }
+
+            pageAds = slicedIds.map((id) => fetchedDetailsMap[id]).filter(Boolean);
+          }
+
           cacheHit = true;
-          console.log(`🚀 Feed cache hit for user: ${emailKey} (Offset: ${offset}, Limit: ${limit})`);
+          console.log(`🚀 Scalable Feed cache hit for user: ${emailKey} (Offset: ${offset}, Limit: ${limit})`);
         }
       } catch (err: any) {
         console.error("❌ Redis read error in feed route:", err.message || err);
@@ -68,7 +127,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      // Filter active ads (skip ads already completed)
+      // Filter active ads (skip ads already completed or expired)
       const candidateAds: any[] = [];
       (ads || []).forEach((ad: any) => {
         if (ad.completed_at) return;
@@ -80,18 +139,19 @@ export async function GET(req: NextRequest) {
           const diffTime = now.getTime() - createdAt.getTime();
           const diffDays = diffTime / (1000 * 60 * 60 * 24);
           if (diffDays > ad.campaign_days) {
-            return; // Exclude from feed
+            return;
           }
         }
         candidateAds.push(ad);
       });
 
-      // Shuffle candidate ads in memory to resolve random() DB bottleneck and provide variety
-      cachedAds = candidateAds.sort(() => 0.5 - Math.random());
+      // Shuffle candidate ads in memory
+      const shuffledCandidateAds = candidateAds.sort(() => 0.5 - Math.random());
+      const candidateAdIds = shuffledCandidateAds.map((a: any) => a.id);
 
       // Extract publisher emails to fetch basic profile info server-side
       const publisherEmails = Array.from(
-        new Set(cachedAds.map((ad: any) => ad.user_email).filter(Boolean))
+        new Set(shuffledCandidateAds.map((ad: any) => ad.user_email).filter(Boolean))
       ) as string[];
 
       if (publisherEmails.length > 0) {
@@ -113,25 +173,36 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Store in Redis cache
+      // Store shared ad details, candidate ID array, and profiles map in Redis
       try {
-        await Promise.all([
-          redisConnection.set(adsCacheKey, JSON.stringify(cachedAds), "EX", CACHE_TTL_SECONDS),
-          redisConnection.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", CACHE_TTL_SECONDS)
-        ]);
-        console.log(`✅ Cached ${cachedAds.length} candidate ads for user: ${emailKey}`);
+        const cacheOps: Promise<any>[] = [
+          redisConnection.set(adIdsCacheKey, JSON.stringify(candidateAdIds), "EX", USER_FEED_IDS_TTL_SECONDS),
+          redisConnection.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", USER_FEED_IDS_TTL_SECONDS),
+          redisConnection.del(legacyAdsCacheKey) // clear legacy heavy cache key if present
+        ];
+
+        // Cache individual ad objects in shared keys `ad:detail:${ad.id}`
+        shuffledCandidateAds.forEach((ad: any) => {
+          cacheOps.push(
+            redisConnection.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS)
+          );
+        });
+
+        await Promise.all(cacheOps);
+        console.log(`✅ Cached ${candidateAdIds.length} candidate ad IDs for user: ${emailKey}`);
       } catch (err: any) {
         console.error("❌ Redis write error in feed route:", err.message || err);
       }
+
+      // Slice requested page from shuffled candidate list
+      pageAds = shuffledCandidateAds.slice(offset, offset + limit);
     }
 
-    // 3. Slice the cached ads array for the requested page
-    const pageAds = cachedAds.slice(offset, offset + limit);
-
-    // 4. Sign each ad in the slice in memory to establish security signatures
+    // Sign each ad in the page slice in memory to establish security signatures
+    const activeSecretKey = SECRET_KEY || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
     const signedAds = pageAds.map((ad: any) => {
       const payload = `${ad.id}:${userId}:${servedAt}`;
-      const token = crypto.createHmac("sha256", SECRET_KEY).update(payload).digest("hex");
+      const token = crypto.createHmac("sha256", activeSecretKey).update(payload).digest("hex");
       return {
         id: ad.id,
         ad_type: ad.ad_type || null,

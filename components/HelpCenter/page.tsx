@@ -90,26 +90,29 @@ export default function HelpCenter({ session }: HelpCenterProps) {
 
     setSubmitting(true);
 
-    const { error: insertErr } = await supabase.from("help_tickets").insert([
-      {
-        user_email: form.email.toLowerCase().trim(),
-        name: form.name.trim(),
-        category: form.category,
-        subject: form.subject.trim(),
-        message: form.message.trim(),
-        status: "open",
-      },
-    ]);
+    try {
+      const response = await fetch("/api/helpcenter", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      });
 
-    if (insertErr) {
-      setError("Failed to submit. Please try again.");
+      const resData = await response.json();
+      if (!response.ok) {
+        setError(resData.error || "Failed to submit. Please try again.");
+      } else {
+        setSuccess(true);
+        setForm((prev) => ({ ...prev, subject: "", message: "" }));
+        setTimeout(() => setSuccess(false), 5000);
+      }
+    } catch (insertErr: any) {
+      setError("Failed to submit. Please check your connection and try again.");
       console.error(insertErr);
-    } else {
-      setSuccess(true);
-      setForm((prev) => ({ ...prev, subject: "", message: "" }));
-      setTimeout(() => setSuccess(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const statusBadge = (status: string) => {

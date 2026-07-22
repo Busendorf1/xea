@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     // Invalidate user's feed cache immediately so the next load/refresh excludes this ad
     const emailKey = email.toLowerCase().trim();
     await Promise.all([
+      redisConnection.del(`feed:ad_ids:${emailKey}`),
       redisConnection.del(`feed:ads:${emailKey}`),
       redisConnection.del(`feed:profiles:${emailKey}`),
     ]).catch((err) => console.error("❌ Redis feed cache delete error:", err));
