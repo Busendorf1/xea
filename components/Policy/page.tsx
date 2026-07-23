@@ -77,6 +77,9 @@ export default function PolicyPage() {
             </li>
             <li className={styles.listItem}>Ad creatives must be optimized for attention, engagement, and compliance.</li>
             <li className={styles.listItem}>Advertisers agree to honor all offers or claims made in ads.</li>
+            <li className={styles.listItem}>
+              <strong>Advertiser Liability:</strong> The advertiser is solely and fully liable for all advertising content submitted to and published through Paayh. Paayh operates strictly as a digital advertising medium and does not create, endorse, or assume responsibility for the content of any advertisement. By submitting an ad campaign, the advertiser accepts full legal liability for any claims, losses, damages, fines, or regulatory actions arising from their advertising content, including but not limited to violations of the ARCON Act 2022, the Nigerian Code of Advertising Practice, or any other applicable law or regulation. The advertiser agrees to indemnify and hold Paayh harmless from any such liability.
+            </li>
           </ol>
         </section>
 
@@ -236,8 +239,26 @@ export default function PolicyPage() {
           </ol>
         </section>
 
+        <section id="arcon-compliance">
+          <h2 className={styles.heading}>XVI. Advertising Regulatory Compliance (ARCON)</h2>
+          <ol className={styles.list}>
+            <li className={styles.listItem}>
+              <strong>Regulatory Acknowledgment:</strong> Paayh acknowledges the Advertising Regulatory Council of Nigeria (ARCON), established under the ARCON Act 2022, as the apex regulatory body for advertising in Nigeria. All advertising activities conducted on the Paayh platform that are directed at or exposed to the Nigerian market are subject to the provisions of the ARCON Act 2022 and the Nigerian Code of Advertising Practice.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Content Compliance and Takedown:</strong> Paayh reserves the right to immediately remove, suspend, or reject any advertisement that is reported as non-compliant with ARCON regulations, directed to be taken down by ARCON, or otherwise found to violate applicable advertising laws. No refund shall be issued for campaigns removed due to regulatory non-compliance by the advertiser.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Limitation of Platform Liability:</strong> Paayh, as an advertising medium, does not assume liability for the content of advertisements published on its platform. The advertiser, as the originator and sponsor of the advertising content, bears full legal responsibility and accepts all liability for any regulatory violations, consumer complaints, third-party claims, penalties, or damages arising from their advertisement. The advertiser agrees to indemnify, defend, and hold Paayh harmless against any such claims or losses.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Political Advertising:</strong> Advertisements of a political nature are available as an explicit advertiser category selection on Paayh. Users may opt in or out of viewing political advertisements through their interest preferences. All political advertisements must comply with ARCON regulations and applicable electoral advertising laws. The advertiser is solely responsible for ensuring political ad compliance.
+            </li>
+          </ol>
+        </section>
+
         <section>
-          <h2 className={styles.heading}>XVI. Contact</h2>
+          <h2 className={styles.heading}>XVII. Contact</h2>
           <p>
             For questions or clarifications, please visit our <a href="/help">Help Center</a>.
           </p>
