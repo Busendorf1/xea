@@ -131,6 +131,18 @@ const actionDetailsSchema = z.object({
       "Invalid link scheme"
     )
     .optional().or(z.literal("")),
+  watch_now: z
+    .string().max(150)
+    .refine((v) => !v || v.startsWith("https://"), "Video link must start with https://")
+    .refine(
+      (v) => !v || (!v.startsWith("javascript:") && !v.startsWith("data:") && !v.startsWith("file:")),
+      "Invalid link scheme"
+    )
+    .refine(
+      (v) => !v || !hasInjection(v),
+      "Video link contains disallowed content"
+    )
+    .optional().or(z.literal("")),
 }).optional();
 
 /** Step 3 — ad creative (non-product_sales) */

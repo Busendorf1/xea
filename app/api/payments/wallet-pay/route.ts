@@ -161,6 +161,7 @@ export async function POST(req: NextRequest) {
         p_product_cta_link: adData.productCtaLink || null,
         p_action_ios: adData.actionIos || null,
         p_action_android: adData.actionAndroid || null,
+        p_action_watch_now: adData.actionWatchNow || null,
       });
 
       if (rpcError) {

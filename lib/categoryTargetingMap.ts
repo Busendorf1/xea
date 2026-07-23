@@ -63,6 +63,7 @@ export const categoryTargetingMap: Record<AdCategory, TargetingMap> = {
     industry: [
       "Technology",
       "Finance",
+      "Entertainment",
       "Construction",
       "Real Estate",
       "Telecommunications",
@@ -79,6 +80,11 @@ export const categoryTargetingMap: Record<AdCategory, TargetingMap> = {
       "Tech",
       "Finance",
       "Online Courses",
+      "Movies",
+      "Comedy",
+      "Music",
+      "News",
+      "Shows",
     ],
     lifestyle: [
       "Career‑Driven",

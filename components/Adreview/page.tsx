@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FaPhone, FaWhatsapp, FaGlobe, FaEnvelope } from "react-icons/fa";
+import { FaPhone, FaWhatsapp, FaGlobe, FaEnvelope, FaVideo, FaApple, FaAndroid } from "react-icons/fa";
 import { Eye, Coins, UserPlus } from "lucide-react";
 import styles from "../Adreview/page.module.css"; // Your CSS module
 
@@ -59,6 +59,12 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
         return <FaGlobe />;
       case "email":
         return <FaEnvelope />;
+      case "ios":
+        return <FaApple />;
+      case "android":
+        return <FaAndroid />;
+      case "watch_now":
+        return <FaVideo />;
       default:
         return null;
     }
@@ -73,7 +79,12 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
       case "email":
         return `mailto:${actionDetails?.[type] || ""}`;
       case "website":
-        return actionDetails?.[type] || "#";
+      case "ios":
+      case "android":
+      case "watch_now": {
+        const val = actionDetails?.[type] || "";
+        return val ? (val.startsWith("http") ? val : `https://${val}`) : "#";
+      }
       default:
         return "#";
     }

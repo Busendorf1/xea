@@ -14,6 +14,7 @@ import {
   VolumeX,
   Apple,
   ChevronDown,
+  Video,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -31,6 +32,7 @@ export interface Ad {
   action_website?: string;
   action_ios?: string;
   action_android?: string;
+  action_watch_now?: string;
   ad_action_buttons?: string[];
   ad_action_button?: string;
   interest: string[] | string | null;
@@ -104,6 +106,7 @@ const getHref = (type: string, value: string) => {
     action_website: value.startsWith("http") ? value : `https://${value}`,
     action_ios: value.startsWith("http") ? value : `https://${value}`,
     action_android: value.startsWith("http") ? value : `https://${value}`,
+    action_watch_now: value.startsWith("http") ? value : `https://${value}`,
   };
   return map[type] || "#";
 };
@@ -260,6 +263,7 @@ export default function AdCard({
       action_email: <Mail size={14} strokeWidth={1.5} />,
       action_ios: <Apple size={14} strokeWidth={1.5} />,
       action_android: <Play size={14} strokeWidth={1.5} />,
+      action_watch_now: <Video size={14} strokeWidth={1.5} />,
       action_read_more: <ChevronDown size={14} strokeWidth={1.5} />,
     };
     return icons[type] || null;
@@ -365,6 +369,7 @@ export default function AdCard({
     "action_website",
     "action_ios",
     "action_android",
+    "action_watch_now",
     ...(ad.ad_action_buttons?.includes("read_more") ? ["action_read_more"] : []),
   ].filter((key) => key === "action_read_more" || ad[key as keyof Ad]) as string[];
 

@@ -84,7 +84,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     adMediaType: "" as AdMediaType | "",
     adContent: "",
     adMediaFiles: [] as File[],
-    adActionButtons: [] as ("phone" | "whatsapp" | "website" | "email" | "ios" | "android" | "read_more")[],
+    adActionButtons: [] as ("phone" | "whatsapp" | "website" | "email" | "ios" | "android" | "read_more" | "watch_now")[],
     actionDetails: {
       phone: "",
       whatsapp: "",
@@ -92,6 +92,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       email: "",
       ios: "",
       android: "",
+      watch_now: "",
     },
     displayMutualButton: false,
     productName: "",
@@ -220,6 +221,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         email: "",
         ios: "",
         android: "",
+        watch_now: "",
       },
       displayMutualButton: false,
       productName: "",
@@ -388,6 +390,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               actionEmail: formSelections.actionDetails.email || null,
               actionIos: formSelections.actionDetails.ios || null,
               actionAndroid: formSelections.actionDetails.android || null,
+              actionWatchNow: formSelections.actionDetails.watch_now || null,
               costPerImpression,
               totalCost,
               adMedia: mediaUrlString,
@@ -1010,6 +1013,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     if (adType === "business") {
                       baseButtons.push("ios", "android");
                     }
+                    if (adType === "business" || formSelections.adMediaType === "video") {
+                      baseButtons.push("watch_now");
+                    }
                     if (formSelections.adMediaType === "text") {
                       baseButtons.push("read_more");
                     }
@@ -1024,6 +1030,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                           website: "e.g. https://yourwebsite.com",
                           ios: "e.g. https://apps.apple.com/us/app/your-app",
                           android: "e.g. https://play.google.com/store/apps/details?id=your.app",
+                          watch_now: "e.g. https://youtube.com/watch?v=...",
                           read_more: "",
                         };
 
@@ -1055,7 +1062,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                                   });
                                 }}
                               />
-                              {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type.toUpperCase().replace("_", " ")}
+                              {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type === "watch_now" ? "WATCH NOW" : type.toUpperCase().replace("_", " ")}
                             </label>
                             {isSelected && type !== "read_more" && (
                               <input

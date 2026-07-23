@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const expectedToken = crypto.createHmac("sha256", activeSecretKey).update(payload).digest("hex");
     
     if (token !== expectedToken) {
-      return NextResponse.json({ error: "Invalid Proof-of-View token" }, { status: 400 });
+      return NextResponse.json({ error: "Please refresh" }, { status: 400 });
     }
 
     const now = Date.now();
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Enforce 30-minute maximum token age
     if (viewDuration > 1800000) {
-      return NextResponse.json({ error: "Proof-of-View token has expired. Please refresh the feed." }, { status: 400 });
+      return NextResponse.json({ error: "Please refresh" }, { status: 400 });
     }
 
     // 4. Enqueue the task to Redis Queue for high-concurrency buffering
