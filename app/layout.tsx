@@ -35,7 +35,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/favicon.ico",
+        url: "/image/og-image.png",
+        width: 512,
+        height: 512,
         alt: "Paayh - Ads For Listeners",
       },
     ],
@@ -45,7 +47,7 @@ export const metadata: Metadata = {
     title: "Paayh | Ads For Listeners",
     description:
       "A digital advertising platform designed to fairly connect advertisers with genuine human attention.",
-    images: ["/favicon.ico"],
+    images: ["/image/og-image.png"],
   },
   keywords: ["Paayh", "digital advertising", "attention marketplace"],
 };
