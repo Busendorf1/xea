@@ -1,7 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { countryList, locationData } from "@/lib/utils/locations";
+import { detectGpsLocation } from "@/lib/utils/locationHelper";
+
 
 interface LocationSelectorProps {
   country: string;
@@ -15,6 +17,7 @@ interface LocationSelectorProps {
   cityLabel?: string; // e.g. "Province" or "City/Location details"
   showLabels?: boolean;
   disabled?: boolean;
+  showGpsButton?: boolean;
 }
 
 export default function LocationSelector({
@@ -29,7 +32,24 @@ export default function LocationSelector({
   cityLabel = "City/Location details",
   showLabels = true,
   disabled = false,
+  showGpsButton = false,
 }: LocationSelectorProps) {
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null);
+
+  const handleDetectGps = async () => {
+    setGpsLoading(true);
+    setGpsStatus("Detecting location via GPS...");
+    const res = await detectGpsLocation();
+    setGpsLoading(false);
+    if (res.error) {
+      setGpsStatus(`⚠️ ${res.error}`);
+    } else {
+      onChange({ country: res.country, state: res.state, location: res.location });
+      setGpsStatus(`✓ GPS Location Detected: ${res.location ? res.location + ", " : ""}${res.state}, ${res.country}`);
+    }
+  };
+
   const isPredefinedCountry = countryList.includes(country);
   const selectedCountryOption = country ? (isPredefinedCountry ? country : "Other") : "";
 
@@ -40,6 +60,7 @@ export default function LocationSelector({
   const citiesList = isPredefinedState ? statesList.find((s) => s.name === state)?.cities || [] : [];
   const isPredefinedCity = citiesList.includes(location);
   const selectedCityOption = location ? (isPredefinedCity ? location : "Other") : "";
+
 
   const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -70,6 +91,42 @@ export default function LocationSelector({
 
   return (
     <>
+      {showGpsButton && (
+        <div style={{ gridColumn: "1 / -1", marginBottom: "0.75rem" }}>
+          <button
+            type="button"
+            onClick={handleDetectGps}
+            disabled={disabled || gpsLoading}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.65rem 1.25rem",
+              borderRadius: "8px",
+              backgroundColor: "rgba(59, 130, 246, 0.12)",
+              color: "#2563eb",
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              cursor: disabled || gpsLoading ? "not-allowed" : "pointer",
+              transition: "all 0.2s ease"
+            }}
+          >
+            📍 {gpsLoading ? "Detecting GPS Location..." : "Auto-Detect Location (GPS)"}
+          </button>
+          {gpsStatus && (
+            <p style={{
+              fontSize: "0.83rem",
+              marginTop: "0.4rem",
+              fontWeight: 500,
+              color: gpsStatus.startsWith("✓") ? "#16a34a" : gpsStatus.startsWith("⚠️") ? "#dc2626" : "#475569"
+            }}>
+              {gpsStatus}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Country Select */}
       <div className={groupClass}>
         {showLabels && <label className={labelClass}>Country</label>}
