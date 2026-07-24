@@ -285,3 +285,30 @@ export const TARGETING_DIMENSIONS: TargetingDimension[] = [
   "behavior",
   "personality",
 ];
+
+/**
+ * Extract all unique targeting options for a given dimension across all ad categories.
+ * Guarantees that /profile-setup, profile updates, and /adPage remain 100% in sync automatically.
+ */
+export function getUniqueTargetingOptions(dimension: TargetingDimension): string[] {
+  const optionsSet = new Set<string>();
+  (Object.keys(categoryTargetingMap) as AdCategory[]).forEach((cat) => {
+    categoryTargetingMap[cat][dimension]?.forEach((opt) => optionsSet.add(opt));
+  });
+  return Array.from(optionsSet);
+}
+
+export const ALL_INDUSTRIES: string[] = getUniqueTargetingOptions("industry");
+export const ALL_INTERESTS: string[] = getUniqueTargetingOptions("interest");
+export const ALL_LIFESTYLES: string[] = getUniqueTargetingOptions("lifestyle");
+export const ALL_BEHAVIORS: string[] = getUniqueTargetingOptions("behavior");
+export const ALL_PERSONALITY_TRAITS: string[] = getUniqueTargetingOptions("personality");
+
+export const ALL_TARGETING_OPTIONS: Record<TargetingDimension, string[]> = {
+  industry: ALL_INDUSTRIES,
+  interest: ALL_INTERESTS,
+  lifestyle: ALL_LIFESTYLES,
+  behavior: ALL_BEHAVIORS,
+  personality: ALL_PERSONALITY_TRAITS,
+};
+

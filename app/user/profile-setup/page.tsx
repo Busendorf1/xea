@@ -9,54 +9,14 @@ import Footer from "@/components/Footer/page";
 import LocationSelector from "@/components/LocationSelector";
 import { profileSetupStep1Schema } from "@/lib/validationSchemas";
 
-const industries = [
-  "Technology", "Healthcare", "Finance", "Education", "Retail", "Construction",
-  "Real Estate", "Hospitality", "Transportation", "Media", "Entertainment",
-  "Telecommunications", "Energy", "Legal", "Marketing", "Insurance",
-  "Government", "Nonprofit", "Manufacturing", "Logistics", "Security",
-  "Consulting", "Design", "Agriculture", "Automotive", "Mining",
-  "Politics", "Religion", "NGO", "Environmental", "Diversity & Inclusion"
-];
+import {
+  ALL_INDUSTRIES as industries,
+  ALL_INTERESTS as interests,
+  ALL_BEHAVIORS as behaviors,
+  ALL_LIFESTYLES as lifestyles,
+  ALL_PERSONALITY_TRAITS as personalityTraits,
+} from "@/lib/categoryTargetingMap";
 
-const interests = [
-  "Jobs", "Business", "Investing", "Fashion", "Fitness", "Sports",
-  "Health", "Travel", "Education", "Tech", "Gaming", "Politics",
-  "Religion", "Movies", "Music", "Lifestyle", "Shopping", "Books",
-  "Beauty", "Home Decor", "Parenting", "Spirituality", "Cars", "Cooking",
-  "Photography", "Volunteering", "Environment", "Dating", "Finance",
-  "Online Courses"
-];
-
-const behaviors = [
-  "Online Shopper", "Window Shopper", "Impulsive Buyer", "Researcher",
-  "High Engagement", "Clicks Ads", "Saves Products", "Abandons Cart",
-  "Subscribes Newsletters", "Downloads Freebies", "Shares Content",
-  "Buys via Referral", "Attends Webinars", "Engages with Polls",
-  "Searches Reviews", "Watches How‑To Videos", "Follows Brands",
-  "Uses Coupons", "Buys in Sales", "Daily App User", "Loyal Customer",
-  "Early Adopter", "Price‑Sensitive", "Mobile‑first", "Night User",
-  "Seeks Deals", "Prefers Premium", "Needs Instant Response",
-  "Reviews Often", "Follows Influencers"
-];
-
-const lifestyles = [
-  "Luxury‑Seeking", "Minimalist", "Eco‑Conscious", "Fitness‑Oriented",
-  "Family‑Oriented", "Adventurous", "Spiritual", "Career‑Driven",
-  "Budget‑Conscious", "Tech‑Savvy", "Pet Lover", "Urban Dweller",
-  "Countryside Living", "Night Owl", "Early Riser", "Remote Worker",
-  "Frequent Flyer", "Homebody", "Volunteer‑Minded", "Art Enthusiast",
-  "Foodie", "DIYer", "Health Nut", "Social Butterfly", "Solo Traveler",
-  "Workaholic", "Balanced Life", "Digital Nomad", "Collector", "Gamer"
-];
-
-const personalityTraits = [
-  "Introvert", "Extrovert", "Ambitious", "Creative", "Analytical",
-  "Empathetic", "Pragmatic", "Optimistic", "Pessimistic", "Curious",
-  "Disciplined", "Spontaneous", "Confident", "Cautious", "Assertive",
-  "Playful", "Serious", "Flexible", "Meticulous", "Innovative",
-  "Traditional", "Adventurous", "Skeptical", "Dependable", "Perfectionist",
-  "Kind‑Hearted", "Leader", "Follower", "Observer", "Strategic"
-];
 
 export default function ProfileSetup() {
   const { user: authUser, isLoading: authLoading } = useUser();

@@ -16,15 +16,10 @@ interface Session {
 type NewsProps = {
   session: Session;
 };
-const interests = [
-  "Jobs", "Business", "Investing", "Fashion", "Fitness", "Sports",
-  "Health", "Travel", "Education", "Tech", "Gaming", "Politics",
-  "Religion", "Movies", "Music", "Lifestyle", "Shopping", "Books",
-  "Beauty", "Home Decor", "Parenting", "Spirituality", "Cars", "Cooking",
-  "Photography", "Volunteering", "Environment", "Dating", "Finance",
-  "Online Courses"
-];
+import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
+
 const steps = ["Media", "Title", "Content", "Interest", "Preview"];
+
 
 const formatCurrency = (amount: number | string) => {
   const val = typeof amount === "string" ? parseFloat(amount) : amount;

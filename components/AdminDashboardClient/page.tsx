@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import styles from "./page.module.css";
 import { v4 as uuidv4 } from "uuid";
+import { ALL_INDUSTRIES, ALL_INTERESTS } from "@/lib/categoryTargetingMap";
+
 
 interface AdminDashboardClientProps {
   session: {
@@ -224,22 +226,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [highlightFormFile, setHighlightFormFile] = useState<File | null>(null);
 
   // Database lists for categories
-  const industriesList = [
-    "Technology", "Healthcare", "Finance", "Education", "Retail", 
-    "Construction", "Real Estate", "Hospitality", "Transportation", 
-    "Media", "Entertainment", "Telecommunications", "Energy", "Legal", 
-    "Marketing", "Insurance", "Government", "Nonprofit", "Manufacturing", 
-    "Logistics", "Security", "Consulting", "Design", "Agriculture", 
-    "Automotive", "Mining", "Politics", "Religion", "NGO", "Environmental"
-  ];
-  
-  const interestsList = [
-    "Jobs", "Business", "Investing", "Fashion", "Fitness", "Sports", 
-    "Health", "Travel", "Education", "Tech", "Gaming", "Politics", 
-    "Religion", "Movies", "Music", "Lifestyle", "Shopping", "Books", 
-    "Beauty", "Home Decor", "Parenting", "Spirituality", "Cars", 
-    "Cooking", "Photography", "Volunteering", "Environment", "Dating"
-  ];
+  const industriesList = ALL_INDUSTRIES;
+  const interestsList = ALL_INTERESTS;
+
 
   // ----------------------------------------------------
   // DATA FETCHING & TELEMETRY
