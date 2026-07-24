@@ -8,7 +8,6 @@ import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
 import LocationSelector from "@/components/LocationSelector";
 import { profileSetupStep1Schema } from "@/lib/validationSchemas";
-import { detectGpsLocation } from "@/lib/utils/locationHelper";
 
 
 import {
@@ -63,22 +62,6 @@ export default function ProfileSetup() {
     }
   }, [authUser, authLoading, router]);
 
-  // Automatically request GPS location on step 1 mount if country is empty
-  useEffect(() => {
-    if (step === 1 && !formData.country) {
-      detectGpsLocation().then((res) => {
-        if (!res.error && res.country) {
-          setFormData((prev) => ({
-            ...prev,
-            country: res.country,
-            state: res.state,
-            location: res.location,
-          }));
-        }
-      });
-    }
-  }, [step]);
-
 
   const toggleDropdown = (key: keyof typeof openDropdowns) => {
     setOpenDropdowns(prev => ({ ...prev, [key]: !prev[key] }));
@@ -99,6 +82,15 @@ export default function ProfileSetup() {
 
   const validateStep1 = () => {
     setFieldErrors({});
+
+    // Location is required — GPS toggle must be enabled and detected
+    if (!formData.country || !formData.state || !formData.location) {
+      const msg = "Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.";
+      setErrorMessage(msg);
+      setFieldErrors({ country: "Required", state: "Required", location: "Required" });
+      return false;
+    }
+
     const result = profileSetupStep1Schema.safeParse(formData);
     if (!result.success) {
       const errs: Record<string, string> = {};
@@ -306,7 +298,7 @@ export default function ProfileSetup() {
                     groupClass={styles.inputGroup}
                     cityGroupClass={styles.inputGroupFull}
                     cityLabel="City/Location details"
-                    showGpsButton={true}
+                    gpsEnforced={true}
                   />
 
                   <div className={styles.inputGroupFull}>

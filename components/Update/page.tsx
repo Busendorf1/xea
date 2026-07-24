@@ -172,10 +172,20 @@ export default function Update({ email }: Props) {
   const handleUpdate = async () => {
     if (!dbProfile) return;
 
+    // Location is required — must be detected via GPS toggle
+    const resolvedCountry = formData.country ? formData.country : dbProfile.country;
+    const resolvedState = formData.state ? formData.state : dbProfile.state;
+    const resolvedLocation = formData.location ? formData.location : dbProfile.location;
+    if (!resolvedCountry || !resolvedState || !resolvedLocation) {
+      setStatus("⚠️ Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.");
+      return;
+    }
+
     if (timeRemaining !== null && timeRemaining > 0) {
       setStatus("⚠️ You can only update your profile once every 30 days.");
       return;
     }
+
 
     setLoading(true);
     setStatus("⏳ Checking update eligibility...");
@@ -452,6 +462,7 @@ export default function Update({ email }: Props) {
             cityGroupClass={styles.formGroup}
             cityLabel="City/Location"
             disabled={isFormDisabled}
+            gpsEnforced={true}
           />
 
           <div className={styles.formGroup}>
