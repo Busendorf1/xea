@@ -13,8 +13,10 @@ interface AdInteractionHandlerProps {
   isMutualTarget: boolean;
   isAlreadyMutual: boolean;
   viewerProfile: {
+    balance: number;
     mutual_count: number;
     mutuals: string[];
+    monetized: boolean;
   } | null;
   isProcessing: boolean;
   isSuspended: boolean;
@@ -358,31 +360,33 @@ export default function AdInteractionHandler({
                 )}
               </button>
 
-              {/* Earn+ Button */}
-              <button
-                className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
-                type="button"
-                disabled={isProcessing || !!activeAction}
-                onClick={() => handleAction("earn", () => onAdEarn(ad))}
-                title="Earn from this ad"
-              >
-                {activeAction === "earn" ? (
-                  <>
-                    <Loader2 size={11} className={styles.spinner} />
-                    <span>Earn...</span>
-                  </>
-                ) : successAction === "earn" ? (
-                  <>
-                    <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                    <span>Earned</span>
-                  </>
-                ) : (
-                  <>
-                    <Coins size={11} strokeWidth={2} />
-                    <span>Earn+</span>
-                  </>
-                )}
-              </button>
+              {/* Earn+ Button — only visible when monetized */}
+              {viewerProfile?.monetized && (
+                <button
+                  className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
+                  type="button"
+                  disabled={isProcessing || !!activeAction}
+                  onClick={() => handleAction("earn", () => onAdEarn(ad))}
+                  title="Earn from this ad"
+                >
+                  {activeAction === "earn" ? (
+                    <>
+                      <Loader2 size={11} className={styles.spinner} />
+                      <span>Earn...</span>
+                    </>
+                  ) : successAction === "earn" ? (
+                    <>
+                      <Check size={11} strokeWidth={2} className={styles.tickIcon} />
+                      <span>Earned</span>
+                    </>
+                  ) : (
+                    <>
+                      <Coins size={11} strokeWidth={2} />
+                      <span>Earn+</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* Mutual+ Button */}
               {ad.display_mutual_button === true && !isAlreadyMutual && (
