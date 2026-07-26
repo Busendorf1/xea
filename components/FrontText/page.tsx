@@ -80,7 +80,7 @@ export default function FrontText() {
             <span className={styles.gradientText}>Get Rewarded For It.</span>
           </h1> */}
           <p className={styles.subtitle}>
-          100% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
+          99.99% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
           </p>
 
           <div className={styles.howItWorksWrapper}>
