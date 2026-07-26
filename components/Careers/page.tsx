@@ -23,8 +23,7 @@ export default function Careers() {
 
         <h2 className={styles.heading}>Open Roles</h2>
         <p className={styles.text}>
-          We are constantly looking for talented and creative individuals. Whether you specialize in 
-          React/Next.js engineering, React Native / Expo mobile development, backend API scaling, or 
+          We are constantly looking for talented and creative individuals. Whether you specialize in backend API scaling, or 
           product design, we would love to hear from you.
         </p>
 

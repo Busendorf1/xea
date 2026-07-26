@@ -25,7 +25,7 @@ const faqs = [
   {
     question: "How does ad viewing and impression tracking work?",
     answer:
-      "When you watch an ad and click \"Seen,\" \"Earn,\" or \"Mutual,\" that counts as one impression, confirming the ad was successfully delivered to a real person. After the impression is recorded, the ad is removed from your feed. Each ad is only shown to you once per campaign."
+      "When you watch an ad and click \"Seen,\" \"Earn,\" or \"Mutual,\" that counts as one impression, confirming the ad was successfully delivered to a real person. After the impression is recorded, the ad is removed from your feed. Each ad is only shown to you once per campaign, unless  you are retargetted."
   },
   {
     question: "Do I have to watch ads?",

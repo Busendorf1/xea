@@ -1,6 +1,6 @@
 .container {
   max-width: 960px;
-  margin: 6.5rem auto 3rem auto;
+  margin: 1.5rem auto 3rem auto;
   padding: 2rem;
   font-family: var(--font-geist-sans), "Inter", sans-serif;
   background-color: var(--card-bg);

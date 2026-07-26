@@ -236,7 +236,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
           <div className={styles.loginPrompt}>
             <p>
               <a href="/auth/login?connection=google-oauth2">Sign in</a> to see
-              your submitted requests and admin replies.
+              your submitted requests and replies.
             </p>
           </div>
         ) : loadingTickets ? (
