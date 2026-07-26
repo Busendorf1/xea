@@ -68,7 +68,7 @@
 
 @media screen and (max-width: 768px) {
   .container {
-    margin-top: 5.5rem;
+    margin-top: 0.2rem;
     padding: 1.5rem 1rem;
     border-radius: 12px;
   }

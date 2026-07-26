@@ -23,7 +23,7 @@ export default function PolicyPage() {
           <h2 className={styles.heading}>II. Definitions</h2>
           <p>The following terms are used throughout this document:</p>
           <ul className={styles.list}>
-            <li className={styles.listItem}><strong>&quot;Paayh&quot;</strong> refers to the platform, including the application, website, and all associated services.</li>
+            <li className={styles.listItem}><strong>&quot;Paayh&quot;</strong> refers to the platform, we, including the application, website, and all associated services.</li>
             <li className={styles.listItem}><strong>&quot;Advertiser&quot;</strong> refers to any individual or organisation that posts an advertisement or promotional campaign on Paayh.</li>
             <li className={styles.listItem}><strong>&quot;User&quot;</strong> (also referred to as &quot;Listener&quot;) refers to any registered individual who views or interacts with content on the platform.</li>
             <li className={styles.listItem}><strong>&quot;Highlights&quot;</strong> are short promotional ads that appear every 10 minutes and automatically expire after 24 hours.</li>
