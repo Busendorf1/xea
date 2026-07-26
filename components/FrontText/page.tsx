@@ -43,16 +43,11 @@ export default function FrontText() {
               <strong>Earn Rewards:</strong> Select your real interests, scroll your personalized campaign feeds, and view matched ads to earn payouts directly to your wallet.
             </p>
           </div>
+          
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>5</div>
             <p className={styles.stepText}>
-              <strong>Compensatory Program:</strong> Payouts are entirely compensatory and belong to the platform. We reserve the right to withdraw, modify, or suspend the payout program at any time, sharing rewards only with genuine listeners.
-            </p>
-          </div>
-          <div className={styles.stepItem}>
-            <div className={styles.stepNum}>6</div>
-            <p className={styles.stepText}>
-              <strong>Eligibility for Earning:</strong> Only monetized profiles (Standard or Instant Monetization) with active, genuine interest settings are eligible for payout withdrawals. Suspicious click velocity, bots, or farming activity will trigger automated suspensions.
+              <strong>Eligibility for Earning:</strong> Only monetized profiles with active, genuine interest settings are eligible for payout withdrawals. Suspicious click velocity, bots, or farming activity will trigger automated suspensions.
             </p>
           </div>
           <div className={styles.termsCallout}>
@@ -167,7 +162,7 @@ export default function FrontText() {
             </a>
 
             <div className={styles.cardFooter}>
-              <p>🔒 Secured by Auth0 Universal Identity System.</p>
+              {/* <p>🔒 Secured by Auth0.</p> */}
               <p>By signing in, you agree to our <Link href="/privacy">Terms &amp; Conditions</Link>.</p>
               <p style={{ fontSize: "0.7rem", opacity: 0.45, marginTop: "0.25rem", fontStyle: "italic" }}>
                 We are all humans here!
