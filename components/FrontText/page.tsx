@@ -40,7 +40,7 @@ export default function FrontText() {
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>4</div>
             <p className={styles.stepText}>
-              <strong>Earn Rewards:</strong> Select your real interests, scroll your personalized campaign feeds, and view matched ads to earn payouts directly to your wallet.
+              <strong>Earn Rewards:</strong> Select your interests, scroll your personalized campaign feeds, and view matched ads to earn payouts directly to your wallet.
             </p>
           </div>
           
@@ -51,7 +51,7 @@ export default function FrontText() {
             </p>
           </div>
           <div className={styles.termsCallout}>
-            📖 Please read our <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations. We only decide to share rewards with genuine listeners.
+            Please read our <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations. We only decide to share rewards with genuine listeners.
           </div>
         </div>
       </div>
@@ -164,9 +164,9 @@ export default function FrontText() {
             <div className={styles.cardFooter}>
               {/* <p>🔒 Secured by Auth0.</p> */}
               <p>By signing in, you agree to our <Link href="/privacy">Terms &amp; Conditions</Link>.</p>
-              <p style={{ fontSize: "0.7rem", opacity: 0.45, marginTop: "0.25rem", fontStyle: "italic" }}>
+              {/* <p style={{ fontSize: "0.7rem", opacity: 0.45, marginTop: "0.25rem", fontStyle: "italic" }}>
                 We are all humans here!
-              </p>
+              </p> */}
             </div>
           </div>
         </div>
