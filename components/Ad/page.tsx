@@ -1276,6 +1276,16 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     </div>
                   </div>
                 </div>
+
+                {/* Attention Economy Bidding Market Ticker */}
+                <AttentionMarketTicker
+                  selectedCategory={adType}
+                  isBiddingEnabled={isBiddingEnabled}
+                  onToggleBidding={setIsBiddingEnabled}
+                  bidPrice={bidPrice}
+                  onBidPriceChange={setBidPrice}
+                  impressions={formSelections.impressions}
+                />
               </div>
             )}
             {step === 5 && (
@@ -1294,16 +1304,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   productPrice={formSelections.productPrice}
                   productCtaType={formSelections.productCtaType}
                   productCtaLink={formSelections.productCtaLink}
-                />
-
-                {/* Attention Economy Bidding Market Ticker */}
-                <AttentionMarketTicker
-                  selectedCategory={adType}
-                  isBiddingEnabled={isBiddingEnabled}
-                  onToggleBidding={setIsBiddingEnabled}
-                  bidPrice={bidPrice}
-                  onBidPriceChange={setBidPrice}
-                  impressions={formSelections.impressions}
                 />
 
                 <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem", padding: "1.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>

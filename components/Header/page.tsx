@@ -214,7 +214,9 @@ export default function Header() {
             </div>
 
             <nav className={`${styles.mobileNav} ${menuActive ? styles.showMenu : ""}`}>
-              {!isLoading && user ? (
+              {isLoading ? (
+                <div style={{ height: 36 }} />
+              ) : user ? (
                 <>
                   <Link href="/user/dashboard" className={styles.navLink} onClick={toggleMenu}>
                     Dashboard
@@ -246,7 +248,9 @@ export default function Header() {
             </Link>
             {user && renderNotificationBell()}
             {renderThemeSwitcher()}
-            {!isLoading && user ? (
+            {isLoading ? (
+              <div style={{ width: 80, height: 36 }} />
+            ) : user ? (
               <>
                 <Link href="/user/dashboard" className={styles.dashboardBtn}>
                   Dashboard

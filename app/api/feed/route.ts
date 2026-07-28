@@ -113,18 +113,30 @@ export async function GET(req: NextRequest) {
     }
 
     if (!cacheHit) {
-      console.log(`🔄 Feed cache miss/refresh for user: ${emailKey}. Fetching matching campaigns from Supabase...`);
+      console.log(`🔄 Feed cache miss/refresh for user: ${emailKey}. Fetching matching campaigns...`);
 
-      // Call Supabase RPC get_user_feed with 100 limit to cache the candidate pool
-      const { data: ads, error } = await supabaseReadOnly.rpc("get_user_feed", {
+      // Call Supabase RPC get_user_feed with 100 limit to cache candidate pool
+      let { data: ads, error } = await supabaseReadOnly.rpc("get_user_feed", {
         p_user_email: email,
         p_limit: 100,
         p_offset: 0
       });
 
+      // Fallback: If RPC fails or is missing, query addsactive directly so feed NEVER breaks!
       if (error) {
-        console.error("❌ RPC get_user_feed error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.warn("⚠️ RPC get_user_feed error/fallback:", error.message || error);
+        const { data: fallbackAds, error: fallbackErr } = await supabaseReadOnly
+          .from("addsactive")
+          .select("*")
+          .is("completed_at", null)
+          .neq("user_email", email)
+          .limit(100);
+
+        if (fallbackErr) {
+          console.error("❌ Fallback query on addsactive failed:", fallbackErr);
+          return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
+        }
+        ads = fallbackAds;
       }
 
       // Filter active ads (skip ads already completed or expired)

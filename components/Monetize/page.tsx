@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import styles from "./page.module.css";
 import Link from "next/link";
 import Footer from "../Footers/page";
-import { ShieldCheck, Zap, AlertTriangle, ArrowRight, CheckCircle2, Clock, Activity } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Activity } from "lucide-react";
 
 interface Session {
   user?: {
@@ -65,7 +65,7 @@ export default function Monetize({ session }: MonetizeProps) {
         <div className={styles.header}>
           <h1 className={styles.title}>Account Monetization</h1>
           <p className={styles.subtitle}>
-            Monetization on Xea is 100% free! Complete 300 ad clicks (views & mutuals) to activate your account monetization. No payments required.
+            Monetization on Paayh is 100% free! Complete 300 ad clicks (seens & mutuals) to activate your account monetization. No payments required.
           </p>
         </div>
 
@@ -91,7 +91,7 @@ export default function Monetize({ session }: MonetizeProps) {
                     </h2>
                     <p className={styles.statusSub}>
                       {isMonetized
-                        ? "Congratulations! Your account is fully monetized. You can now earn on bidded ads."
+                        ? "Congratulations! Your account is fully monetized. You can now earn on ads."
                         : `Complete 300 ad interactions to unlock full account monetization.`}
                     </p>
                   </div>
@@ -102,46 +102,64 @@ export default function Monetize({ session }: MonetizeProps) {
               </div>
             </div>
 
-            {/* 300 Clicks Progress Card */}
-            <div className={styles.progressCard}>
-              <h3 className={styles.cardSectionTitle}>300 Clicks Progress Tracker</h3>
-              
-              <div className={styles.metricsGrid}>
-                <div className={styles.metricBox}>
-                  <span className={styles.metricLabel}>Clicks Achieved</span>
-                  <strong className={styles.metricValue}>{clicksCount} / 300</strong>
+            {/* If NOT Monetized: Show 300 Clicks Progress Tracker & Onboarding Explainer */}
+            {!isMonetized && (
+              <>
+                {/* 300 Clicks Progress Card */}
+                <div className={styles.progressCard}>
+                  <h3 className={styles.cardSectionTitle}>300 Clicks Progress Tracker</h3>
+                  
+                  <div className={styles.metricsGrid}>
+                    <div className={styles.metricBox}>
+                      <span className={styles.metricLabel}>Clicks Achieved</span>
+                      <strong className={styles.metricValue}>{clicksCount} / 300</strong>
+                    </div>
+
+                    <div className={styles.metricBox}>
+                      <span className={styles.metricLabel}>Clicks Remaining</span>
+                      <strong className={styles.metricValueRemaining}>
+                        {clicksRemaining} clicks
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className={styles.progressBarWrapper}>
+                    <div className={styles.progressBarTrack}>
+                      <div
+                        className={styles.progressBarFill}
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                    <div className={styles.progressLabelRow}>
+                      <span>0 clicks</span>
+                      <span className={styles.progressPercentText}>{progressPercent}% Achieved</span>
+                      <span>300 clicks Goal</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.ctaRow}>
+                    <Link href="/" className={styles.feedBtn}>
+                      <span>Go to Feed to Earn Clicks</span>
+                      <ArrowRight size={16} />
+                    </Link>
+                  </div>
                 </div>
 
-                <div className={styles.metricBox}>
-                  <span className={styles.metricLabel}>Clicks Remaining</span>
-                  <strong className={styles.metricValueRemaining}>
-                    {isMonetized ? "0 (Goal Achieved)" : `${clicksRemaining} clicks`}
-                  </strong>
+                {/* Button Rules Explainer */}
+                <div className={styles.infoCard}>
+                  <h4 className={styles.infoTitle}>How Button Visibility & Earnings Work</h4>
+                  <ul className={styles.infoList}>
+                    <li>
+                      <strong>Not Monetized Accounts</strong>: You can see and use the <strong>"Seen"</strong> and <strong>"Mutual"</strong> buttons on ad cards. Every interaction adds 1 click to your 300 clicks progress.
+                    </li>
+                    <li>
+                      <strong>Monetized Accounts</strong>: Once you hit 300 clicks, your account automatically unlocks the <strong>"Earn+"</strong> button, allowing you to earn cash directly into your wallet balance on ads.
+                    </li>
+                  </ul>
                 </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className={styles.progressBarWrapper}>
-                <div className={styles.progressBarTrack}>
-                  <div
-                    className={styles.progressBarFill}
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-                <div className={styles.progressLabelRow}>
-                  <span>0 clicks</span>
-                  <span className={styles.progressPercentText}>{progressPercent}% Achieved</span>
-                  <span>300 clicks Goal</span>
-                </div>
-              </div>
-
-              <div className={styles.ctaRow}>
-                <Link href="/" className={styles.feedBtn}>
-                  <span>Go to Feed to Earn Clicks</span>
-                  <ArrowRight size={16} />
-                </Link>
-              </div>
-            </div>
+              </>
+            )}
 
             {/* 7-Day Inactivity Warning Card */}
             <div className={styles.policyCard}>
@@ -150,21 +168,8 @@ export default function Monetize({ session }: MonetizeProps) {
                 <h4>7-Day Activity Policy</h4>
               </div>
               <p className={styles.policyDesc}>
-                To maintain monetization, you must remain an active community member. If you are inactive (no ad views or interactions) for <strong>7 consecutive days</strong>, your monetization status will be withdrawn and your click counter will reset to 0. Upon returning, you will need to complete 300 clicks all over again.
+                To maintain monetization, you must remain an active community member. If you are inactive (no clicks or interactions) for 7 consecutive days, your monetization status will be withdrawn and your click counter will reset to 0. Upon returning, you will need to complete 300 clicks all over again.
               </p>
-            </div>
-
-            {/* Button Rules Explainer */}
-            <div className={styles.infoCard}>
-              <h4 className={styles.infoTitle}>How Button Visibility & Earnings Work</h4>
-              <ul className={styles.infoList}>
-                <li>
-                  <strong>Not Monetized Accounts</strong>: You can see and use the <strong>"Seen"</strong> and <strong>"Mutual"</strong> buttons on ad cards. Every interaction adds 1 click to your 300 clicks progress.
-                </li>
-                <li>
-                  <strong>Monetized Accounts</strong>: Once you hit 300 clicks, your account automatically unlocks the <strong>"Earn+"</strong> button, allowing you to earn cash directly into your wallet balance on bidded ads.
-                </li>
-              </ul>
             </div>
           </div>
         )}

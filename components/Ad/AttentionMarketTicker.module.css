@@ -2,21 +2,20 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 14px;
   padding: 16px;
   margin-top: 16px;
   margin-bottom: 24px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .headerBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--card-border);
   padding-bottom: 12px;
 }
 
@@ -27,28 +26,21 @@
 }
 
 .tickerPulseIcon {
-  color: #10b981;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% { opacity: 0.6; transform: scale(0.98); }
-  50% { opacity: 1; transform: scale(1.05); }
-  100% { opacity: 0.6; transform: scale(0.98); }
+  color: #2563eb;
 }
 
 .headerTitle {
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  color: #e2e8f0;
+  color: var(--foreground);
   text-transform: uppercase;
 }
 
 .liveBadge {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.3);
   font-size: 0.65rem;
   font-weight: 800;
   padding: 2px 6px;
@@ -56,99 +48,42 @@
   letter-spacing: 0.05em;
 }
 
-.headerRight {
-  display: flex;
-  align-items: center;
-}
-
-.tickerSub {
-  font-size: 0.72rem;
-  color: #94a3b8;
-}
-
 .tickerGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.tickerCard {
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.singleTickerCard {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
   border-radius: 10px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  transition: all 0.2s ease;
-}
-
-.selectedCard {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.12);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
-}
-
-.catLabelRow {
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.catName {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #f8fafc;
+.catTickerText {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--foreground);
 }
 
-.upTrendTag {
-  font-size: 0.6rem;
-  font-weight: 700;
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.15);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.catPriceRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.priceCol, .priceColRight {
-  display: flex;
-  flex-direction: column;
-}
-
-.priceColRight {
-  align-items: flex-end;
-}
-
-.priceLabel {
-  font-size: 0.65rem;
-  color: #64748b;
-  text-transform: uppercase;
-}
-
-.priceVal {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #cbd5e1;
-}
-
-.textSuccess {
-  color: #34d399;
+.catPriceTag {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #2563eb;
 }
 
 .toggleCard {
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .toggleMainRow {
@@ -162,6 +97,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
 }
 
 .toggleTitleRow {
@@ -171,29 +107,27 @@
 }
 
 .zapIcon {
-  color: #f59e0b;
+  color: #2563eb;
 }
 
 .toggleTitle {
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--foreground);
   margin: 0;
 }
 
 .toggleDesc {
-  font-size: 0.78rem;
-  color: #94a3b8;
+  font-size: 0.8rem;
+  color: var(--text-muted);
   margin: 0;
-  line-height: 1.35;
 }
 
-/* Switch Toggle Styling */
 .switch {
   position: relative;
   display: inline-block;
-  width: 48px;
-  height: 26px;
+  width: 44px;
+  height: 24px;
   flex-shrink: 0;
 }
 
@@ -210,52 +144,53 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #334155;
+  background-color: var(--card-border);
   transition: 0.3s;
-  border-radius: 34px;
+  border-radius: 24px;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 20px;
-  width: 20px;
+  height: 18px;
+  width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: #ffffff;
+  background-color: white;
   transition: 0.3s;
   border-radius: 50%;
 }
 
 input:checked + .slider {
-  background-color: #3b82f6;
+  background-color: #2563eb;
 }
 
 input:checked + .slider:before {
-  transform: translateX(22px);
+  transform: translateX(20px);
 }
 
 .biddingPanel {
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 10px;
-  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--card-border);
 }
 
 .panelHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.82rem;
-  color: #e2e8f0;
+  font-size: 0.8rem;
+}
+
+.panelCatTitle {
+  color: var(--foreground);
 }
 
 .floorNote {
-  font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .presetRow {
@@ -265,20 +200,20 @@ input:checked + .slider:before {
 }
 
 .presetBtn {
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  color: #60a5fa;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
   padding: 6px 12px;
   border-radius: 6px;
-  font-size: 0.76rem;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .presetBtn:hover {
-  background: rgba(59, 130, 246, 0.3);
-  color: #ffffff;
+  border-color: #2563eb;
+  color: #2563eb;
 }
 
 .inputGroup {
@@ -290,7 +225,7 @@ input:checked + .slider:before {
 .inputLabel {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--text-muted);
 }
 
 .inputWrapper {
@@ -302,26 +237,25 @@ input:checked + .slider:before {
 .currencyPrefix {
   position: absolute;
   left: 12px;
-  font-size: 0.9rem;
+  color: var(--text-muted);
   font-weight: 700;
-  color: #94a3b8;
+  font-size: 0.9rem;
 }
 
 .bidInput {
   width: 100%;
   padding: 10px 12px 10px 28px;
-  background: rgba(30, 41, 59, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 8px;
-  color: #ffffff;
-  font-size: 0.92rem;
+  color: var(--foreground);
+  font-size: 0.9rem;
   font-weight: 700;
   outline: none;
 }
 
 .bidInput:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+  border-color: #2563eb;
 }
 
 .inputErrorBorder {
@@ -330,14 +264,14 @@ input:checked + .slider:before {
 
 .errorText {
   font-size: 0.72rem;
-  color: #f87171;
+  color: #ef4444;
 }
 
 .calcBox {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -345,21 +279,23 @@ input:checked + .slider:before {
 
 .calcRow {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--text-muted);
+}
+
+.calcRow strong {
+  color: var(--foreground);
 }
 
 .calcTotalRow {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 6px;
-  margin-top: 4px;
+  border-top: 1px solid var(--card-border);
+  margin-top: 2px;
   font-size: 0.88rem;
-  color: #f8fafc;
 }
 
 .totalVal {
-  color: #34d399;
-  font-size: 1rem;
+  color: #2563eb !important;
+  font-weight: 800;
 }

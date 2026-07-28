@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { TrendingUp, Zap, ShieldCheck, DollarSign, Activity } from "lucide-react";
+import { Activity, Zap } from "lucide-react";
 import styles from "./AttentionMarketTicker.module.css";
 
 export interface MarketRate {
@@ -44,7 +44,6 @@ export default function AttentionMarketTicker({
     religion: { floorPrice: 1500, highestBid: 1500, totalBids: 0 },
     product_sales: { floorPrice: 55, highestBid: 55, totalBids: 0 },
   });
-  const [loading, setLoading] = useState(true);
   const [inputError, setInputError] = useState("");
 
   const fetchRates = async () => {
@@ -57,15 +56,13 @@ export default function AttentionMarketTicker({
         }
       }
     } catch (e) {
-      console.error("Error fetching attention market rates:", e);
-    } finally {
-      setLoading(false);
+      console.error("Error fetching market rates:", e);
     }
   };
 
   useEffect(() => {
     fetchRates();
-    const interval = setInterval(fetchRates, 10000); // 10s Bloomberg ticker update
+    const interval = setInterval(fetchRates, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -76,7 +73,12 @@ export default function AttentionMarketTicker({
     totalBids: 0,
   };
 
-  // Sync initial bid price to floor or highest bid if default 0
+  // Calculate percentage increase over floor price
+  const percentIncrease = currentCategoryRate.floorPrice > 0
+    ? Math.round(((currentCategoryRate.highestBid - currentCategoryRate.floorPrice) / currentCategoryRate.floorPrice) * 100)
+    : 0;
+
+  // Sync initial bid price to floor or highest bid if 0
   useEffect(() => {
     if (isBiddingEnabled && (bidPrice <= 0 || bidPrice < currentCategoryRate.floorPrice)) {
       const suggestedBid = Math.max(currentCategoryRate.highestBid, currentCategoryRate.floorPrice);
@@ -107,54 +109,34 @@ export default function AttentionMarketTicker({
   };
 
   const formatCurrency = (amt: number) => {
-    return "₦" + amt.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return "₦" + Math.round(amt).toLocaleString("en-NG");
   };
 
   const totalBiddedCost = (bidPrice || currentCategoryRate.floorPrice) * impressions;
 
+  const categoryDisplayName = CATEGORY_NAMES[catKey] || catKey;
+
   return (
     <div className={styles.container}>
-      {/* Bloomberg Header Bar */}
+      {/* Ticker Header */}
       <div className={styles.headerBar}>
         <div className={styles.headerLeft}>
-          <Activity size={18} className={styles.tickerPulseIcon} />
+          <Activity size={16} className={styles.tickerPulseIcon} />
           <span className={styles.headerTitle}>ATTENTION ECONOMY MARKET TICKER</span>
-          <span className={styles.liveBadge}>LIVE</span>
-        </div>
-        <div className={styles.headerRight}>
-          <span className={styles.tickerSub}>200 Attention Ratio (75% Bidded Priority / 25% Floor)</span>
+          <span className={styles.liveBadge}>Ticker</span>
         </div>
       </div>
 
-      {/* Real-time Ticker Scroll Grid */}
+      {/* Show ONLY the advertiser's selected category item */}
       <div className={styles.tickerGrid}>
-        {Object.entries(rates).map(([cat, rate]) => {
-          const isSelected = cat === catKey;
-          const isHighBid = rate.highestBid > rate.floorPrice;
-          return (
-            <div
-              key={cat}
-              className={`${styles.tickerCard} ${isSelected ? styles.selectedCard : ""}`}
-            >
-              <div className={styles.catLabelRow}>
-                <span className={styles.catName}>{CATEGORY_NAMES[cat] || cat}</span>
-                {isHighBid && <span className={styles.upTrendTag}>High Demand</span>}
-              </div>
-              <div className={styles.catPriceRow}>
-                <div className={styles.priceCol}>
-                  <span className={styles.priceLabel}>Floor</span>
-                  <span className={styles.priceVal}>{formatCurrency(rate.floorPrice)}</span>
-                </div>
-                <div className={styles.priceColRight}>
-                  <span className={styles.priceLabel}>Top Bid</span>
-                  <span className={`${styles.priceVal} ${isHighBid ? styles.textSuccess : ""}`}>
-                    {formatCurrency(rate.highestBid)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        <div className={styles.singleTickerCard}>
+          <span className={styles.catTickerText}>
+            {categoryDisplayName} +{percentIncrease}%
+          </span>
+          <span className={styles.catPriceTag}>
+            {formatCurrency(currentCategoryRate.highestBid)}
+          </span>
+        </div>
       </div>
 
       {/* Toggle Bidding Section */}
@@ -162,12 +144,10 @@ export default function AttentionMarketTicker({
         <div className={styles.toggleMainRow}>
           <div className={styles.toggleTextGroup}>
             <div className={styles.toggleTitleRow}>
-              <Zap size={18} className={styles.zapIcon} />
-              <h4 className={styles.toggleTitle}>Bid for Priority Attention & Faster Delivery</h4>
+              <Zap size={16} className={styles.zapIcon} />
+              <h4 className={styles.toggleTitle}>Bid for Priority Attention</h4>
             </div>
-            <p className={styles.toggleDesc}>
-              Bidding enters your campaign into the 75% market priority window, delivering your ads **75% faster** to viewers.
-            </p>
+            <p className={styles.toggleDesc}>Faster delivery</p>
           </div>
           <label className={styles.switch}>
             <input
@@ -184,14 +164,14 @@ export default function AttentionMarketTicker({
           <div className={styles.biddingPanel}>
             <div className={styles.panelHeader}>
               <span className={styles.panelCatTitle}>
-                Category: <strong>{CATEGORY_NAMES[catKey] || catKey}</strong>
+                Category: <strong>{categoryDisplayName}</strong>
               </span>
               <span className={styles.floorNote}>
                 Floor Rate: {formatCurrency(currentCategoryRate.floorPrice)} / impression
               </span>
             </div>
 
-            {/* Presets */}
+            {/* Outbid Presets */}
             <div className={styles.presetRow}>
               <button
                 type="button"
@@ -223,7 +203,7 @@ export default function AttentionMarketTicker({
                 <span className={styles.currencyPrefix}>₦</span>
                 <input
                   type="number"
-                  step="0.5"
+                  step="1"
                   min={currentCategoryRate.floorPrice}
                   className={`${styles.bidInput} ${inputError ? styles.inputErrorBorder : ""}`}
                   value={bidPrice || ""}
@@ -241,7 +221,7 @@ export default function AttentionMarketTicker({
                 <strong>{impressions.toLocaleString()} views</strong>
               </div>
               <div className={styles.calcRow}>
-                <span>Effective Rate:</span>
+                <span>Effective Bid Rate:</span>
                 <strong>{formatCurrency(bidPrice || currentCategoryRate.floorPrice)} / view</strong>
               </div>
               <div className={`${styles.calcRow} ${styles.calcTotalRow}`}>
