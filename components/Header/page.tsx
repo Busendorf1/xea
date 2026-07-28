@@ -15,6 +15,8 @@ export default function Header() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
+  const [showHeader, setShowHeader] = useState(true);
+
   useEffect(() => {
     const handleResize = () => {
       setIsSmallScreen(window.innerWidth <= 768);
@@ -22,6 +24,24 @@ export default function Header() {
 
     handleResize();
     window.addEventListener("resize", handleResize);
+
+    let lastScrollPos = 0;
+    const handleScrollEvent = (scrollTop: number) => {
+      const isMobile = window.innerWidth <= 768;
+      if (!isMobile) {
+        setShowHeader(true);
+        return;
+      }
+      if (scrollTop > lastScrollPos && scrollTop > 30) {
+        setShowHeader(false);
+      } else if (scrollTop < lastScrollPos || scrollTop <= 15) {
+        setShowHeader(true);
+      }
+      lastScrollPos = scrollTop;
+    };
+
+    const onWindowScroll = () => handleScrollEvent(window.scrollY);
+    window.addEventListener("scroll", onWindowScroll, { passive: true });
 
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
@@ -44,7 +64,10 @@ export default function Header() {
       }
     }
 
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("scroll", onWindowScroll);
+    };
   }, []);
 
   const fetchNotifications = async () => {
@@ -190,7 +213,7 @@ export default function Header() {
   };
 
   return (
-    <header className={styles.navbarContainer}>
+    <header className={`${styles.navbarContainer} ${showHeader ? "" : styles.headerHidden}`}>
       <div className={styles.navbar}>
         <Link href="/" className={styles.logo}>
           <span className={styles.logoText}>Paayh</span>

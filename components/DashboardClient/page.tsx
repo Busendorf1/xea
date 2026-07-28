@@ -437,34 +437,44 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Handle header scroll show/hide behavior on mobile
+  // Handle header scroll show/hide behavior on mobile (tracks both window & feed container scroll)
   useEffect(() => {
     if (!isMobile) {
       setShowHeader(true);
       return;
     }
 
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      
-      // Scroll down hides header, scroll up (opposite direction) shows header
-      if (currentScrollY > lastScrollY && currentScrollY > 60) {
+    let lastScrollPos = 0;
+    const feedEl = feedAreaRef.current;
+
+    const handleScrollEvent = (scrollTop: number) => {
+      if (scrollTop > lastScrollPos && scrollTop > 30) {
+        // Scrolling down feed -> gracefully ease out header for full-screen view
         setShowHeader(false);
-      } else if (currentScrollY < lastScrollY) {
+      } else if (scrollTop < lastScrollPos || scrollTop <= 15) {
+        // Scrolling up towards top -> gently bring header back
         setShowHeader(true);
       }
-      
-      // Keep it visible at the very top
-      if (currentScrollY <= 15) {
-        setShowHeader(true);
-      }
-      
-      setLastScrollY(currentScrollY);
+      lastScrollPos = scrollTop;
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY, isMobile]);
+    const onWindowScroll = () => handleScrollEvent(window.scrollY);
+    const onFeedScroll = () => {
+      if (feedEl) handleScrollEvent(feedEl.scrollTop);
+    };
+
+    window.addEventListener("scroll", onWindowScroll, { passive: true });
+    if (feedEl) {
+      feedEl.addEventListener("scroll", onFeedScroll, { passive: true });
+    }
+
+    return () => {
+      window.removeEventListener("scroll", onWindowScroll);
+      if (feedEl) {
+        feedEl.removeEventListener("scroll", onFeedScroll);
+      }
+    };
+  }, [isMobile]);
 
   // Lock body scroll when mobile side menu is open
   useEffect(() => {
@@ -818,11 +828,8 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                           <svg viewBox="0 0 24 24" className={styles.verifiedIcon}>
                             <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" fill="currentColor"/>
                           </svg>
-                          <span>Active Monetized Member</span>
+                          <span>Monetized</span>
                         </div>
-                        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "6px" }}>
-                          300 / 300 clicks goal achieved! Earn+ feature unlocked.
-                        </p>
                       </div>
                     );
                   }

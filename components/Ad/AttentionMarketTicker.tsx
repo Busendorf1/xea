@@ -122,7 +122,7 @@ export default function AttentionMarketTicker({
       <div className={styles.headerBar}>
         <div className={styles.headerLeft}>
           <Activity size={16} className={styles.tickerPulseIcon} />
-          <span className={styles.headerTitle}>ATTENTION ECONOMY MARKET TICKER</span>
+          <span className={styles.headerTitle}>Attention Cap</span>
           <span className={styles.liveBadge}>Ticker</span>
         </div>
       </div>
@@ -167,7 +167,7 @@ export default function AttentionMarketTicker({
                 Category: <strong>{categoryDisplayName}</strong>
               </span>
               <span className={styles.floorNote}>
-                Floor Rate: {formatCurrency(currentCategoryRate.floorPrice)} / impression
+                Floor Rate: {formatCurrency(currentCategoryRate.floorPrice)} / Attention
               </span>
             </div>
 
@@ -198,7 +198,7 @@ export default function AttentionMarketTicker({
 
             {/* Custom Input */}
             <div className={styles.inputGroup}>
-              <label className={styles.inputLabel}>Your Custom Bid (per impression):</label>
+              <label className={styles.inputLabel}>Set Custom Bid (per attention):</label>
               <div className={styles.inputWrapper}>
                 <span className={styles.currencyPrefix}>₦</span>
                 <input
@@ -217,12 +217,12 @@ export default function AttentionMarketTicker({
             {/* Real-time Calculation Summary */}
             <div className={styles.calcBox}>
               <div className={styles.calcRow}>
-                <span>Target Impressions:</span>
-                <strong>{impressions.toLocaleString()} views</strong>
+                <span>Target Attentions:</span>
+                <strong>{impressions.toLocaleString()} attentions</strong>
               </div>
               <div className={styles.calcRow}>
                 <span>Effective Bid Rate:</span>
-                <strong>{formatCurrency(bidPrice || currentCategoryRate.floorPrice)} / view</strong>
+                <strong>{formatCurrency(bidPrice || currentCategoryRate.floorPrice)} / attention</strong>
               </div>
               <div className={`${styles.calcRow} ${styles.calcTotalRow}`}>
                 <span>Total Campaign Cost:</span>
