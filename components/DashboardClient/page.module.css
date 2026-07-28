@@ -40,7 +40,7 @@
   justify-content: space-between;
   align-items: center;
   height: 100%;
-  padding: 0 5%;
+  padding: 0 1%;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -154,7 +154,7 @@
   max-width: 1400px;
   margin-left: auto;
   margin-right: auto;
-  padding: 0 5%;
+  padding: 0 1%;
 }
 
 /* Sidebar layouts */
@@ -208,7 +208,7 @@
 }
 
 .sidebarContent {
-  padding: 1.5rem 1rem;
+  padding: 1.25rem 0.85rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;

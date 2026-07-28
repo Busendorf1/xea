@@ -76,4 +76,12 @@ a {
   text-decoration: none;
 }
 
+/* Universal Harmonized Pill Button System */
+button, input[type="button"], input[type="submit"], .btn {
+  border-radius: 9999px !important;
+  font-family: inherit;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
 

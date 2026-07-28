@@ -202,7 +202,7 @@ async function failPayment(payment: any, reason: string) {
     // 3. Insert notification
     await supabaseAdmin.from("notifications").insert({
       user_email: userEmail,
-      title: "Withdrawal Failed ⚠️",
+      title: "Withdrawal Failed",
       message: `Your withdrawal of ₦${refundAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} could not be processed. The funds have been refunded to your wallet.`,
     });
 

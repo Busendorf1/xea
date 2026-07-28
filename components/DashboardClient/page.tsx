@@ -791,29 +791,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
 
                 <p className={styles.profileBio}>{user.bio || "No bio set yet."}</p>
 
-                <div className={styles.profileDetails}>
-                  <div className={styles.detailItem}>
-                    <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                      <path d="M19.708 7.375c-.11-.58-.345-1.13-.683-1.605l.015.018c-.675-.86-1.72-1.39-2.89-1.39h-8.3c-1.17 0-2.215.53-2.89 1.39l.015-.018c-.338.475-.573 1.025-.683 1.605l-.015-.008v9.25c0 1.93 1.57 3.5 3.5 3.5h8.3c1.93 0 3.5-1.57 3.5-3.5v-9.25l-.015.008zM9.15 5.88h5.7c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25h-5.7c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25zm6.55 12.24h-7.4c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25h7.4c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25zm0-3.5h-7.4c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25h7.4c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25z" fill="currentColor"/>
-                    </svg>
-                    <span>Last updated: {ago}</span>
-                  </div>
-                  {user.country && user.country !== "PLACEHOLDER" && (
-                    <div className={styles.detailItem}>
-                      <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/>
-                      </svg>
-                      <span>{user.state ? `${user.state}, ` : ""}{user.country}</span>
-                    </div>
-                  )}
-                  <div className={styles.detailItem}>
-                    <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" fill="currentColor"/>
-                    </svg>
-                    <span>Mutuals: {user.mutual_count} / 50</span>
-                  </div>
-                </div>
-
                 {(() => {
                   const clicksCount = user.monetization_clicks ?? 0;
                   const isMonetized = !!(
@@ -821,39 +798,61 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   );
                   const progressPct = Math.min(100, Math.round((clicksCount / 300) * 100));
 
-                  if (isMonetized) {
-                    return (
-                      <div className={styles.renewalSection}>
-                        <div className={styles.monetizedBadge}>
-                          <svg viewBox="0 0 24 24" className={styles.verifiedIcon}>
-                            <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" fill="currentColor"/>
-                          </svg>
-                          <span>Monetized</span>
-                        </div>
-                      </div>
-                    );
-                  }
-
                   return (
-                    <div className={styles.renewalSection} style={{ marginTop: "10px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", fontWeight: "700", marginBottom: "4px" }}>
-                        <span>Monetization Progress</span>
-                        <span style={{ color: "#38bdf8" }}>{clicksCount} / 300 clicks</span>
+                    <>
+                      <div className={styles.profileDetails}>
+                        <div className={styles.detailItem}>
+                          <svg viewBox="0 0 24 24" className={styles.detailIcon}>
+                            <path d="M19.708 7.375c-.11-.58-.345-1.13-.683-1.605l.015.018c-.675-.86-1.72-1.39-2.89-1.39h-8.3c-1.17 0-2.215.53-2.89 1.39l.015-.018c-.338.475-.573 1.025-.683 1.605l-.015-.008v9.25c0 1.93 1.57 3.5 3.5 3.5h8.3c1.93 0 3.5-1.57 3.5-3.5v-9.25l-.015.008zM9.15 5.88h5.7c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25h-5.7c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25zm6.55 12.24h-7.4c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25h7.4c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25zm0-3.5h-7.4c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25h7.4c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25z" fill="currentColor"/>
+                          </svg>
+                          <span>Last updated: {ago}</span>
+                        </div>
+                        {user.country && user.country !== "PLACEHOLDER" && (
+                          <div className={styles.detailItem}>
+                            <svg viewBox="0 0 24 24" className={styles.detailIcon}>
+                              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/>
+                            </svg>
+                            <span>{user.state ? `${user.state}, ` : ""}{user.country}</span>
+                          </div>
+                        )}
+                        <div className={styles.detailItem}>
+                          <svg viewBox="0 0 24 24" className={styles.detailIcon}>
+                            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" fill="currentColor"/>
+                          </svg>
+                          <span>Mutuals: {user.mutual_count} / 50</span>
+                        </div>
+                        {isMonetized && (
+                          <div className={styles.detailItem}>
+                            <svg viewBox="0 0 24 24" className={styles.detailIcon}>
+                              <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" fill="currentColor"/>
+                            </svg>
+                            <span>Monetized</span>
+                          </div>
+                        )}
                       </div>
-                      <div style={{ height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "6px", overflow: "hidden", marginBottom: "8px" }}>
-                        <div style={{ height: "100%", width: `${progressPct}%`, background: "#3b82f6", borderRadius: "6px" }} />
-                      </div>
-                      <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginBottom: "8px" }}>
-                        {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
-                      </p>
-                      <Link
-                        href="/user/monetize"
-                        className={styles.renewBtn}
-                        style={{ display: "inline-block", textAlign: "center", textDecoration: "none", fontSize: "0.8rem", padding: "8px 12px" }}
-                      >
-                        View Monetization Details
-                      </Link>
-                    </div>
+
+                      {!isMonetized && (
+                        <div className={styles.renewalSection} style={{ marginTop: "10px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", fontWeight: "700", marginBottom: "4px" }}>
+                            <span>Monetization Progress</span>
+                            <span style={{ color: "#38bdf8" }}>{clicksCount} / 300 clicks</span>
+                          </div>
+                          <div style={{ height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "6px", overflow: "hidden", marginBottom: "8px" }}>
+                            <div style={{ height: "100%", width: `${progressPct}%`, background: "#3b82f6", borderRadius: "6px" }} />
+                          </div>
+                          <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginBottom: "8px" }}>
+                            {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
+                          </p>
+                          <Link
+                            href="/user/monetize"
+                            className={styles.renewBtn}
+                            style={{ display: "inline-block", textAlign: "center", textDecoration: "none", fontSize: "0.8rem", padding: "8px 12px" }}
+                          >
+                            View Monetization Details
+                          </Link>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
               </div>

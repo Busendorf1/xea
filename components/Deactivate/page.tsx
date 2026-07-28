@@ -87,11 +87,11 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
               </p>
 
               <ul className={styles.list}>
-                <li>• Active Advertisements</li>
-                <li>• Highlights and Campaigns</li>
-                <li>• Account Monetization Progress</li>
-                <li>• Wallet Balance and Payment Records</li>
-                <li>• User Profile & Demographics</li>
+                <li> Active Advertisements</li>
+                <li> Highlights and Campaigns</li>
+                <li> Account Monetization Progress</li>
+                <li> Wallet Balance and Payment Records</li>
+                <li> User Profile & Demographics</li>
               </ul>
 
               {error && <p className={styles.error}>{error}</p>}

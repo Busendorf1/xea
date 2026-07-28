@@ -1,50 +1,35 @@
-import React from "react";
+"use client";
+
+import React, { ButtonHTMLAttributes } from "react";
 import styles from "./Button.module.css";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "danger" | "ghost";
-  isLoading?: boolean;
-  fullWidth?: boolean;
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
+  size?: "sm" | "md" | "lg";
+  children: React.ReactNode;
+  icon?: React.ReactNode;
 }
 
 export default function Button({
-  children,
   variant = "primary",
-  isLoading = false,
-  fullWidth = false,
+  size = "md",
+  children,
+  icon,
   className = "",
   disabled,
   ...props
 }: ButtonProps) {
-  const btnClasses = [
-    styles.btn,
-    styles[variant],
-    isLoading ? styles.loading : "",
-    fullWidth ? styles.fullWidth : "",
-    className
-  ].filter(Boolean).join(" ");
+  const variantClass = styles[variant] || styles.primary;
+  const sizeClass = styles[size] || styles.md;
 
   return (
     <button
-      className={btnClasses}
-      disabled={disabled || isLoading}
+      className={`${styles.button} ${variantClass} ${sizeClass} ${className}`}
+      disabled={disabled}
       {...props}
     >
-      <span className={isLoading ? styles.hiddenText : ""}>{children}</span>
-      {isLoading && (
-        <span className={styles.spinnerWrapper}>
-          <svg className={styles.spinner} viewBox="0 0 24 24">
-            <circle
-              className={styles.spinnerPath}
-              cx="12"
-              cy="12"
-              r="10"
-              fill="none"
-              strokeWidth="3"
-            />
-          </svg>
-        </span>
-      )}
+      {icon && <span className={styles.iconWrapper}>{icon}</span>}
+      <span>{children}</span>
     </button>
   );
 }

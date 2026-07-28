@@ -11,7 +11,7 @@ padding: "2rem"
   height: calc(100vh - 58px);
   background-color: var(--card-bg);
   color: var(--foreground);
-  padding: 0 5%;
+  padding: 0 1%;
   box-sizing: border-box;
   overflow: hidden; /* prevent main container from scrolling */
 }

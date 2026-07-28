@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       // Add user notification
       await supabaseAdmin.from("notifications").insert({
         user_email: email,
-        title: "Highlight Posted 🚀",
+        title: "Highlight Posted",
         message: `Your highlight "${title}" has been paid using your wallet balance and submitted for review. It will be published shortly!`,
       });
 
@@ -201,10 +201,10 @@ export async function POST(req: NextRequest) {
       // Add user notification
       await supabaseAdmin.from("notifications").insert({
         user_email: email,
-        title: isBidded ? "Priority Ad Campaign Created 🚀" : "Ad Campaign Created 📢",
+        title: isBidded ? "Priority Ad Campaign Created" : "Ad Campaign Created",
         message: isBidded
-          ? `Your priority bidded campaign with ${adData.impressions} impressions was paid using your wallet balance and submitted for priority delivery!`
-          : `Your ad campaign with ${adData.impressions} impressions was paid using your wallet balance and submitted for review.`,
+          ? `Your priority bidded campaign with ${adData.impressions} attentions was paid using your wallet balance and submitted for priority delivery!`
+          : `Your ad campaign with ${adData.impressions} attentions was paid using your wallet balance and submitted for review.`,
       });
     } else if (type === "monetization_standard" || type === "monetization_instant") {
       const planType = type === "monetization_instant" ? "instant" : "standard";
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
 
       await supabaseAdmin.from("notifications").insert({
         user_email: email,
-        title: "Monetization Subscription Active 🎉",
+        title: "Monetization Subscription Active",
         message: `Your account monetization is now active on the ${planType} plan. Payment was deducted from your wallet balance.`,
       });
     }

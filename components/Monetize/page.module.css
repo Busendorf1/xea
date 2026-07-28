@@ -2,8 +2,8 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: var(--background, #0b0f17);
-  color: var(--foreground, #f8fafc);
+  background-color: var(--card-bg);
+  color: var(--foreground);
 }
 
 .main {
@@ -25,13 +25,13 @@
 .title {
   font-size: 2rem;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--foreground);
   margin-bottom: 8px;
 }
 
 .subtitle {
   font-size: 0.95rem;
-  color: #94a3b8;
+  color: var(--text-muted);
   max-width: 620px;
   margin: 0 auto;
   line-height: 1.5;
@@ -44,12 +44,12 @@
   justify-content: center;
   padding: 60px 20px;
   gap: 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .spinIcon {
   animation: spin 1.5s linear infinite;
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 @keyframes spin {
@@ -65,8 +65,8 @@
 .statusCard {
   border-radius: 14px;
   padding: 20px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid var(--card-border);
+  background: var(--sidebar-bg);
   backdrop-filter: blur(10px);
 }
 
@@ -106,12 +106,12 @@
   font-size: 1.25rem;
   font-weight: 800;
   margin: 0 0 4px 0;
-  color: #f8fafc;
+  color: var(--foreground);
 }
 
 .statusSub {
   font-size: 0.85rem;
-  color: #cbd5e1;
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.4;
 }
@@ -128,7 +128,7 @@
 
 .badgeProgress {
   background: #f59e0b;
-  color: #000000;
+  color: #ffffff;
   font-weight: 800;
   font-size: 0.72rem;
   padding: 4px 10px;
@@ -137,8 +137,8 @@
 }
 
 .progressCard {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   border-radius: 14px;
   padding: 24px;
   display: flex;
@@ -149,7 +149,7 @@
 .cardSectionTitle {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -160,8 +160,8 @@
 }
 
 .metricBox {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 10px;
   padding: 14px 16px;
   display: flex;
@@ -171,7 +171,7 @@
 
 .metricLabel {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -179,7 +179,7 @@
 .metricValue {
   font-size: 1.35rem;
   font-weight: 800;
-  color: #60a5fa;
+  color: #2563eb;
 }
 
 .metricValueRemaining {
@@ -197,15 +197,15 @@
 
 .progressBarTrack {
   height: 14px;
-  background: rgba(15, 23, 42, 0.8);
+  background: var(--card-bg);
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--card-border);
 }
 
 .progressBarFill {
   height: 100%;
-  background: #3b82f6;
+  background: #2563eb;
   border-radius: 10px;
   transition: width 0.4s ease;
 }
@@ -214,11 +214,11 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .progressPercentText {
-  color: #38bdf8;
+  color: #2563eb;
   font-weight: 700;
 }
 
@@ -231,7 +231,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #3b82f6;
+  background: #2563eb;
   color: #ffffff;
   padding: 12px 20px;
   border-radius: 8px;
@@ -242,12 +242,12 @@
 }
 
 .feedBtn:hover {
-  background: #2563eb;
+  background: #1d4ed8;
 }
 
 .policyCard {
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 16px 20px;
   display: flex;
@@ -259,29 +259,30 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #f87171;
+  color: var(--foreground);
 }
 
 .warningIcon {
-  color: #ef4444;
+  color: var(--primary);
 }
 
 .policyHeader h4 {
   font-size: 0.95rem;
   font-weight: 700;
   margin: 0;
+  color: var(--foreground);
 }
 
 .policyDesc {
-  font-size: 0.82rem;
-  color: #cbd5e1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
   margin: 0;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .infoCard {
-  background: rgba(30, 41, 59, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 18px 20px;
   display: flex;
@@ -292,7 +293,7 @@
 .infoTitle {
   font-size: 0.92rem;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -302,7 +303,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 0.82rem;
-  color: #94a3b8;
-  line-height: 1.45;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
 }

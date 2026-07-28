@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
         // Add user notification
         await supabaseAdmin.from("notifications").insert({
           user_email: userEmail,
-          title: "Withdrawal Completed Successfully 🏦",
+          title: "Withdrawal Completed Successfully",
           message: `Your withdrawal of ₦${amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been processed and sent to your bank account.`,
         });
 
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
         // Add user notification
         await supabaseAdmin.from("notifications").insert({
           user_email: userEmail,
-          title: `Withdrawal ${event === "transfer.reversed" ? "Reversed" : "Failed"} ⚠️`,
+          title: `Withdrawal ${event === "transfer.reversed" ? "Reversed" : "Failed"}`,
           message: `Your withdrawal of ₦${amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} failed. The funds have been refunded to your wallet balance.`,
         });
 
