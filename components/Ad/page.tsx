@@ -8,6 +8,7 @@ import LocationSelector from "../LocationSelector";
 import { v4 as uuidv4 } from "uuid";
 import supabase from "@/lib/utils/db";
 import AdPreviewCard from "../Adreview/page";
+import AttentionMarketTicker from "./AttentionMarketTicker";
 import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/lib/categoryTargetingMap";
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
 
@@ -52,6 +53,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [adType, setAdType] = useState("politics");
+  const [isBiddingEnabled, setIsBiddingEnabled] = useState(false);
+  const [bidPrice, setBidPrice] = useState(0);
 
   // Derive targeting options from the selected ad type — zero overlap guaranteed
   const optionsMap = useMemo(
@@ -183,10 +186,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     }));
   };
 
-
-
   const calculateTotalCostPerImpression = () => {
-    return adRates[adType];
+    if (isBiddingEnabled && bidPrice > 0) {
+      return bidPrice;
+    }
+    return adRates[adType] || 45;
   };
 
   const calculateTotalCost = () => {
@@ -393,6 +397,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               actionWatchNow: formSelections.actionDetails.watch_now || null,
               costPerImpression,
               totalCost,
+              isBidded: isBiddingEnabled,
+              bidPrice: isBiddingEnabled ? bidPrice : null,
               adMedia: mediaUrlString,
               displayMutualButton: formSelections.displayMutualButton ?? true,
               productName: adType === "product_sales" ? formSelections.productName : null,
@@ -1289,6 +1295,17 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   productCtaType={formSelections.productCtaType}
                   productCtaLink={formSelections.productCtaLink}
                 />
+
+                {/* Attention Economy Bidding Market Ticker */}
+                <AttentionMarketTicker
+                  selectedCategory={adType}
+                  isBiddingEnabled={isBiddingEnabled}
+                  onToggleBidding={setIsBiddingEnabled}
+                  bidPrice={bidPrice}
+                  onBidPriceChange={setBidPrice}
+                  impressions={formSelections.impressions}
+                />
+
                 <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem", padding: "1.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
                   <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "700", fontSize: "0.9rem" }}>Payment Method</label>
                   <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>

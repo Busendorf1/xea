@@ -91,17 +91,25 @@ const flushBatch = async () => {
       }));
     }
 
-    // Invalidate profile caches in Redis for processed earn and mutual actions
-    const emailsToInvalidate = new Set<string>();
-    earns.forEach(e => {
-      if (e.job.data.email) emailsToInvalidate.add(e.job.data.email);
-    });
-    mutuals.forEach(m => {
-      if (m.job.data.email) emailsToInvalidate.add(m.job.data.email);
+    // 5. Increment user click progress towards 300 clicks & update activity timestamp
+    const activeEmails = new Set<string>();
+    currentBatch.forEach((item) => {
+      if (item.job?.data?.email) {
+        activeEmails.add(item.job.data.email.toLowerCase().trim());
+      }
     });
 
     await Promise.all(
-      Array.from(emailsToInvalidate).map(async (email) => {
+      Array.from(activeEmails).map(async (userEmail) => {
+        await supabaseAdmin.rpc("increment_user_click_progress", {
+          p_email: userEmail,
+        }).catch((err) => console.error("❌ Error updating user click progress:", err));
+      })
+    );
+
+    // Invalidate profile caches in Redis for processed actions
+    await Promise.all(
+      Array.from(activeEmails).map(async (email) => {
         await invalidateCachedProfile(email);
       })
     );

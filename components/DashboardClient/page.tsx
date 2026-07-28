@@ -58,6 +58,8 @@ interface UserProfile {
   balance: number;
   withdrawal: number;
   bvn_hash?: string | null;
+  monetization_clicks?: number;
+  last_active_at?: string | null;
 }
 
 interface DashboardClientProps {
@@ -535,8 +537,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const renderThemeSwitcher = () => {
     const cycleTheme = () => {
       if (theme === "white") {
-        setTheme("semi-dark");
-      } else if (theme === "semi-dark") {
         setTheme("dark");
       } else {
         setTheme("white");
@@ -548,18 +548,10 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
         <button
           onClick={cycleTheme}
           className={`${styles.themeBtn} ${styles.themeBtnActive}`}
-          title={
-            theme === "white"
-              ? "Switch to Dim Mode"
-              : theme === "semi-dark"
-              ? "Switch to Dark Mode"
-              : "Switch to Light Mode"
-          }
+          title={theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
           aria-label="Toggle Theme"
         >
-          {theme === "white" && <Sun size={14} />}
-          {theme === "semi-dark" && <Contrast size={14} />}
-          {theme === "dark" && <Moon size={14} />}
+          {theme === "white" ? <Sun size={14} /> : <Moon size={14} />}
         </button>
       </div>
     );
@@ -813,105 +805,49 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 </div>
 
                 {(() => {
-                  const hasEverSubscribed = !!(
-                    user.monetized === "yes" || user.monetized === "true" || user.monetized === true ||
-                    user.monetized_at || user.monetization_type
+                  const clicksCount = user.monetization_clicks ?? 0;
+                  const isMonetized = !!(
+                    user.monetized === "yes" || user.monetized === "true" || user.monetized === true || clicksCount >= 300
                   );
-                  const isExpired = hasEverSubscribed &&
-                    user.monetized_until != null &&
-                    new Date(user.monetized_until).getTime() <= Date.now();
-                  const isActive = !!(
-                    (user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
-                    (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
-                  );
-                  const accountAgeInDays = user.created_at
-                    ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / (1000 * 60 * 60 * 24))
-                    : 0;
+                  const progressPct = Math.min(100, Math.round((clicksCount / 300) * 100));
 
-                  if (isActive) {
-                    // Active subscription — show badge + faint renew button only
-                    const planType = user.monetization_type === "instant" ? "instant" : "standard";
-                    const renewalAmount = planType === "instant" ? 60000 : 28000;
-                    const planLabel = planType === "instant" ? "Instant subscription active" : "Standard subscription active";
+                  if (isMonetized) {
                     return (
                       <div className={styles.renewalSection}>
                         <div className={styles.monetizedBadge}>
                           <svg viewBox="0 0 24 24" className={styles.verifiedIcon}>
                             <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" fill="currentColor"/>
                           </svg>
-                          <span>
-                            {planLabel}
-                            {user.monetized_until && (
-                              <> · Expires {new Date(user.monetized_until).toLocaleDateString()}</>
-                            )}
-                          </span>
+                          <span>Active Monetized Member</span>
                         </div>
-                        <button
-                          type="button"
-                          disabled
-                          className={styles.renewBtnFaint}
-                        >
-                          Renew Subscription ({formatCurrency(renewalAmount)} / month)
-                        </button>
-                      </div>
-                    );
-                  } else if (isExpired) {
-                    // Subscription has lapsed — always show Renew button
-                    return (
-                      <div className={styles.renewalSection}>
-                        <p className={styles.renewalExpiredText}>
-                          ⚠️ Your subscription expired on{" "}
-                          <strong>{new Date(user.monetized_until!).toLocaleDateString()}</strong>.
-                          Renew to keep earning from ads.
+                        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "6px" }}>
+                          300 / 300 clicks goal achieved! Earn+ feature unlocked.
                         </p>
-                        <button
-                          type="button"
-                          disabled={monetizing}
-                          onClick={handleStandardMonetize}
-                          className={styles.renewBtn}
-                        >
-                          {monetizing ? "Processing..." : `Renew via Card/Bank (${formatCurrency(28000)} / month)`}
-                        </button>
-                        {user.balance >= 28000 && (
-                          <button
-                            type="button"
-                            disabled={monetizing}
-                            onClick={handleStandardMonetizeWallet}
-                            className={styles.renewBtn}
-                            style={{ marginTop: "0.5rem", background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}
-                          >
-                            {monetizing ? "Processing..." : `Renew with Wallet Balance (${formatCurrency(28000)})`}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  } else if (accountAgeInDays >= 90) {
-                    // Never subscribed, account old enough — show first-time subscribe button
-                    return (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
-                        <button
-                          type="button"
-                          disabled={monetizing}
-                          onClick={handleStandardMonetize}
-                          className={styles.profileMonetizeBtn}
-                        >
-                          {monetizing ? "Activating..." : `Monetize via Card/Bank (${formatCurrency(28000)} / month)`}
-                        </button>
-                        {user.balance >= 28000 && (
-                          <button
-                            type="button"
-                            disabled={monetizing}
-                            onClick={handleStandardMonetizeWallet}
-                            className={styles.profileMonetizeBtn}
-                            style={{ background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}
-                          >
-                            {monetizing ? "Activating..." : `Monetize with Wallet Balance (${formatCurrency(28000)})`}
-                          </button>
-                        )}
                       </div>
                     );
                   }
-                  return null;
+
+                  return (
+                    <div className={styles.renewalSection} style={{ marginTop: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", fontWeight: "700", marginBottom: "4px" }}>
+                        <span>Monetization Progress</span>
+                        <span style={{ color: "#38bdf8" }}>{clicksCount} / 300 clicks</span>
+                      </div>
+                      <div style={{ height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "6px", overflow: "hidden", marginBottom: "8px" }}>
+                        <div style={{ height: "100%", width: `${progressPct}%`, background: "#3b82f6", borderRadius: "6px" }} />
+                      </div>
+                      <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginBottom: "8px" }}>
+                        {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
+                      </p>
+                      <Link
+                        href="/user/monetize"
+                        className={styles.renewBtn}
+                        style={{ display: "inline-block", textAlign: "center", textDecoration: "none", fontSize: "0.8rem", padding: "8px 12px" }}
+                      >
+                        View Monetization Details
+                      </Link>
+                    </div>
+                  );
                 })()}
               </div>
             </div>

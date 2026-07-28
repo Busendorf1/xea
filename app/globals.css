@@ -43,23 +43,7 @@
   --sidebar-bg: #f1f5f9;
 }
 
-/* Semi-Dark Theme */
-[data-theme='semi-dark'] {
-  --background: #0f172a;        /* Deep slate-blue/navy */
-  --foreground: #f8fafc;
-  --primary: #38bdf8;          /* Light Sky Blue for high contrast on navy */
-  --primary-hover: #0ea5e9;
-  --primary-glow: rgba(56, 189, 248, 0.15);
-  --secondary: #ffffff;
-  --secondary-glow: rgba(255, 255, 255, 0.1);
-  --card-bg: #1e293b;
-  --card-border: #334155;
-  --card-border-hover: #475569;
-  --text-muted: #94a3b8;
-  --input-bg: #0f172a;
-  --input-border: #334155;
-  --sidebar-bg: #0b0f19;
-}
+
 
 html,
 body {

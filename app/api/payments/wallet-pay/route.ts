@@ -25,13 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
     }
 
-    // Cost verification check to prevent parameter manipulation
     if (type === "ad") {
       const adData = metadata?.adData;
       if (!adData) {
         return NextResponse.json({ error: "Ad details missing from metadata" }, { status: 400 });
       }
-      const rate = parseFloat(adData.costPerImpression || 15);
+      const isBidded = !!adData.isBidded;
+      const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
+      const rate = isBidded && bidPrice ? bidPrice : parseFloat(adData.costPerImpression || 15);
       const impressions = parseInt(adData.impressions || 1000, 10);
       const expectedCost = rate * impressions;
       if (Math.abs(amountNum - expectedCost) > 0.01) {
@@ -124,6 +125,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Ad data missing from metadata" }, { status: 400 });
       }
 
+      const isBidded = !!adData.isBidded;
+      const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
+      const effectiveRate = isBidded && bidPrice ? bidPrice : adData.costPerImpression;
+
       // Call submit_ad_campaign RPC using supabaseAdmin
       const { error: rpcError } = await supabaseAdmin.rpc("submit_ad_campaign", {
         p_id: adData.id,
@@ -150,8 +155,8 @@ export async function POST(req: NextRequest) {
         p_action_whatsapp: adData.actionWhatsapp || null,
         p_action_website: adData.actionWebsite || null,
         p_action_email: adData.actionEmail || null,
-        p_cost_per_impression: adData.costPerImpression,
-        p_total_cost: adData.totalCost,
+        p_cost_per_impression: effectiveRate,
+        p_total_cost: amountNum,
         p_user_email: email,
         p_ad_media: adData.adMedia || null,
         p_display_mutual_button: adData.displayMutualButton ?? true,
@@ -169,11 +174,37 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Payment succeeded but failed to submit ad campaign" }, { status: 500 });
       }
 
+      // If ad is bidded, record in bidded_ads table and update Redis ZSET
+      if (isBidded && bidPrice) {
+        const adIndustry = (adData.adType || "business").toLowerCase();
+        const { error: bidInsertErr } = await supabaseAdmin.from("bidded_ads").insert({
+          ad_id: adData.id,
+          user_email: email,
+          industry: adIndustry,
+          bid_price: bidPrice,
+          is_active: true,
+        });
+
+        if (bidInsertErr) {
+          console.error("❌ Wallet pay: Error inserting bidded_ads record:", bidInsertErr);
+        }
+
+        try {
+          const zsetKey = `bids:zset:${adIndustry}`;
+          await redisConnection.zadd(zsetKey, bidPrice, adData.id);
+          await redisConnection.del("attention:market_rates");
+        } catch (redisErr) {
+          console.warn("⚠️ Redis ZSET update warning:", redisErr);
+        }
+      }
+
       // Add user notification
       await supabaseAdmin.from("notifications").insert({
         user_email: email,
-        title: "Ad Campaign Created 📢",
-        message: `Your ad campaign with ${adData.impressions} impressions was paid using your wallet balance and submitted for review.`,
+        title: isBidded ? "Priority Ad Campaign Created 🚀" : "Ad Campaign Created 📢",
+        message: isBidded
+          ? `Your priority bidded campaign with ${adData.impressions} impressions was paid using your wallet balance and submitted for priority delivery!`
+          : `Your ad campaign with ${adData.impressions} impressions was paid using your wallet balance and submitted for review.`,
       });
     } else if (type === "monetization_standard" || type === "monetization_instant") {
       const planType = type === "monetization_instant" ? "instant" : "standard";

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
+import HeaderJoin from "../HeaderJoin/page";
 import Footer from "../Footer/page";
+import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 
 interface Session {
   user?: {
@@ -39,40 +40,27 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
     setError("");
 
     try {
-      // 1. Fetch user's profile details to retrieve their passphrase behind the scenes
-      const profileRes = await fetch("/api/profile");
-      if (!profileRes.ok) {
-        throw new Error("Failed to authenticate account for deactivation.");
-      }
-      const profileData = await profileRes.json();
-      const currentPassphrase = profileData.passphrase || "";
+      // Call server-side deactivate endpoint
+      const res = await fetch("/api/profile/deactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
-      // 2. Call verify_and_deactivate_account with that passphrase
-      const { data: success, error: rpcError } = await supabase.rpc(
-        "verify_and_deactivate_account",
-        { p_passphrase: currentPassphrase }
-      );
+      const data = await res.json();
 
-      if (rpcError) {
-        console.error("❌ RPC verify_and_deactivate_account error:", rpcError);
-        setError(`Error deactivating account: ${rpcError.message}`);
-        setLoading(false);
-        return;
-      }
-
-      if (!success) {
-        setError("Failed to verify account deactivation credentials.");
-        setLoading(false);
-        return;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to deactivate account.");
       }
 
       setStep("done");
+
       // Redirect to Auth0 logout to clear session
       setTimeout(() => {
-        window.location.href = "/auth/logout";
+        window.location.href = "/user/logout";
       }, 2000);
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+      console.error("❌ Deactivation error:", err);
+      setError(err.message || "An unexpected error occurred during deactivation.");
     } finally {
       setLoading(false);
     }
@@ -80,57 +68,69 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
 
   return (
     <>
-    <div className={styles.container}>
-      <h1 className={styles.title}>Deactivate Account</h1>
+      <HeaderJoin />
+      <div className={styles.wrapper}>
+        <div className={styles.container}>
+          <h1 className={styles.title}>Deactivate Account</h1>
 
-      {step === "confirm" && (
-        <div className={styles.card}>
-          <p>
-            Are you sure you want to <strong>permanently delete</strong> your
-            account?
-            <br />
-            This will also delete all your:
-          </p>
-          <ul className={styles.list}>
-            <li>✅ Active Ads</li>
-            <li>✅ Highlights in Review</li>
-            <li>✅ Active Highlights</li>
-            <li>✅ Monetization</li>
-            <li>✅ User Data</li>
-          </ul>
-          {error && <p className={styles.error}>{error}</p>}
-          <div className={styles.buttons}>
-            <button
-              onClick={handleDeleteAccount}
-              disabled={loading}
-              className={styles.danger}
-            >
-              {loading ? "Deleting..." : "Yes, Delete My Account"}
-            </button>
-            <button
-              onClick={() => router.push("/user/dashboard")}
-              disabled={loading}
-              className={styles.cancel}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+          {step === "confirm" && (
+            <div className={styles.card}>
+              <div className={styles.warningHeader}>
+                <ShieldAlert size={28} className={styles.warningIcon} />
+                <p className={styles.warningText}>
+                  Are you sure you want to <strong>permanently delete</strong> your account?
+                </p>
+              </div>
 
-      {step === "done" && (
-        <div className={styles.card}>
-          <h2>Account Deleted ✅</h2>
-          <p>
-            Your account, ads, and news have been permanently deleted.
-            <br />
-            We're sorry to see you go.
-          </p>
+              <p className={styles.subtitle}>
+                This action is irreversible and will permanently delete all associated data:
+              </p>
+
+              <ul className={styles.list}>
+                <li>• Active Advertisements</li>
+                <li>• Highlights and Campaigns</li>
+                <li>• Account Monetization Progress</li>
+                <li>• Wallet Balance and Payment Records</li>
+                <li>• User Profile & Demographics</li>
+              </ul>
+
+              {error && <p className={styles.error}>{error}</p>}
+
+              <div className={styles.buttons}>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={loading}
+                  className={styles.danger}
+                >
+                  {loading ? "Deleting..." : "Yes, Delete My Account"}
+                </button>
+                <button
+                  onClick={() => router.push("/")}
+                  disabled={loading}
+                  className={styles.cancel}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "done" && (
+            <div className={styles.card}>
+              <div className={styles.doneHeader}>
+                <CheckCircle2 size={32} className={styles.doneIcon} />
+                <h2>Account Deleted</h2>
+              </div>
+              <p className={styles.doneText}>
+                Your account, campaigns, and data have been permanently deleted.
+                <br />
+                Redirecting you to the home page...
+              </p>
+            </div>
+          )}
         </div>
-      )}
-    </div>
-    
+      </div>
       <Footer />
-      </>
+    </>
   );
 }

@@ -462,7 +462,14 @@ export default function AdCard({
               {formatTimestamp(ad.created_at)}
             </span>
           </div>
-          <span className={styles.sponsorLabel}>Ad</span>
+          <span className={styles.sponsorLabel}>
+            {(() => {
+              const category = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "").toLowerCase();
+              if (category === "politics") return "Politics Ad";
+              if (category === "religion") return "Religious Ad";
+              return "Ad";
+            })()}
+          </span>
         </div>
 
         {/* Product Name & Description (if product sales) */}

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-export type Theme = "white" | "dark" | "semi-dark";
+export type Theme = "white" | "dark";
 
 interface ThemeContextType {
   theme: Theme;
@@ -16,7 +16,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") as Theme;
-    if (savedTheme && ["white", "dark", "semi-dark"].includes(savedTheme)) {
+    if (savedTheme && ["white", "dark"].includes(savedTheme)) {
       setThemeState(savedTheme);
       document.documentElement.setAttribute("data-theme", savedTheme);
     } else {

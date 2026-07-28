@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import redisConnection from "@/lib/redis";
 import { invalidateCachedProfile, invalidateAllHighlights } from "@/lib/utils/cache";
 
 export async function POST(req: NextRequest) {
@@ -10,46 +11,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log(`👤 Deactivating account for: ${email}`);
+    const emailLower = email.toLowerCase().trim();
+    console.log(`👤 Permanently deactivating and deleting account for: ${emailLower}`);
 
-    // 1. Clear Ads/News queues on primary database
-    const deleteQueues = Promise.all([
-      supabaseAdmin.from("adds").delete().ilike("user_email", email),
-      supabaseAdmin.from("addsactive").delete().ilike("user_email", email),
-      supabaseAdmin.from("news").delete().ilike("user_email", email),
-      supabaseAdmin.from("newsactive").delete().ilike("user_email", email),
-    ]);
+    // 1. Delete all associated user campaigns, bids, highlights, payments, impressions, and notifications
+    await Promise.all([
+      supabaseAdmin.from("adds").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("addsactive").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("bidded_ads").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("news").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("newsactive").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("payments").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("notifications").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("ad_impressions").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("read_announcements").delete().ilike("user_email", emailLower),
+    ]).catch((err) => console.error("⚠️ Error deleting user active campaigns:", err));
 
-    // 2. Update user profile state
-    const updateProfile = supabaseAdmin
+    // 2. Delete user profile record from users table
+    const { error: deleteUserErr } = await supabaseAdmin
       .from("users")
-      .update({
-        balance: 0,
-        monetized: "no",
-        monetization_type: null,
-        monetized_at: null,
-        monetized_until: null,
-      })
-      .ilike("email", email)
-      .select()
-      .single();
+      .delete()
+      .ilike("email", emailLower);
 
-    const [deleteResults, updateResult] = await Promise.all([deleteQueues, updateProfile]);
-
-    const { data: updatedUser, error: updateError } = updateResult;
-
-    if (updateError) {
-      console.error("❌ Error deactivating user in database:", updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (deleteUserErr) {
+      console.error("❌ Error deleting user from users table:", deleteUserErr);
+      return NextResponse.json({ error: deleteUserErr.message }, { status: 500 });
     }
 
     // 3. Clear Redis Caches
     await Promise.all([
-      invalidateCachedProfile(email),
-      invalidateAllHighlights()
-    ]);
+      invalidateCachedProfile(emailLower),
+      invalidateAllHighlights(),
+      redisConnection.del(`feed:ad_ids:${emailLower}`),
+      redisConnection.del(`feed:ads:${emailLower}`),
+      redisConnection.del(`feed:profiles:${emailLower}`),
+    ]).catch((err) => console.error("⚠️ Redis cache invalidation error:", err));
 
-    return NextResponse.json(updatedUser);
+    return NextResponse.json({ success: true, message: "Account deleted successfully" });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/profile/deactivate:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

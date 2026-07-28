@@ -169,8 +169,6 @@ export default function Header() {
   const renderThemeSwitcher = () => {
     const cycleTheme = () => {
       if (theme === "white") {
-        setTheme("semi-dark");
-      } else if (theme === "semi-dark") {
         setTheme("dark");
       } else {
         setTheme("white");
@@ -182,18 +180,10 @@ export default function Header() {
         <button
           onClick={cycleTheme}
           className={`${styles.themeBtn} ${styles.themeBtnActive}`}
-          title={
-            theme === "white"
-              ? "Switch to Dim Mode"
-              : theme === "semi-dark"
-              ? "Switch to Dark Mode"
-              : "Switch to Light Mode"
-          }
+          title={theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
           aria-label="Toggle Theme"
         >
-          {theme === "white" && <Sun size={15} />}
-          {theme === "semi-dark" && <Contrast size={15} />}
-          {theme === "dark" && <Moon size={15} />}
+          {theme === "white" ? <Sun size={14} /> : <Moon size={14} />}
         </button>
       </div>
     );
