@@ -528,17 +528,20 @@
 @media screen and (max-width: 600px) {
   .pageWapper,
   .pageWrapper {
-    padding: 1.25rem 1rem;
-    margin: 0 auto;
-    border-radius: 0;
+    padding: 0.4rem 0.5rem !important;
+    margin: 0.25rem auto 0.5rem auto !important;
+    border-radius: 12px;
     border: none;
     box-shadow: none;
   }
   .progressContainer {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
     overflow-x: auto;
   }
   .stepLabel {
-    display: none;
+    display: none !important;
+  }
+  .paymentOptions {
+    flex-direction: column;
   }
 }

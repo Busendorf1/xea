@@ -12,7 +12,9 @@ export default function HeaderJoin() {
   const [isSmallScreen, setIsSmallScreen] = useState(false);
   const { theme, setTheme } = useTheme();
 
-  // Detect screen size to toggle hamburger menu functionality
+  const [showHeader, setShowHeader] = useState(true);
+
+  // Detect screen size and scroll position to hide header banner on mobile scroll down
   useEffect(() => {
     const handleResize = () => {
       setIsSmallScreen(window.innerWidth <= 628);
@@ -20,6 +22,24 @@ export default function HeaderJoin() {
 
     handleResize();
     window.addEventListener("resize", handleResize);
+
+    let lastScrollPos = 0;
+    const handleScroll = () => {
+      const isMobile = window.innerWidth <= 768;
+      if (!isMobile) {
+        setShowHeader(true);
+        return;
+      }
+      const currentScroll = window.scrollY;
+      if (currentScroll > lastScrollPos && currentScroll > 25) {
+        setShowHeader(false);
+      } else if (currentScroll < lastScrollPos || currentScroll <= 15) {
+        setShowHeader(true);
+      }
+      lastScrollPos = currentScroll;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
@@ -44,6 +64,7 @@ export default function HeaderJoin() {
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("scroll", handleScroll);
     };
   }, []);
 
@@ -89,7 +110,7 @@ export default function HeaderJoin() {
   };
 
   return (
-    <div className={styles.header}>
+    <header className={`${styles.header} ${showHeader ? "" : styles.headerHidden}`}>
       <Link href={"/"}>
         <div className={styles.name}>
           <p className={styles.baggyt}>Paayh</p>
@@ -146,7 +167,7 @@ export default function HeaderJoin() {
           {renderThemeSwitcher()}
         </div>
       )}
-    </div>
+    </header>
   );
 }
 

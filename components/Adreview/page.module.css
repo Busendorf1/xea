@@ -136,7 +136,7 @@
 .productNameTitle {
   font-size: 1.1rem;
   font-weight: 700;
-  color: var(--text, #ffffff);
+  color: var(--foreground);
   margin-bottom: 0.5rem;
   margin-top: 0.25rem;
   width: 100%;
@@ -151,7 +151,7 @@
   width: 100%;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--card-border, #333);
+  border-top: 1px solid var(--card-border);
   flex-wrap: wrap;
   gap: 0.75rem;
 }

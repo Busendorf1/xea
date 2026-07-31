@@ -360,7 +360,7 @@ export default function News({ session }: NewsProps) {
                       className={`${styles.paymentOptionCard} ${paymentMethod === "card" ? styles.paymentOptionCardActive : ""}`}
                       onClick={() => setPaymentMethod("card")}
                     >
-                      <div className={styles.paymentOptionName}>Paystack (Card/Bank)</div>
+                      <div className={styles.paymentOptionName}>Card / Bank</div>
                       <div className={styles.paymentOptionSub}>Debit Card, USSD, Bank Transfer</div>
                     </div>
                     <div

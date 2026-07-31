@@ -543,3 +543,75 @@
   border-radius: 6px;
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
+
+/* Stripe/Apple Payment Selector Card */
+.paymentSection {
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.paymentTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--foreground);
+  margin-bottom: 0.75rem;
+}
+
+.paymentOptions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.paymentOptionCard {
+  flex: 1;
+  border: 1.5px solid var(--card-border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background-color: var(--card-bg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.paymentOptionCardActive {
+  border-color: var(--primary) !important;
+  background-color: var(--primary-glow) !important;
+}
+
+.paymentOptionName {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--foreground);
+}
+
+.paymentOptionSub {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+@media screen and (max-width: 600px) {
+  .pageWapper,
+  .pageWrapper {
+    padding: 0.4rem 0.5rem !important;
+    margin: 0.25rem auto 0.5rem auto !important;
+    border-radius: 12px;
+    border: none;
+    box-shadow: none;
+  }
+  .stepperContainer {
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+  }
+  .stepLabel {
+    display: none !important;
+  }
+  .paymentOptions {
+    flex-direction: column;
+  }
+}
