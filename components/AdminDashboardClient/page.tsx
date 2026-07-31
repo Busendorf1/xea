@@ -1330,7 +1330,6 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <div style={{ display: "flex", backgroundColor: "var(--sidebar-bg)", border: "1px solid var(--card-border)", borderRadius: "99px", padding: "2px" }}>
               <button onClick={() => setTheme("white")} style={{ background: "transparent", border: "none", width: "24px", height: "24px", color: theme === "white" ? "var(--primary)" : "var(--text-muted)", cursor: "pointer" }}><Sun size={14} /></button>
               <button onClick={() => setTheme("dark")} style={{ background: "transparent", border: "none", width: "24px", height: "24px", color: theme === "dark" ? "var(--primary)" : "var(--text-muted)", cursor: "pointer" }}><Moon size={14} /></button>
-              <button onClick={() => setTheme("semi-dark")} style={{ background: "transparent", border: "none", width: "24px", height: "24px", color: theme === "semi-dark" ? "var(--primary)" : "var(--text-muted)", cursor: "pointer" }}><Contrast size={14} /></button>
             </div>
 
             <Link href="/user/dashboard">

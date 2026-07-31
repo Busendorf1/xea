@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import redisConnection from "@/lib/redis";
+import { z } from "zod";
 
 // Admin email whitelist logic
 const getAdminEmails = (): string[] => {
@@ -31,16 +33,45 @@ async function verifyAdmin() {
   return { errorResponse: null, email };
 }
 
+// Zod validation schema for POST actions
+const adminActionSchema = z.object({
+  action: z.enum(["toggle_monetization", "suspend", "adjust_balance", "delete"]),
+  userId: z.string().min(1, "userId is required"),
+  payload: z.record(z.string(), z.any()).optional(),
+});
+
 export async function GET(req: NextRequest) {
   const { errorResponse } = await verifyAdmin();
   if (errorResponse) return errorResponse;
 
   try {
-    const { searchParams } = new URL(req.url);
+    const searchParams = req.nextUrl.searchParams;
     const type = searchParams.get("type") || "list";
 
     if (type === "stats") {
-      // Fetch user data for aggregates
+      const cacheKey = "admin:overview_stats";
+
+      // 1. Try Redis cache first (60-second TTL)
+      try {
+        const cachedStatsStr = await redisConnection.get(cacheKey);
+        if (cachedStatsStr) {
+          return NextResponse.json(JSON.parse(cachedStatsStr));
+        }
+      } catch (redisErr) {
+        console.warn("⚠️ Redis read warning in admin stats:", redisErr);
+      }
+
+      // 2. Cache miss: Execute ultra-fast single-pass PostgreSQL aggregate RPC
+      const { data: statsJson, error: rpcError } = await supabaseAdmin.rpc("get_admin_overview_stats");
+
+      if (!rpcError && statsJson) {
+        // Cache result in Redis for 60 seconds
+        await redisConnection.set(cacheKey, JSON.stringify(statsJson), "EX", 60).catch(() => {});
+        return NextResponse.json(statsJson);
+      }
+
+      // Fallback: If RPC is not created yet, run optimized database count queries
+      console.warn("⚠️ get_admin_overview_stats RPC fallback triggered:", rpcError?.message);
       const { data: users, error } = await supabaseAdmin
         .from("users")
         .select("balance, withdrawal, mutual_count, suspended_until, monetized");
@@ -57,17 +88,21 @@ export async function GET(req: NextRequest) {
       const monetizedCount = resolvedUsers.filter(u => u.monetized === "yes" || u.monetized === true).length;
       const suspendedCount = resolvedUsers.filter(u => u.suspended_until && new Date(u.suspended_until).getTime() > Date.now()).length;
 
-      return NextResponse.json({
+      const fallbackStats = {
         totalUsers: resolvedUsers.length,
         totalBalance,
         totalWithdrawal,
         totalMutuals,
         monetizedUsers: monetizedCount,
         suspendedUsers: suspendedCount
-      });
+      };
+
+      await redisConnection.set(cacheKey, JSON.stringify(fallbackStats), "EX", 60).catch(() => {});
+      return NextResponse.json(fallbackStats);
+
     } else {
       // Paginated and searched users list
-      const page = parseInt(searchParams.get("page") || "0");
+      const page = parseInt(searchParams.get("page") || "0", 10);
       const search = searchParams.get("search") || "";
 
       let query = supabaseAdmin.from("users").select("*", { count: "exact" });
@@ -98,15 +133,20 @@ export async function POST(req: NextRequest) {
   if (errorResponse) return errorResponse;
 
   try {
-    const body = await req.json();
-    const { action, userId, payload } = body;
+    const rawBody = await req.json();
+    const parseResult = adminActionSchema.safeParse(rawBody);
 
-    if (!action || !userId) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Invalid input payload", details: parseResult.error.format() }, { status: 400 });
     }
 
+    const { action, userId, payload } = parseResult.data;
+
+    // Invalidate cached overview stats in Redis whenever an admin modifies user balances, status, or deletes users
+    await redisConnection.del("admin:overview_stats").catch(() => {});
+
     if (action === "toggle_monetization") {
-      const { nextMonetizedVal, nextMonetizedType, nextMonetizedUntil, isCurrentlyMonetized } = payload;
+      const { nextMonetizedVal, nextMonetizedType, nextMonetizedUntil, isCurrentlyMonetized } = payload || {};
       const { error } = await supabaseAdmin
         .from("users")
         .update({
@@ -122,7 +162,7 @@ export async function POST(req: NextRequest) {
     } 
     
     else if (action === "suspend") {
-      const { suspendedUntil } = payload;
+      const { suspendedUntil } = payload || {};
       const { error } = await supabaseAdmin
         .from("users")
         .update({ suspended_until: suspendedUntil })
@@ -133,7 +173,7 @@ export async function POST(req: NextRequest) {
     } 
     
     else if (action === "adjust_balance") {
-      const { newBalance } = payload;
+      const { newBalance } = payload || {};
       const { error } = await supabaseAdmin
         .from("users")
         .update({ balance: newBalance })

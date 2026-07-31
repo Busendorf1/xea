@@ -1,12 +1,13 @@
 import { Worker } from "bullmq";
 import supabaseAdmin from "./utils/dbAdmin";
 import { invalidateCachedProfile, invalidateAllHighlights } from "./utils/cache";
+import { env } from "./env";
 
 const connectionOptions = {
-  host: process.env.REDIS_HOST || "127.0.0.1",
-  port: parseInt(process.env.REDIS_PORT || "6379", 10),
-  password: process.env.REDIS_PASSWORD || undefined,
-  tls: process.env.REDIS_TLS === "true" ? {} : undefined,
+  host: env.REDIS_HOST,
+  port: env.REDIS_PORT,
+  password: env.REDIS_PASSWORD || undefined,
+  tls: env.REDIS_TLS === "true" ? {} : undefined,
   maxRetriesPerRequest: null,
 };
 
@@ -39,88 +40,103 @@ const flushBatch = async () => {
   const seens = currentBatch.filter(j => j.job.data.type === "seen");
   const actions = currentBatch.filter(j => j.job.data.type === "action-click");
 
-  try {
-    // 1. Process Seen clicks in bulk
-    if (seens.length > 0) {
-      const rows = seens.map(s => ({
-        ad_id: s.job.data.adId,
-        user_email: s.job.data.email,
-        view_count: 1
-      }));
-      const { error } = await supabaseAdmin
+  // 1. Process Seen clicks in bulk
+  if (seens.length > 0) {
+    const rows = seens.map(s => ({
+      ad_id: s.job.data.adId,
+      user_email: s.job.data.email,
+      view_count: 1
+    }));
+    try {
+      await supabaseAdmin
         .from("ad_impressions")
         .upsert(rows, { onConflict: "user_email,ad_id" });
-      if (error) throw new Error(error.message);
+    } catch (err: any) {
+      console.error("❌ Error upserting ad_impressions:", err?.message || err);
+    }
 
-      // Increment counts in active ads
-      await Promise.all(seens.map(async (s) => {
+    await Promise.all(seens.map(async (s) => {
+      try {
         await supabaseAdmin.rpc("record_ad_seen", {
           p_ad_id: s.job.data.adId,
           p_user_email: s.job.data.email
         });
-      }));
-    }
+      } catch (err: any) {
+        console.error(`❌ Error recording ad seen for ${s.job.data.adId}:`, err?.message || err);
+      }
+    }));
+  }
 
-    // 2. Process Earn clicks
-    if (earns.length > 0) {
-      await Promise.all(earns.map(async (e) => {
+  // 2. Process Earn clicks
+  if (earns.length > 0) {
+    await Promise.all(earns.map(async (e) => {
+      try {
         await supabaseAdmin.rpc("handle_earn_click", {
           p_ad_id: e.job.data.adId,
           p_user_email: e.job.data.email
         });
-      }));
-    }
+      } catch (err: any) {
+        console.error(`❌ Error handling earn click for ${e.job.data.adId}:`, err?.message || err);
+      }
+    }));
+  }
 
-    // 3. Process Mutual clicks
-    if (mutuals.length > 0) {
-      await Promise.all(mutuals.map(async (m) => {
+  // 3. Process Mutual clicks
+  if (mutuals.length > 0) {
+    await Promise.all(mutuals.map(async (m) => {
+      try {
         await supabaseAdmin.rpc("handle_mutual_click", {
           p_ad_id: m.job.data.adId,
           p_user_email: m.job.data.email
         });
-      }));
-    }
+      } catch (err: any) {
+        console.error(`❌ Error handling mutual click for ${m.job.data.adId}:`, err?.message || err);
+      }
+    }));
+  }
 
-    // 4. Process Action redirect clicks
-    if (actions.length > 0) {
-      await Promise.all(actions.map(async (act) => {
+  // 4. Process Action redirect clicks
+  if (actions.length > 0) {
+    await Promise.all(actions.map(async (act) => {
+      try {
         await supabaseAdmin.rpc("increment_ad_click", {
           p_ad_id: act.job.data.adId,
           p_click_type: act.job.data.clickType
         });
-      }));
-    }
-
-    // 5. Increment user click progress towards 300 clicks & update activity timestamp
-    const activeEmails = new Set<string>();
-    currentBatch.forEach((item) => {
-      if (item.job?.data?.email) {
-        activeEmails.add(item.job.data.email.toLowerCase().trim());
+      } catch (err: any) {
+        console.error(`❌ Error incrementing ad click for ${act.job.data.adId}:`, err?.message || err);
       }
-    });
+    }));
+  }
 
-    await Promise.all(
-      Array.from(activeEmails).map(async (userEmail) => {
+  // 5. Increment user click progress towards 300 clicks & update activity timestamp
+  const activeEmails = new Set<string>();
+  currentBatch.forEach((item) => {
+    if (item.job?.data?.email) {
+      activeEmails.add(item.job.data.email.toLowerCase().trim());
+    }
+  });
+
+  await Promise.all(
+    Array.from(activeEmails).map(async (userEmail) => {
+      try {
         await supabaseAdmin.rpc("increment_user_click_progress", {
           p_email: userEmail,
-        }).catch((err) => console.error("❌ Error updating user click progress:", err));
-      })
-    );
+        });
+      } catch (err: any) {
+        console.error("❌ Error updating user click progress:", err?.message || err);
+      }
 
-    // Invalidate profile caches in Redis for processed actions
-    await Promise.all(
-      Array.from(activeEmails).map(async (email) => {
-        await invalidateCachedProfile(email);
-      })
-    );
+      try {
+        await invalidateCachedProfile(userEmail);
+      } catch (err: any) {
+        console.error(`❌ Error invalidating profile cache for ${userEmail}:`, err?.message || err);
+      }
+    })
+  );
 
-    // Resolve all jobs in this batch on success
-    currentBatch.forEach(j => j.resolve());
-  } catch (err: any) {
-    console.error("❌ Queue Worker: Failed to flush batch:", err.message);
-    // Reject all jobs in this batch so BullMQ retries them automatically
-    currentBatch.forEach(j => j.reject(err));
-  }
+  // Resolve all jobs in this batch after flushing
+  currentBatch.forEach(j => j.resolve());
 };
 
 const queueJob = (job: any): Promise<void> => {
@@ -223,4 +239,3 @@ hlsWorker.on("failed", (job, err) => {
 });
 
 export default { feedWorker, campaignsWorker, hlsWorker };
-

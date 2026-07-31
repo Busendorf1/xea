@@ -4,11 +4,8 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 import redisConnection from "@/lib/redis";
-
-const SECRET_KEY = process.env.AUTH0_SECRET;
-if (!SECRET_KEY && process.env.NODE_ENV === "production") {
-  console.warn("⚠️ AUTH0_SECRET environment variable is missing.");
-}
+import { env } from "@/lib/env";
+import { Ad, AdvertiserProfile } from "@/types/ads";
 
 // Optimized TTLs for high-scalability candidate ID caching
 const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
@@ -36,11 +33,16 @@ export async function GET(req: NextRequest) {
     const adIdsCacheKey = `feed:ad_ids:${emailKey}`;
     const legacyAdsCacheKey = `feed:ads:${emailKey}`;
     const profilesCacheKey = `feed:profiles:${emailKey}`;
+    const seenAdsSetKey = `seen:ads:${emailKey}`;
 
-    let pageAds: any[] = [];
-    let profilesMap: Record<string, any> = {};
+    let pageAds: Ad[] = [];
+    let profilesMap: Record<string, AdvertiserProfile> = {};
 
     let cacheHit = false;
+
+    // Fetch user's active seen set in Redis to exclude seen ads without purging candidate feed
+    const seenAdIdsList: string[] = await redisConnection.smembers(seenAdsSetKey).catch(() => []);
+    const seenAdIdsSet = new Set<string>(seenAdIdsList);
 
     // Try to retrieve cached candidate ad IDs and profiles unless refresh is requested
     if (!refresh) {
@@ -54,8 +56,11 @@ export async function GET(req: NextRequest) {
           const cachedAdIds: string[] = JSON.parse(cachedAdIdsStr);
           profilesMap = JSON.parse(cachedProfilesStr);
 
+          // Filter out ads already seen by the user in this session & preserve single-fetch uniqueness
+          const eligibleIds = Array.from(new Set(cachedAdIds)).filter((id) => !seenAdIdsSet.has(id));
+
           // Extract slice of IDs for the requested page
-          const slicedIds = cachedAdIds.slice(offset, offset + limit);
+          const slicedIds = eligibleIds.slice(offset, offset + limit);
 
           if (slicedIds.length > 0) {
             // Fetch shared ad details from Redis in bulk
@@ -63,7 +68,7 @@ export async function GET(req: NextRequest) {
             const cachedDetailsRaw = await redisConnection.mget(...detailKeys);
 
             const missingIds: string[] = [];
-            const fetchedDetailsMap: Record<string, any> = {};
+            const fetchedDetailsMap: Record<string, Ad> = {};
 
             cachedDetailsRaw.forEach((raw, idx) => {
               const adId = slicedIds[idx];
@@ -139,10 +144,11 @@ export async function GET(req: NextRequest) {
         ads = fallbackAds;
       }
 
-      // Filter active ads (skip ads already completed or expired)
-      const candidateAds: any[] = [];
+      // Filter active ads and enforce single-fetch uniqueness
+      const candidateAdsMap = new Map<string, Ad>();
       (ads || []).forEach((ad: any) => {
         if (ad.completed_at) return;
+        if (seenAdIdsSet.has(ad.id)) return; // Exclude currently seen ads
 
         // Exclude expired active platform campaigns
         const isPlatformAd = !ad.cost_per_impression || Number(ad.cost_per_impression) === 0;
@@ -154,16 +160,20 @@ export async function GET(req: NextRequest) {
             return;
           }
         }
-        candidateAds.push(ad);
+        if (!candidateAdsMap.has(ad.id)) {
+          candidateAdsMap.set(ad.id, ad);
+        }
       });
+
+      const candidateAds = Array.from(candidateAdsMap.values());
 
       // Shuffle candidate ads in memory
       const shuffledCandidateAds = candidateAds.sort(() => 0.5 - Math.random());
-      const candidateAdIds = shuffledCandidateAds.map((a: any) => a.id);
+      const candidateAdIds = shuffledCandidateAds.map((a: Ad) => a.id);
 
       // Extract publisher emails to fetch basic profile info server-side
       const publisherEmails = Array.from(
-        new Set(shuffledCandidateAds.map((ad: any) => ad.user_email).filter(Boolean))
+        new Set(shuffledCandidateAds.map((ad: Ad) => ad.user_email).filter(Boolean))
       ) as string[];
 
       if (publisherEmails.length > 0) {
@@ -194,7 +204,7 @@ export async function GET(req: NextRequest) {
         ];
 
         // Cache individual ad objects in shared keys `ad:detail:${ad.id}`
-        shuffledCandidateAds.forEach((ad: any) => {
+        shuffledCandidateAds.forEach((ad: Ad) => {
           cacheOps.push(
             redisConnection.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS)
           );
@@ -206,34 +216,19 @@ export async function GET(req: NextRequest) {
         console.error("❌ Redis write error in feed route:", err.message || err);
       }
 
-      // Slice requested page from shuffled candidate list
+      // Slice requested page from candidate list
       pageAds = shuffledCandidateAds.slice(offset, offset + limit);
     }
 
-    // Sign each ad in the page slice in memory to establish security signatures
-    const activeSecretKey = SECRET_KEY || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
-    const signedAds = pageAds.map((ad: any) => {
+    // Sign each ad in the page slice using env.AUTH0_SECRET (no hardcoded fallback)
+    const secretKey = env.AUTH0_SECRET;
+    const signedAds = pageAds.map((ad: Ad) => {
       const payload = `${ad.id}:${userId}:${servedAt}`;
-      const token = crypto.createHmac("sha256", activeSecretKey).update(payload).digest("hex");
+      const token = crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
       return {
-        id: ad.id,
-        ad_type: ad.ad_type || null,
-        product_name: ad.product_name || null,
-        product_price: ad.product_price || null,
-        product_cta_type: ad.product_cta_type || null,
-        product_cta_link: ad.product_cta_link || null,
-        ad_content: ad.ad_content || "",
-        ad_media: ad.ad_media || null,
-        action_phone: ad.action_phone || null,
-        action_email: ad.action_email || null,
-        action_website: ad.action_website || null,
-        action_whatsapp: ad.action_whatsapp || null,
-        display_mutual_button: ad.display_mutual_button === true,
-        mutual_targets: ad.mutual_targets || [],
-        user_email: ad.user_email || null,
+        ...ad,
         verification_token: token,
         served_at: servedAt,
-        created_at: ad.created_at || null,
       };
     });
 

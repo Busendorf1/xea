@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 import { feedQueue } from "@/lib/queue";
 import redisConnection from "@/lib/redis";
-
-const SECRET_KEY = process.env.AUTH0_SECRET;
-if (!SECRET_KEY && process.env.NODE_ENV === "production") {
-  console.warn("⚠️ AUTH0_SECRET environment variable is missing.");
-}
+import { env } from "@/lib/env";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     const session = await auth0.getSession();
     const body = await request.json();
-    const { adId, token, servedAt, type, turnstileToken } = body;
+    const { adId, token, servedAt, type } = body;
 
     if (!adId || !token || !servedAt || !type) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -30,8 +25,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
+    const emailKey = email.toLowerCase().trim();
+
     // Server-side double click check (NX lock in Redis)
-    const lockKey = `lock:click:${email.toLowerCase().trim()}:${adId}:${type}`;
+    const lockKey = `lock:click:${emailKey}:${adId}:${type}`;
     const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
     if (!lockAcquired) {
       return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
@@ -39,10 +36,10 @@ export async function POST(request: NextRequest) {
 
     const userId = session?.user?.sub || email;
 
-    // 1. Verify PoV Token signature
-    const activeSecretKey = SECRET_KEY || "BhrjJEt523QxdiWWsOI73y5hJyVQkqlGoIp08xPUJBxlkoJ5q0ELp75RsmxfOF3S";
+    // 1. Verify PoV Token signature using env.AUTH0_SECRET
+    const secretKey = env.AUTH0_SECRET;
     const payload = `${adId}:${userId}:${servedAt}`;
-    const expectedToken = crypto.createHmac("sha256", activeSecretKey).update(payload).digest("hex");
+    const expectedToken = crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
     
     if (token !== expectedToken) {
       return NextResponse.json({ error: "Please refresh" }, { status: 400 });
@@ -64,17 +61,16 @@ export async function POST(request: NextRequest) {
     // 4. Enqueue the task to Redis Queue for high-concurrency buffering
     await feedQueue.add(`${type}-click`, {
       adId,
-      email: email.toLowerCase().trim(),
+      email: emailKey,
       type
     });
 
-    // Invalidate user's feed cache immediately so the next load/refresh excludes this ad
-    const emailKey = email.toLowerCase().trim();
+    // Add adId to active seen set in Redis so next feed load filters it out instantly
+    const seenSetKey = `seen:ads:${emailKey}`;
     await Promise.all([
-      redisConnection.del(`feed:ad_ids:${emailKey}`),
-      redisConnection.del(`feed:ads:${emailKey}`),
-      redisConnection.del(`feed:profiles:${emailKey}`),
-    ]).catch((err) => console.error("❌ Redis feed cache delete error:", err));
+      redisConnection.sadd(seenSetKey, adId),
+      redisConnection.expire(seenSetKey, 86400), // 24 Hours TTL
+    ]).catch((err) => console.error("❌ Redis seen set update error:", err));
 
     return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {

@@ -498,35 +498,12 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     }
   }, [isMobile, showProfileMobile, showHighlightsMobile]);
 
-  // Handle highlights fade behavior on scroll
+  // Disconnected highlights fade behavior on scroll per user requirement (highlights remain 100% visible)
   useEffect(() => {
-    const feedEl = feedAreaRef.current;
-    
-    const updateOpacity = () => {
-      const scrollTop = feedEl ? feedEl.scrollTop : window.scrollY;
-      const threshold = 200; // pixels to fade in completely
-      const opacity = Math.min(1, Math.max(0, scrollTop / threshold));
-
-      if (highlightsRef.current) {
-        highlightsRef.current.style.opacity = opacity.toString();
-        highlightsRef.current.style.pointerEvents = opacity === 0 ? "none" : "auto";
-      }
-    };
-
-    // Run once on mount to set correct initial opacity
-    updateOpacity();
-
-    window.addEventListener("scroll", updateOpacity, { passive: true });
-    if (feedEl) {
-      feedEl.addEventListener("scroll", updateOpacity, { passive: true });
+    if (highlightsRef.current) {
+      highlightsRef.current.style.opacity = "1";
+      highlightsRef.current.style.pointerEvents = "auto";
     }
-
-    return () => {
-      window.removeEventListener("scroll", updateOpacity);
-      if (feedEl) {
-        feedEl.removeEventListener("scroll", updateOpacity);
-      }
-    };
   }, []);
 
   // Close all mobile sidebars

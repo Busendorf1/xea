@@ -198,10 +198,36 @@ export default function AdCard({
     }
   };
 
+  const cardRef = useRef<HTMLDivElement>(null);
+
   // Reset media error whenever the user navigates to a different item in the carousel
   React.useEffect(() => {
     setMediaError(false);
   }, [currentMediaIndex]);
+
+  // Pause video automatically when card leaves viewport (< 50% visible)
+  React.useEffect(() => {
+    if (!cardRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (videoRef.current) {
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+              videoRef.current.play().catch(() => {});
+              setIsPlaying(true);
+            } else {
+              videoRef.current.pause();
+              setIsPlaying(false);
+            }
+          }
+        });
+      },
+      { threshold: [0, 0.5, 1.0] }
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, []);
+
 
 
   const isSuspended = viewerProfile?.suspended_until
@@ -388,7 +414,7 @@ export default function AdCard({
     .includes((ad.user_email ?? "").toLowerCase());
 
   return (
-    <div key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""}`} style={style}>
+    <div ref={cardRef} key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""}`} style={style}>
       {/* Left Column: Avatar */}
       <div className={styles.avatarCol}>
         <div className={styles.avatar}>

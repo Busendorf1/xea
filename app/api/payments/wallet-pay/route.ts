@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { v4 as uuidv4 } from "uuid";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import redisConnection from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   try {
