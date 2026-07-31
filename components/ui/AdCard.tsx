@@ -205,14 +205,14 @@ export default function AdCard({
     setMediaError(false);
   }, [currentMediaIndex]);
 
-  // Pause video automatically when card leaves viewport (< 50% visible)
+  // Pause video automatically when card leaves viewport (< 65% visible)
   React.useEffect(() => {
     if (!cardRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (videoRef.current) {
-            if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
               videoRef.current.play().catch(() => {});
               setIsPlaying(true);
             } else {
@@ -222,7 +222,7 @@ export default function AdCard({
           }
         });
       },
-      { threshold: [0, 0.5, 1.0] }
+      { threshold: [0.6, 0.65, 0.75] }
     );
     observer.observe(cardRef.current);
     return () => observer.disconnect();

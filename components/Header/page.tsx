@@ -240,14 +240,9 @@ export default function Header() {
               {isLoading ? (
                 <div style={{ height: 36 }} />
               ) : user ? (
-                <>
-                  <Link href="/user/dashboard" className={styles.navLink} onClick={toggleMenu}>
-                    Dashboard
-                  </Link>
-                  <a href="/auth/logout" className={`${styles.navLink} ${styles.logoutBtn}`}>
-                    Sign Out
-                  </a>
-                </>
+                <a href="/auth/logout" className={`${styles.navLink} ${styles.logoutBtn}`}>
+                  Sign Out
+                </a>
               ) : (
                 <a href="/auth/login?connection=google-oauth2" className={`${styles.navLink} ${styles.signInBtn}`}>
                   Sign In
@@ -274,14 +269,9 @@ export default function Header() {
             {isLoading ? (
               <div style={{ width: 80, height: 36 }} />
             ) : user ? (
-              <>
-                <Link href="/user/dashboard" className={styles.dashboardBtn}>
-                  Dashboard
-                </Link>
-                <a href="/auth/logout" className={styles.signOutBtn}>
-                  Sign Out
-                </a>
-              </>
+              <a href="/auth/logout" className={styles.signOutBtn}>
+                Sign Out
+              </a>
             ) : (
               <a href="/auth/login?connection=google-oauth2" className={styles.ctaBtn}>
                 Sign In

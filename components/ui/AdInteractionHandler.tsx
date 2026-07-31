@@ -68,13 +68,13 @@ export default function AdInteractionHandler({
   const startX = useRef(0);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  // 1. Intersection Observer to check if ad card is visible
+  // 1. Intersection Observer to check if 65% of ad card is visible in view
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setInView(entry.isIntersecting);
+        setInView(entry.isIntersecting && entry.intersectionRatio >= 0.65);
       },
-      { threshold: 0.5 } // Must be 50% visible
+      { threshold: [0.6, 0.65, 0.75] } // Must be 60%-75% visible in view
     );
 
     if (containerRef.current) {
@@ -207,9 +207,9 @@ export default function AdInteractionHandler({
     });
   };
 
-  // SVG Progress Ring calculations
-  const radius = 16;
-  const stroke = 3;
+  // SVG Progress Ring calculations (Compact Sleek Scale)
+  const radius = 10;
+  const stroke = 2;
   const circumference = 2 * Math.PI * radius;
   const percentage = ((16 - secondsLeft) / 16) * 100;
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
@@ -221,7 +221,7 @@ export default function AdInteractionHandler({
           <div className={styles.progressRingWrapper}>
             <svg height={(radius + stroke) * 2} width={(radius + stroke) * 2} className={styles.progressRingSvg}>
               <circle
-                stroke="rgba(255, 255, 255, 0.08)"
+                stroke="rgba(255, 255, 255, 0.12)"
                 fill="transparent"
                 strokeWidth={stroke}
                 r={radius}
@@ -240,11 +240,11 @@ export default function AdInteractionHandler({
               />
             </svg>
             <div className={styles.lockIconOverlay}>
-              <Lock size={12} className={styles.lockIcon} />
+              <Lock size={10} className={styles.lockIcon} />
             </div>
           </div>
           <span className={styles.countdownText}>
-            {inView && tabVisible ? `Verify in ${secondsLeft}s...` : "Keep ad in view..."}
+            {inView && tabVisible ? `Verify in ${secondsLeft}s` : "65% in view required"}
           </span>
         </div>
       )}

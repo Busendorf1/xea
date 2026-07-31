@@ -672,11 +672,15 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           )}
           
           <div className={styles.sidebarContent}>
-            <div className={styles.desktopLeftHeader}>
+            <div 
+              className={styles.desktopLeftHeader}
+              onClick={() => setShowAccountMenuLeft(!showAccountMenuLeft)}
+              style={{ cursor: "pointer", userSelect: "none" }}
+              title="Toggle Account Menu"
+            >
               <button
-                onClick={() => setShowAccountMenuLeft(!showAccountMenuLeft)}
+                type="button"
                 className={`${styles.leftSettingsToggle} ${!showAccountMenuLeft ? styles.rotated : ""}`}
-                title="Toggle Account Menu"
               >
                 <Settings size={18} />
               </button>

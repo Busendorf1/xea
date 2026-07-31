@@ -185,10 +185,16 @@ export default function News({ session }: NewsProps) {
               <div
                 key={s}
                 className={`${styles.progressStep} ${
-                  index <= step ? styles.activeStep : ""
+                  index === step
+                    ? styles.activeStep
+                    : index < step
+                    ? styles.completedStep
+                    : ""
                 }`}
               >
-                <span className={styles.stepNumber}>{index + 1}</span>
+                <span className={styles.stepNumber}>
+                  {index < step ? "✓" : index + 1}
+                </span>
                 <span className={styles.stepLabel}>{s}</span>
                 {index < steps.length - 1 && <div className={styles.stepLine} />}
               </div>
@@ -420,17 +426,23 @@ export default function News({ session }: NewsProps) {
                   </div>
                 </div>
 
-                <div style={{ marginTop: "1.5rem", padding: "1.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
-                  <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "700", fontSize: "0.9rem" }}>Payment Method</label>
-                  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem 1rem", border: "1px solid var(--card-border)", borderRadius: "8px", backgroundColor: paymentMethod === "card" ? "rgba(255,255,255,0.05)" : "transparent" }}>
-                      <input type="radio" name="pay_method" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} />
-                      <span>Paystack (Card/Bank)</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem 1rem", border: "1px solid var(--card-border)", borderRadius: "8px", backgroundColor: paymentMethod === "wallet" ? "rgba(255,255,255,0.05)" : "transparent" }}>
-                      <input type="radio" name="pay_method" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} />
-                      <span>Wallet Balance ({formatCurrency(balance)})</span>
-                    </label>
+                <div className={styles.paymentSection}>
+                  <div className={styles.paymentTitle}>Payment Method</div>
+                  <div className={styles.paymentOptions}>
+                    <div
+                      className={`${styles.paymentOptionCard} ${paymentMethod === "card" ? styles.paymentOptionCardActive : ""}`}
+                      onClick={() => setPaymentMethod("card")}
+                    >
+                      <div className={styles.paymentOptionName}>Paystack (Card/Bank)</div>
+                      <div className={styles.paymentOptionSub}>Debit Card, USSD, Bank Transfer</div>
+                    </div>
+                    <div
+                      className={`${styles.paymentOptionCard} ${paymentMethod === "wallet" ? styles.paymentOptionCardActive : ""}`}
+                      onClick={() => setPaymentMethod("wallet")}
+                    >
+                      <div className={styles.paymentOptionName}>Wallet Balance</div>
+                      <div className={styles.paymentOptionSub}>Available: {formatCurrency(balance)}</div>
+                    </div>
                   </div>
                 </div>
               </div>

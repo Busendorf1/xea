@@ -444,22 +444,58 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       <main className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
           <div className={styles.adFormContainer}>
-            <h1>{steps[step]}</h1>
+            {/* Sleek Multi-Step Wizard Progress Header */}
+            <div className={styles.stepperContainer}>
+              {steps.map((label, idx) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", flex: 1, gap: "0.5rem" }}>
+                  <div
+                    className={`${styles.stepItem} ${
+                      idx === step
+                        ? styles.stepItemActive
+                        : idx < step
+                        ? styles.stepItemCompleted
+                        : ""
+                    }`}
+                  >
+                    <span className={styles.stepBadge}>
+                      {idx < step ? "✓" : idx + 1}
+                    </span>
+                    <span className="hidden md:inline">{label}</span>
+                  </div>
+                  {idx < steps.length - 1 && (
+                    <div
+                      className={`${styles.stepLine} ${
+                        idx < step ? styles.stepLineActive : ""
+                      }`}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <h1 className={styles.summaryTitle}>{steps[step]}</h1>
 
             {/* Step 0 */}
             {step === 0 && (
               <>
-                <label>Ad Type:</label>
-                <select
-                  value={adType}
-                  onChange={(e) => setAdType(e.target.value)}
-                >
-                  {Object.keys(adRates).map((key) => (
-                    <option key={key} value={key}>
-                      {key === "product_sales" ? "Product Sales" : key.charAt(0).toUpperCase() + key.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                <label>Select Campaign Ad Category:</label>
+                <div className={styles.adTypeGrid}>
+                  {Object.keys(adRates).map((key) => {
+                    const isSelected = adType === key;
+                    const rate = adRates[key];
+                    const displayName = key === "product_sales" ? "Product Sales" : key.charAt(0).toUpperCase() + key.slice(1);
+                    return (
+                      <div
+                        key={key}
+                        className={`${styles.adTypeCard} ${isSelected ? styles.adTypeCardActive : ""}`}
+                        onClick={() => setAdType(key)}
+                      >
+                        <div className={styles.adTypeCardTitle}>{displayName}</div>
+                        <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / impression</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </>
             )}
 
