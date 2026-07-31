@@ -200,7 +200,6 @@ export default function AttentionMarketTicker({
             <div className={styles.inputGroup}>
               <label className={styles.inputLabel}>Set Custom Bid (per attention):</label>
               <div className={styles.inputWrapper}>
-                <span className={styles.currencyPrefix}>₦</span>
                 <input
                   type="number"
                   step="1"

@@ -7,151 +7,151 @@ export const locationData: Record<string, StateData[]> = {
   Nigeria: [
     {
       name: "Abia",
-      cities: ["Umuahia", "Aba", "Ohafia", "Arochukwu", "Bende"]
+      cities: ["Umuahia", "Aba North", "Aba South", "Ohafia", "Arochukwu", "Bende", "Isialangwa North", "Isialangwa South", "Ikwuano", "Obingwa", "Osisioma", "Ukwa East", "Ukwa West", "Ugwunagbo"]
     },
     {
       name: "Adamawa",
-      cities: ["Yola", "Mubi", "Numan", "Jimeta"]
+      cities: ["Yola North", "Yola South", "Mubi North", "Mubi South", "Numan", "Jimeta", "Ganye", "Michika", "Madagali", "Hong", "Song", "Demsa"]
     },
     {
       name: "Akwa Ibom",
-      cities: ["Uyo", "Eket", "Ikot Ekpene", "Oron", "Ikot Abasi"]
+      cities: ["Uyo", "Eket", "Ikot Ekpene", "Oron", "Ikot Abasi", "Abak", "Etinan", "Ibiono-Ibom", "Itu", "Onna", "Esit Eket", "Ibeno"]
     },
     {
       name: "Anambra",
-      cities: ["Awka", "Onitsha", "Nnewi", "Ekwulobia", "Obosi"]
+      cities: ["Awka North", "Awka South", "Onitsha North", "Onitsha South", "Nnewi North", "Nnewi South", "Ekwulobia", "Aguata", "Anaocha", "Dunukofia", "Njikoka", "Ogbaru", "Oyi", "Ihiala", "Idemili North", "Idemili South", "Obosi"]
     },
     {
       name: "Bauchi",
-      cities: ["Bauchi", "Azare", "Misau", "Jama'are"]
+      cities: ["Bauchi", "Azare", "Misau", "Jama'are", "Katagum", "Alkaleri", "Ningi", "Dass", "Toro"]
     },
     {
       name: "Bayelsa",
-      cities: ["Yenagoa", "Brass", "Amassoma", "Ogbia"]
+      cities: ["Yenagoa", "Brass", "Amassoma", "Ogbia", "Sagbama", "Ekeremor", "Nembe", "Kolokuma/Opokuma"]
     },
     {
       name: "Benue",
-      cities: ["Makurdi", "Otukpo", "Gboko", "Katsina-Ala"]
+      cities: ["Makurdi", "Otukpo", "Gboko", "Katsina-Ala", "Vandeikya", "Ukum", "Buruku", "Guma", "Tarka"]
     },
     {
       name: "Borno",
-      cities: ["Maiduguri", "Biu", "Bama", "Monguno"]
+      cities: ["Maiduguri", "Biu", "Bama", "Monguno", "Gwoza", "Dikwa", "Askira/Uba", "Damboa", "Kaga", "Konduga"]
     },
     {
       name: "Cross River",
-      cities: ["Calabar", "Ikom", "Ogoja", "Ugep"]
+      cities: ["Calabar Municipal", "Calabar South", "Ikom", "Ogoja", "Ugep", "Obudu", "Akpabuyo", "Bekwarra", "Yala"]
     },
     {
       name: "Delta",
-      cities: ["Asaba", "Warri", "Sapele", "Ughelli", "Agbor"]
+      cities: ["Asaba", "Warri North", "Warri South", "Warri Southwest", "Sapele", "Ughelli North", "Ughelli South", "Agbor", "Uvwie", "Okpe", "Ika South", "Ndokwa East", "Ndokwa West"]
     },
     {
       name: "Ebonyi",
-      cities: ["Abakaliki", "Afikpo", "Onueke"]
+      cities: ["Abakaliki", "Afikpo North", "Afikpo South", "Onueke", "Ezza North", "Ezza South", "Ikwo", "Izzi", "Ohaozara"]
     },
     {
       name: "Edo",
-      cities: ["Benin City", "Auchi", "Ekpoma", "Uromi"]
+      cities: ["Benin City", "Oredo", "Ikpoba Okha", "Egor", "Auchi", "Ekpoma", "Uromi", "Esan Central", "Esan Northeast", "Esan Southeast", "Etsako West"]
     },
     {
       name: "Ekiti",
-      cities: ["Ado-Ekiti", "Ikere", "Oye", "Effon-Alaiye"]
+      cities: ["Ado-Ekiti", "Ikere", "Oye", "Effon-Alaiye", "Ikole", "Ijero", "Gbonyin", "Ekiti Southwest"]
     },
     {
       name: "Enugu",
-      cities: ["Enugu", "Nsukka", "Oji River", "Agbani"]
+      cities: ["Enugu North", "Enugu South", "Enugu East", "Nsukka", "Oji River", "Agbani", "Udi", "Nkanu West", "Nkanu East", "Ezeagu"]
     },
     {
       name: "Gombe",
-      cities: ["Gombe", "Kaltungo", "Dukku", "Biu Road"]
+      cities: ["Gombe", "Kaltungo", "Dukku", "Yamaltu/Deba", "Akko", "Balanga", "Funakaye"]
     },
     {
       name: "Imo",
-      cities: ["Owerri", "Orlu", "Okigwe", "Mgbidi"]
+      cities: ["Owerri Municipal", "Owerri North", "Owerri West", "Orlu", "Okigwe", "Mgbidi", "Mbaitoli", "Ikeduru", "Oguta", "Aboh Mbaise", "Ahiazu Mbaise"]
     },
     {
       name: "Jigawa",
-      cities: ["Dutse", "Hadejia", "Gumel", "Birnin Kudu"]
+      cities: ["Dutse", "Hadejia", "Gumel", "Birnin Kudu", "Ringim", "Kazaure", "Babura"]
     },
     {
       name: "Kaduna",
-      cities: ["Kaduna", "Zaria", "Kafanchan", "Sabon Gari"]
+      cities: ["Kaduna North", "Kaduna South", "Chikun", "Igabi", "Zaria", "Sabon Gari", "Kafanchan", "Sanga", "Lere", "Giwa"]
     },
     {
       name: "Kano",
-      cities: ["Kano Municipal", "Dala", "Fagge", "Gwale", "Tarauni", "Nassarawa"]
+      cities: ["Kano Municipal", "Dala", "Fagge", "Gwale", "Tarauni", "Nassarawa", "Ungogo", "Kumbotso", "Dawakin Kudu", "Dawakin Tofa", "Bichi", "Wudil"]
     },
     {
       name: "Katsina",
-      cities: ["Katsina", "Daura", "Funtua", "Malumfashi"]
+      cities: ["Katsina", "Daura", "Funtua", "Malumfashi", "Dutsin-Ma", "Kankia", "Mani"]
     },
     {
       name: "Kebbi",
-      cities: ["Birnin Kebbi", "Argungu", "Yauri", "Zuru"]
+      cities: ["Birnin Kebbi", "Argungu", "Yauri", "Zuru", "Jega", "Dandi", "Koko/Besse"]
     },
     {
       name: "Kogi",
-      cities: ["Lokoja", "Okene", "Kabba", "Idah"]
+      cities: ["Lokoja", "Okene", "Kabba", "Idah", "Ankpa", "Ajaokuta", "Dekina", "Ogori/Magongo"]
     },
     {
       name: "Kwara",
-      cities: ["Ilorin", "Offa", "Omu-Aran", "Lafiagi"]
+      cities: ["Ilorin East", "Ilorin West", "Ilorin South", "Offa", "Omu-Aran", "Lafiagi", "Edu", "Irepodun", "Moro"]
     },
     {
       name: "Lagos",
-      cities: ["Ikeja", "Lekki", "Surulere", "Victoria Island", "Yaba", "Epe", "Badagry", "Ikorodu", "Maryland", "Apapa", "Oshodi", "Alimosho"]
+      cities: ["Ikeja", "Lekki", "Surulere", "Victoria Island", "Yaba", "Ikorodu", "Epe", "Badagry", "Alimosho", "Eti-Osa", "Oshodi-Isolo", "Agege", "Ifako-Ijaiye", "Kosofe", "Somolu", "Lagos Island", "Lagos Mainland", "Ajeromi-Ifelodun", "Amuwo-Odofin", "Ojo", "Maryland", "Apapa"]
     },
     {
       name: "Nasarawa",
-      cities: ["Lafia", "Karu", "Keffi", "Akwanga"]
+      cities: ["Lafia", "Karu", "Keffi", "Akwanga", "Nasarawa", "Doma", "Toto"]
     },
     {
       name: "Niger",
-      cities: ["Minna", "Suleja", "Bida", "Kontagora"]
+      cities: ["Minna", "Suleja", "Bida", "Kontagora", "Lapai", "Mokwa", "Borgu"]
     },
     {
       name: "Ogun",
-      cities: ["Abeokuta", "Ota", "Ijebu Ode", "Sagamu", "Ilaro"]
+      cities: ["Abeokuta North", "Abeokuta South", "Ota", "Ijebu Ode", "Sagamu", "Ilaro", "Ewekoro", "Ifo", "Remo North"]
     },
     {
       name: "Ondo",
-      cities: ["Akure", "Ondo", "Owo", "Ikare", "Okitipupa"]
+      cities: ["Akure North", "Akure South", "Ondo East", "Ondo West", "Owo", "Ikare", "Okitipupa", "Ile-Oluji", "Irele"]
     },
     {
       name: "Osun",
-      cities: ["Osogbo", "Ile-Ife", "Ilesa", "Ede", "Ila Orangun"]
+      cities: ["Osogbo", "Ile-Ife", "Ilesa", "Ede North", "Ede South", "Ila Orangun", "Ejigbo", "Ikirun"]
     },
     {
       name: "Oyo",
-      cities: ["Ibadan", "Ogbomosho", "Oyo", "Saki", "Eruwa"]
+      cities: ["Ibadan North", "Ibadan Northeast", "Ibadan Northwest", "Ibadan Southeast", "Ibadan Southwest", "Ogbomosho North", "Ogbomosho South", "Oyo East", "Oyo West", "Saki", "Eruwa", "Iseyin"]
     },
     {
       name: "Plateau",
-      cities: ["Jos", "Bukuru", "Pankshin", "Shendam"]
+      cities: ["Jos North", "Jos South", "Jos East", "Bukuru", "Pankshin", "Shendam", "Barkin Ladi", "Mangu"]
     },
     {
       name: "Rivers",
-      cities: ["Port Harcourt", "Obio-Akpor", "Bonny", "Eleme", "Oyigbo", "Ahoada"]
+      cities: ["Port Harcourt", "Obio-Akpor", "Bonny", "Eleme", "Oyigbo", "Ahoada East", "Ahoada West", "Degema", "Okrika", "Opobo/Nkoro", "Khana", "Gokana"]
     },
     {
       name: "Sokoto",
-      cities: ["Sokoto", "Wurno", "Tambuwal"]
+      cities: ["Sokoto North", "Sokoto South", "Wurno", "Tambuwal", "Bodinga", "Goronyo"]
     },
     {
       name: "Taraba",
-      cities: ["Jalingo", "Wukari", "Bali", "Gashaka"]
+      cities: ["Jalingo", "Wukari", "Bali", "Gashaka", "Sardauna", "Takum", "Karim Lamido"]
     },
     {
       name: "Yobe",
-      cities: ["Damaturu", "Gashua", "Potiskum", "Nguru"]
+      cities: ["Damaturu", "Gashua", "Potiskum", "Nguru", "Geidam", "Bade"]
     },
     {
       name: "Zamfara",
-      cities: ["Gusau", "Kaura Namoda", "Talata Mafara"]
+      cities: ["Gusau", "Kaura Namoda", "Talata Mafara", "Anka", "Maru", "Bungudu"]
     },
     {
       name: "FCT",
-      cities: ["Abuja", "Garki", "Wuse", "Maitama", "Asokoro", "Gwarinpa", "Kubwa", "Gwagwalada"]
+      cities: ["Abuja Central", "Garki", "Wuse", "Maitama", "Asokoro", "Gwarinpa", "Kubwa", "Gwagwalada", "Abaji", "Bwari", "Kuje", "Kwali"]
     }
   ],
   "United States": [

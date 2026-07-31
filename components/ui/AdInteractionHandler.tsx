@@ -252,8 +252,8 @@ export default function AdInteractionHandler({
       {stage === "challenge" && (
         <div className={styles.challengeContainer}>
           <div className={styles.challengeHeader}>
-            <ShieldCheck size={14} className={styles.shieldIcon} />
-            <span className={styles.challengeTitle}>Complete verification to unlock:</span>
+            <ShieldCheck size={11} className={styles.shieldIcon} />
+            <span className={styles.challengeTitle}>Verify to unlock:</span>
           </div>
 
           {challengeType === "swipe" && (

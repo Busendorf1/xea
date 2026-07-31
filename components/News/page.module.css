@@ -405,6 +405,125 @@
   color: var(--text-muted);
 }
 
+/* Live Preview Section & Highlights Card Styling */
+.previewSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.cardPreviewWrapper {
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.previewLabel {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  text-transform: uppercase;
+}
+
+.newsCard {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+}
+
+.newsCardImageContainer {
+  position: relative;
+  width: 100%;
+  max-height: 260px;
+  overflow: hidden;
+  background-color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.newsCardImgFull {
+  width: 100%;
+  height: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  display: block;
+}
+
+.newsCardCategory {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background-color: rgba(11, 15, 25, 0.85);
+  backdrop-filter: blur(8px);
+  color: var(--primary);
+  border: 1px solid var(--primary-glow);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: 0.725rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.newsCardBody {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.newsCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+.newsCardSource {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.newsCardDot {
+  opacity: 0.5;
+}
+
+.newsCardTime {
+  color: var(--text-muted);
+}
+
+.newsCardTitle {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--foreground);
+  line-height: 1.35;
+  margin: 0;
+  word-break: break-word;
+}
+
+.newsCardDescription {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  word-break: break-word;
+}
+
 @media screen and (max-width: 600px) {
   .pageWapper,
   .pageWrapper {
