@@ -491,7 +491,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         onClick={() => setAdType(key)}
                       >
                         <div className={styles.adTypeCardTitle}>{displayName}</div>
-                        <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / impression</div>
+                        <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / attention</div>
                       </div>
                     );
                   })}

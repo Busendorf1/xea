@@ -370,44 +370,6 @@ export default function News({ session }: NewsProps) {
                     <span>Total Due</span>
                     <span>{formatCurrency(1000)}</span>
                   </div>
-                  <div className={styles.checklist}>
-                    <div className={styles.checkItem}>
-                      <svg
-                        className={styles.checkIcon}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      High-quality cover image uploaded
-                    </div>
-                    <div className={styles.checkItem}>
-                      <svg
-                        className={styles.checkIcon}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      Captivating short title
-                    </div>
-                    <div className={styles.checkItem}>
-                      <svg
-                        className={styles.checkIcon}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      Target interest audience set
-                    </div>
-                  </div>
                   <div className={styles.submitNotice}>
                     <svg
                       className={styles.noticeIcon}
