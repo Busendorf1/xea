@@ -64,14 +64,8 @@ export default function News({ session }: NewsProps) {
           return;
         }
         setMediaType("image");
-      } else if (file.type.startsWith("video/")) {
-        if (file.size > 60 * 1024 * 1024) {
-          alert("Cover video must be smaller than 60MB.");
-          return;
-        }
-        setMediaType("video");
       } else {
-        alert("Invalid file format. Only images and videos are allowed.");
+        alert("Only image files are allowed for highlights (videos are not permitted).");
         return;
       }
       setMediaFile(file);
@@ -205,11 +199,11 @@ export default function News({ session }: NewsProps) {
             {/* Step 0: Media Upload */}
             {step === 0 && (
               <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Upload Cover Image or Video</label>
+                <label className={styles.fieldLabel}>Upload Cover Image</label>
                 <label className={styles.uploadZone}>
                   <input
                     type="file"
-                    accept="image/*,video/*"
+                    accept="image/*"
                     onChange={handleMediaChange}
                     className={styles.fileInput}
                   />
@@ -228,29 +222,20 @@ export default function News({ session }: NewsProps) {
                       <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                     <span>
-                      {mediaFile ? mediaFile.name : "Choose an image/video or drag it here"}
+                      {mediaFile ? mediaFile.name : "Choose an image or drag it here"}
                     </span>
                     <span className={styles.uploadSubtext}>
-                      Supports JPG, PNG, WEBP (Max 5MB) or MP4, WEBM (Max 60MB)
+                      Supports JPG, PNG, WEBP (Max 5MB)
                     </span>
                   </div>
                 </label>
                 {mediaPreview && (
                   <div className={styles.imagePreviewContainer}>
-                    {mediaType === "image" ? (
-                      <img
-                        src={mediaPreview}
-                        alt="News Preview Image"
-                        className={styles.fullPreviewImg}
-                      />
-                    ) : (
-                      <video
-                        src={mediaPreview}
-                        controls
-                        className={styles.fullPreviewImg}
-                        style={{ maxHeight: "300px", background: "#000" }}
-                      />
-                    )}
+                    <img
+                      src={mediaPreview}
+                      alt="News Preview Image"
+                      className={styles.fullPreviewImg}
+                    />
                   </div>
                 )}
               </div>
@@ -326,21 +311,12 @@ export default function News({ session }: NewsProps) {
                   <div className={styles.newsCard}>
                     {mediaPreview && (
                       <div className={styles.newsCardImageContainer}>
-                        {mediaType === "image" ? (
-                          <img
-                            src={mediaPreview}
-                            alt="Preview"
-                            className={styles.newsCardImgFull}
-                          />
-                        ) : (
-                          <video
-                            src={mediaPreview}
-                            controls
-                            className={styles.newsCardImgFull}
-                            style={{ maxHeight: "250px", background: "#000" }}
-                          />
-                        )}
-                        <span className={styles.newsCardCategory}>{interest}</span>
+                        <img
+                          src={mediaPreview}
+                          alt="Preview"
+                          className={styles.newsCardImgFull}
+                        />
+                        <span className={styles.newsCardCategory}>{interest || "General"}</span>
                       </div>
                     )}
                     <div className={styles.newsCardBody}>
@@ -371,17 +347,6 @@ export default function News({ session }: NewsProps) {
                     <span>{formatCurrency(1000)}</span>
                   </div>
                   <div className={styles.submitNotice}>
-                    <svg
-                      className={styles.noticeIcon}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
                     <p className={styles.noticeText}>
                       Your news highlight will be placed in the review queue. Please check the <strong>"My Ads"</strong> page under your profile to see when it becomes active and starts delivering.
                     </p>
