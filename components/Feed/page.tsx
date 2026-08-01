@@ -507,8 +507,9 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   const virtualizer = useVirtualizer({
     count: displayFeed.length,
     getScrollElement: () => parentRef.current?.parentElement || null,
-    estimateSize: () => 350,
-    overscan: 5,
+    estimateSize: () => 480,
+    getItemKey: useCallback((index: number) => displayFeed[index]?.id || index, [displayFeed]),
+    overscan: 10,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
