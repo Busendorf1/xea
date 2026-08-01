@@ -437,7 +437,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Handle header scroll show/hide behavior on mobile (tracks both window & feed container scroll)
+  // Handle header scroll show/hide behavior on mobile (with delta threshold hysteresis)
   useEffect(() => {
     if (!isMobile) {
       setShowHeader(true);
@@ -445,31 +445,34 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
     }
 
     let lastScrollPos = 0;
+    const SCROLL_THRESHOLD = 15; // Minimum scroll distance to trigger state change
     const feedEl = feedAreaRef.current;
 
     const handleScrollEvent = (scrollTop: number) => {
-      if (scrollTop > lastScrollPos && scrollTop > 30) {
-        // Scrolling down feed -> gracefully ease out header for full-screen view
+      const delta = scrollTop - lastScrollPos;
+
+      if (scrollTop <= 15) {
+        // At or near top -> always show header
+        setShowHeader(true);
+      } else if (delta > SCROLL_THRESHOLD && scrollTop > 40) {
+        // Scrolling down -> hide header
         setShowHeader(false);
-      } else if (scrollTop < lastScrollPos || scrollTop <= 15) {
-        // Scrolling up towards top -> gently bring header back
+      } else if (delta < -SCROLL_THRESHOLD) {
+        // Scrolling up -> show header
         setShowHeader(true);
       }
       lastScrollPos = scrollTop;
     };
 
-    const onWindowScroll = () => handleScrollEvent(window.scrollY);
     const onFeedScroll = () => {
       if (feedEl) handleScrollEvent(feedEl.scrollTop);
     };
 
-    window.addEventListener("scroll", onWindowScroll, { passive: true });
     if (feedEl) {
       feedEl.addEventListener("scroll", onFeedScroll, { passive: true });
     }
 
     return () => {
-      window.removeEventListener("scroll", onWindowScroll);
       if (feedEl) {
         feedEl.removeEventListener("scroll", onFeedScroll);
       }

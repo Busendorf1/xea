@@ -33,7 +33,7 @@ const adRates: Record<string, number> = {
   product_sales: 55,
 };
 //we can pay 60%
-const steps = ["Ad", "Targeting", "Location", "Ad Creative", "Summary"];
+const steps = ["Ad", "Targeting", "Location", "Creative", "Summary"];
 
 const formatCurrency = (amount: number | string) => {
   const val = typeof amount === "string" ? parseFloat(amount) : amount;
