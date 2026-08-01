@@ -17,8 +17,8 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (userErr || !user) {
-      console.error("❌ Error fetching user info for notifications:", userErr);
-      return NextResponse.json({ error: "Failed to load user info" }, { status: 500 });
+      console.warn("⚠️ User profile info query warning in /api/notifications:", userErr?.message || "User not found");
+      return NextResponse.json([]);
     }
 
     const userSignupDate = user.created_at;
@@ -94,8 +94,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(merged);
   } catch (err: any) {
-    console.error("❌ Unexpected error in GET /api/notifications:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.warn("⚠️ Error in GET /api/notifications:", err?.message || err);
+    return NextResponse.json([]);
   }
 }
 

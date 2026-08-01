@@ -181,6 +181,20 @@ export default function Update({ email }: Props) {
       return;
     }
 
+    // Interest and Industry are required — cannot be left empty
+    const resolvedInterest = Array.isArray(formData.interest) ? formData.interest : dbProfile.interest || [];
+    const resolvedIndustry = Array.isArray(formData.industry) ? formData.industry : dbProfile.industry || [];
+
+    if (!resolvedInterest || resolvedInterest.length === 0) {
+      setStatus("⚠️ At least one Interest must be selected so we can target relevant ads for you.");
+      return;
+    }
+
+    if (!resolvedIndustry || resolvedIndustry.length === 0) {
+      setStatus("⚠️ At least one Industry must be selected so we can target relevant ads for you.");
+      return;
+    }
+
     if (timeRemaining !== null && timeRemaining > 0) {
       setStatus("⚠️ You can only update your profile once every 30 days.");
       return;

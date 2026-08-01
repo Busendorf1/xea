@@ -653,7 +653,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
       </header>
 
       {/* 2. Main Dashboard Layout Area */}
-      <div className={styles.dashboardContainer}>
+      <div className={`${styles.dashboardContainer} ${showHeader ? "" : styles.dashboardContainerHeaderHidden}`}>
         {/* Left Sidebar - Highlights Section */}
         {/* On tablet: hidden if profile is toggled. On mobile: hidden by default, slides in full screen. */}
         <aside className={`${styles.leftSidebar} ${

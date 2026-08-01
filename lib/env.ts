@@ -20,13 +20,17 @@ const envSchema = z.object({
 });
 
 export const getEnv = () => {
-  const result = envSchema.safeParse(process.env);
+  const envObj = {
+    ...process.env,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
+  };
+  const result = envSchema.safeParse(envObj);
   if (!result.success) {
     console.warn("⚠️ Environment Variable Warning:", result.error.format());
     return {
       AUTH0_SECRET: process.env.AUTH0_SECRET || "",
       NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
       REDIS_HOST: process.env.REDIS_HOST || "127.0.0.1",
       REDIS_PORT: parseInt(process.env.REDIS_PORT || "6379", 10),

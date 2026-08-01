@@ -91,6 +91,20 @@ export default function ProfileSetup() {
       return false;
     }
 
+    if (!formData.interest || formData.interest.length === 0) {
+      const msg = "Select at least one Interest so we can target relevant ads for you.";
+      setErrorMessage(msg);
+      setFieldErrors({ interest: "Select at least one interest" });
+      return false;
+    }
+
+    if (!formData.industry || formData.industry.length === 0) {
+      const msg = "Select at least one Industry so we can target relevant ads for you.";
+      setErrorMessage(msg);
+      setFieldErrors({ industry: "Select at least one industry" });
+      return false;
+    }
+
     const result = profileSetupStep1Schema.safeParse(formData);
     if (!result.success) {
       const errs: Record<string, string> = {};

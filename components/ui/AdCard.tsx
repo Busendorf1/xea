@@ -10,11 +10,16 @@ import {
   UserPlus,
   Check,
   Play,
+  Pause,
   Volume2,
   VolumeX,
   Apple,
   ChevronDown,
   Video,
+  MoreVertical,
+  ShieldAlert,
+  UserX,
+  EyeOff,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -133,7 +138,31 @@ export default function AdCard({
 
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowThreeDotMenu(false);
+      }
+    };
+    if (showThreeDotMenu) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showThreeDotMenu]);
+
+  const formatVideoTime = (seconds: number) => {
+    if (isNaN(seconds) || seconds <= 0) return "00:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
 
   const formatCurrency = (amount: number | string) => {
     const val = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -156,6 +185,27 @@ export default function AdCard({
     if (videoRef.current) {
       videoRef.current.muted = !isMuted;
       setIsMuted(!isMuted);
+    }
+  };
+
+  const handleBlockAndReportAd = () => {
+    setShowThreeDotMenu(false);
+    if (typeof window !== "undefined") {
+      window.location.href = `/help?reportAdId=${encodeURIComponent(ad.id)}&type=ad`;
+    }
+  };
+
+  const handleBlockAndReportAdvertiser = () => {
+    setShowThreeDotMenu(false);
+    if (typeof window !== "undefined") {
+      window.location.href = `/help?reportAdId=${encodeURIComponent(ad.id)}&advertiserEmail=${encodeURIComponent(ad.user_email || "")}&type=advertiser`;
+    }
+  };
+
+  const handleDontShowAgain = () => {
+    setShowThreeDotMenu(false);
+    if (typeof window !== "undefined") {
+      window.location.href = `/help?reportAdId=${encodeURIComponent(ad.id)}&type=dont_show`;
     }
   };
 
@@ -488,14 +538,64 @@ export default function AdCard({
               {formatTimestamp(ad.created_at)}
             </span>
           </div>
-          <span className={styles.sponsorLabel}>
-            {(() => {
-              const category = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "").toLowerCase();
-              if (category === "politics") return "Politics Ad";
-              if (category === "religion") return "Religious Ad";
-              return "Ad";
-            })()}
-          </span>
+
+          <div className={styles.headerRightContainer}>
+            <span className={styles.sponsorLabel}>
+              {(() => {
+                const category = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "").toLowerCase();
+                if (category === "politics") return "Politics Ad";
+                if (category === "religion") return "Religious Ad";
+                return "Ad";
+              })()}
+            </span>
+
+            {/* Three Dot Icon & Dropdown Menu */}
+            <div className={styles.threeDotMenuWrapper} ref={menuRef}>
+              <button
+                type="button"
+                className={styles.threeDotBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowThreeDotMenu(!showThreeDotMenu);
+                }}
+                title="Ad Options"
+                aria-label="Ad options menu"
+              >
+                <MoreVertical size={15} />
+              </button>
+
+              {showThreeDotMenu && (
+                <div className={styles.adCardDropdown} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className={styles.dropdownOption}
+                    onClick={handleBlockAndReportAd}
+                  >
+                    <ShieldAlert size={14} className={styles.dropdownIconDanger} />
+                    <span>Block & report Ad</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={styles.dropdownOption}
+                    onClick={handleBlockAndReportAdvertiser}
+                  >
+                    <UserX size={14} className={styles.dropdownIconDanger} />
+                    <span>Block & report Advertiser</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={styles.dropdownOption}
+                    onClick={handleDontShowAgain}
+                  >
+                    <EyeOff size={14} className={styles.dropdownIconMuted} />
+                    <span>Don't show this Ad again</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Product Name & Description (if product sales) */}
@@ -546,6 +646,7 @@ export default function AdCard({
                     {isVideo ? (
                       <div className={styles.webVideoContainer} onClick={(e) => e.stopPropagation()}>
                         <HlsVideoPlayer 
+                          ref={videoRef}
                           key={url}
                           src={url}
                           hlsSrc={ad.hls_url || (url.endsWith(".m3u8") ? url : undefined)}
@@ -557,8 +658,16 @@ export default function AdCard({
                           onClick={togglePlay}
                           onPlay={() => setIsPlaying(true)}
                           onPause={() => setIsPlaying(false)}
+                          onTimeUpdate={(e) => {
+                            if (e.currentTarget.currentTime) {
+                              setVideoCurrentTime(e.currentTarget.currentTime);
+                            }
+                          }}
                           onLoadedMetadata={(e) => {
-                            const { videoWidth, videoHeight } = e.currentTarget;
+                            const { videoWidth, videoHeight, duration } = e.currentTarget;
+                            if (duration) {
+                              setVideoDuration(duration);
+                            }
                             if (videoWidth && videoHeight) {
                               setMediaAspectRatios((prev) => ({
                                 ...prev,
@@ -568,27 +677,43 @@ export default function AdCard({
                           }}
                         />
 
-
-                        {/* Custom sleek play/pause overlays */}
-                        <div className={styles.webVideoClickable} onClick={togglePlay}>
-                          {!isPlaying && (
-                            <div className={styles.webPlayButtonOverlay}>
-                              <Play size={24} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Custom sleek mute/unmute overlay */}
+                        {/* Top Right Corner Play/Pause Button */}
                         <button 
-                          type="button"
-                          className={styles.webMuteButtonOverlay} 
+                          type="button" 
+                          className={styles.videoTopRightPlayBtn} 
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleMute();
+                            togglePlay();
                           }}
+                          title={isPlaying ? "Pause video" : "Play video"}
                         >
-                          {isMuted ? <VolumeX size={14} color="#fff" /> : <Volume2 size={14} color="#fff" />}
+                          {isPlaying ? (
+                            <Pause size={14} fill="#fff" color="#fff" />
+                          ) : (
+                            <Play size={14} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />
+                          )}
                         </button>
+
+                        {/* Sleek Bottom Control Bar */}
+                        <div className={styles.videoControlBar} onClick={(e) => e.stopPropagation()}>
+                          {/* Left: Countdown Duration Badge (00:00 format, counting down towards 00:00) */}
+                          <div className={styles.videoDurationBadge} title="Remaining duration">
+                            {formatVideoTime(Math.max(0, (videoDuration || 0) - (videoCurrentTime || 0)))}
+                          </div>
+
+                          {/* Right: Mic Unmute/Mute Button */}
+                          <button 
+                            type="button"
+                            className={styles.videoMuteBtn} 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleMute();
+                            }}
+                            title={isMuted ? "Unmute sound" : "Mute sound"}
+                          >
+                            {isMuted ? <VolumeX size={15} color="#fff" /> : <Volume2 size={15} color="#fff" />}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <img

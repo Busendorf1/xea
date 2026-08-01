@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 
 export interface HlsVideoPlayerProps
   extends React.VideoHTMLAttributes<HTMLVideoElement> {
@@ -14,7 +14,7 @@ export interface HlsVideoPlayerProps
   poster?: string;
 }
 
-export const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({
+export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(({
   src,
   hlsSrc,
   autoPlay = false,
@@ -24,15 +24,24 @@ export const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({
   className = "",
   poster,
   ...restProps
-}) => {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+}, ref) => {
+  const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<any>(null);
+
+  useImperativeHandle(ref, () => internalVideoRef.current as HTMLVideoElement);
 
   const targetSource = hlsSrc || (src.includes(".m3u8") ? src : null);
   const fallbackSource = src.includes(".m3u8") ? undefined : src;
 
+  // Sync muted property directly on DOM element when muted prop changes
   useEffect(() => {
-    const video = videoRef.current;
+    if (internalVideoRef.current) {
+      internalVideoRef.current.muted = !!muted;
+    }
+  }, [muted]);
+
+  useEffect(() => {
+    const video = internalVideoRef.current;
     if (!video) return;
 
     // Cleanup previous Hls instance if it exists
@@ -95,7 +104,7 @@ export const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({
 
   return (
     <video
-      ref={videoRef}
+      ref={internalVideoRef}
       autoPlay={autoPlay}
       loop={loop}
       muted={muted}
@@ -106,6 +115,8 @@ export const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({
       {...restProps}
     />
   );
-};
+});
+
+HlsVideoPlayer.displayName = "HlsVideoPlayer";
 
 export default HlsVideoPlayer;

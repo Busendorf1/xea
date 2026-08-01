@@ -49,7 +49,7 @@ interface AdminDashboardClientProps {
   adminEmails: string[];
 }
 
-type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications";
+type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads";
 
 function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -155,6 +155,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [replyingTicket, setReplyingTicket] = useState<any | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
+
+  // Reported Ads State
+  const [reportedAds, setReportedAds] = useState<any[]>([]);
+  const [reportedAdsCount, setReportedAdsCount] = useState(0);
+  const [reportedAdsPage, setReportedAdsPage] = useState(0);
 
   // Notification States
   const [notificationTarget, setNotificationTarget] = useState<"all" | "monetized" | "user">("all");
@@ -433,6 +438,65 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
+  const fetchReportedAds = async (page: number) => {
+    setLoading(true);
+    try {
+      const { data, count, error } = await supabase
+        .from("ad_reports")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(page * 15, (page + 1) * 15 - 1);
+
+      if (!error && data) {
+        setReportedAds(data);
+        setReportedAdsCount(count || 0);
+      }
+    } catch (e) {
+      console.error("Error fetching reported ads:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeactivateReportedAd = async (adId: string, reportId: string) => {
+    if (!confirm(`Are you sure you want to deactivate ad ${adId} for all users?`)) return;
+    try {
+      const now = new Date().toISOString();
+      await supabase.from("addsactive").update({ completed_at: now }).eq("id", adId);
+      await supabase.from("adds").update({ completed_at: now }).eq("id", adId);
+      await supabase.from("ad_reports").update({ status: "action_taken" }).eq("id", reportId);
+      alert("Ad campaign deactivated successfully for all users!");
+      fetchReportedAds(reportedAdsPage);
+    } catch (e: any) {
+      alert("Failed to deactivate ad: " + e.message);
+    }
+  };
+
+  const handleBlockReportedAdvertiser = async (advertiserEmail: string, reportId: string) => {
+    if (!advertiserEmail) return alert("No advertiser email associated with this report.");
+    if (!confirm(`Are you sure you want to deactivate all active ads created by advertiser ${advertiserEmail}?`)) return;
+    try {
+      const now = new Date().toISOString();
+      await supabase.from("addsactive").update({ completed_at: now }).eq("user_email", advertiserEmail.toLowerCase());
+      await supabase.from("adds").update({ completed_at: now }).eq("user_email", advertiserEmail.toLowerCase());
+      await supabase.from("ad_reports").update({ status: "action_taken" }).eq("id", reportId);
+      alert(`All ads created by advertiser ${advertiserEmail} have been deactivated for all users.`);
+      fetchReportedAds(reportedAdsPage);
+    } catch (e: any) {
+      alert("Failed to block advertiser: " + e.message);
+    }
+  };
+
+  const handleDismissReport = async (reportId: string) => {
+    try {
+      await supabase.from("ad_reports").update({ status: "dismissed" }).eq("id", reportId);
+      alert("Report dismissed successfully.");
+      fetchReportedAds(reportedAdsPage);
+    } catch (e: any) {
+      alert("Failed to dismiss report: " + e.message);
+    }
+  };
+
   // Synchronize loading on state changes
   useEffect(() => {
     if (activeTab === "overview") {
@@ -449,8 +513,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       fetchActiveHighlightsTab(activeHighlightsPage, searchQuery);
     } else if (activeTab === "help-center") {
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+    } else if (activeTab === "reported-ads") {
+      fetchReportedAds(reportedAdsPage);
     }
-  }, [activeTab, usersPage, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch]);
+  }, [activeTab, usersPage, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -468,6 +534,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       await fetchActiveHighlightsTab(activeHighlightsPage, searchQuery);
     } else if (activeTab === "help-center") {
       await fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+    } else if (activeTab === "reported-ads") {
+      await fetchReportedAds(reportedAdsPage);
     }
     setRefreshing(false);
   };
@@ -1389,6 +1457,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           <button onClick={() => handleTabChange("send-notifications")} className={`${styles.tabButton} ${activeTab === "send-notifications" ? styles.tabButtonActive : ""}`}>
             <Bell size={18} />
             <span>Send Announcements</span>
+          </button>
+
+          <button onClick={() => handleTabChange("reported-ads")} className={`${styles.tabButton} ${activeTab === "reported-ads" ? styles.tabButtonActive : ""}`}>
+            <ShieldAlert size={18} />
+            <span>Ad Guard / Reports ({reportedAdsCount})</span>
           </button>
 
           <div style={{ marginTop: "auto", padding: "1rem", borderTop: "1px solid var(--card-border)" }}>
@@ -2401,6 +2474,87 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   </button>
                 </form>
               </div>
+            </>
+          )}
+
+          {/* 10. REPORTED ADS / AD GUARD TAB */}
+          {activeTab === "reported-ads" && (
+            <>
+              <div>
+                <h1 className={styles.sectionTitle}>Ad Guard & Content Reports</h1>
+                <p className={styles.sectionSubtitle}>Review user-reported ads and advertisers. Take instant action to remove ad campaigns or block advertiser accounts.</p>
+              </div>
+
+              {loading ? (
+                <div className={styles.loadingText}>Fetching reported ads from database...</div>
+              ) : reportedAds.length === 0 ? (
+                <div className={styles.emptyState}>No ad or advertiser reports found.</div>
+              ) : (
+                <>
+                  <div className={styles.cardsGrid}>
+                    {reportedAds.map((report) => (
+                      <div key={report.id} className={styles.cardItem}>
+                        <div className={styles.cardHeader}>
+                          <div>
+                            <h3 className={styles.cardTitle}>Report ID: {report.id.slice(0, 8)}</h3>
+                            <span className={styles.cardMeta}>
+                              Reported by: <strong style={{ color: "var(--foreground)" }}>{report.reporter_email}</strong> · {new Date(report.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <span style={{
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            padding: "4px 8px",
+                            borderRadius: "99px",
+                            backgroundColor: report.status === "action_taken" ? "rgba(239,68,68,0.15)" : report.status === "dismissed" ? "rgba(255,255,255,0.05)" : "rgba(245,158,11,0.15)",
+                            color: report.status === "action_taken" ? "#ef4444" : report.status === "dismissed" ? "var(--text-muted)" : "#f59e0b",
+                            border: `1px solid ${report.status === "action_taken" ? "rgba(239,68,68,0.3)" : report.status === "dismissed" ? "var(--card-border)" : "rgba(245,158,11,0.3)"}`
+                          }}>
+                            {report.status.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className={styles.cardBody} style={{ fontSize: "0.85rem", color: "var(--foreground)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          <div><strong>Report Type:</strong> <span style={{ color: report.report_type === "advertiser" ? "#ef4444" : "var(--primary)" }}>{report.report_type === "advertiser" ? "Block & Report Advertiser" : "Block & Report Ad"}</span></div>
+                          <div><strong>Target Ad ID:</strong> <code>{report.ad_id}</code></div>
+                          {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code>{report.advertiser_email}</code></div>}
+                          {report.reason && (
+                            <div style={{ backgroundColor: "rgba(255,255,255,0.03)", padding: "0.5rem", borderRadius: "8px", border: "1px solid var(--card-border)", marginTop: "0.25rem" }}>
+                              <strong>User Reason:</strong> {report.reason}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className={styles.cardFooter} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                          <button
+                            onClick={() => handleDeactivateReportedAd(report.ad_id, report.id)}
+                            className={`${styles.btnAction} ${styles.btnDanger}`}
+                          >
+                            Deactivate Ad for All Users
+                          </button>
+                          {report.advertiser_email && (
+                            <button
+                              onClick={() => handleBlockReportedAdvertiser(report.advertiser_email, report.id)}
+                              className={`${styles.btnAction} ${styles.btnDanger}`}
+                            >
+                              Block Advertiser Account
+                            </button>
+                          )}
+                          {report.status === "pending" && (
+                            <button
+                              onClick={() => handleDismissReport(report.id)}
+                              className={styles.btnAction}
+                            >
+                              Dismiss Report
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {renderPagination(reportedAdsPage, setReportedAdsPage, reportedAdsCount)}
+                </>
+              )}
             </>
           )}
 

@@ -64,6 +64,8 @@ export const profileSetupStep1Schema = z.object({
 
   businessName: z.string().max(25, "Business name must be 25 characters or fewer").optional().or(z.literal("")),
   bio:          z.string().max(90, "Bio must be 90 characters or fewer").optional().or(z.literal("")),
+  industry:     z.array(z.string()).min(1, "Select at least one industry so we can target relevant ads for you"),
+  interest:     z.array(z.string()).min(1, "Select at least one interest so we can target relevant ads for you"),
 });
 
 export type ProfileSetupStep1 = z.infer<typeof profileSetupStep1Schema>;

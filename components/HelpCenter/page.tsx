@@ -60,12 +60,33 @@ export default function HelpCenter({ session }: HelpCenterProps) {
     fetchTickets();
   }, [userEmail, success]);
 
-  // Auto-select category from URL query parameters
+  // Auto-select category and pre-fill report details from URL query parameters
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const cat = params.get("category");
-      if (cat && CATEGORIES.includes(cat)) {
+      const reportAdId = params.get("reportAdId");
+      const advertiserEmail = params.get("advertiserEmail");
+      const reportType = params.get("type");
+
+      if (reportAdId) {
+        const subjectText = reportType === "advertiser"
+          ? `Report Advertiser: ${advertiserEmail || "Unknown"} (Ad ID: ${reportAdId})`
+          : reportType === "dont_show"
+          ? `Don't Show This Ad Again (Ad ID: ${reportAdId})`
+          : `Report Ad ID: ${reportAdId}`;
+
+        const defaultMessage = reportType === "dont_show"
+          ? `Reason for hiding this ad from my feed: `
+          : `Reason for reporting this ${reportType === "advertiser" ? "advertiser" : "ad"}: `;
+
+        setForm((prev) => ({
+          ...prev,
+          category: "Ad or Highlight Problem",
+          subject: subjectText,
+          message: prev.message || defaultMessage,
+        }));
+      } else if (cat && CATEGORIES.includes(cat)) {
         setForm((prev) => ({ ...prev, category: cat }));
       }
     }
@@ -103,6 +124,24 @@ export default function HelpCenter({ session }: HelpCenterProps) {
       if (!response.ok) {
         setError(resData.error || "Failed to submit. Please try again.");
       } else {
+        // Also update reason in ad_reports if reporting an ad
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const reportAdId = params.get("reportAdId");
+          if (reportAdId) {
+            fetch("/api/campaigns/report", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                adId: reportAdId,
+                advertiserEmail: params.get("advertiserEmail") || "",
+                reportType: params.get("type") || "ad",
+                reason: form.message
+              })
+            }).catch(err => console.error("Failed to update report reason:", err));
+          }
+        }
+
         setSuccess(true);
         setForm((prev) => ({ ...prev, subject: "", message: "" }));
         setTimeout(() => setSuccess(false), 5000);

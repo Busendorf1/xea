@@ -35,14 +35,24 @@ export async function GET(req: NextRequest) {
     const profilesCacheKey = `feed:profiles:${emailKey}`;
     const seenAdsSetKey = `seen:ads:${emailKey}`;
 
+    const blockedAdsSetKey = `blocked:ads:${emailKey}`;
+    const blockedAdvertisersSetKey = `blocked:advertisers:${emailKey}`;
+
     let pageAds: Ad[] = [];
     let profilesMap: Record<string, AdvertiserProfile> = {};
 
     let cacheHit = false;
 
-    // Fetch user's active seen set in Redis to exclude seen ads without purging candidate feed
-    const seenAdIdsList: string[] = await redisConnection.smembers(seenAdsSetKey).catch(() => []);
+    // Fetch user's active seen set and blocked sets in Redis to exclude seen/blocked ads without purging candidate feed
+    const [seenAdIdsList, blockedAdIdsList, blockedAdvertisersList] = await Promise.all([
+      redisConnection.smembers(seenAdsSetKey).catch(() => []),
+      redisConnection.smembers(blockedAdsSetKey).catch(() => []),
+      redisConnection.smembers(blockedAdvertisersSetKey).catch(() => []),
+    ]);
+
     const seenAdIdsSet = new Set<string>(seenAdIdsList);
+    const blockedAdIdsSet = new Set<string>(blockedAdIdsList);
+    const blockedAdvertisersSet = new Set<string>(blockedAdvertisersList.map(e => e.toLowerCase()));
 
     // Try to retrieve cached candidate ad IDs and profiles unless refresh is requested
     if (!refresh) {
@@ -56,8 +66,8 @@ export async function GET(req: NextRequest) {
           const cachedAdIds: string[] = JSON.parse(cachedAdIdsStr);
           profilesMap = JSON.parse(cachedProfilesStr);
 
-          // Filter out ads already seen by the user in this session & preserve single-fetch uniqueness
-          const eligibleIds = Array.from(new Set(cachedAdIds)).filter((id) => !seenAdIdsSet.has(id));
+          // Filter out ads already seen or blocked by the user in this session & preserve single-fetch uniqueness
+          const eligibleIds = Array.from(new Set(cachedAdIds)).filter((id) => !seenAdIdsSet.has(id) && !blockedAdIdsSet.has(id));
 
           // Extract slice of IDs for the requested page
           const slicedIds = eligibleIds.slice(offset, offset + limit);
@@ -74,7 +84,11 @@ export async function GET(req: NextRequest) {
               const adId = slicedIds[idx];
               if (raw) {
                 try {
-                  fetchedDetailsMap[adId] = JSON.parse(raw);
+                  const adDetail: Ad = JSON.parse(raw);
+                  if (adDetail.user_email && blockedAdvertisersSet.has(adDetail.user_email.toLowerCase())) {
+                    return;
+                  }
+                  fetchedDetailsMap[adId] = adDetail;
                 } catch {
                   missingIds.push(adId);
                 }
@@ -92,6 +106,9 @@ export async function GET(req: NextRequest) {
 
               if (!dbErr && dbMissing) {
                 const setPromises = dbMissing.map((ad: any) => {
+                  if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) {
+                    return Promise.resolve();
+                  }
                   fetchedDetailsMap[ad.id] = ad;
                   return redisConnection.set(
                     `ad:detail:${ad.id}`,
@@ -148,7 +165,8 @@ export async function GET(req: NextRequest) {
       const candidateAdsMap = new Map<string, Ad>();
       (ads || []).forEach((ad: any) => {
         if (ad.completed_at) return;
-        if (seenAdIdsSet.has(ad.id)) return; // Exclude currently seen ads
+        if (seenAdIdsSet.has(ad.id) || blockedAdIdsSet.has(ad.id)) return; // Exclude currently seen/blocked ads
+        if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) return; // Exclude blocked advertisers
 
         // Exclude expired active platform campaigns
         const isPlatformAd = !ad.cost_per_impression || Number(ad.cost_per_impression) === 0;

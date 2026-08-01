@@ -13,6 +13,7 @@ const nextConfig = {
   },
   webpack: (config: any) => {
     config.resolve.fallback = { fs: false, path: false };
+    config.module.exprContextCritical = false;
     return config;
   },
 };
