@@ -719,6 +719,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             onEarnSuccess={triggerEarnFeedback} 
             onMutualSuccess={triggerMutualFeedback} 
           />
+          <Footer />
         </main>
 
         {/* Right Sidebar - Profile & Wallet details */}
@@ -993,8 +994,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
           </div>
         )}
       </div>
-      
-    <Footer />
     </div>
   );
 }
