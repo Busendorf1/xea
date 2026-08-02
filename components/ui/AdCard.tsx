@@ -24,6 +24,7 @@ import {
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
 import HlsVideoPlayer from "./HlsVideoPlayer";
+import UserAvatar from "./UserAvatar";
 
 export interface Ad {
   id: string;
@@ -464,7 +465,7 @@ export default function AdCard({
     .includes((ad.user_email ?? "").toLowerCase());
 
   return (
-    <div ref={cardRef} key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""}`} style={{ ...style, position: "relative", zIndex: showThreeDotMenu ? 99999 : 1, overflow: "visible" }}>
+    <div ref={cardRef} key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""} ${showThreeDotMenu ? styles.cardMenuOpen : ""}`} style={{ ...style, position: "relative", zIndex: showThreeDotMenu ? 99999 : 1, overflow: "visible" }}>
       {/* Left Column: Avatar */}
       <div className={styles.avatarCol}>
         <div className={styles.avatar}>
@@ -472,38 +473,15 @@ export default function AdCard({
             const profile = ad.user_email
               ? advertiserProfiles[ad.user_email.toLowerCase()]
               : null;
-            const hasImage =
-              !avatarError &&
-              profile?.profileImage &&
-              profile.profileImage.trim() !== "";
-            if (hasImage) {
-              return (
-                <img
-                  src={profile!.profileImage}
-                  alt="Advertiser"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                  }}
-                  onError={() => setAvatarError(true)}
-                />
-              );
-            }
-            // Text initials fallback
-            if (profile) {
-              const name =
-                profile.business_name && profile.business_name.trim() !== ""
-                  ? profile.business_name
-                  : profile.firstName;
-              if (name && name.trim() !== "") {
-                return name.slice(0, 2).toUpperCase();
-              }
-            }
-            return ad.user_email
-              ? ad.user_email.slice(0, 2).toUpperCase()
-              : "AD";
+            return (
+              <UserAvatar
+                src={profile?.profileImage}
+                fallbackText={brandName}
+                size={40}
+                alt={brandName}
+                className={styles.avatarImg}
+              />
+            );
           })()}
         </div>
       </div>

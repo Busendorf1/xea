@@ -3,6 +3,8 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const email = await getAuthenticatedEmail(req);
@@ -53,6 +55,34 @@ export async function POST(req: NextRequest) {
 
     if (ad.user_email?.toLowerCase().trim() !== emailLower) {
       return NextResponse.json({ error: "Access denied. You do not own this campaign." }, { status: 403 });
+    }
+
+    // 1. Check if ad has active viewer reports in ad_reports
+    const { data: activeReports } = await supabaseAdmin
+      .from("ad_reports")
+      .select("id, status")
+      .eq("ad_id", adId)
+      .in("status", ["pending", "action_taken"])
+      .limit(1);
+
+    if (activeReports && activeReports.length > 0) {
+      return NextResponse.json({
+        error: "Boosting Unavailable: This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete."
+      }, { status: 400 });
+    }
+
+    // 2. Check if ad has an admin statement (deactivated or flagged by admin)
+    if (ad.admin_statement && ad.admin_statement.trim() !== "") {
+      return NextResponse.json({
+        error: `Boosting Unavailable: This campaign was paused by an administrator. Reason: "${ad.admin_statement}". Please resolve the notice or wait for admin review.`
+      }, { status: 400 });
+    }
+
+    // 3. Check if ad is paused by user
+    if (ad.is_paused) {
+      return NextResponse.json({
+        error: "Boosting Unavailable: This campaign is currently paused. Please resume the campaign first to boost it."
+      }, { status: 400 });
     }
 
     const currentCost = Number(ad.cost_per_impression || 25);

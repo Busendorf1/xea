@@ -569,6 +569,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
                   left: 0,
                   width: "100%",
                   transform: `translateY(${virtualRow.start}px)`,
+                  zIndex: displayFeed.length - virtualRow.index,
                 }}
               >
                 <AdCard

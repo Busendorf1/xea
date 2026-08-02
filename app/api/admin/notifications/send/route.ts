@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 
+export const dynamic = "force-dynamic";
+
 // Admin email whitelist logic
 const getAdminEmails = (): string[] => {
   const defaultAdmins = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];

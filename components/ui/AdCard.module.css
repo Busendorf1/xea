@@ -7,8 +7,6 @@
   padding: 1.25rem 1rem;
   border-bottom: 1px solid var(--card-border);
   background-color: var(--card-bg);
-  content-visibility: auto;
-  contain-intrinsic-size: 1px 400px;
   max-height: 1200px;
   opacity: 1;
   transform: scale(1);
@@ -17,6 +15,12 @@
               opacity 0.3s ease-out,
               transform 0.3s ease-out,
               border-bottom-width 0.4s ease;
+}
+
+.cardMenuOpen {
+  z-index: 99999 !important;
+  contain: none !important;
+  content-visibility: visible !important;
 }
 
 .cardDismissing {

@@ -3,6 +3,8 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, getCachedHighlights, setCachedHighlights } from "@/lib/utils/cache";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

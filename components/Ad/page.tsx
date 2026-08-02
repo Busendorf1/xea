@@ -496,8 +496,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   return (
     <>
-      {" "}
-      <HeaderJoin />
       <main className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
           <div className={styles.adFormContainer}>
@@ -530,10 +528,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               ))}
             </div>
 
-            <h1 className={styles.summaryTitle} style={{ fontSize: "1.5rem", marginBottom: "0.25rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h1 className={styles.summaryTitle} style={{ fontSize: "1.5rem", marginBottom: "0.25rem", color: "var(--foreground)", display: "flex", alignItems: "center", gap: "8px" }}>
               {editingId ? <><Edit3 size={20} color="#818cf8" /> Edit Campaign</> : <><Rocket size={20} color="#1d9bf0" /> Create New Ad Campaign</>}
             </h1>
-            <p style={{ color: "#94a3b8", fontSize: "0.88rem", marginBottom: "1.25rem" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginBottom: "1.25rem" }}>
               {editingId ? "Update your target audience, locations, and creative. Edits will be submitted for verification." : "Reach active audiences with hyper-targeted ad delivery."}
             </p>
             <h2 className={styles.summaryTitle} style={{ fontSize: "1.1rem" }}>{steps[step]}</h2>
@@ -774,7 +772,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   className={styles.inputBox}
                   placeholder="e.g. 5"
                 />
-                <p style={{ fontSize: "0.85rem", color: "#666", marginTop: "0.25rem" }}>
+                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
                   Daily Attention Cap: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} attentions/day
                 </p>
                 <label style={{ marginTop: "1rem", display: "block" }}>
@@ -795,7 +793,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   className={styles.inputBox}
                   placeholder="e.g. 3"
                 />
-                <p style={{ fontSize: "0.85rem", color: "#666", marginTop: "0.25rem" }}>
+                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
                   A viewer can see this ad up to {formSelections.userFrequencyCap} time{formSelections.userFrequencyCap > 1 ? "s" : ""} before it stops showing for them.
                 </p>
                 <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.5rem", fontStyle: "italic", lineHeight: "1.4" }}>

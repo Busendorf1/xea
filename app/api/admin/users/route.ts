@@ -4,6 +4,8 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 // Admin email whitelist logic
 const getAdminEmails = (): string[] => {
   const defaultAdmins = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];

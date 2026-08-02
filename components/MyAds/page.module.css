@@ -748,8 +748,9 @@
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  padding: 2rem 1rem;
+  padding: 1.5rem 0.75rem;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .modalContent {
@@ -760,6 +761,8 @@
   max-width: 680px;
   max-height: 85vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
   padding: 1.75rem;
   margin: auto;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
@@ -797,10 +800,45 @@
   cursor: pointer;
 }
 
+.boosterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.boosterFullWidth {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .modalOverlay {
+    padding: 1rem 0.5rem;
+  }
+
+  .modalContent {
+    padding: 1.25rem 1rem;
+    max-height: 90vh;
+    border-radius: 14px;
+  }
+
+  .boosterGrid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .boosterFullWidth {
+    grid-column: 1;
+  }
+}
+
 .boosterGroup {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .boosterLabel {
@@ -816,15 +854,52 @@
   padding: 0.6rem 0.75rem;
   color: var(--foreground);
   font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.boostTooltipWrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.boostTooltipContent {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 270px;
+  max-width: calc(100vw - 32px);
+  padding: 0.75rem 0.85rem;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-family: inherit;
+  line-height: 1.45;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  box-sizing: border-box;
+  word-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.boostTooltipWrapper:hover .boostTooltipContent {
+  display: block;
 }
 
 .paymentSelectRow {
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .paymentSelectBtn {
   flex: 1;
+  min-width: 140px;
   padding: 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--card-border);

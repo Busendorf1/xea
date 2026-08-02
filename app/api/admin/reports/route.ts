@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/admin/reports?page=0
 export async function GET(req: NextRequest) {
   try {
@@ -12,11 +14,18 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") || "0", 10);
+    const search = searchParams.get("search")?.trim() || "";
     const pageSize = 15;
 
-    const { data, count, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("ad_reports")
-      .select("*", { count: "exact" })
+      .select("*", { count: "exact" });
+
+    if (search) {
+      query = query.or(`ad_id.ilike.%${search}%,reporter_email.ilike.%${search}%,advertiser_email.ilike.%${search}%,reason.ilike.%${search}%`);
+    }
+
+    const { data, count, error } = await query
       .order("created_at", { ascending: false })
       .range(page * pageSize, (page + 1) * pageSize - 1);
 

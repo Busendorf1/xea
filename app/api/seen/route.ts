@@ -3,6 +3,8 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { feedQueue } from "@/lib/queue";
 import redisConnection from "@/lib/redis";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const email = await getAuthenticatedEmail(request);

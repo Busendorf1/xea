@@ -15,6 +15,7 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import MultiStepAdForm from '@/components/Ad/page';
+import HeaderJoin from '@/components/HeaderJoin/page';
 import Footer from '@/components/Footer/page';
 
 export default async function AdPage() {
@@ -25,10 +26,13 @@ export default async function AdPage() {
   }
 
   return (
-    <div>
-      <MultiStepAdForm session={session} />
+    <>
+      <HeaderJoin />
+      <div>
+        <MultiStepAdForm session={session} />
+      </div>
       <Footer />
-    </div>
+    </>
   );
 }
 

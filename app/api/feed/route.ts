@@ -7,6 +7,8 @@ import redisConnection from "@/lib/redis";
 import { env } from "@/lib/env";
 import { Ad, AdvertiserProfile } from "@/types/ads";
 
+export const dynamic = "force-dynamic";
+
 // Optimized TTLs for high-scalability candidate ID caching
 const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
 const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details

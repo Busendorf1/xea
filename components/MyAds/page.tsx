@@ -213,6 +213,9 @@ import {
   Check,
   SlidersHorizontal,
   ChevronUp,
+  XCircle,
+  Wallet,
+  CreditCard,
 } from "lucide-react";
 interface Session {
   user?: {
@@ -380,6 +383,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     setExpandedSpecsMap((prev) => ({ ...prev, [adId]: !prev[adId] }));
   };
   const [boosterAd, setBoosterAd] = useState<Ad | null>(null);
+  const [noticeModal, setNoticeModal] = useState<{ title: string; message: string; adId?: string } | null>(null);
   const [addImpressions, setAddImpressions] = useState<number>(1000);
   const [addDays, setAddDays] = useState<number>(3);
   const [newBidPrice, setNewBidPrice] = useState<number>(0);
@@ -466,8 +470,28 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
   };
 
+  const getBoostUnavailableReason = (ad: Ad, reportsCount: number): string | null => {
+    if (reportsCount > 0) {
+      return "This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete.";
+    }
+    if (ad.admin_statement && ad.admin_statement.trim() !== "") {
+      return `This campaign was paused by an administrator. Reason: "${ad.admin_statement}". Please resolve the notice or wait for admin review.`;
+    }
+    if (ad.is_paused) {
+      return "This campaign is currently paused. Please resume the campaign first to boost it.";
+    }
+    return null;
+  };
+
   const handleExecuteBoost = async () => {
     if (!boosterAd) return;
+    const reportsCount = reportsMap[boosterAd.id] || 0;
+    const reason = getBoostUnavailableReason(boosterAd, reportsCount);
+    if (reason) {
+      setNoticeModal({ title: "Boosting Unavailable", message: reason, adId: boosterAd.id });
+      setBoosterAd(null);
+      return;
+    }
     setBoosting(true);
     try {
       const res = await fetch("/api/campaigns/boost", {
@@ -826,22 +850,60 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 >
                   {ad.is_paused ? "Resume" : "Pause"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBoosterAd(ad);
-                    setNewBidPrice(Number(ad.cost_per_impression || 25));
-                    setBoosterFrequencyCap(Number(ad.user_frequency_cap || 1));
-                    setBoosterGender(ad.gender || "All");
-                    setBoosterCountry(ad.country || "");
-                    setBoosterState(ad.state || "");
-                    setBoosterProvince(ad.province || "");
-                    setBoosterMultiLocations(ad.province ? ad.province.split("; ") : []);
-                  }}
-                  className={styles.boostBtn}
-                >
-                  Boost
-                </button>
+                {(() => {
+                  const reason = getBoostUnavailableReason(ad, reportsMap[ad.id] || 0);
+                  if (reason) {
+                    return (
+                      <div className={styles.boostTooltipWrapper}>
+                        <button
+                          type="button"
+                          onClick={() => setNoticeModal({ title: "Boosting Unavailable", message: reason, adId: ad.id })}
+                          className={styles.boostBtn}
+                          style={{
+                            opacity: 0.85,
+                            cursor: "pointer",
+                            backgroundColor: "var(--sidebar-bg)",
+                            borderColor: "rgba(245, 158, 11, 0.4)",
+                            color: "#f59e0b",
+                            fontFamily: "inherit",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          <AlertTriangle size={14} color="#f59e0b" />
+                          Boosting Unavailable
+                        </button>
+                        <div className={styles.boostTooltipContent}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#f59e0b", fontWeight: 700, marginBottom: "4px" }}>
+                            <AlertTriangle size={14} />
+                            Boosting Unavailable
+                          </div>
+                          {reason}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBoosterAd(ad);
+                        setNewBidPrice(Number(ad.cost_per_impression || 25));
+                        setBoosterFrequencyCap(Number(ad.user_frequency_cap || 1));
+                        setBoosterGender(ad.gender || "All");
+                        setBoosterCountry(ad.country || "");
+                        setBoosterState(ad.state || "");
+                        setBoosterProvince(ad.province || "");
+                        setBoosterMultiLocations(ad.province ? ad.province.split("; ") : []);
+                      }}
+                      className={styles.boostBtn}
+                    >
+                      Boost
+                    </button>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={() => handleShare(ad.id)}
@@ -1047,8 +1109,8 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <button className={styles.modalClose} onClick={() => setBoosterAd(null)}>✕</button>
             </div>
 
-            {/* 2-Column Form Grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+            {/* Responsive Form Grid */}
+            <div className={styles.boosterGrid}>
               <div className={styles.boosterGroup}>
                 <label className={styles.boosterLabel}>Add Extra Attention Target</label>
                 <select
@@ -1117,7 +1179,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 </span>
               </div>
 
-              <div className={styles.boosterGroup} style={{ gridColumn: "span 2" }}>
+              <div className={`${styles.boosterGroup} ${styles.boosterFullWidth}`}>
                 <label className={styles.boosterLabel}>Target Gender</label>
                 <select
                   className={styles.boosterInput}
@@ -1130,7 +1192,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 </select>
               </div>
 
-              <div className={styles.boosterGroup} style={{ gridColumn: "span 2" }}>
+              <div className={`${styles.boosterGroup} ${styles.boosterFullWidth}`}>
                 <label className={styles.boosterLabel}>Multi-Location Targeting</label>
                 <LocationSelector
                   country={boosterCountry}
@@ -1158,15 +1220,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   type="button"
                   className={`${styles.paymentSelectBtn} ${boosterPaymentMethod === "wallet" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("wallet")}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
                 >
-                  💳 Wallet Balance
+                  <Wallet size={15} /> Wallet Balance
                 </button>
                 <button
                   type="button"
                   className={`${styles.paymentSelectBtn} ${boosterPaymentMethod === "card" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("card")}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
                 >
-                  🏦 Card / Bank Transfer
+                  <CreditCard size={15} /> Card / Bank Transfer
                 </button>
               </div>
             </div>
@@ -1180,6 +1244,50 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             >
               {boosting ? "Processing Booster..." : "Confirm & Launch Booster"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: CONTAINED NOTICE / BOOST ERROR */}
+      {/* ==================================================== */}
+      {noticeModal && (
+        <div className={styles.modalOverlay} onClick={() => setNoticeModal(null)}>
+          <div
+            className={styles.modalContent}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "480px",
+              width: "90%",
+              boxSizing: "border-box",
+              fontFamily: "inherit",
+              borderRadius: "16px",
+              padding: "1.5rem",
+              margin: "auto"
+            }}
+          >
+            <div className={styles.modalHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <AlertTriangle size={22} color="#f59e0b" />
+                <h3 className={styles.modalTitle} style={{ fontSize: "1.1rem", fontWeight: 700, fontFamily: "inherit" }}>{noticeModal.title}</h3>
+              </div>
+              <button className={styles.modalClose} onClick={() => setNoticeModal(null)}>
+                <XCircle size={24} />
+              </button>
+            </div>
+            <div style={{ padding: "0.5rem 0", color: "var(--foreground)", fontSize: "0.92rem", lineHeight: 1.6, wordBreak: "break-word", fontFamily: "inherit" }}>
+              <p style={{ margin: 0 }}>{noticeModal.message}</p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem" }}>
+              <button
+                type="button"
+                className={styles.boostBtn}
+                onClick={() => setNoticeModal(null)}
+                style={{ padding: "0.5rem 1.25rem", width: "auto", fontFamily: "inherit", fontSize: "0.85rem" }}
+              >
+                Got It
+              </button>
+            </div>
           </div>
         </div>
       )}

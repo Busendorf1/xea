@@ -6,6 +6,8 @@ import { feedQueue } from "@/lib/queue";
 import redisConnection from "@/lib/redis";
 import { env } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const email = await getAuthenticatedEmail(request);

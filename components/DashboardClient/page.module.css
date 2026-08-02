@@ -149,19 +149,22 @@
 .dashboardContainer {
   display: flex;
   width: 100%;
-  height: calc(100vh - 68px);
-  margin-top: 68px;
+  height: 100vh;
+  padding-top: 68px;
+  margin-top: 0;
   box-sizing: border-box;
   overflow: hidden;
   position: relative;
   max-width: 1400px;
   margin-left: auto;
   margin-right: auto;
-  padding: 0 1%;
+  padding-left: 1%;
+  padding-right: 1%;
+  transition: padding-top 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dashboardContainerHeaderHidden {
-  /* Container height and margin stay 100% constant so scroll geometry never jumps */
+  padding-top: 0px;
 }
 
 /* Sidebar layouts */

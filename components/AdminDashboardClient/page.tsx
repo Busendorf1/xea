@@ -169,6 +169,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [reportedAds, setReportedAds] = useState<any[]>([]);
   const [reportedAdsCount, setReportedAdsCount] = useState(0);
   const [reportedAdsPage, setReportedAdsPage] = useState(0);
+  const [reportedAdsSearch, setReportedAdsSearch] = useState("");
+  const [inspectingAd, setInspectingAd] = useState<any | null>(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
 
   // Notification States
   const [notificationTarget, setNotificationTarget] = useState<"all" | "monetized" | "user">("all");
@@ -361,7 +364,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     try {
       let query = supabase.from("addsactive").select("*", { count: "exact" });
       if (search) {
-        query = query.or(`ad_content.ilike.%${search}%,user_email.ilike.%${search}%,ad_type.ilike.%${search}%`);
+        const cleanSearch = search.trim();
+        const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanSearch);
+        if (isUuid) {
+          query = query.or(`id.eq.${cleanSearch},ad_content.ilike.%${cleanSearch}%,user_email.ilike.%${cleanSearch}%,ad_type.ilike.%${cleanSearch}%`);
+        } else {
+          query = query.or(`ad_content.ilike.%${cleanSearch}%,user_email.ilike.%${cleanSearch}%,ad_type.ilike.%${cleanSearch}%`);
+        }
       }
       const { data, count, error } = await query
         .order("created_at", { ascending: false })
@@ -414,10 +423,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
-  const fetchReportedAds = async (page: number) => {
+  const fetchReportedAds = async (page: number, search: string = "") => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/reports?page=${page}`);
+      const res = await fetch(`/api/admin/reports?page=${page}&search=${encodeURIComponent(search)}`);
       const json = await res.json();
       if (res.ok && json.reports) {
         setReportedAds(json.reports);
@@ -431,6 +440,24 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       setReportedAds([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleInspectAd = async (adId: string) => {
+    if (!adId) return;
+    setInspectLoading(true);
+    try {
+      const res = await fetch(`/api/admin/ad-details?id=${encodeURIComponent(adId.trim())}`);
+      const json = await res.json();
+      if (res.ok && json.ad) {
+        setInspectingAd(json.ad);
+      } else {
+        alert(json.error || `Ad campaign with ID '${adId}' was not found in database.`);
+      }
+    } catch (e: any) {
+      alert("Failed to fetch ad details: " + e.message);
+    } finally {
+      setInspectLoading(false);
     }
   };
 
@@ -453,7 +480,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
       alert(json.message || "Ad campaign deactivated successfully for all users!");
-      fetchReportedAds(reportedAdsPage);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch);
     } catch (e: any) {
       alert("Failed to deactivate ad: " + e.message);
     }
@@ -479,7 +506,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
       alert(json.message || `All ads created by advertiser ${advertiserEmail} have been deactivated for all users.`);
-      fetchReportedAds(reportedAdsPage);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch);
     } catch (e: any) {
       alert("Failed to block advertiser: " + e.message);
     }
@@ -498,7 +525,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
       alert("Report dismissed successfully.");
-      fetchReportedAds(reportedAdsPage);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch);
     } catch (e: any) {
       alert("Failed to dismiss report: " + e.message);
     }
@@ -521,9 +548,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     } else if (activeTab === "help-center") {
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     } else if (activeTab === "reported-ads") {
-      fetchReportedAds(reportedAdsPage);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch);
     }
-  }, [activeTab, usersPage, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage]);
+  }, [activeTab, usersPage, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage, reportedAdsSearch]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -542,7 +569,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     } else if (activeTab === "help-center") {
       await fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     } else if (activeTab === "reported-ads") {
-      await fetchReportedAds(reportedAdsPage);
+      await fetchReportedAds(reportedAdsPage, reportedAdsSearch);
     }
     setRefreshing(false);
   };
@@ -2710,6 +2737,23 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <p className={styles.sectionSubtitle}>Review user-reported ads and advertisers. Take instant action to remove ad campaigns or block advertiser accounts.</p>
               </div>
 
+              <div style={{ display: "flex", gap: "1rem", marginBottom: "1.25rem", marginTop: "1rem" }}>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <Search style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} size={18} />
+                  <input
+                    type="text"
+                    placeholder="Search reports by Ad ID, reporter email, advertiser email, or reason..."
+                    value={reportedAdsSearch}
+                    onChange={(e) => {
+                      setReportedAdsSearch(e.target.value);
+                      setReportedAdsPage(0);
+                    }}
+                    className={styles.searchInput}
+                    style={{ paddingLeft: "40px", width: "100%" }}
+                  />
+                </div>
+              </div>
+
               {loading ? (
                 <div className={styles.loadingText}>Fetching reported ads from database...</div>
               ) : reportedAds.length === 0 ? (
@@ -2741,7 +2785,30 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
                         <div className={styles.cardBody} style={{ fontSize: "0.85rem", color: "var(--foreground)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                           <div><strong>Report Type:</strong> <span style={{ color: report.report_type === "advertiser" ? "#ef4444" : "var(--primary)" }}>{report.report_type === "advertiser" ? "Block & Report Advertiser" : "Block & Report Ad"}</span></div>
-                          <div><strong>Target Ad ID:</strong> <code>{report.ad_id}</code></div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                            <strong>Target Ad ID:</strong>
+                            <button
+                              type="button"
+                              onClick={() => handleInspectAd(report.ad_id)}
+                              title="Click to inspect full ad details"
+                              style={{
+                                background: "rgba(37, 99, 235, 0.12)",
+                                border: "1px solid rgba(37, 99, 235, 0.3)",
+                                color: "var(--primary)",
+                                borderRadius: "6px",
+                                padding: "2px 8px",
+                                fontSize: "0.82rem",
+                                fontFamily: "monospace",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px"
+                              }}
+                            >
+                              <span>{report.ad_id}</span>
+                              <span style={{ fontSize: "0.75rem", textDecoration: "underline" }}>[ Inspect Ad Details 🔍 ]</span>
+                            </button>
+                          </div>
                           {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code>{report.advertiser_email}</code></div>}
                           {report.reason && (
                             <div style={{ backgroundColor: "rgba(255,255,255,0.03)", padding: "0.5rem", borderRadius: "8px", border: "1px solid var(--card-border)", marginTop: "0.25rem" }}>
@@ -2751,6 +2818,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                         </div>
 
                         <div className={styles.cardFooter} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                          <button
+                            onClick={() => handleInspectAd(report.ad_id)}
+                            className={styles.btnAction}
+                            style={{ backgroundColor: "rgba(37, 99, 235, 0.15)", color: "var(--primary)", border: "1px solid rgba(37, 99, 235, 0.3)" }}
+                          >
+                            🔍 Inspect Ad Details
+                          </button>
                           <button
                             onClick={() => handleDeactivateReportedAd(report.ad_id, report.id)}
                             className={`${styles.btnAction} ${styles.btnDanger}`}
@@ -3126,6 +3200,66 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               >
                 {replyLoading ? "Sending..." : "Send Reply"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: INSPECT AD DETAILS */}
+      {/* ==================================================== */}
+      {inspectingAd && (
+        <div className={styles.modalOverlay} onClick={() => setInspectingAd(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px" }}>
+            <div className={styles.modalHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Megaphone size={20} color="var(--primary)" />
+                <h3 className={styles.modalTitle}>Ad Details Inspector</h3>
+              </div>
+              <button className={styles.btnClose} onClick={() => setInspectingAd(null)}>
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+              <AdminAdMediaBox adMedia={inspectingAd.ad_media || inspectingAd.ad_media_url || ""} adMediaType={inspectingAd.ad_media_type} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", backgroundColor: "var(--sidebar-bg)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--card-border)", fontSize: "0.85rem" }}>
+                <div><strong>Ad ID:</strong> <code style={{ wordBreak: "break-all" }}>{inspectingAd.id}</code></div>
+                <div><strong>Ad Type:</strong> <span style={{ textTransform: "capitalize", fontWeight: "700", color: "var(--primary)" }}>{inspectingAd.ad_type}</span></div>
+                <div><strong>Advertiser Email:</strong> <code style={{ wordBreak: "break-all" }}>{inspectingAd.user_email || inspectingAd.email}</code></div>
+                <div><strong>Status:</strong> <span style={{ fontWeight: "700", color: inspectingAd.is_paused ? "#ef4444" : "#10b981" }}>{inspectingAd.is_paused ? "Paused / Deactivated" : "Active"}</span></div>
+                <div><strong>Impressions:</strong> <span>{inspectingAd.impression_count || 0} / {inspectingAd.impressions || 0}</span></div>
+                <div><strong>Mutual Attention:</strong> <span>{inspectingAd.mutual_adds_count || 0}</span></div>
+                <div><strong>Bid / Cost:</strong> <span>₦{inspectingAd.cost_per_impression || 25} / attention</span></div>
+                <div><strong>Created:</strong> <span>{inspectingAd.created_at ? new Date(inspectingAd.created_at).toLocaleString() : "N/A"}</span></div>
+              </div>
+
+              {inspectingAd.ad_content && (
+                <div style={{ backgroundColor: "var(--sidebar-bg)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
+                  <strong style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Ad Headline / Content:</strong>
+                  <p style={{ marginTop: "0.35rem", fontSize: "0.95rem", color: "var(--foreground)", whiteSpace: "pre-wrap" }}>{inspectingAd.ad_content}</p>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+                <button
+                  onClick={() => {
+                    setInspectingAd(null);
+                    handleDeactivateReportedAd(inspectingAd.id, "");
+                  }}
+                  className={`${styles.btnAction} ${styles.btnDanger}`}
+                >
+                  Deactivate Ad Campaign
+                </button>
+                <button
+                  onClick={() => setInspectingAd(null)}
+                  className={styles.btnAction}
+                  style={{ backgroundColor: "var(--sidebar-bg)", color: "var(--foreground)", border: "1px solid var(--card-border)" }}
+                >
+                  Close Inspector
+                </button>
+              </div>
             </div>
           </div>
         </div>
