@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { MapPin, X, AlertCircle, Plus } from "lucide-react";
 import { countryList, locationData } from "@/lib/utils/locations";
 import { detectGpsLocation } from "@/lib/utils/locationHelper";
 
@@ -8,7 +9,7 @@ interface LocationSelectorProps {
   country: string;
   state: string;
   location: string;
-  onChange: (updates: { country: string; state: string; location: string }) => void;
+  onChange: (updates: { country: string; state: string; location: string; multiLocations?: string[] }) => void;
   inputClass?: string;
   labelClass?: string;
   groupClass?: string;
@@ -17,6 +18,8 @@ interface LocationSelectorProps {
   showLabels?: boolean;
   disabled?: boolean;
   gpsEnforced?: boolean; // When true: hide fields until toggled ON, autofill via GPS, and make fields read-only
+  multiLocation?: boolean;
+  multiLocations?: string[];
 }
 
 export default function LocationSelector({
@@ -28,10 +31,12 @@ export default function LocationSelector({
   labelClass = "",
   groupClass = "",
   cityGroupClass = "",
-  cityLabel = "City/Location details",
+  cityLabel = "Province",
   showLabels = true,
   disabled = false,
   gpsEnforced = false,
+  multiLocation = false,
+  multiLocations = [],
 }: LocationSelectorProps) {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
@@ -89,18 +94,18 @@ export default function LocationSelector({
   const handleStateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val === "Other") {
-      onChange({ country, state: "", location: "" });
+      onChange({ country, state: "", location: "", multiLocations });
     } else {
-      onChange({ country, state: val, location: "" });
+      onChange({ country, state: val, location: "", multiLocations });
     }
   };
 
   const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val === "Other") {
-      onChange({ country, state, location: "" });
+      onChange({ country, state, location: "", multiLocations });
     } else {
-      onChange({ country, state, location: val });
+      onChange({ country, state, location: val, multiLocations });
     }
   };
 
@@ -183,14 +188,14 @@ export default function LocationSelector({
             <>
               {/* Country Select */}
               <div className={groupClass}>
-                {showLabels && <label className={labelClass}>Country</label>}
+                {showLabels && <label className={labelClass} style={{ display: "block", marginBottom: "0.35rem" }}>Country</label>}
                 <select
                   value={selectedCountryOption}
                   onChange={handleCountryChange}
                   className={inputClass}
                   style={{ width: "100%" }}
                   disabled={disabled}
-                  required
+                  required={!multiLocation}
                 >
                   <option value="">Select Country</option>
                   {countryList.map((c) => (
@@ -206,19 +211,19 @@ export default function LocationSelector({
                     placeholder="Type Country Name"
                     value={isPredefinedCountry ? "" : country}
                     onChange={(e) =>
-                      onChange({ country: e.target.value, state: "", location: "" })
+                      onChange({ country: e.target.value, state: "", location: "", multiLocations })
                     }
                     className={inputClass}
                     style={{ width: "100%", marginTop: "0.5rem" }}
                     disabled={disabled}
-                    required
+                    required={!multiLocation}
                   />
                 )}
               </div>
 
               {/* State Select */}
-              <div className={groupClass}>
-                {showLabels && <label className={labelClass}>State</label>}
+              <div className={groupClass} style={{ marginTop: "1rem" }}>
+                {showLabels && <label className={labelClass} style={{ display: "block", marginBottom: "0.35rem" }}>State</label>}
                 {isPredefinedCountry && selectedCountryOption !== "Other" ? (
                   <>
                     <select
@@ -227,7 +232,7 @@ export default function LocationSelector({
                       className={inputClass}
                       style={{ width: "100%" }}
                       disabled={disabled}
-                      required
+                      required={!multiLocation}
                     >
                       <option value="">Select State</option>
                       {statesList.map((s) => (
@@ -243,12 +248,12 @@ export default function LocationSelector({
                         placeholder="Type State Name"
                         value={isPredefinedState ? "" : state}
                         onChange={(e) =>
-                          onChange({ country, state: e.target.value, location: "" })
+                          onChange({ country, state: e.target.value, location: "", multiLocations })
                         }
                         className={inputClass}
                         style={{ width: "100%", marginTop: "0.5rem" }}
                         disabled={disabled}
-                        required
+                        required={!multiLocation}
                       />
                     )}
                   </>
@@ -258,19 +263,19 @@ export default function LocationSelector({
                     placeholder="Type State Name"
                     value={state}
                     onChange={(e) =>
-                      onChange({ country, state: e.target.value, location: "" })
+                      onChange({ country, state: e.target.value, location: "", multiLocations })
                     }
                     className={inputClass}
                     style={{ width: "100%" }}
                     disabled={disabled}
-                    required
+                    required={!multiLocation}
                   />
                 )}
               </div>
 
               {/* City/Location Select */}
-              <div className={cityGroupClass || groupClass}>
-                {showLabels && <label className={labelClass}>{cityLabel}</label>}
+              <div className={cityGroupClass || groupClass} style={{ marginTop: "1rem" }}>
+                {showLabels && <label className={labelClass} style={{ display: "block", marginBottom: "0.35rem" }}>{cityLabel}</label>}
                 {isPredefinedState && selectedStateOption !== "Other" ? (
                   <>
                     <select
@@ -279,7 +284,7 @@ export default function LocationSelector({
                       className={inputClass}
                       style={{ width: "100%" }}
                       disabled={disabled}
-                      required
+                      required={!multiLocation}
                     >
                       <option value="">Select {cityLabel}</option>
                       {citiesList.map((city) => (
@@ -295,12 +300,12 @@ export default function LocationSelector({
                         placeholder={`Type ${cityLabel}`}
                         value={isPredefinedCity ? "" : location}
                         onChange={(e) =>
-                          onChange({ country, state, location: e.target.value })
+                          onChange({ country, state, location: e.target.value, multiLocations })
                         }
                         className={inputClass}
                         style={{ width: "100%", marginTop: "0.5rem" }}
                         disabled={disabled}
-                        required
+                        required={!multiLocation}
                       />
                     )}
                   </>
@@ -310,15 +315,94 @@ export default function LocationSelector({
                     placeholder={`Type ${cityLabel}`}
                     value={location}
                     onChange={(e) =>
-                      onChange({ country, state, location: e.target.value })
+                      onChange({ country, state, location: e.target.value, multiLocations })
                     }
                     className={inputClass}
                     style={{ width: "100%" }}
                     disabled={disabled}
-                    required
+                    required={!multiLocation}
                   />
                 )}
               </div>
+
+              {/* Multi-Location Add Button & Selected Pills */}
+              {multiLocation && (
+                <div style={{ gridColumn: "1 / -1", marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetLoc = location || state || country;
+                      if (!targetLoc) return;
+                      const parts = [location, state, country].filter(Boolean);
+                      const newLoc = parts.join(", ");
+                      const current = multiLocations || [];
+                      if (current.length >= 30) {
+                        alert("Maximum 30 target locations reached. For broader audience reach across multiple regions, we recommend targeting by Country or State instead.");
+                        return;
+                      }
+                      if (!current.includes(newLoc)) {
+                        const updated = [...current, newLoc];
+                        onChange({ country, state, location: "", multiLocations: updated });
+                      }
+                    }}
+                    style={{
+                      backgroundColor: (multiLocations?.length || 0) >= 30 ? "rgba(148, 163, 184, 0.2)" : "rgba(29, 155, 240, 0.12)",
+                      border: `1px solid ${(multiLocations?.length || 0) >= 30 ? "#64748b" : "rgba(29, 155, 240, 0.3)"}`,
+                      color: (multiLocations?.length || 0) >= 30 ? "#94a3b8" : "#1d9bf0",
+                      padding: "6px 14px",
+                      borderRadius: "8px",
+                      fontSize: "0.82rem",
+                      fontWeight: 600,
+                      cursor: (multiLocations?.length || 0) >= 30 ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px"
+                    }}
+                  >
+                    <Plus size={14} /> Add Target Location
+                  </button>
+
+                  {(multiLocations?.length || 0) >= 30 && (
+                    <p style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "0.4rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                      <AlertCircle size={14} /> Maximum 30 target locations reached. For broader audience reach across multiple regions, we recommend targeting by Country or State instead.
+                    </p>
+                  )}
+
+                  {multiLocations && multiLocations.length > 0 && (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "0.6rem" }}>
+                      {multiLocations.map((loc, idx) => (
+                        <span
+                          key={`${loc}-${idx}`}
+                          style={{
+                            backgroundColor: "var(--sidebar-bg)",
+                            border: "1px solid var(--card-border)",
+                            padding: "4px 10px",
+                            borderRadius: "16px",
+                            fontSize: "0.78rem",
+                            fontWeight: 600,
+                            color: "var(--foreground)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          <MapPin size={12} color="#1d9bf0" /> {loc}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = multiLocations.filter((_, i) => i !== idx);
+                              onChange({ country, state, location, multiLocations: updated });
+                            }}
+                            style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", display: "inline-flex", alignItems: "center", padding: 0 }}
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </>

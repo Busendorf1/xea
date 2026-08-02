@@ -1,7 +1,9 @@
 
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { Edit3, Rocket } from "lucide-react";
 import styles from "../Ad/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
@@ -49,6 +51,10 @@ type Category =
 type AdMediaType = "text" | "image" | "video" | "mixed";
 
 export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
+  const searchParams = useSearchParams();
+  const editAdId = searchParams ? searchParams.get("id") : null;
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
@@ -82,6 +88,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     country: "",
     state: "",
     province: "",
+    targetLocations: [] as string[],
     gender: "",
     employmentStatus: [] as string[],
     adMediaType: "" as AdMediaType | "",
@@ -112,6 +119,55 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     last_mutual_spent?: string;
     balance: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (editAdId) {
+      setEditingId(editAdId);
+      fetch(`/api/campaigns/details?id=${editAdId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.ad) {
+            const ad = data.ad;
+            if (ad.ad_type) setAdType(ad.ad_type);
+            setFormSelections((prev) => ({
+              ...prev,
+              industry: Array.isArray(ad.industry) ? ad.industry : (ad.industry ? [ad.industry] : []),
+              interest: Array.isArray(ad.interest) ? ad.interest : (ad.interest ? [ad.interest] : []),
+              lifestyle: Array.isArray(ad.lifestyle) ? ad.lifestyle : (ad.lifestyle ? [ad.lifestyle] : []),
+              behavior: Array.isArray(ad.behavior) ? ad.behavior : (ad.behavior ? [ad.behavior] : []),
+              personality: Array.isArray(ad.personality) ? ad.personality : (ad.personality ? [ad.personality] : []),
+              ageRange: ad.age_range || [18, 65],
+              targetingAll: !!ad.targeting_all,
+              impressions: ad.impressions || 1000,
+              campaignDays: ad.campaign_days || 5,
+              userFrequencyCap: ad.user_frequency_cap || 1,
+              country: ad.country || "",
+              state: ad.state || "",
+              province: ad.province || "",
+              targetLocations: ad.province ? ad.province.split("; ") : [],
+              gender: ad.gender || "",
+              employmentStatus: ad.employment_status ? ad.employment_status.split(", ") : [],
+              adMediaType: ad.ad_media_type || "text",
+              adContent: ad.ad_content || "",
+              adActionButtons: ad.ad_action_buttons || [],
+              actionDetails: {
+                phone: ad.action_phone || "",
+                whatsapp: ad.action_whatsapp || "",
+                website: ad.action_website || "",
+                email: ad.action_email || "",
+                ios: ad.action_ios || "",
+                android: ad.action_android || "",
+                watch_now: ad.action_watch_now || "",
+              },
+              displayMutualButton: !!ad.display_mutual_button,
+              productName: ad.product_name || "",
+              productPrice: ad.product_price ? String(ad.product_price) : "",
+            }));
+          }
+        })
+        .catch((err) => console.error("Error fetching ad details for edit:", err));
+    }
+  }, [editAdId]);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -212,6 +268,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       country: "",
       state: "",
       province: "",
+      targetLocations: [],
       gender: "",
       employmentStatus: [],
       adMediaType: "",
@@ -310,7 +367,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       return;
     }
 
-    const adId = uuidv4();
+    const adId = editingId || uuidv4();
     const costPerImpression = calculateTotalCostPerImpression();
     const totalCost = calculateTotalCost();
 
@@ -473,7 +530,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               ))}
             </div>
 
-            <h1 className={styles.summaryTitle}>{steps[step]}</h1>
+            <h1 className={styles.summaryTitle} style={{ fontSize: "1.5rem", marginBottom: "0.25rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+              {editingId ? <><Edit3 size={20} color="#818cf8" /> Edit Campaign</> : <><Rocket size={20} color="#1d9bf0" /> Create New Ad Campaign</>}
+            </h1>
+            <p style={{ color: "#94a3b8", fontSize: "0.88rem", marginBottom: "1.25rem" }}>
+              {editingId ? "Update your target audience, locations, and creative. Edits will be submitted for verification." : "Reach active audiences with hyper-targeted ad delivery."}
+            </p>
+            <h2 className={styles.summaryTitle} style={{ fontSize: "1.1rem" }}>{steps[step]}</h2>
 
             {/* Step 0 */}
             {step === 0 && (
@@ -547,12 +610,15 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   country={formSelections.country}
                   state={formSelections.state}
                   location={formSelections.province}
-                  onChange={({ country, state, location }) =>
+                  multiLocation={true}
+                  multiLocations={formSelections.targetLocations || []}
+                  onChange={({ country, state, location, multiLocations }) =>
                     setFormSelections((prev) => ({
                       ...prev,
                       country,
                       state,
                       province: location,
+                      ...(multiLocations ? { targetLocations: multiLocations } : {})
                     }))
                   }
                   cityLabel="Province"

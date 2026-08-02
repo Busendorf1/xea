@@ -54,7 +54,17 @@ export default function HelpCenter({ session }: HelpCenterProps) {
         .select("*")
         .eq("user_email", userEmail.toLowerCase())
         .order("created_at", { ascending: false });
-      setTickets(data || []);
+      const validTickets = (data || []).filter((t: any) => {
+        if (t.status === "resolved" || t.status === "closed") {
+          if (t.resolved_at) {
+            const resolvedTime = new Date(t.resolved_at).getTime();
+            const twentyFourHours = 24 * 60 * 60 * 1000;
+            if (Date.now() - resolvedTime > twentyFourHours) return false;
+          }
+        }
+        return true;
+      });
+      setTickets(validTickets);
       setLoadingTickets(false);
     };
     fetchTickets();
@@ -143,7 +153,16 @@ export default function HelpCenter({ session }: HelpCenterProps) {
         }
 
         setSuccess(true);
-        setForm((prev) => ({ ...prev, subject: "", message: "" }));
+        setForm({
+          name: session?.user?.name ?? "",
+          email: userEmail ?? "",
+          category: CATEGORIES[0],
+          subject: "",
+          message: "",
+        });
+        if (typeof window !== "undefined" && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
         setTimeout(() => setSuccess(false), 5000);
       }
     } catch (insertErr: any) {
@@ -155,9 +174,15 @@ export default function HelpCenter({ session }: HelpCenterProps) {
   };
 
   const statusBadge = (status: string) => {
+    if (status === "resolved" || status === "closed") return styles.badgeClosed;
     if (status === "replied") return styles.badgeReplied;
-    if (status === "closed") return styles.badgeClosed;
     return styles.badgeOpen;
+  };
+
+  const getStatusLabel = (status: string) => {
+    if (status === "resolved" || status === "closed") return "RESOLVED (Deletes in 24h)";
+    if (status === "replied") return "REPLIED";
+    return "OPEN";
   };
 
   return (
@@ -291,7 +316,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
                 <span className={styles.ticketSubject}>{ticket.subject}</span>
                 <div className={styles.ticketMeta}>
                   <span className={`${styles.badge} ${statusBadge(ticket.status)}`}>
-                    {ticket.status}
+                    {getStatusLabel(ticket.status)}
                   </span>
                   <span className={styles.ticketDate}>
                     {new Date(ticket.created_at).toLocaleDateString("en-GB", {

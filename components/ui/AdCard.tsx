@@ -464,7 +464,7 @@ export default function AdCard({
     .includes((ad.user_email ?? "").toLowerCase());
 
   return (
-    <div ref={cardRef} key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""}`} style={style}>
+    <div ref={cardRef} key={ad.id} className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""}`} style={{ ...style, position: "relative", zIndex: showThreeDotMenu ? 99999 : 1, overflow: "visible" }}>
       {/* Left Column: Avatar */}
       <div className={styles.avatarCol}>
         <div className={styles.avatar}>
@@ -606,7 +606,7 @@ export default function AdCard({
             )}
             {ad.ad_content && (
               <p className={styles.productDescriptionText} style={{ marginTop: "4px", marginBottom: "12px", fontSize: "0.92rem", color: "var(--text-secondary)", lineHeight: "1.4" }}>
-                {ad.ad_content}
+                {ad.ad_content.trim().charAt(0).toUpperCase() + ad.ad_content.trim().slice(1)}
               </p>
             )}
           </>
@@ -615,9 +615,12 @@ export default function AdCard({
         {/* Content Message (if NOT product sales) */}
         {ad.ad_type !== "product_sales" && (
           <p className={styles.adText}>
-            {ad.ad_action_buttons?.includes("read_more") && !isExpanded
-              ? ad.ad_content.slice(0, 220) + "..."
-              : ad.ad_content}
+            {(() => {
+              const formattedContent = ad.ad_content ? ad.ad_content.trim().charAt(0).toUpperCase() + ad.ad_content.trim().slice(1) : "";
+              return ad.ad_action_buttons?.includes("read_more") && !isExpanded
+                ? formattedContent.slice(0, 220) + "..."
+                : formattedContent;
+            })()}
           </p>
         )}
 

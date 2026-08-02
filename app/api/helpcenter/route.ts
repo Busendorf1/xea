@@ -58,10 +58,8 @@ export async function POST(req: NextRequest) {
       const lastSubmitted = new Date(lastTicket.created_at).getTime();
       const fortyEightHoursAgo = Date.now() - 48 * 60 * 60 * 1000;
       if (lastSubmitted > fortyEightHoursAgo) {
-        const remainingMs = lastSubmitted - fortyEightHoursAgo;
-        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
         return NextResponse.json(
-          { error: `You have already submitted a request recently. Please wait ${remainingHours} hours before submitting another.` },
+          { error: "Limit reached, try again later." },
           { status: 429 }
         );
       }

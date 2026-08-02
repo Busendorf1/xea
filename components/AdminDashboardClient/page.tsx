@@ -31,7 +31,16 @@ import {
   Eye,
   MessageCircle,
   Reply,
-  Bell
+  Bell,
+  Video,
+  Image as ImageIcon,
+  Megaphone,
+  Clock,
+  Zap,
+  AlertTriangle,
+  AlertCircle,
+  HelpCircle,
+  PauseCircle
 } from "lucide-react";
 import styles from "./page.module.css";
 import { v4 as uuidv4 } from "uuid";
@@ -196,7 +205,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     activeHighlightsCount: 0,
     totalClicks: 0,
     totalMutuals: 0,
-    clickRate: 0
+    clickRate: 0,
+    reportedCount: 0,
+    helpTicketsCount: 0,
+    pausedAdsCount: 0
   });
 
   // Direct posting form states
@@ -241,63 +253,27 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const fetchOverviewStats = async () => {
     try {
-      // 1. Total users stats
-      const statsRes = await fetch("/api/admin/users?type=stats");
-      if (!statsRes.ok) throw new Error("Failed to fetch admin stats");
-      const usersStats = await statsRes.json();
-
-      // 2. Pending ads count
-      const { count: pAdsCount } = await supabase
-        .from("adds")
-        .select("*", { count: 'exact', head: true });
-
-      // 3. Active ads count
-      const { count: aAdsCount } = await supabase
-        .from("addsactive")
-        .select("*", { count: 'exact', head: true });
-
-      // 4. Pending highlights count
-      const { count: pHighlightsCount } = await supabase
-        .from("news")
-        .select("*", { count: 'exact', head: true });
-
-      // 5. Active highlights count
-      const { count: aHighlightsCount } = await supabase
-        .from("newsactive")
-        .select("*", { count: 'exact', head: true });
-
-      // 6. Clicks & Mutuals stats from active ads
-      const { data: activeAdsStats } = await supabase.from('addsactive').select('impression_count, mutual_adds_count, impressions');
-      const { data: pendingAdsStats } = await supabase.from('adds').select('impression_count, mutual_adds_count, impressions');
-
-      const resolvedActiveAds = activeAdsStats || [];
-      const resolvedPendingAds = pendingAdsStats || [];
-
-      // Clicks calculations
-      const activeImpressions = resolvedActiveAds.reduce((sum, ad) => sum + parseInt(ad.impression_count || 0), 0);
-      const pendingImpressions = resolvedPendingAds.reduce((sum, ad) => sum + parseInt(ad.impression_count || 0), 0);
-      const activeMutuals = resolvedActiveAds.reduce((sum, ad) => sum + parseInt(ad.mutual_adds_count || 0), 0);
-      const pendingMutuals = resolvedPendingAds.reduce((sum, ad) => sum + parseInt(ad.mutual_adds_count || 0), 0);
-
-      const totalTargetImpressions = [...resolvedActiveAds, ...resolvedPendingAds].reduce((sum, ad) => sum + parseInt(ad.impressions || 0), 0);
-      const totalClicks = activeImpressions + pendingImpressions + activeMutuals + pendingMutuals;
-      const clickRate = totalTargetImpressions > 0 ? (totalClicks / totalTargetImpressions) * 100 : 0;
+      const res = await fetch("/api/admin/stats");
+      if (!res.ok) throw new Error("Failed to fetch admin stats");
+      const statsData = await res.json();
 
       setStats({
-        totalUsers: usersStats.totalUsers,
-        monetizedUsers: usersStats.monetizedUsers,
-        suspendedUsers: usersStats.suspendedUsers,
-        totalBalance: usersStats.totalBalance,
-        totalWithdrawal: usersStats.totalWithdrawal,
-        pendingAdsCount: pAdsCount || 0,
-        activeAdsCount: aAdsCount || 0,
-        pendingHighlightsCount: pHighlightsCount || 0,
-        activeHighlightsCount: aHighlightsCount || 0,
-        totalClicks,
-        totalMutuals: usersStats.totalMutuals,
-        clickRate
+        totalUsers: statsData.totalUsers || 0,
+        monetizedUsers: statsData.monetizedUsers || 0,
+        suspendedUsers: statsData.suspendedUsers || 0,
+        totalBalance: statsData.totalBalance || 0,
+        totalWithdrawal: statsData.totalWithdrawal || 0,
+        pendingAdsCount: statsData.pendingAdsCount || 0,
+        activeAdsCount: statsData.activeAdsCount || 0,
+        pendingHighlightsCount: statsData.pendingHighlightsCount || 0,
+        activeHighlightsCount: statsData.activeHighlightsCount || 0,
+        totalClicks: statsData.totalClicks || 0,
+        totalMutuals: statsData.totalMutuals || 0,
+        clickRate: statsData.clickRate || 0,
+        reportedCount: statsData.reportedCount || 0,
+        helpTicketsCount: statsData.helpTicketsCount || 0,
+        pausedAdsCount: statsData.pausedAdsCount || 0
       });
-
     } catch (e) {
       console.error("Error fetching overview stats:", e);
     }
@@ -441,18 +417,18 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const fetchReportedAds = async (page: number) => {
     setLoading(true);
     try {
-      const { data, count, error } = await supabase
-        .from("ad_reports")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(page * 15, (page + 1) * 15 - 1);
-
-      if (!error && data) {
-        setReportedAds(data);
-        setReportedAdsCount(count || 0);
+      const res = await fetch(`/api/admin/reports?page=${page}`);
+      const json = await res.json();
+      if (res.ok && json.reports) {
+        setReportedAds(json.reports);
+        setReportedAdsCount(json.count || 0);
+      } else {
+        setReportedAds([]);
+        setReportedAdsCount(0);
       }
     } catch (e) {
       console.error("Error fetching reported ads:", e);
+      setReportedAds([]);
     } finally {
       setLoading(false);
     }
@@ -460,12 +436,23 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handleDeactivateReportedAd = async (adId: string, reportId: string) => {
     if (!confirm(`Are you sure you want to deactivate ad ${adId} for all users?`)) return;
+    const statement = prompt("Reason for deactivating this ad (visible to advertiser):", "Deactivated by Admin due to user content reports");
+    if (statement === null) return;
+
     try {
-      const now = new Date().toISOString();
-      await supabase.from("addsactive").update({ completed_at: now }).eq("id", adId);
-      await supabase.from("adds").update({ completed_at: now }).eq("id", adId);
-      await supabase.from("ad_reports").update({ status: "action_taken" }).eq("id", reportId);
-      alert("Ad campaign deactivated successfully for all users!");
+      const res = await fetch("/api/admin/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "deactivate_ad",
+          adId,
+          reportId,
+          statement
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      alert(json.message || "Ad campaign deactivated successfully for all users!");
       fetchReportedAds(reportedAdsPage);
     } catch (e: any) {
       alert("Failed to deactivate ad: " + e.message);
@@ -475,12 +462,23 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const handleBlockReportedAdvertiser = async (advertiserEmail: string, reportId: string) => {
     if (!advertiserEmail) return alert("No advertiser email associated with this report.");
     if (!confirm(`Are you sure you want to deactivate all active ads created by advertiser ${advertiserEmail}?`)) return;
+    const statement = prompt("Reason for deactivating advertiser campaigns (visible to advertiser):", "Account suspended by Admin due to multiple content safety reports");
+    if (statement === null) return;
+
     try {
-      const now = new Date().toISOString();
-      await supabase.from("addsactive").update({ completed_at: now }).eq("user_email", advertiserEmail.toLowerCase());
-      await supabase.from("adds").update({ completed_at: now }).eq("user_email", advertiserEmail.toLowerCase());
-      await supabase.from("ad_reports").update({ status: "action_taken" }).eq("id", reportId);
-      alert(`All ads created by advertiser ${advertiserEmail} have been deactivated for all users.`);
+      const res = await fetch("/api/admin/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "block_advertiser",
+          advertiserEmail,
+          reportId,
+          statement
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      alert(json.message || `All ads created by advertiser ${advertiserEmail} have been deactivated for all users.`);
       fetchReportedAds(reportedAdsPage);
     } catch (e: any) {
       alert("Failed to block advertiser: " + e.message);
@@ -489,7 +487,16 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handleDismissReport = async (reportId: string) => {
     try {
-      await supabase.from("ad_reports").update({ status: "dismissed" }).eq("id", reportId);
+      const res = await fetch("/api/admin/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "dismiss_report",
+          reportId
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
       alert("Report dismissed successfully.");
       fetchReportedAds(reportedAdsPage);
     } catch (e: any) {
@@ -611,14 +618,40 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
-  const handleCloseTicket = async (ticketId: string) => {
-    const { error } = await supabase
+  const handleCloseTicket = async (ticket: any) => {
+    const ticketId = typeof ticket === "string" ? ticket : ticket.id;
+    const now = new Date().toISOString();
+    let { error } = await supabase
       .from("help_tickets")
-      .update({ status: "closed" })
+      .update({
+        status: "resolved",
+        resolved_at: now
+      })
       .eq("id", ticketId);
+
+    if (error?.message?.includes("resolved_at")) {
+      const res = await supabase
+        .from("help_tickets")
+        .update({ status: "resolved" })
+        .eq("id", ticketId);
+      error = res.error;
+    }
+
     if (error) {
-      alert("Failed to close ticket: " + error.message);
+      alert("Failed to resolve ticket: " + error.message);
     } else {
+      // Send notification to user about resolved ticket
+      const userEmail = typeof ticket === "object" ? ticket.user_email : null;
+      const subject = typeof ticket === "object" ? ticket.subject : "Support Request";
+      if (userEmail) {
+        await supabase.from("notifications").insert({
+          user_email: userEmail.toLowerCase().trim(),
+          title: "Support Ticket Resolved",
+          message: `Your help request ("${subject}") has been marked as RESOLVED by our Help Center team and will be automatically deleted in 24 hours.`,
+        });
+      }
+
+      alert("Ticket marked as RESOLVED! Notification sent to user. Ticket will auto-delete in 24 hours.");
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     }
   };
@@ -876,20 +909,83 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handleTogglePauseAd = async (ad: any) => {
     const targetState = !ad.is_paused;
+    let statement: string | null = null;
+    if (targetState) {
+      statement = prompt("Enter a reason or statement for pausing this ad campaign (visible to the advertiser):");
+      if (statement === null) return;
+    }
+
     try {
-      const { error: errorActive } = await supabase
+      let updateData: any = { is_paused: targetState };
+      if (statement) updateData.admin_statement = statement;
+
+      let { error: errorActive } = await supabase
         .from("addsactive")
-        .update({ is_paused: targetState })
+        .update(updateData)
         .eq("id", ad.id);
 
-      if (errorActive) {
-        alert(`Failed to update campaign state: ${errorActive.message}`);
+      let { error: errorQueue } = await supabase
+        .from("adds")
+        .update(updateData)
+        .eq("id", ad.id);
+
+      // Schema cache fallback if admin_statement column is not cached by PostgREST
+      if ((errorActive?.message?.includes("admin_statement") || errorQueue?.message?.includes("admin_statement"))) {
+        delete updateData.admin_statement;
+        const res1 = await supabase.from("addsactive").update(updateData).eq("id", ad.id);
+        const res2 = await supabase.from("adds").update(updateData).eq("id", ad.id);
+        errorActive = res1.error;
+        errorQueue = res2.error;
+
+        alert(
+          "⚠️ Notice: Campaign pause status updated, but 'admin_statement' column needs to be registered in your Supabase DB.\n\nPlease run this in your Supabase SQL Editor:\nALTER TABLE public.adds ADD COLUMN IF NOT EXISTS admin_statement TEXT;\nALTER TABLE public.addsactive ADD COLUMN IF NOT EXISTS admin_statement TEXT;\nNOTIFY pgrst, 'reload schema';"
+        );
+      }
+
+      if (errorActive && errorQueue) {
+        alert(`Failed to update campaign state: ${errorActive?.message || errorQueue?.message}`);
       } else {
         alert(`Ad campaign successfully ${targetState ? "paused" : "resumed"}!`);
         handleRefresh();
       }
     } catch (e: any) {
       alert(`Error pausing/resuming campaign: ${e.message}`);
+    }
+  };
+
+  const handleDeactivateAd = async (ad: any) => {
+    const reason = prompt("Enter a reason or statement for deactivating this ad campaign (visible to the advertiser):");
+    if (reason === null) return;
+
+    const now = new Date().toISOString();
+    try {
+      let updateData: any = { completed_at: now, is_paused: true };
+      if (reason) updateData.admin_statement = reason;
+
+      let { error: errActive } = await supabase.from("addsactive").update(updateData).eq("id", ad.id);
+      let { error: errQueue } = await supabase.from("adds").update(updateData).eq("id", ad.id);
+
+      // Schema cache fallback
+      if ((errActive?.message?.includes("admin_statement") || errQueue?.message?.includes("admin_statement"))) {
+        delete updateData.admin_statement;
+        const res1 = await supabase.from("addsactive").update(updateData).eq("id", ad.id);
+        const res2 = await supabase.from("adds").update(updateData).eq("id", ad.id);
+        errActive = res1.error;
+        errQueue = res2.error;
+
+        alert(
+          "⚠️ Notice: The ad was deactivated, but 'admin_statement' column needs to be registered in your Supabase DB.\n\nPlease run this in your Supabase SQL Editor:\nALTER TABLE public.adds ADD COLUMN IF NOT EXISTS admin_statement TEXT;\nALTER TABLE public.addsactive ADD COLUMN IF NOT EXISTS admin_statement TEXT;\nNOTIFY pgrst, 'reload schema';"
+        );
+      }
+
+      if (errActive && errQueue) {
+        alert(`Failed to deactivate ad campaign: ${errActive?.message || errQueue?.message}`);
+      } else {
+        alert("Ad campaign deactivated successfully!");
+        handleRefresh();
+      }
+    } catch (e: any) {
+      alert(`Error deactivating campaign: ${e.message}`);
     }
   };
 
@@ -1327,8 +1423,254 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   // ----------------------------------------------------
-  // RENDER DETAILED REGISTRATION FIELDS
+  // RENDER HORIZONTAL INFORMATION-RICH ADMIN AD CARD
   // ----------------------------------------------------
+
+  const renderAdminAdCard = (ad: any, isQueue = false) => {
+    const seenCount = ad.impression_count ?? 0;
+    const targetImpressions = ad.impressions ?? 1000;
+    const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
+    const isCompleted = !!ad.completed_at || seenCount >= targetImpressions;
+
+    const mediaUrls = ad.ad_media ? ad.ad_media.split(",").map((u: string) => u.trim()).filter(Boolean) : [];
+    const hasMedia = mediaUrls.length > 0;
+    const isVideo = ad.ad_media_type === "video" || (hasMedia && /\.(mp4|webm)$/i.test(mediaUrls[0]));
+
+    return (
+      <div 
+        key={ad.id} 
+        className={styles.card}
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: "1.25rem",
+          padding: "1.25rem",
+          borderRadius: "14px",
+          backgroundColor: "var(--card-bg)",
+          border: "1px solid var(--card-border)",
+          opacity: ad.is_paused ? 0.82 : 1,
+          marginBottom: "1.25rem"
+        }}
+      >
+        {/* Left Column: Media Box */}
+        <div style={{ flex: "0 0 240px", width: "240px", minWidth: "240px", borderRadius: "10px", overflow: "hidden", border: "1px solid var(--card-border)" }}>
+          <AdminAdMediaBox adMedia={ad.ad_media} adMediaType={ad.ad_media_type} />
+        </div>
+
+        {/* Right Main Column: Info, Analytics & Controls */}
+        <div style={{ flex: "1 1 320px", minWidth: "280px", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          
+          {/* Top Tag Pills Row */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+            {/* Media Type Tag Pill */}
+            <span style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              {hasMedia ? (isVideo ? <Video size={13} /> : <ImageIcon size={13} />) : <Megaphone size={13} />}
+              {hasMedia ? (isVideo ? "Video Ad" : "Image Ad") : "Text Only Ad"}
+            </span>
+
+            {/* Status Tag Pill */}
+            {isQueue ? (
+              <span style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <Clock size={13} /> Pending Review
+              </span>
+            ) : isCompleted ? (
+              <span style={{ backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700" }}>
+                Completed
+              </span>
+            ) : ad.is_paused ? (
+              <span style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700" }}>
+                Paused
+              </span>
+            ) : (
+              <span style={{ backgroundColor: "rgba(37, 99, 235, 0.15)", color: "#3b82f6", border: "1px solid rgba(37, 99, 235, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700" }}>
+                Live
+              </span>
+            )}
+
+            {/* Category Tag Pill */}
+            <span style={{ backgroundColor: "var(--sidebar-bg)", border: "1px solid var(--card-border)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "600", color: "var(--foreground)" }}>
+              {ad.ad_type}
+            </span>
+
+            {/* Priority Bidded / Boosted Tag Pill */}
+            {(!!ad.is_bidded || Number(ad.cost_per_impression || 0) > 25) && (
+              <span style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <Zap size={13} color="#f59e0b" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} (₦{ad.cost_per_impression || ad.impression || 25}/view)
+              </span>
+            )}
+          </div>
+
+          {/* Ad Content */}
+          <p style={{ fontWeight: "700", color: "var(--foreground)", fontSize: "0.95rem", margin: 0, lineHeight: "1.4" }}>
+            {ad.ad_content}
+          </p>
+
+          {/* Publisher Email & Metadata */}
+          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "flex", gap: "14px", flexWrap: "wrap" }}>
+            <span>Publisher: <strong style={{ color: "var(--foreground)" }}>{ad.user_email}</strong></span>
+            <span>ID: <code style={{ fontSize: "0.72rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 6px", borderRadius: "4px" }}>{ad.id}</code></span>
+            <span>Created: {ad.created_at ? new Date(ad.created_at).toLocaleDateString() : "N/A"}</span>
+          </div>
+
+          {/* Delivery Progress Bar */}
+          <div style={{ marginTop: "0.2rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "600" }}>
+              <span>Delivery Progress</span>
+              <span>{deliveryPercent}% ({seenCount} / {targetImpressions} views)</span>
+            </div>
+            <div style={{ height: "6px", width: "100%", backgroundColor: "var(--sidebar-bg)", borderRadius: "3px", overflow: "hidden", border: "1px solid var(--card-border)" }}>
+              <div style={{ height: "100%", backgroundColor: "#1d9bf0", width: `${deliveryPercent}%`, borderRadius: "3px" }} />
+            </div>
+          </div>
+
+          {/* Admin Statement / Reason Callout Banner if present */}
+          {ad.admin_statement && (
+            <div style={{
+              backgroundColor: "rgba(245, 158, 11, 0.12)",
+              border: "1px solid rgba(245, 158, 11, 0.4)",
+              borderRadius: "8px",
+              padding: "0.5rem 0.75rem",
+              color: "#f59e0b",
+              fontSize: "0.82rem"
+            }}>
+              <strong style={{ display: "flex", alignItems: "center", gap: "4px", color: "#fbbf24", marginBottom: "2px" }}>
+                <AlertTriangle size={14} /> Admin Statement / Reason:
+              </strong>
+              {ad.admin_statement}
+            </div>
+          )}
+
+          {/* Comprehensive Target Specs */}
+          {renderAdDetails(ad)}
+
+          {/* Action Control Panel */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "0.5rem", paddingTop: "0.75rem", borderTop: "1px solid var(--card-border)" }}>
+            {isQueue && (
+              <button onClick={() => handleApproveAd(ad)} className={styles.btnSubmit} style={{ padding: "0.45rem 1rem", fontSize: "0.82rem" }}>
+                Approve Campaign
+              </button>
+            )}
+
+            <button
+              onClick={() => handleTogglePauseAd(ad)}
+              disabled={isCompleted}
+              className={styles.btnAction}
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+            >
+              {ad.is_paused ? <Play size={14} /> : <Pause size={14} />}
+              <span>{ad.is_paused ? "Resume" : "Pause"}</span>
+            </button>
+
+            <button
+              onClick={() => handleDeactivateAd(ad)}
+              disabled={isCompleted}
+              className={`${styles.btnAction} ${styles.btnDanger}`}
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem", backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)" }}
+              title="Deactivate campaign and set statement for advertiser"
+            >
+              <AlertCircle size={14} />
+              <span>Deactivate Ad</span>
+            </button>
+
+            <button
+              onClick={() => setEditAdData(ad)}
+              className={styles.btnAction}
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+              title="Edit campaign settings"
+            >
+              <Edit3 size={14} />
+              <span>Edit</span>
+            </button>
+
+            <button
+              onClick={() => handleDeleteAd(ad)}
+              className={`${styles.btnAction} ${styles.btnDanger}`}
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+              title="Permanently delete campaign"
+            >
+              <Trash2 size={14} />
+              <span>Delete</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
+  const renderAdminHighlightCard = (highlight: any, isQueue = false) => {
+    return (
+      <div key={highlight.id} className={styles.card} style={{ opacity: highlight.is_paused ? 0.75 : 1 }}>
+        <div className={styles.mediaBox}>
+          <img src={highlight.image_url} alt="Highlight cover" />
+          <span className={styles.badgeCategory}>{highlight.interest}</span>
+          
+          {isQueue ? (
+            <span className={styles.badgeStatus} style={{ backgroundColor: "#ef4444", color: "#fff" }}>In Review</span>
+          ) : highlight.is_paused ? (
+            <span className={styles.badgeStatus} style={{ backgroundColor: "#f59e0b", color: "#fff" }}>Paused</span>
+          ) : (
+            <span className={styles.badgeStatus} style={{ backgroundColor: "#2563eb", color: "#fff" }}>Live</span>
+          )}
+        </div>
+
+        <div className={styles.cardBody}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+            <h4 className={styles.cardTitle} style={{ margin: 0 }}>{highlight.title}</h4>
+            {(!!highlight.is_bidded || Number(highlight.bid_price || 0) > 1000) && (
+              <span style={{ fontSize: "0.7rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                <Zap size={10} color="#f59e0b" /> ₦{highlight.bid_price || 1500}/day
+              </span>
+            )}
+          </div>
+          <p className={styles.cardText} style={{ fontSize: "0.9rem" }}>{highlight.content}</p>
+
+          {/* Admin Statement */}
+          {highlight.admin_statement && (
+            <div style={{ padding: "0.4rem 0.6rem", backgroundColor: "rgba(245, 158, 11, 0.12)", borderRadius: "6px", border: "1px solid rgba(245, 158, 11, 0.4)", color: "#f59e0b", fontSize: "0.78rem", marginTop: "0.4rem" }}>
+              <strong>Important Notice:</strong> {highlight.admin_statement}
+            </div>
+          )}
+
+          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.5rem", borderTop: "1px solid var(--card-border)", paddingTop: "0.5rem", display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
+            <span>Publisher: <strong>{highlight.user_email}</strong></span>
+            <span>{highlight.country || "Global"} {highlight.state ? `(${highlight.state}${highlight.province ? `, ${highlight.province}` : ""})` : ""}</span>
+          </div>
+        </div>
+
+        <div className={styles.cardFooterActions}>
+          {isQueue ? (
+            <>
+              <button onClick={() => handleApproveHighlight(highlight)} className={styles.btnSubmit} style={{ flex: 1, padding: "0.5rem" }}>
+                Approve Highlight
+              </button>
+              <button onClick={() => handleRejectHighlight(highlight)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ padding: "0.5rem 1rem" }}>
+                Reject / Delete
+              </button>
+            </>
+          ) : (
+            <>
+              <button 
+                onClick={() => handleTogglePauseHighlight(highlight)} 
+                className={styles.btnAction} 
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}
+              >
+                {highlight.is_paused ? <Play size={14} /> : <Pause size={14} />}
+                <span>{highlight.is_paused ? "Resume" : "Pause"}</span>
+              </button>
+              <button onClick={() => setEditHighlightData(highlight)} className={styles.btnAction} style={{ padding: "0.5rem" }} title="Edit highlight">
+                <Edit3 size={14} />
+              </button>
+              <button onClick={() => handleDeleteHighlight(highlight)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ padding: "0.5rem" }} title="Delete highlight">
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderAdDetails = (ad: any) => {
     const formatList = (val: any) => {
@@ -1528,6 +1870,27 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     <span className={styles.statValue}>{stats.totalMutuals}</span>
                     <span className={styles.statDesc}>Mutual bonds active across profiles</span>
                   </div>
+
+                  <div className={styles.statCard}>
+                    <ShieldAlert className={styles.statIcon} size={48} />
+                    <span className={styles.statLabel}>Ad Guard & Reports</span>
+                    <span className={styles.statValue}>{stats.reportedCount}</span>
+                    <span className={styles.statDesc}>Reported ads, advertisers & hidden items</span>
+                  </div>
+
+                  <div className={styles.statCard}>
+                    <HelpCircle className={styles.statIcon} size={48} />
+                    <span className={styles.statLabel}>Help Center Complaints</span>
+                    <span className={styles.statValue}>{stats.helpTicketsCount}</span>
+                    <span className={styles.statDesc}>Total user tickets & complaints filed</span>
+                  </div>
+
+                  <div className={styles.statCard}>
+                    <PauseCircle className={styles.statIcon} size={48} />
+                    <span className={styles.statLabel}>Paused Ad Campaigns</span>
+                    <span className={styles.statValue}>{stats.pausedAdsCount}</span>
+                    <span className={styles.statDesc}>Campaigns currently paused</span>
+                  </div>
                 </div>
               )}
             </>
@@ -1660,35 +2023,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 </div>
               ) : (
                 <>
-                  <div className={styles.queueGrid}>
-                    {pendingAds.map(ad => (
-                      <div key={ad.id} className={styles.card}>
-                        <div style={{ position: "relative" }}>
-                          <AdminAdMediaBox adMedia={ad.ad_media} adMediaType={ad.ad_media_type} />
-                          <span className={styles.badgeCategory}>{ad.ad_type}</span>
-                          <span className={styles.badgeStatus} style={{ backgroundColor: "#ef4444", color: "#fff" }}>Pending Review</span>
-                        </div>
-                        
-                        <div className={styles.cardBody}>
-                          <p className={styles.cardText} style={{ fontWeight: "700", color: "var(--foreground)", fontSize: "0.95rem" }}>{ad.ad_content}</p>
-                          
-                          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                            Publisher: <span style={{ fontWeight: "700" }}>{ad.user_email}</span>
-                          </div>
-
-                          {renderAdDetails(ad)}
-                        </div>
-
-                        <div className={styles.cardFooterActions}>
-                          <button onClick={() => handleApproveAd(ad)} className={styles.btnSubmit} style={{ flex: 1, padding: "0.5rem" }}>
-                            Approve Campaign
-                          </button>
-                          <button onClick={() => handleRejectAd(ad)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ padding: "0.5rem 1rem" }}>
-                            Reject / Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {pendingAds.map(ad => renderAdminAdCard(ad, true))}
                   </div>
                   {renderPagination(pendingAdsPage, setPendingAdsPage, pendingAdsCount)}
                 </>
@@ -1714,33 +2050,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               ) : (
                 <>
                   <div className={styles.queueGrid}>
-                    {pendingHighlights.map(highlight => (
-                      <div key={highlight.id} className={styles.card}>
-                        <div className={styles.mediaBox}>
-                          <img src={highlight.image_url} alt="Highlight cover" />
-                          <span className={styles.badgeCategory}>{highlight.interest}</span>
-                          <span className={styles.badgeStatus} style={{ backgroundColor: "#ef4444", color: "#fff" }}>In Review</span>
-                        </div>
-                        
-                        <div className={styles.cardBody}>
-                          <h4 className={styles.cardTitle}>{highlight.title}</h4>
-                          <p className={styles.cardText} style={{ fontSize: "0.9rem" }}>{highlight.content}</p>
-                          
-                          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.5rem", borderTop: "1px solid var(--card-border)", paddingTop: "0.5rem" }}>
-                            Posted by: <span style={{ fontWeight: "700" }}>{highlight.user_email}</span>
-                          </div>
-                        </div>
-
-                        <div className={styles.cardFooterActions}>
-                          <button onClick={() => handleApproveHighlight(highlight)} className={styles.btnSubmit} style={{ flex: 1, padding: "0.5rem" }}>
-                            Approve Highlight
-                          </button>
-                          <button onClick={() => handleRejectHighlight(highlight)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ padding: "0.5rem 1rem" }}>
-                            Reject / Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    {pendingHighlights.map(highlight => renderAdminHighlightCard(highlight, true))}
                   </div>
                   {renderPagination(pendingHighlightsPage, setPendingHighlightsPage, pendingHighlightsCount)}
                 </>
@@ -1775,54 +2085,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <div className={styles.emptyText}>No active campaigns found matching filters.</div>
               ) : (
                 <>
-                  <div className={styles.queueGrid}>
-                    {activeAds.map(ad => {
-                      const isCompleted = ad.completed_at || (ad.impression_count >= ad.impressions);
-                      return (
-                        <div key={ad.id} className={styles.card} style={{ opacity: ad.is_paused ? 0.7 : 1 }}>
-                          <div style={{ position: "relative" }}>
-                            <AdminAdMediaBox adMedia={ad.ad_media} adMediaType={ad.ad_media_type} />
-                            <span className={styles.badgeCategory}>{ad.ad_type}</span>
-                            
-                            {isCompleted ? (
-                              <span className={styles.badgeStatus} style={{ backgroundColor: "#10b981", color: "#fff" }}>Completed</span>
-                            ) : ad.is_paused ? (
-                              <span className={styles.badgeStatus} style={{ backgroundColor: "#f59e0b", color: "#fff" }}>Paused</span>
-                            ) : (
-                              <span className={styles.badgeStatus} style={{ backgroundColor: "#2563eb", color: "#fff" }}>Live</span>
-                            )}
-                          </div>
-
-                          <div className={styles.cardBody}>
-                            <p className={styles.cardText} style={{ fontWeight: "700", color: "var(--foreground)", fontSize: "0.95rem" }}>{ad.ad_content}</p>
-                            
-                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                              Publisher: <span style={{ fontWeight: "700" }}>{ad.user_email}</span>
-                            </div>
-
-                            {renderAdDetails(ad)}
-                          </div>
-
-                          <div className={styles.cardFooterActions}>
-                            <button 
-                              onClick={() => handleTogglePauseAd(ad)} 
-                              disabled={isCompleted}
-                              className={styles.btnAction} 
-                              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}
-                            >
-                              {ad.is_paused ? <Play size={14} /> : <Pause size={14} />}
-                              <span>{ad.is_paused ? "Resume" : "Pause"}</span>
-                            </button>
-                            <button onClick={() => setEditAdData(ad)} className={styles.btnAction} style={{ padding: "0.5rem" }} title="Edit campaign text/settings">
-                              <Edit3 size={14} />
-                            </button>
-                            <button onClick={() => handleDeleteAd(ad)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ padding: "0.5rem" }} title="Delete campaign permanently">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {activeAds.map(ad => renderAdminAdCard(ad, false))}
                   </div>
                   {renderPagination(activeAdsPage, setActiveAdsPage, activeAdsCount)}
                 </>
@@ -1858,46 +2122,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               ) : (
                 <>
                   <div className={styles.queueGrid}>
-                    {activeHighlights.map(highlight => (
-                      <div key={highlight.id} className={styles.card} style={{ opacity: highlight.is_paused ? 0.7 : 1 }}>
-                        <div className={styles.mediaBox}>
-                          <img src={highlight.image_url} alt="Highlight cover" />
-                          <span className={styles.badgeCategory}>{highlight.interest}</span>
-                          
-                          {highlight.is_paused ? (
-                            <span className={styles.badgeStatus} style={{ backgroundColor: "#f59e0b", color: "#fff" }}>Paused</span>
-                          ) : (
-                            <span className={styles.badgeStatus} style={{ backgroundColor: "#2563eb", color: "#fff" }}>Live</span>
-                          )}
-                        </div>
-
-                        <div className={styles.cardBody}>
-                          <h4 className={styles.cardTitle}>{highlight.title}</h4>
-                          <p className={styles.cardText} style={{ fontSize: "0.9rem" }}>{highlight.content}</p>
-                          
-                          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.5rem", borderTop: "1px solid var(--card-border)", paddingTop: "0.5rem" }}>
-                            Publisher: <span style={{ fontWeight: "700" }}>{highlight.user_email}</span>
-                          </div>
-                        </div>
-
-                        <div className={styles.cardFooterActions}>
-                          <button 
-                            onClick={() => handleTogglePauseHighlight(highlight)} 
-                            className={styles.btnAction} 
-                            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}
-                          >
-                            {highlight.is_paused ? <Play size={14} /> : <Pause size={14} />}
-                            <span>{highlight.is_paused ? "Resume" : "Pause"}</span>
-                          </button>
-                          <button onClick={() => setEditHighlightData(highlight)} className={styles.btnAction} style={{ padding: "0.5rem" }}>
-                            <Edit3 size={14} />
-                          </button>
-                          <button onClick={() => handleDeleteHighlight(highlight)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ padding: "0.5rem" }}>
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    {activeHighlights.map(highlight => renderAdminHighlightCard(highlight, false))}
                   </div>
                   {renderPagination(activeHighlightsPage, setActiveHighlightsPage, activeHighlightsCount)}
                 </>
@@ -2304,10 +2529,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                 padding: "0.15rem 0.6rem",
                                 borderRadius: "99px",
                                 textTransform: "uppercase" as const,
-                                background: ticket.status === "replied" ? "rgba(52,211,153,0.15)" : ticket.status === "closed" ? "rgba(156,163,175,0.15)" : "rgba(251,191,36,0.15)",
-                                color: ticket.status === "replied" ? "#34d399" : ticket.status === "closed" ? "#9ca3af" : "#fbbf24"
+                                background: ticket.status === "resolved" ? "rgba(16,185,129,0.15)" : ticket.status === "replied" ? "rgba(52,211,153,0.15)" : ticket.status === "closed" ? "rgba(156,163,175,0.15)" : "rgba(251,191,36,0.15)",
+                                color: ticket.status === "resolved" ? "#10b981" : ticket.status === "replied" ? "#34d399" : ticket.status === "closed" ? "#9ca3af" : "#fbbf24"
                               }}>
-                                {ticket.status}
+                                {ticket.status === "resolved" ? "RESOLVED (Deletes in 24h)" : ticket.status.toUpperCase()}
                               </span>
                               <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" as const }}>{ticket.category}</span>
                               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -2324,9 +2549,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                             >
                               <Reply size={13} /> Reply
                             </button>
-                            {ticket.status !== "closed" && (
-                              <button onClick={() => handleCloseTicket(ticket.id)} className={styles.btnAction} style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                                <CheckCircle size={13} /> Close
+                            {ticket.status !== "resolved" && ticket.status !== "closed" && (
+                              <button onClick={() => handleCloseTicket(ticket)} className={styles.btnAction} style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "#10b981", borderColor: "rgba(16,185,129,0.4)" }}>
+                                <CheckCircle size={13} /> Mark as Resolved
                               </button>
                             )}
                             <button onClick={() => handleDeleteTicket(ticket.id)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.4rem 0.6rem" }}>
@@ -2349,7 +2574,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                             borderRadius: "10px",
                             padding: "0.75rem"
                           }}>
-                            <p style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: "0.3rem" }}>⚡ Admin Reply</p>
+                            <p style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: "0.3rem" }}>Admin Reply</p>
                             <p style={{ fontSize: "0.875rem", color: "var(--foreground)", lineHeight: 1.5 }}>{ticket.admin_reply}</p>
                           </div>
                         )}
@@ -2632,13 +2857,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               <div style={{ padding: "1rem", backgroundColor: "rgba(239, 68, 68, 0.05)", borderRadius: "12px", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
                 <span className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.5rem", color: "#ef4444" }}>Suspension Controls</span>
                 
-                {selectedUser.suspended_until && new Date(selectedUser.suspended_until).getTime() > Date.now() ? (
-                  <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
-                    🔴 Account currently locked until: <strong style={{ color: "#ef4444" }}>{new Date(selectedUser.suspended_until).toLocaleString()}</strong>
+                {selectedUser.suspended_until && new Date(selectedUser.suspended_until) > new Date() ? (
+                  <div style={{ padding: "0.75rem", backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", color: "#ef4444", fontSize: "0.85rem" }}>
+                    Account currently locked until: <strong style={{ color: "#ef4444" }}>{new Date(selectedUser.suspended_until).toLocaleString()}</strong>
                   </div>
                 ) : (
-                  <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem", color: "#10b981" }}>
-                    🟢 Account active and unsuspended.
+                  <div style={{ padding: "0.75rem", backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "8px", color: "#10b981", fontSize: "0.85rem" }}>
+                    Account active and unsuspended.
                   </div>
                 )}
 

@@ -20,6 +20,31 @@ export async function POST(req: NextRequest) {
     const reporterEmail = email.toLowerCase().trim();
     const targetAdvertiser = (advertiserEmail || "").toLowerCase().trim();
 
+    // 0. Enforce Rate Limit: 4 reports per 24 hours per user
+    const rateLimitKey = `ratelimit:report:${reporterEmail}`;
+    let currentCount = 0;
+    try {
+      const cnt = await redisConnection.get(rateLimitKey);
+      currentCount = cnt ? parseInt(cnt, 10) : 0;
+    } catch (e) {
+      currentCount = 0;
+    }
+
+    if (currentCount >= 4) {
+      return NextResponse.json(
+        { error: "Limit reached, try again later." },
+        { status: 429 }
+      );
+    }
+
+    // Increment count & set 24-hour expiry (86400 seconds)
+    try {
+      await redisConnection.incr(rateLimitKey);
+      if (currentCount === 0) {
+        await redisConnection.expire(rateLimitKey, 86400);
+      }
+    } catch (e) {}
+
     // 1. Insert record into ad_reports only if escalated to admin ('ad' or 'advertiser')
     if (reportType === "ad" || reportType === "advertiser") {
       const { error: reportErr } = await supabaseAdmin
@@ -59,12 +84,9 @@ export async function POST(req: NextRequest) {
       await redisConnection.sadd(`blocked:advertisers:${reporterEmail}`, targetAdvertiser).catch(() => {});
     }
 
-    // 3. Invalidate Redis candidate feed cache for this user so blocked items evaporate immediately
-    await redisConnection.del(`feed:ad_ids:${reporterEmail}`).catch(() => {});
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: "Report submitted successfully." });
   } catch (err: any) {
-    console.error("❌ Unexpected error in POST /api/campaigns/report:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("❌ Error in /api/campaigns/report:", err);
+    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
 }

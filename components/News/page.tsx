@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import supabase from "@/lib/utils/db"; // Adjust path to your Supabase client
+import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
+import LocationSelector from "../LocationSelector";
+import { Zap, Calendar } from "lucide-react";
+import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 
 interface Session {
   user?: {
@@ -16,10 +19,8 @@ interface Session {
 type NewsProps = {
   session: Session;
 };
-import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 
-const steps = ["Media", "Title", "Content", "Interest", "Preview"];
-
+const steps = ["Media", "Title", "Content", "Targeting & Bidding", "Preview"];
 
 const formatCurrency = (amount: number | string) => {
   const val = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -30,10 +31,17 @@ export default function News({ session }: NewsProps) {
   const [step, setStep] = useState(0);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState<"image" | "video">("image");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [interest, setInterest] = useState("");
+  const [country, setCountry] = useState("Nigeria");
+  const [state, setState] = useState("");
+  const [province, setProvince] = useState("");
+  const [campaignDays, setCampaignDays] = useState(1);
+  const [isBiddingEnabled, setIsBiddingEnabled] = useState(false);
+  const [bidPrice, setBidPrice] = useState(1500);
+  const [highestBid, setHighestBid] = useState<number>(1000);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [balance, setBalance] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
@@ -55,6 +63,23 @@ export default function News({ session }: NewsProps) {
     fetchBalance();
   }, [session]);
 
+  useEffect(() => {
+    if (!interest) return;
+    const fetchTopBid = async () => {
+      try {
+        const res = await fetch(`/api/highlights?highestBid=true&interest=${encodeURIComponent(interest)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setHighestBid(data.highestBid || 1000);
+          if (data.highestBid && data.highestBid >= bidPrice) {
+            setBidPrice(data.highestBid + 200);
+          }
+        }
+      } catch (e) {}
+    };
+    fetchTopBid();
+  }, [interest]);
+
   const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -63,7 +88,6 @@ export default function News({ session }: NewsProps) {
           alert("Cover image must be smaller than 5MB.");
           return;
         }
-        setMediaType("image");
       } else {
         alert("Only image files are allowed for highlights (videos are not permitted).");
         return;
@@ -74,20 +98,22 @@ export default function News({ session }: NewsProps) {
   };
 
   const capitalizeFirst = (txt: string) =>
-    txt.charAt(0).toUpperCase() + txt.slice(1);
+    txt.trim() ? txt.trim().charAt(0).toUpperCase() + txt.trim().slice(1) : "";
 
   const isFormComplete = () => mediaFile && title && content && interest;
 
+  const totalCost = isBiddingEnabled ? (bidPrice * campaignDays) : (1000 * campaignDays);
+
   const handleSubmit = async () => {
     if (!session || !session.user?.email) {
-      alert('User not authenticated. Please log in.');
+      alert("User not authenticated. Please log in.");
       return;
     }
 
-    if (!isFormComplete()) return alert("Complete all fields.");
+    if (!isFormComplete()) return alert("Please complete all fields.");
 
-    if (paymentMethod === "wallet" && balance < 1000) {
-      alert(`❌ Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but highlights cost ${formatCurrency(1000)}.`);
+    if (paymentMethod === "wallet" && balance < totalCost) {
+      alert(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
       return;
     }
 
@@ -122,14 +148,20 @@ export default function News({ session }: NewsProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "highlight",
-          amount: 1000,
+          amount: totalCost,
           metadata: {
             type: "highlight",
             user_email: session.user.email?.toLowerCase(),
-            title: capitalizeFirst(title.trim()),
+            title: capitalizeFirst(title),
             content: content.trim(),
             image_url: urlData.publicUrl,
-            interest
+            interest,
+            country,
+            state: state || null,
+            province: province || null,
+            campaign_days: campaignDays,
+            is_bidded: isBiddingEnabled,
+            bid_price: isBiddingEnabled ? bidPrice : null
           },
           callbackUrl: `${window.location.origin}/user/statement`
         })
@@ -141,14 +173,13 @@ export default function News({ session }: NewsProps) {
       }
 
       if (paymentMethod === "wallet") {
-        alert("Success! Your news highlight has been paid using your wallet balance and submitted for review.");
+        alert("Success! Your Daily Highlight has been paid using your wallet balance and submitted for review.");
         window.location.href = "/user/statement";
       } else {
         alert("Redirecting to Paystack to complete payment for your Highlight...");
         window.location.href = paymentData.authorization_url;
       }
       
-      // reset
       setStep(0);
       setMediaFile(null);
       setMediaPreview(null);
@@ -157,11 +188,10 @@ export default function News({ session }: NewsProps) {
       setInterest("");
     } catch (err: any) {
       console.error(err);
-      // Clean up orphaned storage object
       if (uploadedFilename) {
         await supabase.storage.from("news").remove([uploadedFilename]);
       }
-      alert("Submission failed: " + err.message);
+      alert(err.message || "An error occurred while submitting highlight.");
     } finally {
       setIsSubmitting(false);
     }
@@ -170,246 +200,226 @@ export default function News({ session }: NewsProps) {
   return (
     <>
       <HeaderJoin />
-      <main className={styles.pageWapper}>
-        <h1>Post Highlights</h1>
+      <div className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
           {/* Progress Step Tracker */}
           <div className={styles.progressContainer}>
-            {steps.map((s, index) => (
+            {steps.map((label, idx) => (
               <div
-                key={s}
+                key={label}
                 className={`${styles.progressStep} ${
-                  index === step
-                    ? styles.activeStep
-                    : index < step
-                    ? styles.completedStep
-                    : ""
+                  idx === step ? styles.activeStep : idx < step ? styles.completedStep : ""
                 }`}
               >
-                <span className={styles.stepNumber}>
-                  {index < step ? "✓" : index + 1}
-                </span>
-                <span className={styles.stepLabel}>{s}</span>
-                {index < steps.length - 1 && <div className={styles.stepLine} />}
+                <div className={styles.stepNumber}>{idx < step ? "✓" : idx + 1}</div>
+                <span className={styles.stepLabel}>{label}</span>
+                {idx < steps.length - 1 && <div className={styles.stepLine} />}
               </div>
             ))}
           </div>
 
+          <h1>Post Daily Highlight</h1>
+
           <div className={styles.adFormContainer}>
-            {/* Step 0: Media Upload */}
+            {/* STEP 0: MEDIA */}
             {step === 0 && (
               <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Upload Cover Image</label>
-                <label className={styles.uploadZone}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleMediaChange}
-                    className={styles.fileInput}
-                  />
-                  <div className={styles.uploadPlaceholder}>
-                    <svg
-                      className={styles.uploadIcon}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span>
-                      {mediaFile ? mediaFile.name : "Choose an image or drag it here"}
-                    </span>
-                    <span className={styles.uploadSubtext}>
-                      Supports JPG, PNG, WEBP (Max 5MB)
-                    </span>
+                <label className={styles.fieldLabel}>Cover Image (Required)</label>
+                {mediaPreview ? (
+                  <div style={{ textAlign: "center" }}>
+                    <img src={mediaPreview} alt="Cover Preview" style={{ maxWidth: "100%", maxHeight: "280px", borderRadius: "12px", border: "1px solid var(--card-border)", objectFit: "contain" }} />
+                    <div style={{ marginTop: "0.75rem" }}>
+                      <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid #ef4444", color: "#ef4444", background: "transparent", cursor: "pointer", fontWeight: 600 }}>Remove Image</button>
+                    </div>
                   </div>
-                </label>
-                {mediaPreview && (
-                  <div className={styles.imagePreviewContainer}>
-                    <img
-                      src={mediaPreview}
-                      alt="News Preview Image"
-                      className={styles.fullPreviewImg}
-                    />
-                  </div>
+                ) : (
+                  <label className={styles.uploadZone}>
+                    <input type="file" accept="image/*" onChange={handleMediaChange} hidden />
+                    <p style={{ fontWeight: 600, color: "var(--primary)" }}>Click to select cover image file</p>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Supports PNG, JPG, WEBP (Max 5MB)</p>
+                  </label>
                 )}
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end" }}>
+                  <button disabled={!mediaFile} onClick={() => setStep(1)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Title →</button>
+                </div>
               </div>
             )}
 
-            {/* Step 1: Title Input */}
+            {/* STEP 1: TITLE */}
             {step === 1 && (
               <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Title (60 chars max)</label>
-                <input
-                  type="text"
-                  className={styles.inputBox}
-                  maxLength={60}
-                  placeholder="Give your highlight a captivating title..."
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-                <div className={styles.fieldFooter}>
-                  <span className={styles.infoText}>Make it short, clear and engaging.</span>
-                  <span className={styles.charCount}>{title.length}/60</span>
+                <label className={styles.fieldLabel}>Highlight Title</label>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Grand Opening Sale 50% Off" className={styles.inputBox} maxLength={80} />
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
+                  <button onClick={() => setStep(0)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
+                  <button disabled={!title.trim()} onClick={() => setStep(2)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Content →</button>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Content Input */}
+            {/* STEP 2: CONTENT */}
             {step === 2 && (
               <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Content (100 chars max)</label>
-                <textarea
-                  className={styles.textareaBox}
-                  maxLength={100}
-                  placeholder="What is this business highlight about?"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={4}
-                />
-                <div className={styles.fieldFooter}>
-                  <span className={styles.infoText}>Provide a brief summary of the key message.</span>
-                  <span className={styles.charCount}>{content.length}/100</span>
+                <label className={styles.fieldLabel}>Highlight Details & Story</label>
+                <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Share full details of your highlight announcement..." className={styles.textareaBox} rows={6} maxLength={1000} />
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
+                  <button onClick={() => setStep(1)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
+                  <button disabled={!content.trim()} onClick={() => setStep(3)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Targeting & Bidding →</button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Select Interest */}
+            {/* STEP 3: TARGETING, LOCATION & BIDDING */}
             {step === 3 && (
-              <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Select Target Interest</label>
-                <div className={styles.selectWrapper}>
-                  <select
-                    className={styles.selectBox}
-                    value={interest}
-                    onChange={(e) => setInterest(e.target.value)}
-                  >
-                    <option value="">-- Choose target audience interest --</option>
-                    {interests.map((i) => (
-                      <option key={i} value={i}>
-                        {i}
-                      </option>
-                    ))}
-                  </select>
+              <div className={styles.formGroup} style={{ gap: "1.5rem" }}>
+                {/* Category Card */}
+                <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
+                  <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Category & Interest</label>
+                  <div className={styles.selectWrapper}>
+                    <select value={interest} onChange={(e) => setInterest(e.target.value)} className={styles.selectBox}>
+                      <option value="">-- Select Target Category --</option>
+                      {interests.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <span className={styles.infoText}>
-                  We will display this highlight to users interested in this topic.
-                </span>
-              </div>
-            )}
 
-            {/* Step 4: Preview & Summary */}
-            {step === 4 && (
-              <div className={styles.previewSection}>
-                <div className={styles.cardPreviewWrapper}>
-                  <div className={styles.previewLabel}>LIVE PREVIEW</div>
-                  <div className={styles.newsCard}>
-                    {mediaPreview && (
-                      <div className={styles.newsCardImageContainer}>
-                        <img
-                          src={mediaPreview}
-                          alt="Preview"
-                          className={styles.newsCardImgFull}
-                        />
-                        <span className={styles.newsCardCategory}>{interest || "General"}</span>
-                      </div>
-                    )}
-                    <div className={styles.newsCardBody}>
-                      <div className={styles.newsCardMeta}>
-                        <span className={styles.newsCardSource}>Business Highlight</span>
-                        <span className={styles.newsCardDot}>•</span>
-                        <span className={styles.newsCardTime}>Just now</span>
-                      </div>
-                      <h2 className={styles.newsCardTitle}>
-                        {capitalizeFirst(title) || "Untitled Highlight"}
-                      </h2>
-                      <p className={styles.newsCardDescription}>
-                        {content || "No content summary provided yet."}
+                {/* Target Location Card */}
+                <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
+                  <label className={styles.fieldLabel} style={{ marginBottom: "0.75rem", display: "block", fontSize: "0.9rem", fontWeight: 700 }}>
+                    Target Location
+                  </label>
+                  <LocationSelector
+                    country={country}
+                    state={state}
+                    location={province}
+                    inputClass={styles.inputBox}
+                    labelClass={styles.fieldLabel}
+                    groupClass={styles.formGroup}
+                    cityLabel="Province"
+                    onChange={({ country: c, state: s, location: loc }) => {
+                      setCountry(c);
+                      setState(s);
+                      setProvince(loc);
+                    }}
+                  />
+                </div>
+
+                {/* Duration Selector Card */}
+                <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
+                  <label className={styles.fieldLabel} style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "0.75rem" }}>
+                    <Calendar size={16} color="var(--primary)" /> Duration (Max 5 Days)
+                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setCampaignDays(num)}
+                        style={{
+                          padding: "10px 20px",
+                          borderRadius: "10px",
+                          border: `1px solid ${campaignDays === num ? "var(--primary)" : "var(--card-border)"}`,
+                          backgroundColor: campaignDays === num ? "var(--primary)" : "var(--background)",
+                          color: campaignDays === num ? "#fff" : "var(--foreground)",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          transition: "all 0.2s ease"
+                        }}
+                      >
+                        {num} {num === 1 ? "Day" : "Days"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bidding Card */}
+                <div style={{ padding: "1.5rem", backgroundColor: "rgba(245, 158, 11, 0.06)", borderRadius: "14px", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+                    <div>
+                      <strong style={{ fontSize: "0.95rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Zap size={16} color="#f59e0b" /> Contest for Top Highlight Position (Bidding)
+                      </strong>
+                      <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.4 }}>
+                        Highest bids stay at the top of the highlights carousel. Current top bid for {interest || "this category"}: <strong>{formatCurrency(highestBid)}/day</strong>.
                       </p>
                     </div>
+                    <input
+                      type="checkbox"
+                      checked={isBiddingEnabled}
+                      onChange={(e) => setIsBiddingEnabled(e.target.checked)}
+                      style={{ width: 22, height: 22, cursor: "pointer", flexShrink: 0 }}
+                    />
                   </div>
+
+                  {isBiddingEnabled && (
+                    <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px dashed rgba(245, 158, 11, 0.3)" }}>
+                      <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Your Bid Price Per Day (₦)</label>
+                      <input
+                        type="number"
+                        min={highestBid + 100}
+                        step={100}
+                        value={bidPrice}
+                        onChange={(e) => setBidPrice(parseFloat(e.target.value) || 1000)}
+                        className={styles.inputBox}
+                      />
+                      <p style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "6px", fontWeight: 600 }}>
+                        Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} days. Higher bids overtake lower bids at top position.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                <div className={styles.pricingSummary}>
-                  <div className={styles.summaryTitle}>Highlights Pricing Details</div>
-                  <div className={styles.summaryRow}>
-                    <span>Publishing Fee</span>
-                    <span className={styles.summaryValue}>{formatCurrency(1000)}</span>
-                  </div>
-                  <div className={styles.summaryDivider} />
-                  <div className={styles.summaryRowTotal}>
-                    <span>Total Due</span>
-                    <span>{formatCurrency(1000)}</span>
-                  </div>
-                  <div className={styles.submitNotice}>
-                    <p className={styles.noticeText}>
-                      Your news highlight will be placed in the review queue. Please check the <strong>"My Ads"</strong> page under your profile to see when it becomes active and starts delivering.
-                    </p>
-                  </div>
-                </div>
-
-                <div className={styles.paymentSection}>
-                  <div className={styles.paymentTitle}>Payment Method</div>
-                  <div className={styles.paymentOptions}>
-                    <div
-                      className={`${styles.paymentOptionCard} ${paymentMethod === "card" ? styles.paymentOptionCardActive : ""}`}
-                      onClick={() => setPaymentMethod("card")}
-                    >
-                      <div className={styles.paymentOptionName}>Card / Bank</div>
-                      <div className={styles.paymentOptionSub}>Debit Card, USSD, Bank Transfer</div>
-                    </div>
-                    <div
-                      className={`${styles.paymentOptionCard} ${paymentMethod === "wallet" ? styles.paymentOptionCardActive : ""}`}
-                      onClick={() => setPaymentMethod("wallet")}
-                    >
-                      <div className={styles.paymentOptionName}>Wallet Balance</div>
-                      <div className={styles.paymentOptionSub}>Available: {formatCurrency(balance)}</div>
-                    </div>
-                  </div>
+                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between" }}>
+                  <button onClick={() => setStep(2)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
+                  <button disabled={!interest} onClick={() => setStep(4)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Preview →</button>
                 </div>
               </div>
             )}
 
-            {/* Form Step Buttons */}
-            <div className={styles.buttonGroup}>
-              {step > 0 && (
-                <button type="button" onClick={() => setStep(step - 1)}>
-                  Back
-                </button>
-              )}
-              {step < 4 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (step === 0 && !mediaFile) return alert("Please upload a cover image or video.");
-                    if (step === 1 && !title) return alert("Please fill in the title.");
-                    if (step === 2 && !content) return alert("Please enter the content.");
-                    if (step === 3 && !interest) return alert("Choose one interest.");
-                    setStep(step + 1);
-                  }}
-                >
-                  Next
-                </button>
-              )}
-              {step === 4 && (
-                <button
-                  className={styles.submitButton}
-                  type="button"
-                  disabled={!isFormComplete() || isSubmitting}
-                  onClick={handleSubmit}
-                >
-                  {isSubmitting ? "Submitting..." : `Pay ${formatCurrency(1000)} & Submit`}
-                </button>
-              )}
-            </div>
+            {/* STEP 4: PREVIEW & PAYMENT */}
+            {step === 4 && (
+              <div className={styles.formGroup}>
+                <div style={{ borderRadius: "16px", border: "1px solid var(--card-border)", overflow: "hidden", backgroundColor: "var(--card-bg)" }}>
+                  {mediaPreview && <img src={mediaPreview} alt="Preview" style={{ width: "100%", maxHeight: "240px", objectFit: "contain", background: "#000" }} />}
+                  <div style={{ padding: "1.25rem" }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--primary)", backgroundColor: "var(--sidebar-bg)", padding: "3px 8px", borderRadius: "6px" }}>{interest}</span>
+                    <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginTop: "0.5rem", color: "var(--foreground)" }}>{capitalizeFirst(title)}</h3>
+                    <p style={{ fontSize: "0.9rem", color: "var(--foreground)", lineHeight: 1.5, marginTop: "0.5rem" }}>{content}</p>
+                    <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                      Targeting: {country} {state ? `· ${state}` : ""} · {campaignDays} Days {isBiddingEnabled ? `· Bidded (₦${bidPrice}/day)` : ""}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment selector */}
+                <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--foreground)" }}>Select Payment Method</h4>
+                  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+                      <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Paystack (Card/Bank/Transfer)
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+                      <input type="radio" name="pay" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} /> Pay from Wallet Balance ({formatCurrency(balance)})
+                    </label>
+                  </div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
+                    Total Payment: {formatCurrency(totalCost)}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
+                  <button onClick={() => setStep(3)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
+                  <button disabled={isSubmitting} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                    {isSubmitting ? "Processing Submission..." : `Pay ${formatCurrency(totalCost)} & Submit`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </main>
+      </div>
     </>
   );
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { v4 as uuidv4 } from "uuid";
-import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { invalidateCachedProfile, invalidateTargetedHighlightCache } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
@@ -96,34 +96,106 @@ export async function POST(req: NextRequest) {
 
     // 4. Perform business logic
     if (type === "highlight") {
-      const { title, content, image_url, interest } = metadata;
+      const { title, content, image_url, interest, country, state, province, campaign_days, is_bidded, bid_price, editingId } = metadata;
 
-      const { error: insertHighlightError } = await supabaseAdmin.from("news").insert([
-        {
-          title,
-          content,
-          image_url,
-          interest,
-          user_email: email,
-        },
-      ]);
+      // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers if editing
+      if (editingId) {
+        const editLimitKey = `ratelimit:edit_highlight:${editingId}`;
+        const isEditLimited = await redisConnection.get(editLimitKey).catch(() => null);
+        if (isEditLimited) {
+          return NextResponse.json({ error: "Limit reached, try again later." }, { status: 429 });
+        }
+        await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
 
-      if (insertHighlightError) {
-        console.error("❌ Wallet pay: Error inserting news highlight:", insertHighlightError);
-        return NextResponse.json({ error: "Payment succeeded but failed to post highlight" }, { status: 500 });
+        // Update existing highlight across news and newsactive
+        await Promise.all([
+          supabaseAdmin.from("news").update({
+            title,
+            content,
+            image_url,
+            interest,
+            country: country || null,
+            state: state || null,
+            province: province || null,
+            campaign_days: campaign_days || 1,
+            is_bidded: !!is_bidded,
+            bid_price: bid_price ? parseFloat(bid_price) : null
+          }).eq("id", editingId),
+          supabaseAdmin.from("newsactive").update({
+            title,
+            content,
+            image_url,
+            interest,
+            country: country || null,
+            state: state || null,
+            province: province || null,
+            campaign_days: campaign_days || 1,
+            is_bidded: !!is_bidded,
+            bid_price: bid_price ? parseFloat(bid_price) : null
+          }).eq("id", editingId)
+        ]);
+      } else {
+        const { error: insertHighlightError } = await supabaseAdmin.from("news").insert([
+          {
+            title,
+            content,
+            image_url,
+            interest,
+            country: country || null,
+            state: state || null,
+            province: province || null,
+            campaign_days: campaign_days || 1,
+            is_bidded: !!is_bidded,
+            bid_price: bid_price ? parseFloat(bid_price) : null,
+            user_email: email,
+          },
+        ]);
+
+        if (insertHighlightError) {
+          console.error("❌ Wallet pay: Error inserting news highlight:", insertHighlightError);
+          return NextResponse.json({ error: "Payment succeeded but failed to post highlight" }, { status: 500 });
+        }
       }
+
+      // Highlights cache relies on natural 30-second TTL expiry for maximum 100M+ write throughput
 
       // Add user notification
       await supabaseAdmin.from("notifications").insert({
         user_email: email,
-        title: "Highlight Posted",
-        message: `Your highlight "${title}" has been paid using your wallet balance and submitted for review. It will be published shortly!`,
+        title: editingId ? "Highlight Updated" : "Highlight Posted",
+        message: `Your highlight "${title}" has been ${editingId ? "updated" : "paid using your wallet balance"} and submitted for review. It will be published shortly!`,
       });
 
     } else if (type === "ad") {
       const { adData } = metadata;
       if (!adData) {
         return NextResponse.json({ error: "Ad data missing from metadata" }, { status: 400 });
+      }
+
+      // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers
+      if (adData.id) {
+        const { data: existingAd } = await supabaseAdmin
+          .from("adds")
+          .select("id")
+          .eq("id", adData.id)
+          .maybeSingle();
+
+        const { data: existingActiveAd } = await supabaseAdmin
+          .from("addsactive")
+          .select("id")
+          .eq("id", adData.id)
+          .maybeSingle();
+
+        if (existingAd || existingActiveAd) {
+          const editLimitKey = `ratelimit:edit_ad:${adData.id}`;
+          const isEditLimited = await redisConnection.get(editLimitKey).catch(() => null);
+          if (isEditLimited) {
+            return NextResponse.json({
+              error: "Limit reached, try again later."
+            }, { status: 429 });
+          }
+          await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
+        }
       }
 
       const isBidded = !!adData.isBidded;

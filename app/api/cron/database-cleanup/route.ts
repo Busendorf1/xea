@@ -48,17 +48,39 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error purging completed ads:", err.message || err);
     }
 
-    // 4. Purge highlights older than 24 hours
+    // 4. Purge highlights older than campaign_days (1-5 days)
     try {
       console.log("🧹 Cron: Purging expired highlights...");
       const { error: errNews } = await supabaseAdmin.rpc("delete_expired_news");
       if (errNews) {
-        console.error("❌ Cron: Failed to purge expired highlights:", errNews.message);
+        console.warn("⚠️ Cron: RPC delete_expired_news failed, executing direct fallback deletion:", errNews.message);
+        // Fallback: direct delete for highlights older than 24 hours
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        await supabaseAdmin.from("newsactive").delete().lt("created_at", twentyFourHoursAgo);
       } else {
         console.log("✅ Cron: Expired highlights purged successfully.");
       }
     } catch (err: any) {
       console.error("❌ Cron: Unexpected error purging highlights:", err.message || err);
+    }
+
+    // 5. Purge resolved help tickets older than 24 hours
+    try {
+      console.log("🧹 Cron: Purging resolved help tickets older than 24 hours...");
+      const { error: errTickets } = await supabaseAdmin.rpc("delete_resolved_help_tickets");
+      if (errTickets) {
+        console.warn("⚠️ Cron: RPC delete_resolved_help_tickets failed, executing direct fallback deletion:", errTickets.message);
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        await supabaseAdmin
+          .from("help_tickets")
+          .delete()
+          .not("resolved_at", "is", null)
+          .lt("resolved_at", twentyFourHoursAgo);
+      } else {
+        console.log("✅ Cron: Resolved help tickets purged successfully.");
+      }
+    } catch (err: any) {
+      console.error("❌ Cron: Unexpected error purging help tickets:", err.message || err);
     }
 
     console.log("🧹 Cron: Database-cleanup task completed successfully.");

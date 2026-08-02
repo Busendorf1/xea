@@ -311,9 +311,15 @@
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
   z-index: 1000;
   display: flex;
   flex-direction: column;
+}
+
+.notificationDropdown::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .notificationHeader {

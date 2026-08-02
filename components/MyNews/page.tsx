@@ -1,150 +1,11 @@
-// "use client";
-
-// import { useEffect, useState } from "react";
-// import supabase from "@/lib/utils/db";
-// import styles from "../MyNews/page.module.css";
-// import Image from "next/image";
-// import { Session } from "next-auth";
-
-// type MyNewsProps = {
-//   session: Session;
-// };
-
-// type Ad = {
-//   id: number;
-//   image_url: string;
-//   title: string;
-//   interest: string;
-//   content: string;
-//   action_phone?: string;
-//   action_whatsapp?: string;
-//   action_email?: string;
-//   action_website?: string;
-//   created_at: string | null;
-//   impression_count: number | null;
-// };
-
-// export default function MyNews({ session }: MyNewsProps) {
-//   const [ads, setAds] = useState<Ad[]>([]);
-//   const [seenAds, setSeenAds] = useState<number[]>([]);
-//   const [loading, setLoading] = useState(true);
-//   const [error, setError] = useState(false);
-
-//   useEffect(() => {
-//     const fetchAds = async () => {
-//       try {
-//         const { data, error } = await supabase
-//           .from("news")
-//           .select("*")
-//           .eq("user_email", session.user.email)
-//           .order("created_at", { ascending: false });
-
-//         if (error) throw error;
-
-//         setAds(data || []);
-//       } catch (err) {
-//         setError(true);
-//       } finally {
-//         setLoading(false);
-//       }
-//     };
-
-//     if (session?.user?.email) {
-//       fetchAds();
-//     }
-//   }, [session]);
-
-//   function formatTimestamp(timestamp: string | null | undefined): string {
-//     if (!timestamp) return "Unknown time";
-
-//     const created = new Date(timestamp);
-//     const now = new Date();
-//     const diff = (now.getTime() - created.getTime()) / 1000;
-
-//     if (isNaN(diff)) return "Invalid date";
-
-//     if (diff < 60) return "Just now";
-//     if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-//     if (diff < 86400) return `${Math.floor(diff / 3600)} hour(s) ago`;
-//     if (diff < 172800) return "Yesterday";
-
-//     return created.toLocaleDateString(undefined, {
-//       year: "numeric",
-//       month: "short",
-//       day: "numeric",
-//     });
-//   }
-
-//   return (
-//     <div className={styles.feedContainer}>
-//       {loading && <p className={styles.loading}>Loading ads…</p>}
-//       {!loading && error && (
-//         <p className={styles.error}>⚠️ Error loading ads.</p>
-//       )}
-//       {!loading && !error && ads.length === 0 && (
-//         <p className={styles.noAds}>No matching ads found for your profile.</p>
-//       )}
-
-//       <div className={styles.adGrid}>
-//         {ads.map((ad) => {
-//           const mediaType = /\.(mp4|webm)$/i.test(ad.ad_media || "")
-//             ? "video"
-//             : "image";
-//           const actionButtons = [
-//             "action_phone",
-//             "action_whatsapp",
-//             "action_email",
-//             "action_website",
-//           ].filter((key) => ad[key as keyof Ad]) as string[];
-
-//           return (
-//             <div key={ad.id} className={styles.card}>
-//               <div className={styles.mediaBox}>
-//                 {mediaType === "image" ? (
-//                   <Image
-//                     src={ad.image_url || ""}
-//                     alt="Ad"
-//                     width={1000}
-//                     height={1000}
-//                     layout="responsive"
-//                     priority
-//                   />
-//                 ) : (
-//                   <video
-//                     src={ad.ad_media || ""}
-//                     controls
-//                     className={styles.mediaVideo}
-//                   />
-//                 )}
-//               </div>
-//               <h4 className={styles.adText}>{ad.title}</h4>
-//               <p className={styles.adText}>{ad.content}</p>
-//              <div className={styles.actionButtons}>
-//   <p className={styles.adMeta}>
-//     {(ad.impression_count ?? 0).toLocaleString()} views
-//   </p>
-//   <p className={styles.adMeta}>
-//     Posted {formatTimestamp(ad.created_at?.toString())}
-//   </p>
-// </div>
-// <span className={styles.interestTag}>Interest: {ad.interest}</span>
-
-//             </div>
-//           );
-//         })}
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
 "use client";
 
 import { useEffect, useState } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "../MyNews/page.module.css";
 import Link from "next/link";
+import { Pause, Play, Edit3, AlertTriangle, MapPin, Zap, Calendar } from "lucide-react";
+
 interface Session {
   user?: {
     email?: string | null;
@@ -157,49 +18,85 @@ type MyNewsProps = {
   session: Session;
 };
 
-type Ad = {
-  id: number;
+type HighlightItem = {
+  id: string;
   image_url: string;
   title: string;
   interest: string;
   content: string;
-  action_phone?: string;
-  action_whatsapp?: string;
-  action_email?: string;
-  action_website?: string;
+  country?: string | null;
+  state?: string | null;
+  province?: string | null;
   created_at: string | null;
-  impression_count: number | null;
+  is_paused?: boolean | null;
+  admin_statement?: string | null;
+  is_bidded?: boolean | null;
+  bid_price?: number | null;
+  campaign_days?: number | null;
 };
 
 export default function MyNewsDashboard({ session }: MyNewsProps) {
-  const [reviewNews, setReviewNews] = useState<Ad[]>([]);
-  const [activeNews, setActiveNews] = useState<Ad[]>([]);
+  const [reviewNews, setReviewNews] = useState<HighlightItem[]>([]);
+  const [activeNews, setActiveNews] = useState<HighlightItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const fetchNews = async () => {
+    const email = session?.user?.email;
+    if (!email) return;
+    try {
+      const [reviewRes, activeRes] = await Promise.all([
+        supabase.from("news").select("*").eq("user_email", email).order("created_at", { ascending: false }),
+        supabase.from("newsactive").select("*").eq("user_email", email).order("created_at", { ascending: false }),
+      ]);
+
+      if (reviewRes.error || activeRes.error) throw new Error();
+
+      setReviewNews(reviewRes.data || []);
+      setActiveNews(activeRes.data || []);
+    } catch (err) {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchNews = async () => {
-      const email = session?.user?.email;
-      if (!email) return;
-      try {
-        const [reviewRes, activeRes] = await Promise.all([
-          supabase.from("news").select("*").eq("user_email", email).order("created_at", { ascending: false }),
-          supabase.from("newsactive").select("*").eq("user_email", email).order("created_at", { ascending: false }),
-        ]);
-
-        if (reviewRes.error || activeRes.error) throw new Error();
-
-        setReviewNews(reviewRes.data || []);
-        setActiveNews(activeRes.data || []);
-      } catch (err) {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (session?.user?.email) fetchNews();
   }, [session]);
+
+  const handleTogglePause = async (item: HighlightItem) => {
+    if (item.admin_statement && item.is_paused) {
+      alert("Highlight Paused, follow instruction provided");
+      return;
+    }
+
+    const nextState = !item.is_paused;
+    setActionLoading(item.id);
+
+    try {
+      const res = await fetch("/api/highlights/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          highlightId: item.id,
+          isPaused: nextState
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Limit reached, try again later.");
+      } else {
+        fetchNews();
+      }
+    } catch (err: any) {
+      alert("Failed to toggle pause: " + (err.message || "Network error"));
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   function formatTimestamp(timestamp: string | null | undefined): string {
     if (!timestamp) return "Unknown time";
@@ -220,37 +117,82 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
     });
   }
 
-  const renderAdCard = (ad: Ad, status: "review" | "active") => (
-    <div key={ad.id} className={styles.card}>
+  const renderAdCard = (item: HighlightItem, status: "review" | "active") => (
+    <div key={item.id} className={styles.card} style={{ opacity: item.is_paused ? 0.85 : 1 }}>
       <div className={styles.mediaBox}>
-        {/\.(mp4|webm)/i.test(ad.image_url || "") ? (
+        {/\.(mp4|webm)/i.test(item.image_url || "") ? (
           <video
-            src={ad.image_url || ""}
+            src={item.image_url || ""}
             controls
             className={styles.adImgElement}
-            style={{ maxHeight: "150px", background: "#000" }}
+            style={{ maxHeight: "240px", background: "#000" }}
           />
         ) : (
           <img
-            src={ad.image_url || ""}
-            alt="News cover"
+            src={item.image_url || "/placeholder.png"}
+            alt="Highlight cover"
             className={styles.adImgElement}
           />
         )}
-        <span className={status === "active" ? styles.badgeActive : styles.badgeReview}>
-          {status === "active" ? "Active" : "In Review"}
+        <span className={status === "active" ? (item.is_paused ? styles.badgeReview : styles.badgeActive) : styles.badgeReview}>
+          {status === "active" ? (item.is_paused ? "Paused" : "Active") : "In Review"}
         </span>
       </div>
+
       <div className={styles.cardContent}>
-        <span className={styles.interestTag}>{ad.interest}</span>
-        <h4 className={styles.adTitle}>{ad.title}</h4>
-        <p className={styles.adDescription}>{ad.content}</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+          <span className={styles.interestTag}>{item.interest}</span>
+          <div style={{ display: "flex", gap: "0.4rem" }}>
+            <Link href={`/user/news?editingId=${item.id}`}>
+              <button style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: "var(--foreground)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "3px", fontWeight: 600 }}>
+                <Edit3 size={12} /> Edit
+              </button>
+            </Link>
+            {status === "active" && (
+              <button
+                onClick={() => handleTogglePause(item)}
+                disabled={actionLoading === item.id}
+                style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: item.is_paused ? "#10b981" : "#f59e0b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "3px", fontWeight: 600 }}
+              >
+                {item.is_paused ? <Play size={12} /> : <Pause size={12} />}
+                {item.is_paused ? "Resume" : "Pause"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <h4 className={styles.adTitle}>{item.title}</h4>
+        <p className={styles.adDescription}>{item.content}</p>
+
+        {/* Admin Statement */}
+        {item.admin_statement && (
+          <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "rgba(245, 158, 11, 0.12)", borderRadius: "6px", border: "1px solid rgba(245, 158, 11, 0.4)", color: "#f59e0b", fontSize: "0.78rem", marginTop: "0.5rem" }}>
+            <strong style={{ display: "flex", alignItems: "center", gap: "4px" }}><AlertTriangle size={13} color="#f59e0b" /> Important Notice / Reason:</strong>
+            {item.admin_statement}
+          </div>
+        )}
+
+        {/* Bidded & Location Badges */}
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+          {(!!item.is_bidded || Number(item.bid_price || 0) > 1000) && (
+            <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+              <Zap size={11} color="#f59e0b" /> Bidded (₦{item.bid_price || 1500}/day)
+            </span>
+          )}
+          <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--sidebar-bg)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+            <MapPin size={11} /> {item.country || "Global"} {item.state ? `(${item.state}${item.province ? `, ${item.province}` : ""})` : ""}
+          </span>
+          <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--sidebar-bg)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+            <Calendar size={11} /> {item.campaign_days || 1} Days
+          </span>
+        </div>
+
         <div className={styles.cardFooter}>
           <p className={styles.adCoverage}>
             Will be seen by users in the same interest category
           </p>
           <p className={styles.adTime}>
-            Posted {formatTimestamp(ad.created_at?.toString())}
+            Posted {formatTimestamp(item.created_at?.toString())}
           </p>
         </div>
       </div>

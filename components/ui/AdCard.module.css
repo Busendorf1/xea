@@ -1,4 +1,7 @@
 .card {
+  position: relative;
+  overflow: visible;
+  z-index: 1;
   display: flex;
   flex-direction: row;
   padding: 1.25rem 1rem;
@@ -990,6 +993,11 @@
   transition: all 0.2s ease;
 }
 
+.threeDotMenuWrapper {
+  position: relative;
+  z-index: 1000;
+}
+
 .threeDotBtn:hover {
   background-color: var(--card-border);
   color: var(--foreground);
@@ -1003,9 +1011,9 @@
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   padding: 6px;
-  z-index: 100;
+  z-index: 99999;
   min-width: 210px;
   display: flex;
   flex-direction: column;

@@ -1,17 +1,16 @@
 -- MIGRATION: VERCEL CRON-BASED DATABASE CLEANUP & LIFE-CYCLE FIXES
 -- Run this SQL in your Supabase Dashboard -> SQL Editor.
 
--- 1. Drop the high-overhead insert-based cleanup trigger on newsactive
+-- 1. Drop old triggers if present
 DROP TRIGGER IF EXISTS trigger_cleanup_expired_news ON public.newsactive;
 DROP FUNCTION IF EXISTS public.tr_cleanup_expired_news();
 
--- 2. Create or replace the hourly highlights cleanup function
+-- 2. Create or replace the highlights cleanup function accounting for campaign_days (1-5 days)
 CREATE OR REPLACE FUNCTION public.delete_expired_news()
 RETURNS void AS $$
 BEGIN
-  -- Delete active highlights older than 24 hours
   DELETE FROM public.newsactive 
-  WHERE created_at < (timezone('utc'::text, now()) - interval '24 hours');
+  WHERE created_at < (timezone('utc'::text, now()) - (COALESCE(campaign_days, 1) || ' days')::interval);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -21,8 +20,6 @@ RETURNS void AS $$
 DECLARE
   v_ad_id UUID;
 BEGIN
-  -- Select all active platform ads (cost_per_impression = 0 or null) where campaign duration has passed
-  -- and execute the standard archive_completed_ad logic.
   FOR v_ad_id IN 
     SELECT id FROM public.adds
     WHERE (cost_per_impression IS NULL OR cost_per_impression = 0)
@@ -34,7 +31,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4. Create or replace the expired completed ads deletion function with batched loops for scalability
+-- 4. Create function to delete completed ads older than 24 hours
 CREATE OR REPLACE FUNCTION public.delete_expired_completed_ads()
 RETURNS void AS $$
 DECLARE
@@ -54,7 +51,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 5. Grant execute permissions to anon, authenticated, and service_role
+-- 5. Create function to delete resolved help tickets older than 24 hours
+CREATE OR REPLACE FUNCTION public.delete_resolved_help_tickets()
+RETURNS void AS $$
+BEGIN
+  DELETE FROM public.help_tickets
+  WHERE resolved_at IS NOT NULL
+    AND resolved_at < (timezone('utc'::text, now()) - interval '24 hours');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 6. Grant execute permissions to anon, authenticated, and service_role
 GRANT EXECUTE ON FUNCTION public.delete_expired_news() TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.archive_expired_platform_ads() TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.delete_expired_completed_ads() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.delete_resolved_help_tickets() TO anon, authenticated, service_role;
+
+NOTIFY pgrst, 'reload schema';
