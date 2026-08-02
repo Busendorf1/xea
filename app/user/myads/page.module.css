@@ -1,23 +1,29 @@
 .pageContainer {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 3rem 2rem;
+  padding: 1.5rem 1.5rem 1rem;
   background-color: var(--background);
   font-family: var(--font-geist-sans), "Inter", sans-serif;
 }
 
+@media (max-width: 640px) {
+  .pageContainer {
+    padding: 1rem 1rem 0.5rem;
+  }
+}
+
 .pageTitle {
-  font-size: 2.25rem;
+  font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.025em;
   color: var(--foreground); /* Slate 900 */
-  margin-top: 1rem;
-  margin-bottom: 2.5rem;
+  margin-top: 0.25rem;
+  margin-bottom: 1.25rem;
   text-align: left;
 }
 
 .section {
-  margin-bottom: 3.5rem;
+  margin-bottom: 1.75rem;
   background: transparent;
 }
 

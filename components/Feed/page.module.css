@@ -5,8 +5,11 @@
   border-left: 1px solid var(--card-border);
   border-right: 1px solid var(--card-border);
   background-color: var(--card-bg);
-  min-height: 100vh;
+  min-height: 100%;
   font-family: var(--font-geist-sans), "Inter", sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .adGrid {
@@ -379,17 +382,55 @@
   pointer-events: none;
 }
 
+
+
+.fixedFooterContainer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 600px;
+  z-index: 999;
+  background-color: var(--sidebar-bg);
+  border-top: 1px solid var(--card-border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+  animation: footerSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.feedWithFooterPadding {
+  padding-bottom: 70px !important;
+}
+
+@keyframes footerSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media screen and (max-width: 600px) {
   .feedContainer {
     border-left: none;
     border-right: none;
     padding: 0;
+    width: 100%;
+  margin-top: 3rem;
+    max-width: 100%;
   }
   .card {
     padding: 1rem 0.75rem;
   }
   .adText {
     font-size: 0.9rem;
+  }
+  .fixedFooterContainer {
+    max-width: 50%;
   }
 }
 

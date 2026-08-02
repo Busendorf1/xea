@@ -1,14 +1,23 @@
 .footer {
   background-color: var(--sidebar-bg);
-  /* padding: 20px 5px; */
   border-top: 1px solid var(--card-border);
+  margin: 0;
+  padding: 0;
+  width: 100%;
 }
 
 .copyRight {
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
-  padding-bottom: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--card-border);
+  padding: 14px 1rem;
+  margin: 0;
+}
+
+@media screen and (max-width: 768px) {
+  .copyRight {
+    padding-top: 16px;
+    padding-bottom: max(28px, calc(16px + env(safe-area-inset-bottom)));
+    font-size: 0.8rem;
+  }
 }

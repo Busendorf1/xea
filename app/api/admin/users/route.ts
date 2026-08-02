@@ -37,7 +37,7 @@ async function verifyAdmin() {
 
 // Zod validation schema for POST actions
 const adminActionSchema = z.object({
-  action: z.enum(["toggle_monetization", "suspend", "adjust_balance", "delete"]),
+  action: z.enum(["toggle_monetization", "suspend", "adjust_balance", "delete", "ad_account_action"]),
   userId: z.string().min(1, "userId is required"),
   payload: z.record(z.string(), z.any()).optional(),
 });
@@ -105,6 +105,7 @@ export async function GET(req: NextRequest) {
     } else {
       // Paginated and searched users list
       const page = parseInt(searchParams.get("page") || "0", 10);
+      const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10), 1), 100);
       const search = searchParams.get("search") || "";
 
       let query = supabaseAdmin.from("users").select("*", { count: "exact" });
@@ -115,7 +116,7 @@ export async function GET(req: NextRequest) {
 
       const { data: users, count, error } = await query
         .order("created_at", { ascending: false })
-        .range(page * 10, (page + 1) * 10 - 1);
+        .range(page * limit, (page + 1) * limit - 1);
 
       if (error) {
         console.error("❌ Admin API get users error:", error);
@@ -189,6 +190,29 @@ export async function POST(req: NextRequest) {
       const { error } = await supabaseAdmin
         .from("users")
         .delete()
+        .eq("id", userId);
+
+      if (error) throw error;
+      return NextResponse.json({ success: true });
+    } 
+    
+    else if (action === "ad_account_action") {
+      const { adStatus, banDays, banReason } = payload || {};
+      let adBanUntil = null;
+      if (adStatus === "temp_banned") {
+        const days = parseInt(banDays || "7", 10);
+        adBanUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+      } else if (adStatus === "perm_banned") {
+        adBanUntil = new Date("2099-12-31T23:59:59Z").toISOString();
+      }
+
+      const { error } = await supabaseAdmin
+        .from("users")
+        .update({
+          ad_account_status: adStatus,
+          ad_ban_until: adBanUntil,
+          ad_ban_reason: banReason || null
+        })
         .eq("id", userId);
 
       if (error) throw error;

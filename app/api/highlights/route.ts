@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, getCachedHighlights, setCachedHighlights } from "@/lib/utils/cache";
+import redisConnection from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
+
 
 export async function GET(req: NextRequest) {
   try {
@@ -118,6 +120,35 @@ export async function GET(req: NextRequest) {
       rawHighlights = primaryData || [];
     }
 
+    // Find max bid_price for each interest group to identify highest bidders
+    const maxBidsByInterest: Record<string, number> = {};
+    (rawHighlights || []).forEach((h: any) => {
+      if (h.is_bidded && h.interest) {
+        const bid = parseFloat(h.bid_price || 0);
+        const cat = String(h.interest).toLowerCase();
+        if (!maxBidsByInterest[cat] || bid > maxBidsByInterest[cat]) {
+          maxBidsByInterest[cat] = bid;
+        }
+      }
+    });
+
+    // Fetch user's daily render count hash from Redis for per-highlight tracking
+    let userViewsMap: Record<string, number> = {};
+    if (email) {
+      try {
+        const dateStr = new Date().toISOString().split("T")[0];
+        const emailKey = email.toLowerCase().trim();
+        const viewsHash = await redisConnection.hgetall(`hl:views:${emailKey}:${dateStr}`);
+        if (viewsHash) {
+          Object.keys(viewsHash).forEach((hlId) => {
+            userViewsMap[hlId] = parseInt(viewsHash[hlId] || "0", 10);
+          });
+        }
+      } catch (err) {
+        console.error("⚠️ Error fetching highlight views from Redis:", err);
+      }
+    }
+
     // Rank Bidded highlights at the top sorted by bid_price DESC, then standard highlights by created_at DESC
     const sortedHighlights = (rawHighlights || []).sort((a: any, b: any) => {
       const aIsBidded = !!a.is_bidded;
@@ -132,23 +163,47 @@ export async function GET(req: NextRequest) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    const highlights = sortedHighlights.map((h: any) => ({
-      id: h.id,
-      title: h.title,
-      content: h.content,
-      image_url: h.image_url,
-      interest: h.interest,
-      user_email: h.user_email,
-      created_at: h.created_at,
-      country: h.country || null,
-      state: h.state || null,
-      province: h.province || null,
-      is_bidded: h.is_bidded || false,
-      bid_price: h.bid_price || null,
-      campaign_days: h.campaign_days || 1,
-      is_paused: h.is_paused || false,
-      admin_statement: h.admin_statement || null
-    }));
+    const highlights = sortedHighlights.map((h: any) => {
+      const cat = String(h.interest || "").toLowerCase();
+      const bid = parseFloat(h.bid_price || 0);
+      const isHighestBidder = h.is_bidded && maxBidsByInterest[cat] !== undefined && bid >= maxBidsByInterest[cat] && bid > 0;
+      const renderCount = userViewsMap[h.id] || 0;
+
+      // Determine hold duration for section hierarchy:
+      // Highest boosted = 30 mins hold
+      // 2nd highest boosted = 25 mins hold
+      // Standard (1000 fee) = 10 mins hold (drop interval)
+      let holdMins = 10;
+      if (h.is_bidded) {
+        if (isHighestBidder) {
+          holdMins = 30;
+        } else {
+          holdMins = 25;
+        }
+      }
+
+      return {
+        id: h.id,
+        title: h.title,
+        content: h.content,
+        image_url: h.image_url,
+        interest: h.interest,
+        user_email: h.user_email,
+        created_at: h.created_at,
+        country: h.country || null,
+        state: h.state || null,
+        province: h.province || null,
+        is_bidded: h.is_bidded || false,
+        bid_price: h.bid_price || null,
+        campaign_days: h.campaign_days || 1,
+        is_paused: h.is_paused || false,
+        admin_statement: h.admin_statement || null,
+        is_highest_bidder: isHighestBidder,
+        user_render_count: renderCount,
+        guaranteed_hold_mins: holdMins
+      };
+    });
+
 
     // Cache the response in Redis for 30 Seconds
     await setCachedHighlights(interests, highlights, countryParam, stateParam);
@@ -159,3 +214,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
 }
+

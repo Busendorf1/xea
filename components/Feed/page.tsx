@@ -66,17 +66,26 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
 
   const fetchHighlights = useCallback(async (userInterests: string[]) => {
     if (!userInterests || userInterests.length === 0) return;
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     try {
-      const { data, error } = await supabase
-        .from("newsactive")
-        .select("id, title, content, image_url, interest, created_at")
-        .in("interest", userInterests)
-        .gte("created_at", yesterday)
-        .order("created_at", { ascending: false })
-        .limit(15);
-      if (!error && data) {
-        const hItems = data.map((item: any) => ({
+      const interestsQuery = userInterests.join(",");
+      const response = await fetch(`/api/highlights?interests=${encodeURIComponent(interestsQuery)}`);
+      if (response.ok) {
+        const data: any[] = await response.json();
+        
+        // Filter ONLY Boosted Highlights (is_bidded === true)
+        const boosted = (data || []).filter((item: any) => !!item.is_bidded && !item.is_paused);
+        
+        // Filter by user daily render count limit:
+        // Highest bidder (is_highest_bidder === true): limit = 2
+        // Regular boosted bidder: limit = 1
+        const eligible = boosted.filter((item: any) => {
+          const count = item.user_render_count || 0;
+          const limit = item.is_highest_bidder ? 2 : 1;
+          return count < limit;
+        });
+
+        // Map to Ad interface with is_highlight = true
+        const hItems = eligible.map((item: any) => ({
           id: item.id,
           is_highlight: true,
           title: item.title,
@@ -84,14 +93,18 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
           ad_media: item.image_url,
           interest: [item.interest],
           created_at: item.created_at,
-          user_email: ""
+          user_email: item.user_email || "",
+          is_highest_bidder: item.is_highest_bidder || false,
+          user_render_count: item.user_render_count || 0
         }));
+
         setHighlights(hItems as any[]);
       }
     } catch (e) {
       console.error("Error fetching highlights for feed:", e);
     }
   }, []);
+
 
   const fetchViewerProfile = useCallback(async () => {
     try {
@@ -496,13 +509,24 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     if (!isMobile || highlights.length === 0) {
       return ads;
     }
-    const combined = [...ads, ...highlights];
-    return combined.sort((a, b) => {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return timeB - timeA;
-    });
+
+    const result: Ad[] = [];
+    const hlQueue = [...highlights];
+
+    for (let i = 0; i < ads.length; i++) {
+      result.push(ads[i]);
+      // Interleave up to 2 boosted highlights per 10-ad batch (at index 2 and index 7)
+      if ((i % 10 === 2 || i % 10 === 7) && hlQueue.length > 0) {
+        const nextHl = hlQueue.shift();
+        if (nextHl && !result.some((item) => item.id === nextHl.id)) {
+          result.push(nextHl);
+        }
+      }
+    }
+
+    return result;
   }, [ads, highlights, isMobile]);
+
 
   const virtualizer = useVirtualizer({
     count: displayFeed.length,

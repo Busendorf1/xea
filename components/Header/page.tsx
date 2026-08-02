@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useUser } from "@auth0/nextjs-auth0";
 import styles from "../Header/page.module.css";
 import { useTheme } from "../ThemeProvider";
 import { Sun, Moon, Contrast, Bell } from "lucide-react";
+import SidebarMenu from "@/components/SidebarToggle/page";
 
 export default function Header() {
   const [menuActive, setMenuActive] = useState(false);
@@ -14,8 +15,23 @@ export default function Header() {
   const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
-
   const [showHeader, setShowHeader] = useState(true);
+  const hamburgerRef = useRef<HTMLDivElement>(null);
+
+  // Close hamburger dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (hamburgerRef.current && !hamburgerRef.current.contains(event.target as Node)) {
+        setMenuActive(false);
+      }
+    };
+    if (menuActive) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuActive]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -221,11 +237,13 @@ export default function Header() {
         </Link>
 
         {isSmallScreen ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              {user && renderNotificationBell()}
-              {renderThemeSwitcher()}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <SidebarMenu />
+            {user && renderNotificationBell()}
+            {renderThemeSwitcher()}
+            <div className={styles.hamburgerContainer} ref={hamburgerRef}>
               <button 
+                type="button"
                 className={`${styles.hamburger} ${menuActive ? styles.hamburgerActive : ""}`} 
                 onClick={toggleMenu}
                 aria-label="Toggle Navigation Menu"
@@ -234,28 +252,30 @@ export default function Header() {
                 <span className={styles.bar}></span>
                 <span className={styles.bar}></span>
               </button>
-            </div>
 
-            <nav className={`${styles.mobileNav} ${menuActive ? styles.showMenu : ""}`}>
-              {isLoading ? (
-                <div style={{ height: 36 }} />
-              ) : user ? (
-                <a href="/auth/logout" className={`${styles.navLink} ${styles.logoutBtn}`}>
-                  Sign Out
-                </a>
-              ) : (
-                <a href="/auth/login?connection=google-oauth2" className={`${styles.navLink} ${styles.signInBtn}`}>
-                  Sign In
-                </a>
+              {menuActive && (
+                <div className={styles.mobileNav}>
+                  {isLoading ? (
+                    <div style={{ height: 36 }} />
+                  ) : user ? (
+                    <a href="/auth/logout" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
+                      Sign Out
+                    </a>
+                  ) : (
+                    <a href="/auth/login?connection=google-oauth2" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
+                      Sign In
+                    </a>
+                  )}
+                  <Link href="/help" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
+                    Help Center
+                  </Link>
+                  <Link href="/about" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
+                    About
+                  </Link>
+                </div>
               )}
-              <Link href="/help" className={styles.navLink} onClick={toggleMenu}>
-                Help Center
-              </Link>
-              <Link href="/about" className={styles.navLink} onClick={toggleMenu}>
-                About
-              </Link>
-            </nav>
-          </>
+            </div>
+          </div>
         ) : (
           <nav className={styles.desktopNav}>
             <Link href="/about" className={styles.navLink}>
@@ -264,6 +284,7 @@ export default function Header() {
             <Link href="/help" className={styles.navLink}>
               Help Center
             </Link>
+            <SidebarMenu />
             {user && renderNotificationBell()}
             {renderThemeSwitcher()}
             {isLoading ? (
@@ -283,6 +304,7 @@ export default function Header() {
     </header>
   );
 }
+
 
 
 

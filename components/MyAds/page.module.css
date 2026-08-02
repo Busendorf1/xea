@@ -1,5 +1,5 @@
 .feedContainer {
-  padding: 0 0 2rem;
+  padding: 0;
   max-width: 1200px;
   margin: 0 auto;
   font-family: var(--font-geist-sans), "Inter", sans-serif;
@@ -831,6 +831,18 @@
   .boosterFullWidth {
     grid-column: 1;
   }
+
+  .paymentSelectRow {
+    gap: 0.3rem;
+    flex-wrap: nowrap;
+  }
+
+  .paymentSelectBtn {
+    min-width: 0;
+    padding: 0.22rem 0.28rem;
+    font-size: 0.67rem;
+    border-radius: 6px;
+  }
 }
 
 .boosterGroup {
@@ -886,29 +898,32 @@
   pointer-events: none;
 }
 
-.boostTooltipWrapper:hover .boostTooltipContent {
-  display: block;
+@media (hover: hover) and (pointer: fine) {
+  .boostTooltipWrapper:hover .boostTooltipContent {
+    display: block;
+  }
 }
 
 .paymentSelectRow {
   display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
   width: 100%;
 }
 
 .paymentSelectBtn {
   flex: 1;
-  min-width: 140px;
-  padding: 0.6rem;
-  border-radius: 8px;
+  min-width: 0;
+  padding: 0.32rem 0.4rem;
+  border-radius: 6px;
   border: 1px solid var(--card-border);
   background: var(--sidebar-bg);
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.74rem;
   font-weight: 600;
   cursor: pointer;
   text-align: center;
+  white-space: nowrap;
   transition: all 0.2s ease;
 }
 

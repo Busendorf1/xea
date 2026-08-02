@@ -403,9 +403,33 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     return () => clearInterval(timer);
   }, []);
 
-  const fetchAds = async () => {
+  const fetchAds = async (bypassCache: boolean = false) => {
     const email = session?.user?.email;
     if (!email) return;
+
+    const cacheKey = `my_ads_cache_${email.toLowerCase()}`;
+    const TEN_MINUTES = 10 * 60 * 1000;
+
+    if (!bypassCache && typeof window !== "undefined") {
+      try {
+        const cachedRaw = sessionStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (cached && cached.timestamp && Date.now() - cached.timestamp < TEN_MINUTES) {
+            setReviewAds(cached.reviewAds || []);
+            setActiveAds(cached.activeAds || []);
+            setReportsMap(cached.reportsMap || {});
+            setDismissalsMap(cached.dismissalsMap || {});
+            setAdvertiserBlockCount(cached.advertiserBlockCount || 0);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (cacheErr) {
+        console.warn("sessionStorage cache read error:", cacheErr);
+      }
+    }
+
     try {
       const [reviewRes, activeRes, analyticsRes] = await Promise.all([
         supabase.from("adds").select("*").ilike("user_email", email).order("created_at", { ascending: false }),
@@ -419,13 +443,40 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         throw new Error("Query failed");
       }
 
-      setReviewAds(reviewRes.data || []);
-      setActiveAds(activeRes.data || []);
+      const reviewData = reviewRes.data || [];
+      const activeData = activeRes.data || [];
+      let reports = {};
+      let dismissals = {};
+      let blockCount = 0;
 
       if (analyticsRes && analyticsRes.success) {
-        setReportsMap(analyticsRes.reportsMap || {});
-        setDismissalsMap(analyticsRes.dismissalsMap || {});
-        setAdvertiserBlockCount(analyticsRes.advertiserBlockCount || 0);
+        reports = analyticsRes.reportsMap || {};
+        dismissals = analyticsRes.dismissalsMap || {};
+        blockCount = analyticsRes.advertiserBlockCount || 0;
+      }
+
+      setReviewAds(reviewData);
+      setActiveAds(activeData);
+      setReportsMap(reports);
+      setDismissalsMap(dismissals);
+      setAdvertiserBlockCount(blockCount);
+
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              timestamp: Date.now(),
+              reviewAds: reviewData,
+              activeAds: activeData,
+              reportsMap: reports,
+              dismissalsMap: dismissals,
+              advertiserBlockCount: blockCount,
+            })
+          );
+        } catch (e) {
+          console.warn("sessionStorage cache write error:", e);
+        }
       }
     } catch (err) {
       console.error("Error in fetchAds:", err);
@@ -523,7 +574,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
       alert(data.message || "Campaign boosted successfully!");
       setBoosterAd(null);
-      fetchAds();
+      fetchAds(true);
     } catch (e: any) {
       alert(e.message || "An error occurred while boosting your campaign.");
     } finally {
@@ -1220,17 +1271,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   type="button"
                   className={`${styles.paymentSelectBtn} ${boosterPaymentMethod === "wallet" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("wallet")}
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "3px" }}
                 >
-                  <Wallet size={15} /> Wallet Balance
+                  <Wallet size={12} /> Wallet Balance
                 </button>
                 <button
                   type="button"
                   className={`${styles.paymentSelectBtn} ${boosterPaymentMethod === "card" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("card")}
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "3px" }}
                 >
-                  <CreditCard size={15} /> Card / Bank Transfer
+                  <CreditCard size={12} /> Card / Bank Transfer
                 </button>
               </div>
             </div>

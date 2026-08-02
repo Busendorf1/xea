@@ -134,7 +134,6 @@ export default function AdCard({
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [avatarError, setAvatarError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
-  const [mediaAspectRatios, setMediaAspectRatios] = useState<Record<number, number>>({});
   const [isExpanded, setIsExpanded] = useState(false);
 
   const [isMuted, setIsMuted] = useState(true);
@@ -346,6 +345,20 @@ export default function AdCard({
     return icons[type] || null;
   };
 
+  React.useEffect(() => {
+    if (ad.is_highlight && ad.id) {
+      const recordedKey = `hl_impression_${ad.id}`;
+      if (typeof window !== "undefined" && !sessionStorage.getItem(recordedKey)) {
+        sessionStorage.setItem(recordedKey, "1");
+        fetch("/api/highlights/impression", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ highlightId: ad.id }),
+        }).catch((err) => console.error("Failed to record highlight impression:", err));
+      }
+    }
+  }, [ad.is_highlight, ad.id]);
+
   if (ad.is_highlight) {
     return (
       <div key={`hl-${ad.id}`} className={styles.card} style={style}>
@@ -397,6 +410,7 @@ export default function AdCard({
     );
   }
 
+
   const rawMediaUrls = ad.ad_media
     ? ad.ad_media.split(",").map((url) => url.trim()).filter(Boolean)
     : [];
@@ -411,7 +425,7 @@ export default function AdCard({
   const currentUrl = mediaUrls[currentMediaIndex] || "";
   // Detect type per individual URL so mixed ads (images + video) render correctly
   const mediaType = /\.(mp4|webm|mov|avi)$/i.test(currentUrl) ? "video" : "image";
-  const activeAspectRatio = Math.max(0.75, (mediaAspectRatios[0] || 16 / 9) * 0.85);
+  const activeAspectRatio = 16 / 9;
 
   const touchStartX = React.useRef<number | null>(null);
 
@@ -610,7 +624,6 @@ export default function AdCard({
             onTouchEnd={handleTouchEnd}
             onClick={handleMediaClick}
             style={{ 
-              aspectRatio: activeAspectRatio,
               cursor: mediaType === "image" ? "pointer" : "default" 
             }}
           >
@@ -645,15 +658,9 @@ export default function AdCard({
                             }
                           }}
                           onLoadedMetadata={(e) => {
-                            const { videoWidth, videoHeight, duration } = e.currentTarget;
+                            const { duration } = e.currentTarget;
                             if (duration) {
                               setVideoDuration(duration);
-                            }
-                            if (videoWidth && videoHeight) {
-                              setMediaAspectRatios((prev) => ({
-                                ...prev,
-                                [index]: videoWidth / videoHeight,
-                              }));
                             }
                           }}
                         />
@@ -702,15 +709,6 @@ export default function AdCard({
                         alt="Ad Media"
                         className={styles.adImgElement}
                         onError={() => setMediaError(true)}
-                        onLoad={(e) => {
-                          const { naturalWidth, naturalHeight } = e.currentTarget;
-                          if (naturalWidth && naturalHeight) {
-                            setMediaAspectRatios((prev) => ({
-                              ...prev,
-                              [index]: naturalWidth / naturalHeight,
-                            }));
-                          }
-                        }}
                       />
                     )}
                   </div>

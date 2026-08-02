@@ -1,23 +1,38 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import styles from "../HeaderJoin/page.module.css";
 import { useTheme } from "../ThemeProvider";
-import { Sun, Moon, Contrast } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
+import SidebarMenu from "../SidebarToggle/page";
 
 export default function HeaderJoin() {
   const [menuActive, setMenuActive] = useState(false);
-  const [hovering, setHovering] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
   const { theme, setTheme } = useTheme();
-
   const [showHeader, setShowHeader] = useState(true);
+  const headerRef = useRef<HTMLHeadingElement>(null);
+
+  // Close hamburger dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) {
+        setMenuActive(false);
+      }
+    };
+    if (menuActive) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuActive]);
 
   // Detect screen size and scroll position to hide header banner on mobile scroll down
   useEffect(() => {
     const handleResize = () => {
-      setIsSmallScreen(window.innerWidth <= 628);
+      setIsSmallScreen(window.innerWidth <= 991);
     };
 
     handleResize();
@@ -68,21 +83,9 @@ export default function HeaderJoin() {
     };
   }, []);
 
-  const handleMouseEnter = () => {
-    if (isSmallScreen) {
-      setHovering(true);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (isSmallScreen) {
-      setHovering(false);
-    }
-  };
-
   const toggleMenu = () => {
     if (isSmallScreen) {
-      setMenuActive(!menuActive);
+      setMenuActive((prev) => !prev);
     }
   };
 
@@ -110,7 +113,7 @@ export default function HeaderJoin() {
   };
 
   return (
-    <header className={`${styles.header} ${showHeader ? "" : styles.headerHidden}`}>
+    <header ref={headerRef} className={`${styles.header} ${showHeader ? "" : styles.headerHidden}`}>
       <Link href={"/"}>
         <div className={styles.name}>
           <p className={styles.baggyt}>Paayh</p>
@@ -119,14 +122,13 @@ export default function HeaderJoin() {
       </Link>
       {isSmallScreen ? (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", order: 3 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", order: 3 }}>
             {renderThemeSwitcher()}
+            <SidebarMenu />
             <div className={styles.menu}>
               <div
                 className={styles.hamburger}
                 onClick={toggleMenu}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
               >
                 <div className={styles.bar}></div>
                 <div className={styles.bar}></div>
@@ -136,20 +138,18 @@ export default function HeaderJoin() {
           </div>
           <div
             className={`${styles.end} ${
-              menuActive || hovering ? styles.showMenu : ""
+              menuActive ? styles.showMenu : ""
             }`}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
             style={{ order: 4 }}
           >
             <div className={styles.create}>
-              <Link href={"/"}>Home</Link>
+              <Link href={"/"} onClick={() => setMenuActive(false)}>Home</Link>
             </div>
             <div className={styles.create}>
-              <Link href={"/../privacy"}>Policies</Link>
+              <Link href={"/../privacy"} onClick={() => setMenuActive(false)}>Policies</Link>
             </div>
             <div className={styles.create}>
-              <Link href={"/../faq"}>Faq</Link>
+              <Link href={"/../faq"} onClick={() => setMenuActive(false)}>Faq</Link>
             </div>
           </div>
         </>
@@ -164,10 +164,15 @@ export default function HeaderJoin() {
           <div className={styles.create}>
             <Link href={"/../faq"}>Faq</Link>
           </div>
+          <SidebarMenu />
           {renderThemeSwitcher()}
         </div>
       )}
     </header>
   );
 }
+
+
+
+
 

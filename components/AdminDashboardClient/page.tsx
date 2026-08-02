@@ -144,6 +144,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   
   // Pagination States
   const [usersPage, setUsersPage] = useState(0);
+  const [usersLimit, setUsersLimit] = useState(10);
   const [pendingAdsPage, setPendingAdsPage] = useState(0);
   const [activeAdsPage, setActiveAdsPage] = useState(0);
   const [pendingHighlightsPage, setPendingHighlightsPage] = useState(0);
@@ -192,6 +193,47 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   // Modal / Detail States
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [banModalUser, setBanModalUser] = useState<any | null>(null);
+  const [banModalStatus, setBanModalStatus] = useState<"temp_banned" | "perm_banned" | "deactivated" | "active">("temp_banned");
+  const [banModalDays, setBanModalDays] = useState<number>(7);
+  const [banModalReason, setBanModalReason] = useState<string>("");
+  const [banSubmitting, setBanSubmitting] = useState(false);
+
+  const handleExecuteAdBan = async () => {
+    if (!banModalUser) return;
+    if (banModalStatus !== "active" && !banModalReason.trim()) {
+      alert("Please provide a reason for this ad account restriction.");
+      return;
+    }
+    setBanSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ad_account_action",
+          userId: banModalUser.id,
+          payload: {
+            adStatus: banModalStatus,
+            banDays: banModalDays,
+            banReason: banModalReason.trim(),
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update ad account status");
+      }
+      alert(`Ad account status updated for ${banModalUser.email}`);
+      setBanModalUser(null);
+      setBanModalReason("");
+      fetchUsersTab(usersPage, searchQuery);
+    } catch (e: any) {
+      alert(e.message || "Error updating ad account status");
+    } finally {
+      setBanSubmitting(false);
+    }
+  };
   const [editAdData, setEditAdData] = useState<any | null>(null);
   const [editHighlightData, setEditHighlightData] = useState<any | null>(null);
 
@@ -282,10 +324,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
-  const fetchUsersTab = async (page: number, search: string) => {
+  const fetchUsersTab = async (page: number, search: string, limit: number = usersLimit) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users?page=${page}&search=${encodeURIComponent(search)}`);
+      const res = await fetch(`/api/admin/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
       if (!res.ok) throw new Error("Failed to fetch admin users");
       const { users: resolvedUsers, count } = await res.json();
       
@@ -536,7 +578,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     if (activeTab === "overview") {
       fetchOverviewStats();
     } else if (activeTab === "accounts") {
-      fetchUsersTab(usersPage, searchQuery);
+      fetchUsersTab(usersPage, searchQuery, usersLimit);
     } else if (activeTab === "ad-approvals") {
       fetchPendingAdsTab(pendingAdsPage);
     } else if (activeTab === "active-ads") {
@@ -550,14 +592,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     } else if (activeTab === "reported-ads") {
       fetchReportedAds(reportedAdsPage, reportedAdsSearch);
     }
-  }, [activeTab, usersPage, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage, reportedAdsSearch]);
+  }, [activeTab, usersPage, usersLimit, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage, reportedAdsSearch]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     if (activeTab === "overview") {
       await fetchOverviewStats();
     } else if (activeTab === "accounts") {
-      await fetchUsersTab(usersPage, searchQuery);
+      await fetchUsersTab(usersPage, searchQuery, usersLimit);
     } else if (activeTab === "ad-approvals") {
       await fetchPendingAdsTab(pendingAdsPage);
     } else if (activeTab === "active-ads") {
@@ -624,16 +666,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     if (!replyText.trim()) return;
     setReplyLoading(true);
     try {
-      const { error } = await supabase
-        .from("help_tickets")
-        .update({
-          admin_reply: replyText.trim(),
-          status: "replied",
-          replied_at: new Date().toISOString(),
-        })
-        .eq("id", ticketId);
+      const res = await fetch("/api/admin/help-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reply", ticketId, replyText: replyText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to send reply");
 
-      if (error) throw error;
       alert("Reply sent successfully!");
       setReplyingTicket(null);
       setReplyText("");
@@ -648,51 +688,45 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const handleCloseTicket = async (ticket: any) => {
     const ticketId = typeof ticket === "string" ? ticket : ticket.id;
     const now = new Date().toISOString();
-    let { error } = await supabase
-      .from("help_tickets")
-      .update({
-        status: "resolved",
-        resolved_at: now
-      })
-      .eq("id", ticketId);
 
-    if (error?.message?.includes("resolved_at")) {
-      const res = await supabase
-        .from("help_tickets")
-        .update({ status: "resolved" })
-        .eq("id", ticketId);
-      error = res.error;
-    }
+    // Optimistically update UI so CLOSED reflects immediately
+    setHelpTickets((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, status: "closed", resolved_at: now } : t))
+    );
 
-    if (error) {
-      alert("Failed to resolve ticket: " + error.message);
-    } else {
-      // Send notification to user about resolved ticket
-      const userEmail = typeof ticket === "object" ? ticket.user_email : null;
-      const subject = typeof ticket === "object" ? ticket.subject : "Support Request";
-      if (userEmail) {
-        await supabase.from("notifications").insert({
-          user_email: userEmail.toLowerCase().trim(),
-          title: "Support Ticket Resolved",
-          message: `Your help request ("${subject}") has been marked as RESOLVED by our Help Center team and will be automatically deleted in 24 hours.`,
-        });
-      }
+    try {
+      const res = await fetch("/api/admin/help-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "close", ticketId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to close ticket");
 
-      alert("Ticket marked as RESOLVED! Notification sent to user. Ticket will auto-delete in 24 hours.");
+      alert("Ticket marked as CLOSED! Notification sent to user. Ticket will auto-delete in 24 hours.");
+      fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+    } catch (e: any) {
+      alert("Failed to close ticket: " + e.message);
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     }
   };
 
   const handleDeleteTicket = async (ticketId: string) => {
     if (!confirm("Delete this ticket permanently?")) return;
-    const { error } = await supabase
-      .from("help_tickets")
-      .delete()
-      .eq("id", ticketId);
-    if (error) {
-      alert("Failed to delete ticket: " + error.message);
-    } else {
+    try {
+      const res = await fetch("/api/admin/help-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", ticketId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to delete ticket");
+
+      setHelpTickets((prev) => prev.filter((t) => t.id !== ticketId));
+      alert("Ticket deleted successfully.");
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+    } catch (e: any) {
+      alert("Failed to delete ticket: " + e.message);
     }
   };
 
@@ -1414,37 +1448,103 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   // PAGINATION CONTROLLER RENDERING
   // ----------------------------------------------------
   
-  const renderPagination = (currentPage: number, setCurrentPage: (p: number) => void, totalCount: number) => {
-    const totalPages = Math.ceil(totalCount / 10);
-    if (totalPages <= 1) return null;
-    
+  const renderPagination = (
+    currentPage: number,
+    setCurrentPage: (p: number) => void,
+    totalCount: number,
+    limit: number = 10,
+    setLimit?: (l: number) => void
+  ) => {
+    const totalPages = Math.ceil(totalCount / limit);
+    if (totalCount === 0) return null;
+
+    const fromItem = totalCount > 0 ? currentPage * limit + 1 : 0;
+    const toItem = Math.min((currentPage + 1) * limit, totalCount);
+
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let startPage = Math.max(0, currentPage - 2);
+    let endPage = Math.min(totalPages - 1, startPage + maxVisible - 1);
+    if (endPage - startPage + 1 < maxVisible) {
+      startPage = Math.max(0, endPage - maxVisible + 1);
+    }
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+
     return (
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "1rem",
-        marginTop: "1.5rem",
-        padding: "1rem 0",
-        borderTop: "1px solid var(--card-border)"
-      }}>
-        <button 
-          onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-          disabled={currentPage === 0}
-          className={styles.btnAction}
-        >
-          Previous
-        </button>
-        <span style={{ fontSize: "0.88rem", fontWeight: "600", color: "var(--text-muted)" }}>
-          Page {currentPage + 1} of {totalPages} ({totalCount} items)
-        </span>
-        <button 
-          onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
-          disabled={currentPage >= totalPages - 1}
-          className={styles.btnAction}
-        >
-          Next
-        </button>
+      <div className={styles.paginationContainer}>
+        <div className={styles.paginationLeft}>
+          <span className={styles.paginationInfo}>
+            Showing <strong>{fromItem}–{toItem}</strong> of <strong>{totalCount}</strong>
+          </span>
+          {setLimit && (
+            <div className={styles.pageSizeSelector}>
+              <span>Per page:</span>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setCurrentPage(0);
+                }}
+                className={styles.selectLimit}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {totalPages > 1 && (
+          <div className={styles.paginationGroup}>
+            <button 
+              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className={`${styles.btnAction} ${styles.paginationBtn}`}
+            >
+              ← Prev
+            </button>
+
+            {startPage > 0 && (
+              <>
+                <button onClick={() => setCurrentPage(0)} className={`${styles.btnAction} ${styles.paginationNumBtn}`}>
+                  1
+                </button>
+                {startPage > 1 && <span className={styles.paginationEllipsis}>…</span>}
+              </>
+            )}
+
+            {pages.map((p) => (
+              <button
+                key={p}
+                onClick={() => setCurrentPage(p)}
+                className={`${styles.btnAction} ${styles.paginationNumBtn} ${p === currentPage ? styles.paginationNumActive : ""}`}
+              >
+                {p + 1}
+              </button>
+            ))}
+
+            {endPage < totalPages - 1 && (
+              <>
+                {endPage < totalPages - 2 && <span className={styles.paginationEllipsis}>…</span>}
+                <button onClick={() => setCurrentPage(totalPages - 1)} className={`${styles.btnAction} ${styles.paginationNumBtn}`}>
+                  {totalPages}
+                </button>
+              </>
+            )}
+
+            <button 
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className={`${styles.btnAction} ${styles.paginationBtn}`}
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1853,7 +1953,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {loading ? (
-                <div className={styles.loadingText}>Syncing metrics with Supabase...</div>
+                <div className={styles.loadingText}>Syncing metrics with database...</div>
               ) : (
                 <div className={styles.statsGrid}>
                   <div className={styles.statCard}>
@@ -1950,6 +2050,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <div className={styles.emptyText}>No registered users found matching query.</div>
               ) : (
                 <>
+                  {renderPagination(usersPage, setUsersPage, usersCount, usersLimit, setUsersLimit)}
                   <div className={styles.tableContainer}>
                     <table className={styles.table}>
                       <thead>
@@ -1959,6 +2060,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           <th className={styles.th}>Ad / Highlight Registry</th>
                           <th className={styles.th}>Ad Views / Clicks</th>
                           <th className={styles.th}>Monetization</th>
+                          <th className={styles.th}>Ad Account Status</th>
                           <th className={styles.th}>Suspension</th>
                           <th className={styles.th}>Actions</th>
                         </tr>
@@ -1968,6 +2070,19 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           const isMonetized = user.monetized === "yes" || user.monetized === true;
                           const isSuspended = user.suspended_until && new Date(user.suspended_until).getTime() > Date.now();
                           const hasBusiness = user.business_name && user.business_name.trim() !== "";
+                          
+                          const isAdTempBanned = user.ad_account_status === "temp_banned" && user.ad_ban_until && new Date(user.ad_ban_until).getTime() > Date.now();
+                          const isAdPermBanned = user.ad_account_status === "perm_banned";
+                          const isAdDeactivated = user.ad_account_status === "deactivated";
+
+                          const getAdBanCountdown = (untilStr: string | null) => {
+                            if (!untilStr) return "";
+                            const diffMs = new Date(untilStr).getTime() - Date.now();
+                            if (diffMs <= 0) return "Expired";
+                            const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+                            return `${days} day${days > 1 ? "s" : ""} left`;
+                          };
+
                           return (
                             <tr key={user.id} className={styles.tr}>
                               <td className={styles.td}>
@@ -2000,6 +2115,34 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                 </span>
                               </td>
                               <td className={styles.td}>
+                                {isAdTempBanned ? (
+                                  <div>
+                                    <span className={styles.userBadge} style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)" }}>
+                                      TEMP BANNED ({getAdBanCountdown(user.ad_ban_until)})
+                                    </span>
+                                    {user.ad_ban_reason && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "3px" }}>Reason: {user.ad_ban_reason}</div>}
+                                  </div>
+                                ) : isAdPermBanned ? (
+                                  <div>
+                                    <span className={styles.userBadge} style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>
+                                      PERM BANNED
+                                    </span>
+                                    {user.ad_ban_reason && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "3px" }}>Reason: {user.ad_ban_reason}</div>}
+                                  </div>
+                                ) : isAdDeactivated ? (
+                                  <div>
+                                    <span className={styles.userBadge} style={{ background: "rgba(156,163,175,0.15)", color: "#9ca3af", border: "1px solid rgba(156,163,175,0.3)" }}>
+                                      DEACTIVATED
+                                    </span>
+                                    {user.ad_ban_reason && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "3px" }}>Reason: {user.ad_ban_reason}</div>}
+                                  </div>
+                                ) : (
+                                  <span className={styles.userBadge} style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                                    ACTIVE
+                                  </span>
+                                )}
+                              </td>
+                              <td className={styles.td}>
                                 {isSuspended ? (
                                   <span className={`${styles.userBadge} ${styles.suspendedYes}`} title={`Until: ${new Date(user.suspended_until).toLocaleString()}`}>
                                     Suspended
@@ -2019,6 +2162,17 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                   >
                                     {isMonetized ? "Disable Earn" : "Enable Earn"}
                                   </button>
+                                  <button
+                                    onClick={() => {
+                                      setBanModalUser(user);
+                                      setBanModalStatus(user.ad_account_status || "temp_banned");
+                                      setBanModalReason(user.ad_ban_reason || "");
+                                    }}
+                                    className={styles.btnAction}
+                                    style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.4)" }}
+                                  >
+                                    Ad Ban / Restrict
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -2027,7 +2181,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                       </tbody>
                     </table>
                   </div>
-                  {renderPagination(usersPage, setUsersPage, usersCount)}
+                  {renderPagination(usersPage, setUsersPage, usersCount, usersLimit, setUsersLimit)}
                 </>
               )}
             </>
@@ -2556,10 +2710,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                 padding: "0.15rem 0.6rem",
                                 borderRadius: "99px",
                                 textTransform: "uppercase" as const,
-                                background: ticket.status === "resolved" ? "rgba(16,185,129,0.15)" : ticket.status === "replied" ? "rgba(52,211,153,0.15)" : ticket.status === "closed" ? "rgba(156,163,175,0.15)" : "rgba(251,191,36,0.15)",
-                                color: ticket.status === "resolved" ? "#10b981" : ticket.status === "replied" ? "#34d399" : ticket.status === "closed" ? "#9ca3af" : "#fbbf24"
+                                background: ticket.status === "closed" || ticket.status === "resolved" ? "rgba(16,185,129,0.15)" : ticket.status === "replied" ? "rgba(52,211,153,0.15)" : "rgba(251,191,36,0.15)",
+                                color: ticket.status === "closed" || ticket.status === "resolved" ? "#10b981" : ticket.status === "replied" ? "#34d399" : "#fbbf24"
                               }}>
-                                {ticket.status === "resolved" ? "RESOLVED (Deletes in 24h)" : ticket.status.toUpperCase()}
+                                {ticket.status === "closed" || ticket.status === "resolved" ? "CLOSED (Deletes in 24h)" : ticket.status.toUpperCase()}
                               </span>
                               <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" as const }}>{ticket.category}</span>
                               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -2578,7 +2732,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                             </button>
                             {ticket.status !== "resolved" && ticket.status !== "closed" && (
                               <button onClick={() => handleCloseTicket(ticket)} className={styles.btnAction} style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "#10b981", borderColor: "rgba(16,185,129,0.4)" }}>
-                                <CheckCircle size={13} /> Mark as Resolved
+                                <CheckCircle size={13} /> Mark as Closed
                               </button>
                             )}
                             <button onClick={() => handleDeleteTicket(ticket.id)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.4rem 0.6rem" }}>
@@ -2737,21 +2891,18 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <p className={styles.sectionSubtitle}>Review user-reported ads and advertisers. Take instant action to remove ad campaigns or block advertiser accounts.</p>
               </div>
 
-              <div style={{ display: "flex", gap: "1rem", marginBottom: "1.25rem", marginTop: "1rem" }}>
-                <div style={{ position: "relative", flex: 1 }}>
-                  <Search style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} size={18} />
-                  <input
-                    type="text"
-                    placeholder="Search reports by Ad ID, reporter email, advertiser email, or reason..."
-                    value={reportedAdsSearch}
-                    onChange={(e) => {
-                      setReportedAdsSearch(e.target.value);
-                      setReportedAdsPage(0);
-                    }}
-                    className={styles.searchInput}
-                    style={{ paddingLeft: "40px", width: "100%" }}
-                  />
-                </div>
+              <div className={styles.reportSearchBarContainer}>
+                <Search className={styles.reportSearchIcon} size={18} />
+                <input
+                  type="text"
+                  placeholder="Search reports by Ad ID, reporter email, advertiser email, or reason..."
+                  value={reportedAdsSearch}
+                  onChange={(e) => {
+                    setReportedAdsSearch(e.target.value);
+                    setReportedAdsPage(0);
+                  }}
+                  className={styles.reportSearchInput}
+                />
               </div>
 
               {loading ? (
@@ -2773,7 +2924,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           <span style={{
                             fontSize: "0.75rem",
                             fontWeight: 700,
-                            padding: "4px 8px",
+                            padding: "4px 10px",
                             borderRadius: "99px",
                             backgroundColor: report.status === "action_taken" ? "rgba(239,68,68,0.15)" : report.status === "dismissed" ? "rgba(255,255,255,0.05)" : "rgba(245,158,11,0.15)",
                             color: report.status === "action_taken" ? "#ef4444" : report.status === "dismissed" ? "var(--text-muted)" : "#f59e0b",
@@ -2784,44 +2935,31 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                         </div>
 
                         <div className={styles.cardBody} style={{ fontSize: "0.85rem", color: "var(--foreground)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          <div><strong>Report Type:</strong> <span style={{ color: report.report_type === "advertiser" ? "#ef4444" : "var(--primary)" }}>{report.report_type === "advertiser" ? "Block & Report Advertiser" : "Block & Report Ad"}</span></div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <div><strong>Report Type:</strong> <span style={{ color: report.report_type === "advertiser" ? "#ef4444" : "#2563eb", fontWeight: 600 }}>{report.report_type === "advertiser" ? "Block & Report Advertiser" : "Block & Report Ad"}</span></div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
                             <strong>Target Ad ID:</strong>
                             <button
                               type="button"
                               onClick={() => handleInspectAd(report.ad_id)}
                               title="Click to inspect full ad details"
-                              style={{
-                                background: "rgba(37, 99, 235, 0.12)",
-                                border: "1px solid rgba(37, 99, 235, 0.3)",
-                                color: "var(--primary)",
-                                borderRadius: "6px",
-                                padding: "2px 8px",
-                                fontSize: "0.82rem",
-                                fontFamily: "monospace",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "4px"
-                              }}
+                              className={styles.inspectAdLink}
                             >
                               <span>{report.ad_id}</span>
-                              <span style={{ fontSize: "0.75rem", textDecoration: "underline" }}>[ Inspect Ad Details 🔍 ]</span>
+                              <span>(Inspect Ad Details 🔍)</span>
                             </button>
                           </div>
-                          {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code>{report.advertiser_email}</code></div>}
+                          {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code style={{ fontSize: "0.85rem" }}>{report.advertiser_email}</code></div>}
                           {report.reason && (
-                            <div style={{ backgroundColor: "rgba(255,255,255,0.03)", padding: "0.5rem", borderRadius: "8px", border: "1px solid var(--card-border)", marginTop: "0.25rem" }}>
-                              <strong>User Reason:</strong> {report.reason}
+                            <div className={styles.reportReasonBox}>
+                              <strong style={{ color: "var(--foreground)" }}>User Reason:</strong> {report.reason}
                             </div>
                           )}
                         </div>
 
-                        <div className={styles.cardFooter} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                        <div className={styles.cardFooter} style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.75rem", alignItems: "center" }}>
                           <button
                             onClick={() => handleInspectAd(report.ad_id)}
-                            className={styles.btnAction}
-                            style={{ backgroundColor: "rgba(37, 99, 235, 0.15)", color: "var(--primary)", border: "1px solid rgba(37, 99, 235, 0.3)" }}
+                            className={styles.inspectAdLink}
                           >
                             🔍 Inspect Ad Details
                           </button>
@@ -2864,90 +3002,110 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* MODAL: USER DETAILED PROFILE OPERATIONS */}
       {/* ==================================================== */}
       {selectedUser && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
+        <div className={styles.modalOverlay} onClick={() => setSelectedUser(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px" }}>
             <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>Manage Profile: @{selectedUser.username.split("@")[0]}</h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{
+                  width: "38px",
+                  height: "38px",
+                  borderRadius: "50%",
+                  backgroundColor: "var(--primary)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "700",
+                  fontSize: "1rem"
+                }}>
+                  {selectedUser.firstName ? selectedUser.firstName.slice(0, 2).toUpperCase() : "US"}
+                </div>
+                <div>
+                  <h3 className={styles.modalTitle} style={{ margin: 0 }}>
+                    {selectedUser.business_name || `${selectedUser.firstName} ${selectedUser.lastName}`}
+                  </h3>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    @{selectedUser.username.split("@")[0]} &bull; {selectedUser.email}
+                  </div>
+                </div>
+              </div>
               <button onClick={() => setSelectedUser(null)} className={styles.btnClose}>
-                <XCircle size={24} />
+                <XCircle size={22} />
               </button>
             </div>
             
             <div className={styles.modalBody}>
-              {/* Profile Details */}
-              <div className={styles.gridTwoCol}>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Full / Business Name</span>
-                  <span className={styles.fieldValue}>
-                    {selectedUser.business_name && selectedUser.business_name.trim() !== "" 
-                      ? `${selectedUser.business_name} (Rep: ${selectedUser.firstName} ${selectedUser.lastName})`
-                      : `${selectedUser.firstName} ${selectedUser.lastName}`
-                    }
-                  </span>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Email</span>
-                  <span className={styles.fieldValue} style={{ wordBreak: "break-all" }}>{selectedUser.email}</span>
-                </div>
-              </div>
-
-              <div className={styles.gridTwoCol}>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Country / State</span>
-                  <span className={styles.fieldValue}>{selectedUser.state ? `${selectedUser.state}, ` : ""}{selectedUser.country}</span>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Phone Number</span>
-                  <span className={styles.fieldValue}>{selectedUser.phone}</span>
+              {/* Profile Overview Card */}
+              <div className={styles.modalSectionCard}>
+                <h4 className={styles.modalSectionTitle}>Account & Contact Details</h4>
+                <div className={styles.gridTwoCol}>
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Full Name</span>
+                    <span className={styles.fieldValue}>{selectedUser.firstName} {selectedUser.lastName}</span>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Business / Rep Name</span>
+                    <span className={styles.fieldValue}>{selectedUser.business_name || "N/A"}</span>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Country & State</span>
+                    <span className={styles.fieldValue}>{selectedUser.state ? `${selectedUser.state}, ` : ""}{selectedUser.country || "Not set"}</span>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Phone Number</span>
+                    <span className={styles.fieldValue}>{selectedUser.phone || "Not set"}</span>
+                  </div>
                 </div>
               </div>
 
-              <div className={styles.gridTwoCol}>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Wallet Balance</span>
-                  <span className={styles.fieldValue} style={{ color: "#10b981", fontSize: "1.1rem" }}>{formatCurrency(selectedUser.balance || 0)}</span>
+              {/* Wallet Summary & Quick Adjust */}
+              <div className={styles.modalSectionCard}>
+                <h4 className={styles.modalSectionTitle}>Wallet & Balance Adjustments</h4>
+                <div className={styles.gridTwoCol} style={{ marginBottom: "0.5rem" }}>
+                  <div className={styles.metricCard}>
+                    <span className={styles.metricLabel}>Available Balance</span>
+                    <span className={styles.metricValue} style={{ color: "#10b981" }}>{formatCurrency(selectedUser.balance || 0)}</span>
+                  </div>
+                  <div className={styles.metricCard}>
+                    <span className={styles.metricLabel}>Pending Withdrawal</span>
+                    <span className={styles.metricValue} style={{ color: "#3b82f6" }}>{formatCurrency(selectedUser.withdrawal || 0)}</span>
+                  </div>
                 </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Pending Withdrawal</span>
-                  <span className={styles.fieldValue} style={{ color: "#3b82f6" }}>{formatCurrency(selectedUser.withdrawal || 0)}</span>
-                </div>
-              </div>
 
-              {/* Adjust Balance Section */}
-              <div style={{ padding: "1rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
-                <span className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.5rem" }}>Adjust Wallet Balance</span>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button onClick={() => handleAdjustBalance(selectedUser, 1000)} className={styles.btnAction} style={{ color: "#10b981" }}>+₦1,000</button>
-                  <button onClick={() => handleAdjustBalance(selectedUser, 5000)} className={styles.btnAction} style={{ color: "#10b981" }}>+₦5,000</button>
-                  <button onClick={() => handleAdjustBalance(selectedUser, -1000)} className={styles.btnAction} style={{ color: "#ef4444" }}>-₦1,000</button>
+                <div className={styles.quickAdjustRow}>
+                  <button onClick={() => handleAdjustBalance(selectedUser, 1000)} className={`${styles.btnAction} ${styles.btnSuccess}`}>+₦1,000</button>
+                  <button onClick={() => handleAdjustBalance(selectedUser, 5000)} className={`${styles.btnAction} ${styles.btnSuccess}`}>+₦5,000</button>
+                  <button onClick={() => handleAdjustBalance(selectedUser, -1000)} className={`${styles.btnAction} ${styles.btnDanger}`}>-₦1,000</button>
                   <button onClick={() => {
-                    const customAmt = parseFloat(prompt("Enter amount to add (positive number) or subtract (negative number):") || "0");
-                    handleAdjustBalance(selectedUser, customAmt);
+                    const customAmt = parseFloat(prompt("Enter amount to add (positive) or subtract (negative):") || "0");
+                    if (!isNaN(customAmt) && customAmt !== 0) {
+                      handleAdjustBalance(selectedUser, customAmt);
+                    }
                   }} className={styles.btnAction}>Custom Adjustment</button>
                 </div>
               </div>
 
-              {/* Suspend / Ban Section */}
-              <div style={{ padding: "1rem", backgroundColor: "rgba(239, 68, 68, 0.05)", borderRadius: "12px", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
-                <span className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.5rem", color: "#ef4444" }}>Suspension Controls</span>
+              {/* Suspension Controls */}
+              <div className={styles.modalSectionCard} style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}>
+                <h4 className={styles.modalSectionTitle} style={{ color: "#f85149" }}>User Account Suspension Controls</h4>
                 
                 {selectedUser.suspended_until && new Date(selectedUser.suspended_until) > new Date() ? (
-                  <div style={{ padding: "0.75rem", backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", color: "#ef4444", fontSize: "0.85rem" }}>
-                    Account currently locked until: <strong style={{ color: "#ef4444" }}>{new Date(selectedUser.suspended_until).toLocaleString()}</strong>
+                  <div className={styles.statusAlertDanger}>
+                    Account currently locked until: <strong>{new Date(selectedUser.suspended_until).toLocaleString()}</strong>
                   </div>
                 ) : (
-                  <div style={{ padding: "0.75rem", backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "8px", color: "#10b981", fontSize: "0.85rem" }}>
-                    Account active and unsuspended.
+                  <div className={styles.statusAlertSuccess}>
+                    Account status is active & unsuspended.
                   </div>
                 )}
 
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <button onClick={() => handleSuspendUser(selectedUser, 2)} className={styles.btnAction} style={{ color: "#ef4444" }}>Suspend 2 Hrs</button>
-                  <button onClick={() => handleSuspendUser(selectedUser, 24)} className={styles.btnAction} style={{ color: "#ef4444" }}>Suspend 24 Hrs</button>
-                  <button onClick={() => handleSuspendUser(selectedUser, 168)} className={styles.btnAction} style={{ color: "#ef4444" }}>Suspend 7 Days</button>
+                <div className={styles.suspensionButtonGroup}>
+                  <button onClick={() => handleSuspendUser(selectedUser, 2)} className={`${styles.btnAction} ${styles.btnDanger}`}>Suspend 2 Hrs</button>
+                  <button onClick={() => handleSuspendUser(selectedUser, 24)} className={`${styles.btnAction} ${styles.btnDanger}`}>Suspend 24 Hrs</button>
+                  <button onClick={() => handleSuspendUser(selectedUser, 168)} className={`${styles.btnAction} ${styles.btnDanger}`}>Suspend 7 Days</button>
                   <button onClick={() => handleSuspendUser(selectedUser, -1)} className={`${styles.btnAction} ${styles.btnDanger}`}>PERMANENT BAN</button>
                   {selectedUser.suspended_until && (
-                    <button onClick={() => handleSuspendUser(selectedUser, 0)} className={styles.btnAction} style={{ color: "#10b981", border: "1px solid #10b981" }}>Remove Suspension</button>
+                    <button onClick={() => handleSuspendUser(selectedUser, 0)} className={`${styles.btnAction} ${styles.btnSuccess}`}>Remove Suspension</button>
                   )}
                 </div>
               </div>
@@ -3260,6 +3418,90 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   Close Inspector
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: ADVERTISER BAN & DEACTIVATION MANAGEMENT */}
+      {/* ==================================================== */}
+      {banModalUser && (
+        <div className={styles.modalOverlay} onClick={() => setBanModalUser(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px" }}>
+            <div className={styles.modalHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <ShieldAlert size={22} color="#f59e0b" />
+                <h3 className={styles.modalTitle}>Manage Advertiser Access</h3>
+              </div>
+              <button className={styles.btnClose} onClick={() => setBanModalUser(null)}>
+                <XCircle size={22} />
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <div className={styles.userBannerBox}>
+                <span className={styles.userBannerLabel}>Target Account:</span>
+                <span className={styles.userBannerEmail}>{banModalUser.email}</span>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Restriction Status</label>
+                <select
+                  value={banModalStatus}
+                  onChange={(e: any) => setBanModalStatus(e.target.value)}
+                  className={styles.selectField}
+                >
+                  <option value="active">Active — Full Advertiser Access</option>
+                  <option value="temp_banned">Temporary Ban — Timed Restriction</option>
+                  <option value="perm_banned">Permanent Ban — Indefinite Restriction</option>
+                  <option value="deactivated">Deactivated — Admin Deactivation</option>
+                </select>
+              </div>
+
+              {banModalStatus === "temp_banned" && (
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Ban Duration (Days)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={banModalDays}
+                    onChange={(e) => setBanModalDays(Number(e.target.value))}
+                    className={styles.inputField}
+                  />
+                  <span className={styles.formHelperText}>
+                    Account will be automatically unbanned after {banModalDays} day{banModalDays > 1 ? "s" : ""}.
+                  </span>
+                </div>
+              )}
+
+              {banModalStatus !== "active" && (
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Reason for Decision (Required)</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Enter reason e.g., Policy violation, misleading advertising content..."
+                    value={banModalReason}
+                    onChange={(e) => setBanModalReason(e.target.value)}
+                    className={styles.textareaField}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className={styles.modalFooter}>
+              <button type="button" onClick={() => setBanModalUser(null)} className={styles.btnAction}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteAdBan}
+                disabled={banSubmitting}
+                className={`${styles.btnAction} ${banModalStatus === "active" ? styles.btnSuccess : styles.btnDanger}`}
+              >
+                {banSubmitting ? "Updating..." : "Save Changes"}
+              </button>
             </div>
           </div>
         </div>

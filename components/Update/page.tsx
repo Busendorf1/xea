@@ -485,8 +485,6 @@ export default function Update({ email }: Props) {
               <option value="">Select Gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
-              <option value="nonbinary">Non-Binary</option>
-              <option value="prefer_not">Prefer not to say</option>
             </select>
           </div>
 

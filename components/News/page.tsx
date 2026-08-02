@@ -5,7 +5,7 @@ import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
-import { Zap, Calendar } from "lucide-react";
+import { Zap, Calendar, ShieldAlert } from "lucide-react";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 
 interface Session {
@@ -46,6 +46,13 @@ export default function News({ session }: NewsProps) {
   const [balance, setBalance] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
 
+  const [adAccountRestriction, setAdAccountRestriction] = useState<{
+    restricted: boolean;
+    status: string;
+    reason: string;
+    until: string | null;
+  }>({ restricted: false, status: "", reason: "", until: null });
+
   useEffect(() => {
     const fetchBalance = async () => {
       if (session?.user?.email) {
@@ -54,6 +61,22 @@ export default function News({ session }: NewsProps) {
           if (res.ok) {
             const data = await res.json();
             setBalance(data.balance ?? 0);
+
+            const status = data.ad_account_status;
+            const until = data.ad_ban_until;
+            const reason = data.ad_ban_reason || "";
+            const isTempBanned = status === "temp_banned" && until && new Date(until).getTime() > Date.now();
+            const isPermBanned = status === "perm_banned";
+            const isDeactivated = status === "deactivated";
+
+            if (isTempBanned || isPermBanned || isDeactivated) {
+              setAdAccountRestriction({
+                restricted: true,
+                status: isTempBanned ? "temp_banned" : isPermBanned ? "perm_banned" : "deactivated",
+                reason,
+                until,
+              });
+            }
           }
         } catch (e) {
           console.error("Failed to fetch profile balance:", e);
@@ -196,6 +219,53 @@ export default function News({ session }: NewsProps) {
       setIsSubmitting(false);
     }
   };
+
+  if (adAccountRestriction.restricted) {
+    const getCountdownStr = (untilStr: string | null) => {
+      if (!untilStr) return "";
+      const diffMs = new Date(untilStr).getTime() - Date.now();
+      if (diffMs <= 0) return "Expired";
+      const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+      return `${days} day${days > 1 ? "s" : ""}`;
+    };
+
+    return (
+      <>
+        <HeaderJoin />
+        <div style={{ maxWidth: "620px", margin: "4rem auto", padding: "2.25rem 1.75rem", backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "16px", textAlign: "center", boxShadow: "0 15px 35px rgba(0,0,0,0.25)" }}>
+          <div style={{ width: "60px", height: "60px", borderRadius: "50%", backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
+            <ShieldAlert size={32} />
+          </div>
+          <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--foreground)", marginBottom: "0.5rem" }}>
+            Advertising & Highlight Account Disabled
+          </h2>
+          <p style={{ fontSize: "0.92rem", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "1rem" }}>
+            {adAccountRestriction.status === "temp_banned" ? (
+              <>Your highlight account is temporarily suspended for <strong>{getCountdownStr(adAccountRestriction.until)}</strong>.</>
+            ) : adAccountRestriction.status === "perm_banned" ? (
+              <>Your highlight account has been permanently suspended due to policy violations.</>
+            ) : (
+              <>Your highlight account has been deactivated by administration.</>
+            )}
+          </p>
+          {adAccountRestriction.reason && (
+            <div style={{ padding: "0.85rem 1rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)", fontSize: "0.85rem", color: "var(--foreground)", marginBottom: "1.5rem", textAlign: "left" }}>
+              <strong>Reason for decision:</strong> {adAccountRestriction.reason}
+            </div>
+          )}
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1.5rem" }}>
+            If you believe this restriction is an error, you may submit an appeal to our Help Center support team.
+          </p>
+          <a
+            href="/help?category=Suspended%20Account&subject=Appeal%20Highlight%20Account%20Suspension"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", backgroundColor: "var(--primary)", color: "#ffffff", padding: "0.75rem 1.5rem", borderRadius: "8px", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" }}
+          >
+            Appeal via Help Center
+          </a>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
