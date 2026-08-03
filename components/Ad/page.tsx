@@ -792,7 +792,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 <label htmlFor="impression-input" className={styles.labelBlock}>
                   Audience or Real Human Attention
                 </label>
-                <div className={styles.impressionRow}>
+                <div className={styles.impressionStack}>
                   <input
                     type="range"
                     id="impression"
@@ -806,25 +806,28 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         impressions: parseInt(e.target.value) || 1,
                       })
                     }
-                    className={styles.impressionSlider}
+                    className={styles.impressionSliderFull}
                   />
-                  <input
-                    type="number"
-                    id="impression-input"
-                    min={1}
-                    max={5000000}
-                    value={formSelections.impressions}
-                    onChange={(e) => {
-                      let val = parseInt(e.target.value);
-                      if (isNaN(val)) val = 1;
-                      if (val > 5000000) val = 5000000;
-                      setFormSelections({
-                        ...formSelections,
-                        impressions: val,
-                      });
-                    }}
-                    className={styles.impressionInput}
-                  />
+                  <div className={styles.impressionInputRow}>
+                    {/* <span className={styles.impressionInputLabel}>Exact count:</span> */}
+                    <input
+                      type="number"
+                      id="impression-input"
+                      min={1}
+                      max={5000000}
+                      value={formSelections.impressions}
+                      onChange={(e) => {
+                        let val = parseInt(e.target.value);
+                        if (isNaN(val)) val = 1;
+                        if (val > 5000000) val = 5000000;
+                        setFormSelections({
+                          ...formSelections,
+                          impressions: val,
+                        });
+                      }}
+                      className={styles.impressionInput}
+                    />
+                  </div>
                 </div>
                 <label className={styles.labelBlock}>
                   Campaign Duration: {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
@@ -1201,8 +1204,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         const isSelected =
                           formSelections.adActionButtons.includes(type as any);
                         const placeholderMap: Record<string, string> = {
-                          phone: "e.g. 2349031887771",
-                          whatsapp: "e.g. 2349031887771",
+                          phone: "e.g. 234904567890",
+                          whatsapp: "e.g. 234904567890",
                           email: "e.g. someone@example.com",
                           website: "e.g. https://yourwebsite.com",
                           ios: "e.g. https://apps.apple.com/us/app/your-app",
