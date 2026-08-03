@@ -1381,3 +1381,113 @@
     padding: 1px;
   }
 }
+
+/* ── Monetization progress bar (dashboard profile sidebar) ── */
+.monetizeProgressHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.monetizeProgressValue {
+  color: #38bdf8;
+}
+
+.monetizeProgressTrack {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.monetizeProgressFill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 6px;
+}
+
+.monetizeProgressNote {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.monetizeProgressLink {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+  font-size: 0.8rem;
+  padding: 8px 12px;
+}
+
+/* ── Pending withdrawal note ── */
+.pendingWithdrawal {
+  font-size: 0.75rem;
+  color: #3b82f6;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Notification row (bell + feedback icons) ── */
+.notificationRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedbackIconWrap {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.feedbackIcon {
+  animation: fadeIn 0.2s;
+}
+
+/* ── Highlights sidebar wrap (fades in via JS) ── */
+.highlightsWrap {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  will-change: opacity;
+  pointer-events: none;
+}
+
+/* ── Sidebar left header: clickable toggle ── */
+.desktopLeftHeader {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── Withdrawal modal: balance row ── */
+.balanceRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.balanceValue {
+  font-weight: 700;
+  color: #10b981;
+}
+
+/* ── Withdrawal modal: resolving text ── */
+.resolvingText {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Withdrawal modal: readonly amount input ── */
+.formInputReadonly {
+  background-color: rgba(255, 255, 255, 0.05);
+  cursor: not-allowed;
+}
+
+/* ── Withdrawal modal: small hint text ── */
+.formHintSmall {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

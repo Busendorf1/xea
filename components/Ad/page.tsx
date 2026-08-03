@@ -3,7 +3,8 @@
 
 import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Edit3, Rocket, ShieldAlert } from "lucide-react";
+import Link from "next/link";
+import { Edit3, Rocket, ShieldAlert, Sparkles } from "lucide-react";
 import styles from "../Ad/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
@@ -265,11 +266,21 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     }));
   };
 
+  const isSubsidizedLink = (link?: string) => {
+    if (!link) return false;
+    const cleaned = link.toLowerCase().trim();
+    return cleaned.includes("baggyt.com");
+  };
+
   const calculateTotalCostPerImpression = () => {
+    let baseRate = adRates[adType] || 55;
     if (isBiddingEnabled && bidPrice > 0) {
-      return bidPrice;
+      baseRate = bidPrice;
     }
-    return adRates[adType] || 45;
+    if (adType === "product_sales" && isSubsidizedLink(formSelections.productCtaLink)) {
+      return baseRate * 0.7; // 30% discount (e.g. ₦55 -> ₦38.50)
+    }
+    return baseRate;
   };
 
   const calculateTotalCost = () => {
@@ -529,14 +540,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     return (
       <>
         <HeaderJoin />
-        <div style={{ maxWidth: "620px", margin: "4rem auto", padding: "2.25rem 1.75rem", backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "16px", textAlign: "center", boxShadow: "0 15px 35px rgba(0,0,0,0.25)" }}>
-          <div style={{ width: "60px", height: "60px", borderRadius: "50%", backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
+        <div className={styles.suspendedCard}>
+          <div className={styles.suspendedIconWrap}>
             <ShieldAlert size={32} />
           </div>
-          <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--foreground)", marginBottom: "0.5rem" }}>
+          <h2 className={styles.suspendedTitle}>
             Advertising & Highlight Account Disabled
           </h2>
-          <p style={{ fontSize: "0.92rem", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "1rem" }}>
+          <p className={styles.suspendedBody}>
             {adAccountRestriction.status === "temp_banned" ? (
               <>Your advertising account is temporarily suspended for <strong>{getCountdownStr(adAccountRestriction.until)}</strong>.</>
             ) : adAccountRestriction.status === "perm_banned" ? (
@@ -546,16 +557,16 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             )}
           </p>
           {adAccountRestriction.reason && (
-            <div style={{ padding: "0.85rem 1rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)", fontSize: "0.85rem", color: "var(--foreground)", marginBottom: "1.5rem", textAlign: "left" }}>
+            <div className={styles.suspendedReasonBox}>
               <strong>Reason for decision:</strong> {adAccountRestriction.reason}
             </div>
           )}
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1.5rem" }}>
+          <p className={styles.suspendedNote}>
             If you believe this restriction is an error, you may submit an appeal to our Help Center support team.
           </p>
           <a
             href="/help?category=Suspended%20Account&subject=Appeal%20Ad%20Account%20Suspension"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", backgroundColor: "var(--primary)", color: "#ffffff", padding: "0.75rem 1.5rem", borderRadius: "8px", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" }}
+            className={styles.appealBtn}
           >
             Appeal via Help Center
           </a>
@@ -572,7 +583,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             {/* Sleek Multi-Step Wizard Progress Header */}
             <div className={styles.stepperContainer}>
               {steps.map((label, idx) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", flex: 1, gap: "0.5rem" }}>
+                <div key={label} className={styles.stepItemWrapper}>
                   <div
                     className={`${styles.stepItem} ${
                       idx === step
@@ -598,13 +609,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               ))}
             </div>
 
-            <h1 className={styles.summaryTitle} style={{ fontSize: "1.5rem", marginBottom: "0.25rem", color: "var(--foreground)", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h1 className={`${styles.summaryTitle} ${styles.pageHeading}`}>
               {editingId ? <><Edit3 size={20} color="#818cf8" /> Edit Campaign</> : <><Rocket size={20} color="#1d9bf0" /> Create New Ad Campaign</>}
             </h1>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginBottom: "1.25rem" }}>
+            <p className={styles.pageSubtitle}>
               {editingId ? "Update your target audience, locations, and creative. Edits will be submitted for verification." : "Reach active audiences with hyper-targeted ad delivery."}
             </p>
-            <h2 className={styles.summaryTitle} style={{ fontSize: "1.1rem" }}>{steps[step]}</h2>
+            <h2 className={`${styles.summaryTitle} ${styles.stepTitle}`}>{steps[step]}</h2>
 
             {/* Step 0 */}
             {step === 0 && (
@@ -707,9 +718,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   <option value="both">Both</option>
                 </select>
                 
-                <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", marginBottom: "1rem" }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", marginBottom: "0.5rem" }}>Target Min Age</label>
+                <div className={styles.ageRangeRow}>
+                  <div className={styles.ageRangeField}>
+                    <label className={styles.ageRangeLabel}>Target Min Age</label>
                     <select
                       value={formSelections.ageRange[0]}
                       onChange={(e) => {
@@ -728,8 +739,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       ))}
                     </select>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", marginBottom: "0.5rem" }}>Target Max Age</label>
+                  <div className={styles.ageRangeField}>
+                    <label className={styles.ageRangeLabel}>Target Max Age</label>
                     <select
                       value={formSelections.ageRange[1]}
                       onChange={(e) => {
@@ -778,10 +789,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     );
                   })}
                 </div>
-                <label htmlFor="impression-input" style={{ display: "block", marginBottom: "0.5rem" }}>
+                <label htmlFor="impression-input" className={styles.labelBlock}>
                   Audience or Real Human Attention
                 </label>
-                <div style={{ display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1rem" }}>
+                <div className={styles.impressionRow}>
                   <input
                     type="range"
                     id="impression"
@@ -795,7 +806,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         impressions: parseInt(e.target.value) || 1,
                       })
                     }
-                    style={{ flex: 1, margin: 0 }}
+                    className={styles.impressionSlider}
                   />
                   <input
                     type="number"
@@ -812,19 +823,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         impressions: val,
                       });
                     }}
-                    style={{
-                      width: "140px",
-                      textAlign: "right",
-                      padding: "0.5rem",
-                      fontSize: "1rem",
-                      border: "1px solid var(--card-border)",
-                      borderRadius: "8px",
-                      backgroundColor: "var(--sidebar-bg)",
-                      color: "var(--foreground)"
-                    }}
+                    className={styles.impressionInput}
                   />
                 </div>
-                <label style={{ marginTop: "1rem", display: "block" }}>
+                <label className={styles.labelBlock}>
                   Campaign Duration: {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
                 </label>
                 <input
@@ -842,10 +844,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   className={styles.inputBox}
                   placeholder="e.g. 5"
                 />
-                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                <p className={styles.hintText}>
                   Daily Attention Cap: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} attentions/day
                 </p>
-                <label style={{ marginTop: "1rem", display: "block" }}>
+                <label className={styles.labelBlock}>
                   Target Views Per User: {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""}
                 </label>
                 <input
@@ -863,16 +865,16 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   className={styles.inputBox}
                   placeholder="e.g. 3"
                 />
-                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                <p className={styles.hintText}>
                   A viewer can see this ad up to {formSelections.userFrequencyCap} time{formSelections.userFrequencyCap > 1 ? "s" : ""} before it stops showing for them.
                 </p>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.5rem", fontStyle: "italic", lineHeight: "1.4" }}>
+                <p className={styles.hintTextItalic}>
                   Tip: Ads shown 3 - 7 or more times are more likely to be remembered and increases likelihood of taking action than ads shown only once.
                 </p>
 
                 {/* Mutual Features */}
-                <div style={{ marginTop: "1.5rem", borderTop: "1px solid var(--card-border)", paddingTop: "1rem" }}>
-                  <label className={styles.checkboxLabel} style={{ fontWeight: "600" }}>
+                <div className={styles.mutualSection}>
+                  <label className={`${styles.checkboxLabel} ${styles.mutualLabel}`}>
                     <input
                       type="checkbox"
                       checked={formSelections.displayMutualButton}
@@ -887,21 +889,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   </label>
 
                   {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
-                    <div style={{
-                      marginTop: "0.75rem",
-                      padding: "0.75rem 1rem",
-                      backgroundColor: "rgba(22, 163, 74, 0.1)",
-                      border: "1px solid rgba(22, 163, 74, 0.2)",
-                      borderRadius: "8px",
-                      fontSize: "0.85rem",
-                      color: "#16a34a",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.25rem"
-                    }}>
-                      <strong style={{ fontWeight: "700" }}> Free Mutual Attention Activated!</strong>
+                    <div className={styles.mutualActivatedBox}>
+                      <strong className={styles.mutualActivatedTitle}> Free Mutual Attention Activated!</strong>
                       <span>Ticking this box will add your <strong>{userProfile.mutual_count} mutuals</strong> as free attention to this campaign.</span>
-                      <span style={{ fontSize: "0.8rem", opacity: 0.9 }}>
+                      <span className={styles.mutualActivatedHint}>
                         Total target: <strong>{(formSelections.impressions + userProfile.mutual_count).toLocaleString()} views</strong> (You only pay for {formSelections.impressions.toLocaleString()} views). Your {userProfile.mutual_count} mutuals will be targeted first, and your mutual count will be spent.
                       </span>
                     </div>
@@ -974,11 +965,16 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     </div>
 
                     <div className={styles.formGroup}>
-                      <label>Primary CTA Link (Secure HTTPS)</label>
+                      <div className={styles.ctaLabelRow}>
+                        <label>Primary CTA Link (Secure HTTPS)</label>
+                        <Link href="/business/subscribe" className={styles.premiumLink}>
+                          E-commerce platform? Become a Premium Subscriber →
+                        </Link>
+                      </div>
                       <input
                         type="text"
                         value={formSelections.productCtaLink}
-                        placeholder="e.g. https://yourstore.com/product or https://wa.me/..."
+                        placeholder="https://yourwebsite.com/product-page"
                         onChange={(e) =>
                           setFormSelections({
                             ...formSelections,
@@ -991,6 +987,12 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                             : ""
                         }`}
                       />
+                      {formSelections.productCtaLink && isSubsidizedLink(formSelections.productCtaLink) && (
+                        <div className={styles.subsidyBanner}>
+                          <Sparkles size={16} color="#34d399" />
+                          <span>Baggyt is a premium subscriber, 30% Off your ad cost applies.</span>
+                        </div>
+                      )}
                       {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && (
                         <p className={styles.error}>
                           The link must be a secure link starting with https://
@@ -1142,7 +1144,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       className={styles.inputBox}
                     />
                     {formSelections.adMediaFiles.length > 0 && (
-                      <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                      <div className={styles.selectedFilesHint}>
                         Selected: {formSelections.adMediaFiles.map(f => f.name).join(", ")}
                       </div>
                     )}
@@ -1168,8 +1170,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                          adContent: e.target.value,
                        });
                      }}
-                     style={{ overflow: "hidden", resize: "none" }}
-                     className={`${styles.inputBox} ${
+                     className={`${styles.inputBox} ${styles.textareaAutoResize} ${
                        containsLink(formSelections.adContent)
                          ? styles.inputError
                          : ""
@@ -1351,7 +1352,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       )}
                     </div>
                     
-                    <h3 className={styles.sectionTitle} style={{ marginTop: "2rem" }}>Delivery controls</h3>
+                    <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Delivery controls</h3>
                     <div className={styles.detailsList}>
                       <div className={styles.detailsRow}>
                         <span className={styles.detailsKey}>Campaign duration</span>
@@ -1379,7 +1380,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                     {adType === "product_sales" && (
                       <>
-                        <h3 className={styles.sectionTitle} style={{ marginTop: "2rem" }}>Product details</h3>
+                        <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Product details</h3>
                         <div className={styles.detailsList}>
                           <div className={styles.detailsRow}>
                             <span className={styles.detailsKey}>Product name</span>
@@ -1392,7 +1393,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                           <div className={styles.detailsRow}>
                             <span className={styles.detailsKey}>CTA action</span>
                             <span className={styles.detailsVal}>
-                              {formSelections.productCtaType} &rarr; <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", wordBreak: "break-all" }}>{formSelections.productCtaLink}</span>
+                              {formSelections.productCtaType} &rarr; <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
                             </span>
                           </div>
                         </div>
@@ -1413,8 +1414,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       </div>
                       
                       {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
-                        <div className={styles.costRow} style={{ color: "#16a34a" }}>
-                          <span className={styles.costKey} style={{ color: "#16a34a" }}>Free mutual attention</span>
+                        <div className={`${styles.costRow} ${styles.costRowGreen}`}>
+                          <span className={`${styles.costKey} ${styles.costKeyGreen}`}>Free mutual attention</span>
                           <span className={styles.costVal}>
                             +{userProfile.mutual_count.toLocaleString()} views
                           </span>
@@ -1425,7 +1426,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       
                       <div className={styles.costRow}>
                         <span className={styles.costKey}>Total target views</span>
-                        <span className={styles.costVal} style={{ fontWeight: "600" }}>
+                        <span className={`${styles.costVal} ${styles.costValBold}`}>
                           {((formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0)
                             ? formSelections.impressions + userProfile.mutual_count
                             : formSelections.impressions).toLocaleString()} views

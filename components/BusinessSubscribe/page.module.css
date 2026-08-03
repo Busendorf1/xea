@@ -1,0 +1,264 @@
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  color: #fff;
+  font-family: var(--font-geist-sans), "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ── Hero ── */
+.hero {
+  text-align: center;
+  margin-bottom: 3.5rem;
+}
+
+.heroTitle {
+  font-size: 2.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.heroSubtitle {
+  font-size: 1.15rem;
+  color: #9ca3af;
+  max-width: 780px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.heroSubtitle strong.accent {
+  color: #38bdf8;
+}
+
+.heroSubtitle strong.green {
+  color: #10b981;
+}
+
+/* ── Feature Grid ── */
+.featureGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 4rem;
+}
+
+.featureCard {
+  background-color: #1e293b;
+  padding: 1.75rem;
+  border-radius: 16px;
+  border: 1px solid #334155;
+}
+
+.featureIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.featureIcon.green {
+  background-color: rgba(16, 185, 129, 0.15);
+}
+
+.featureIcon.blue {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+.featureIcon.purple {
+  background-color: rgba(168, 85, 247, 0.15);
+}
+
+.featureTitle {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #fff;
+}
+
+.featureDesc {
+  color: #9ca3af;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+/* ── Form Card ── */
+.formCard {
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 24px;
+  padding: 2.5rem;
+  max-width: 680px;
+  margin: 0 auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.formTitle {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: #fff;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 0.5rem;
+}
+
+.input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  color: #fff;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.input:focus {
+  border-color: #3b82f6;
+}
+
+/* ── Duration Selector ── */
+.durationGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.durationBtn {
+  padding: 0.85rem;
+  border-radius: 10px;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  color: #9ca3af;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+}
+
+.durationBtn:hover {
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+.durationBtn.active {
+  background-color: rgba(37, 99, 235, 0.25);
+  border: 2px solid #3b82f6;
+  color: #60a5fa;
+}
+
+.durationPrice {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.durationBtn.active .durationPrice {
+  color: #93c5fd;
+}
+
+/* ── Submit Button ── */
+.submitBtn {
+  margin-top: 0.5rem;
+  padding: 0.95rem;
+  border-radius: 12px;
+  background-color: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.2s ease;
+  font-family: inherit;
+  width: 100%;
+}
+
+.submitBtn:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.submitBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* ── Alerts ── */
+.successAlert {
+  background-color: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+  color: #34d399;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.5;
+}
+
+.successIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.errorAlert {
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #f87171;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* ── Footer ── */
+.formFooter {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.82rem;
+  margin-top: 1.5rem;
+}
+
+.formFooter a {
+  color: #38bdf8;
+  text-decoration: none;
+}
+
+.formFooter a:hover {
+  text-decoration: underline;
+}

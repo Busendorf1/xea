@@ -932,3 +932,533 @@
   background: rgba(29, 155, 240, 0.1);
   color: var(--primary);
 }
+
+/* ── Rate Listeners Button ── */
+.rateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 20px;
+  border: 1px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.rateBtn:hover {
+  background: rgba(245, 158, 11, 0.2);
+  transform: scale(1.04);
+}
+
+/* ── Glowing pulse variant — draws attention before rating ── */
+@keyframes ratePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.28), 0 0 14px 2px rgba(245, 158, 11, 0.18);
+  }
+}
+
+.rateBtnGlow {
+  animation: ratePulse 2s ease-in-out infinite;
+  border-color: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+}
+
+.rateBtnGlow:hover {
+  animation: none;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.22);
+  transform: scale(1.05);
+}
+
+/* ── Rated done state ── */
+.rateBtnDone {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 20px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+
+/* ── Rating Modal ── */
+.ratingModal {
+  max-width: 460px;
+  width: 90%;
+  box-sizing: border-box;
+  border-radius: 16px;
+  padding: 1.75rem;
+  margin: auto;
+  text-align: center;
+}
+
+.ratingModalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.ratingModalHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ratingModalTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.ratingModalSubtitle {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.starPicker {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 1.25rem;
+}
+
+.starBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  transition: transform 0.15s ease;
+}
+
+.starSelected {
+  transform: scale(1.15);
+}
+
+.starLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f59e0b;
+  margin-bottom: 1.25rem;
+}
+
+.ratingAlertSuccess {
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+
+.ratingAlertError {
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid #ef4444;
+}
+
+/* ── Text Campaign Badge Label ── */
+.textCampaignLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ── Carousel Media Wrapper ── */
+.carouselWrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* ── Tag Pill Variants ── */
+.tagPillMediaType {
+  background-color: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+  border-color: rgba(99, 102, 241, 0.3);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tagPillReview {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tagPillBidded {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tagPillIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Media Type & Tags Row ── */
+.tagsRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── Admin Statement / Notice Box ── */
+.adminNotice {
+  background-color: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+  color: #f59e0b;
+  font-size: 0.85rem;
+}
+
+.adminNoticeTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0.25rem;
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+/* ── Delivery Progress Bar ── */
+.deliveryProgressWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.deliveryProgressRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.deliveryProgressTrack {
+  height: 6px;
+  background-color: var(--card-border);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.deliveryProgressFill {
+  height: 100%;
+  background-color: var(--primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* ── CTA Click Counter Row ── */
+.ctaClickRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  align-items: center;
+}
+
+.ctaClickItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Ad Health Metric Values ── */
+.metricValGreen {
+  color: #10b981;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.metricValRed {
+  color: #ef4444;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Footer Left Group ── */
+.footerLeftGroupInner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Toggle Specs Button Span ── */
+.specsBtnInner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Action Buttons Group ── */
+.actionButtonsGroup {
+  margin-right: 4px;
+}
+
+/* ── Boost Unavailable Button ── */
+.boostUnavailableBtn {
+  opacity: 0.85;
+  cursor: pointer;
+  background-color: var(--sidebar-bg);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #f59e0b;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Boost Tooltip Row ── */
+.boostTooltipRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f59e0b;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* ── Edit Ad Button ── */
+.editAdBtn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #818cf8;
+}
+
+/* ── Cancel Button ── */
+.cancelBtnStyling {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* ── Specs Heading Inner ── */
+.specsHeadingInner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Rollover / Schedule Badges ── */
+.rolloverBadgeInner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Ad Health Spec Value ── */
+.specValGreen {
+  color: #10b981;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.specValRed {
+  color: #ef4444;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Mutual Settings Span ── */
+.mutualEnabledSpan {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Click Breakdown Box ── */
+.clickBreakdownBox {
+  background: var(--card-bg);
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clickBreakdownTitle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.clickBreakdownRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--foreground);
+}
+
+/* ── Modal Header Left Group ── */
+.modalHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Notice Modal ── */
+.noticeModal {
+  max-width: 480px;
+  width: 90%;
+  box-sizing: border-box;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin: auto;
+}
+
+.noticeModalBody {
+  padding: 0.5rem 0;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.noticeModalBodyPara {
+  margin: 0;
+}
+
+.noticeModalFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.noticeModalTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.gotItBtn {
+  padding: 0.5rem 1.25rem;
+  width: auto;
+  font-size: 0.85rem;
+}
+
+/* ── Booster Modal Slider ── */
+.boosterSliderBlue {
+  width: 100%;
+  accent-color: #1d9bf0;
+  cursor: pointer;
+}
+
+.boosterSliderPurple {
+  width: 100%;
+  accent-color: #818cf8;
+  cursor: pointer;
+}
+
+.boosterSliderHint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.boosterLabelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.boosterDaysValue {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1d9bf0;
+}
+
+.boosterFreqValue {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #818cf8;
+}
+
+/* ── Booster Modal Launch Button ── */
+.boostLaunchBtn {
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  font-size: 0.9rem;
+  height: auto;
+}
+
+/* ── Payment Selector Buttons ── */
+.paymentSelectBtnFlex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* ── Booster Group with top margin ── */
+.boosterGroupMt {
+  margin-top: 0.5rem;
+}
+
+/* ── Rating Modal (already have classes, this covers residual inline) ── */
+.ratingModalContainer {
+  max-width: 460px;
+  width: 90%;
+  box-sizing: border-box;
+  border-radius: 16px;
+  padding: 1.75rem;
+  margin: auto;
+  text-align: center;
+}

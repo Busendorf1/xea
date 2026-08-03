@@ -28,6 +28,7 @@ import Feed from "@/components/Feed/page";
 import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
 import Footer from "../Footers/page";
+import { resolveAtwTier } from "@/lib/attentionTierEngine";
 
 interface UserProfile {
   id: string;
@@ -60,6 +61,7 @@ interface UserProfile {
   bvn_hash?: string | null;
   monetization_clicks?: number;
   last_active_at?: string | null;
+  attention_worth_score?: number | null;
 }
 
 interface DashboardClientProps {
@@ -172,15 +174,15 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const renderNotificationBell = () => (
-    <div className={styles.notificationContainer} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+    <div className={`${styles.notificationContainer} ${styles.notificationRow}`}>
       {showEarnFeedback && (
-        <span style={{ display: "flex", alignItems: "center", paddingRight: "4px" }} title="Earnings enqueued">
-          <Coins size={18} color="#f59e0b" style={{ animation: "fadeIn 0.2s" }} />
+        <span className={styles.feedbackIconWrap} title="Earnings enqueued">
+          <Coins size={18} color="#f59e0b" className={styles.feedbackIcon} />
         </span>
       )}
       {showMutualFeedback && (
-        <span style={{ display: "flex", alignItems: "center", paddingRight: "4px" }} title="Mutual connected">
-          <Plus size={18} color="#6366f1" style={{ animation: "fadeIn 0.2s" }} />
+        <span className={styles.feedbackIconWrap} title="Mutual connected">
+          <Plus size={18} color="#6366f1" className={styles.feedbackIcon} />
         </span>
       )}
       <button
@@ -678,7 +680,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             <div 
               className={styles.desktopLeftHeader}
               onClick={() => setShowAccountMenuLeft(!showAccountMenuLeft)}
-              style={{ cursor: "pointer", userSelect: "none" }}
               title="Toggle Account Menu"
             >
               <button
@@ -694,12 +695,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
             </Collapsible>
             <div 
               ref={highlightsRef} 
-              style={{ 
-                opacity: 0,
-                transition: "opacity 0.15s ease-out", 
-                willChange: "opacity",
-                pointerEvents: "none"
-              }}
+              className={styles.highlightsWrap}
             >
               <p className={styles.offerArea}>Daily Business Highlights:</p>
               <Newsdisplay userInterest={parsedInterest} />
@@ -769,7 +765,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 <p className={styles.usernameText}>@{user.username.split("@")[0]}</p>
 
                 {user.business_name && user.business_name.trim() !== "" && (
-                  <p className={styles.detailItem} style={{ marginBottom: "0.5rem", fontSize: "0.78rem" }}>
+                  <p className={styles.detailItem}>
                     Representative: {user.firstName} {user.lastName}
                   </p>
                 )}
@@ -806,6 +802,25 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                           </svg>
                           <span>Mutuals: {user.mutual_count} / 50</span>
                         </div>
+
+                        {/* ATW Level — shown between Mutuals and Monetized */}
+                        {(() => {
+                          const score = Number(user.attention_worth_score ?? 0);
+                          const tier = resolveAtwTier(score);
+                          return (
+                            <div className={styles.detailItem}>
+                              <svg viewBox="0 0 24 24" className={styles.detailIcon}>
+                                <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="currentColor"/>
+                              </svg>
+                              <span>
+                                
+                                <strong style={{ color: tier.badgeColor }}>
+                                  {tier.code}
+                                </strong></span>
+                            </div>
+                          );
+                        })()}
+
                         {isMonetized && (
                           <div className={styles.detailItem}>
                             <svg viewBox="0 0 24 24" className={styles.detailIcon}>
@@ -817,21 +832,20 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                       </div>
 
                       {!isMonetized && (
-                        <div className={styles.renewalSection} style={{ marginTop: "10px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", fontWeight: "700", marginBottom: "4px" }}>
+                        <div className={styles.renewalSection}>
+                          <div className={styles.monetizeProgressHeader}>
                             <span>Monetization Progress</span>
-                            <span style={{ color: "#38bdf8" }}>{clicksCount} / 300 clicks</span>
+                            <span className={styles.monetizeProgressValue}>{clicksCount} / 300 clicks</span>
                           </div>
-                          <div style={{ height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "6px", overflow: "hidden", marginBottom: "8px" }}>
-                            <div style={{ height: "100%", width: `${progressPct}%`, background: "#3b82f6", borderRadius: "6px" }} />
+                          <div className={styles.monetizeProgressTrack}>
+                            <div className={styles.monetizeProgressFill} style={{ width: `${progressPct}%` }} />
                           </div>
-                          <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginBottom: "8px" }}>
+                          <p className={styles.monetizeProgressNote}>
                             {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
                           </p>
                           <Link
                             href="/user/monetize"
-                            className={styles.renewBtn}
-                            style={{ display: "inline-block", textAlign: "center", textDecoration: "none", fontSize: "0.8rem", padding: "8px 12px" }}
+                            className={`${styles.renewBtn} ${styles.monetizeProgressLink}`}
                           >
                             View Monetization Details
                           </Link>
@@ -849,7 +863,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
               <h4 className={styles.walletHeader}>Wallet Balance</h4>
               <p className={styles.walletBalance}>{formatCurrency(user.balance ?? 0)}</p>
               {user.withdrawal > 0 && (
-                <p style={{ fontSize: "0.75rem", color: "#3b82f6", marginBottom: "0.5rem" }}>
+                <p className={styles.pendingWithdrawal}>
                   Pending Withdrawal: {formatCurrency(user.withdrawal)}
                 </p>
               )}
@@ -904,9 +918,9 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 </button>
               </div>
               <form onSubmit={handleWithdrawSubmit} className={styles.modalBody}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                <div className={styles.balanceRow}>
                   <span>Available Balance:</span>
-                  <span style={{ fontWeight: "700", color: "#10b981" }}>{formatCurrency(user.balance ?? 0)}</span>
+                  <span className={styles.balanceValue}>{formatCurrency(user.balance ?? 0)}</span>
                 </div>
                 
                 <div className={styles.formGroup}>
@@ -940,7 +954,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 </div>
 
                 {resolvingAccount && (
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  <div className={styles.resolvingText}>
                     Verifying account details with bank...
                   </div>
                 )}
@@ -952,16 +966,15 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   </div>
                 )}
 
-                 <div className={styles.formGroup}>
+                   <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Amount (₦)</label>
                   <input
                     type="text"
                     readOnly
                     value={formatCurrency(withdrawAmount)}
-                    className={styles.formInput}
-                    style={{ backgroundColor: "rgba(255,255,255,0.05)", cursor: "not-allowed" }}
+                    className={`${styles.formInput} ${styles.formInputReadonly}`}
                   />
-                  <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                  <span className={styles.formHintSmall}>
                     Note: Withdrawals must deplete your wallet to zero. Minimum threshold is {formatCurrency(30000)}.
                   </span>
                 </div>

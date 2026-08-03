@@ -213,9 +213,10 @@ import {
   Check,
   SlidersHorizontal,
   ChevronUp,
-  XCircle,
   Wallet,
   CreditCard,
+  Star,
+  XCircle,
 } from "lucide-react";
 interface Session {
   user?: {
@@ -316,7 +317,7 @@ function MultimediaCarousel({ rawMedia }: { rawMedia: string }) {
     return (
       <div className={styles.textOnlyBadge}>
         <Megaphone size={28} color="#1d9bf0" />
-        <span style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.04em" }}>Text Campaign</span>
+        <span className={styles.textCampaignLabel}>Text Campaign</span>
       </div>
     );
   }
@@ -335,7 +336,7 @@ function MultimediaCarousel({ rawMedia }: { rawMedia: string }) {
   };
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div className={styles.carouselWrapper}>
       {isVideo ? (
         <video src={currentUrl} controls className={styles.mediaVideo} />
       ) : (
@@ -384,6 +385,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   };
   const [boosterAd, setBoosterAd] = useState<Ad | null>(null);
   const [noticeModal, setNoticeModal] = useState<{ title: string; message: string; adId?: string } | null>(null);
+  const [ratingAdId, setRatingAdId] = useState<string | null>(null);
+  const [ratingStars, setRatingStars] = useState<number>(5);
+  const [ratingSubmitting, setRatingSubmitting] = useState<boolean>(false);
+  const [ratingMessage, setRatingMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [ratedAdIds, setRatedAdIds] = useState<Set<string>>(new Set());
   const [addImpressions, setAddImpressions] = useState<number>(1000);
   const [addDays, setAddDays] = useState<number>(3);
   const [newBidPrice, setNewBidPrice] = useState<number>(0);
@@ -640,12 +646,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
   const getDeletionCountdown = (completedAt: string): string => {
     const completedTime = new Date(completedAt).getTime();
-    const expiryTime = completedTime + 24 * 60 * 60 * 1000;
+    const expiryTime = completedTime + 7 * 24 * 60 * 60 * 1000; // 7 Days Grace Window
     const timeLeft = expiryTime - timeNow;
     
     if (timeLeft <= 0) return "soon";
     
-    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+    const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    if (days > 0) return `${days}d ${hours}h`;
     const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
     return `${hours}h ${minutes}m`;
   };
@@ -727,19 +735,19 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
           {/* Main Content & Delivery Column */}
           <div className={styles.mainInfoCol}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-              <span className={styles.tagPill} style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#818cf8", borderColor: "rgba(99, 102, 241, 0.3)", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <div className={styles.tagsRow}>
+              <span className={`${styles.tagPill} ${styles.tagPillMediaType}`}>
                 {hasValidMedia ? (mediaType === "video" ? <><Video size={13} /> Video Ad</> : <><ImageIcon size={13} /> Image Ad</>) : <><Megaphone size={13} /> Text Ad</>}
               </span>
 
               {status === "review" && (
-                <span className={styles.tagPill} style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", borderColor: "rgba(245, 158, 11, 0.4)", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
                   <Clock size={13} /> PENDING REVIEW
                 </span>
               )}
 
               {Number(ad.cost_per_impression || 25) > 25 && (
-                <span className={styles.tagPill} style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", borderColor: "rgba(245, 158, 11, 0.3)", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }} title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds. You can boost priority anytime.">
+                <span className={`${styles.tagPill} ${styles.tagPillBidded}`} title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds. You can boost priority anytime.">
                   <Zap size={13} color="#f59e0b" /> Bidded Priority Ad (₦{ad.cost_per_impression}/view)
                 </span>
               )}
@@ -748,17 +756,8 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             <p className={styles.adDescription}>{ad.ad_content}</p>
 
             {ad.admin_statement && (
-              <div style={{
-                backgroundColor: "rgba(245, 158, 11, 0.12)",
-                border: "1px solid rgba(245, 158, 11, 0.4)",
-                borderRadius: "10px",
-                padding: "0.75rem 1rem",
-                marginTop: "0.5rem",
-                marginBottom: "0.75rem",
-                color: "#f59e0b",
-                fontSize: "0.85rem"
-              }}>
-                <strong style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "0.25rem", color: "#fbbf24" }}>
+              <div className={styles.adminNotice}>
+                <strong className={styles.adminNoticeTitle}>
                   <AlertTriangle size={15} color="#f59e0b" /> Important Notice / Reason:
                 </strong>
                 {ad.admin_statement}
@@ -768,49 +767,49 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             {/* Target Specs Pills */}
             <div className={styles.targetTagsRow}>
               {(!!ad.is_bidded || Number(ad.cost_per_impression || 0) > 25) && (
-                <span className={styles.tagPill} style={{ display: "inline-flex", alignItems: "center", gap: "4px", backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", borderColor: "rgba(245, 158, 11, 0.3)", fontWeight: "700" }}>
+                <span className={`${styles.tagPill} ${styles.tagPillBidded}`}>
                   <Zap size={13} color="#f59e0b" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} (₦{ad.cost_per_impression}/view)
                 </span>
               )}
-              <span className={styles.tagPill} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
                 <Users size={13} /> Target: {ad.gender || "All Genders"}
               </span>
-              <span className={styles.tagPill} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
                 <Target size={13} /> Categories: {
                   Array.isArray(ad.industry) ? ad.industry.join(", ") :
                   Array.isArray(ad.interest) ? ad.interest.join(", ") :
                   ad.industry || ad.interest || "General"
                 }
               </span>
-              <span className={styles.tagPill} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
                 <Zap size={13} /> {ad.user_frequency_cap || 1} View/Viewer/Day
               </span>
               <span className={styles.tagPill}>{daysInfo.scheduled} Days Cap</span>
               {ad.display_mutual_button && (
-                <span className={styles.tagPill} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
                   <CheckCircle2 size={13} color="#10b981" /> Mutual+ Enabled
                 </span>
               )}
             </div>
 
             {/* Live Delivery Progress */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "3px", marginTop: "4px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", fontWeight: "600", color: "var(--text-muted)" }}>
+            <div className={styles.deliveryProgressWrapper}>
+              <div className={styles.deliveryProgressRow}>
                 <span>Delivery Progress</span>
                 <span>{deliveryPercent}% ({seenCount.toLocaleString()} / {targetImpressions.toLocaleString()} views)</span>
               </div>
-              <div style={{ height: "6px", backgroundColor: "var(--card-border)", borderRadius: "3px", overflow: "hidden", position: "relative" }}>
-                <div style={{ height: "100%", backgroundColor: "var(--primary)", width: `${deliveryPercent}%`, borderRadius: "3px", transition: "width 0.3s ease" }} />
+              <div className={styles.deliveryProgressTrack}>
+                <div className={styles.deliveryProgressFill} style={{ width: `${deliveryPercent}%` }} />
               </div>
             </div>
 
             {/* CTA Buttons Click Counter Row */}
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px", alignItems: "center" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={13} /> Phone: <strong>{phoneClicks}</strong></span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><MessageSquare size={13} /> WhatsApp: <strong>{whatsappClicks}</strong></span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Globe size={13} /> Website: <strong>{websiteClicks}</strong></span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Mail size={13} /> Email: <strong>{emailClicks}</strong></span>
-              {productCtaClicks > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><ShoppingCart size={13} /> Product CTA: <strong>{productCtaClicks}</strong></span>}
+            <div className={styles.ctaClickRow}>
+              <span className={styles.ctaClickItem}><Phone size={13} /> Phone: <strong>{phoneClicks}</strong></span>
+              <span className={styles.ctaClickItem}><MessageSquare size={13} /> WhatsApp: <strong>{whatsappClicks}</strong></span>
+              <span className={styles.ctaClickItem}><Globe size={13} /> Website: <strong>{websiteClicks}</strong></span>
+              <span className={styles.ctaClickItem}><Mail size={13} /> Email: <strong>{emailClicks}</strong></span>
+              {productCtaClicks > 0 && <span className={styles.ctaClickItem}><ShoppingCart size={13} /> Product CTA: <strong>{productCtaClicks}</strong></span>}
             </div>
           </div>
 
@@ -831,11 +830,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             <div className={styles.metricCell}>
               <span className={styles.metricTitle}>Ad Health</span>
               {reportsCount === 0 && advertiserBlockCount === 0 ? (
-                <span className={styles.metricVal} style={{ color: "#10b981", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
                   <CheckCircle2 size={13} color="#10b981" /> Clean
                 </span>
               ) : (
-                <span className={styles.metricVal} style={{ color: "#ef4444", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span className={`${styles.metricVal} ${styles.metricValRed}`}>
                   <AlertTriangle size={13} color="#ef4444" /> {reportsCount} Flags
                 </span>
               )}
@@ -845,7 +844,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
         {/* Action Row Footer - Aligned Single Horizontal Bar */}
         <div className={styles.rowFooter}>
-          <div className={styles.footerLeftGroup}>
+          <div className={`${styles.footerLeftGroup} ${styles.footerLeftGroupInner}`}>
             {ad.is_paused ? (
               <span className={styles.badgePaused}>PAUSED</span>
             ) : isCompleted && ad.completed_at ? (
@@ -857,6 +856,25 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 {status === "active" ? "Active" : "In Review"}
               </span>
             )}
+
+            {/* Rate Listeners Button - Renders ONLY when Completed or Paused */}
+            {(ad.is_paused || isCompleted) && (
+              ratedAdIds.has(ad.id) ? (
+                <span className={styles.rateBtnDone}>
+                  <CheckCircle2 size={13} color="#10b981" /> Audience Rated
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setRatingAdId(ad.id)}
+                  className={`${styles.rateBtn} ${styles.rateBtnGlow}`}
+                  title="Rate campaign conversion outcomes to boost top-performing listener Attention Scores"
+                >
+                  <Star size={13} fill="#f59e0b" color="#f59e0b" /> Rate Audience
+                </button>
+              )
+            )}
+
             <span className={styles.postedTime}>
               Posted {formatTimestamp(ad.created_at)}
             </span>
@@ -864,7 +882,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
           <div className={styles.footerRightGroup}>
             {actionButtons.length > 0 && (
-              <div className={styles.actionButtons} style={{ marginRight: "4px" }}>
+              <div className={`${styles.actionButtons} ${styles.actionButtonsGroup}`}>
                 {actionButtons.map((type) => (
                   <a
                     key={`${type}-${ad.id}`}
@@ -886,9 +904,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               onClick={() => toggleSpecsDrawer(ad.id)}
             >
               {expandedSpecsMap[ad.id] ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><ChevronUp size={13} /> Hide Specs</span>
+                <span className={styles.specsBtnInner}><ChevronUp size={13} /> Hide Specs</span>
               ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><SlidersHorizontal size={13} /> Specs & Budget</span>
+                <span className={styles.specsBtnInner}><SlidersHorizontal size={13} /> Specs & Budget</span>
               )}
             </button>
 
@@ -909,25 +927,13 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                         <button
                           type="button"
                           onClick={() => setNoticeModal({ title: "Boosting Unavailable", message: reason, adId: ad.id })}
-                          className={styles.boostBtn}
-                          style={{
-                            opacity: 0.85,
-                            cursor: "pointer",
-                            backgroundColor: "var(--sidebar-bg)",
-                            borderColor: "rgba(245, 158, 11, 0.4)",
-                            color: "#f59e0b",
-                            fontFamily: "inherit",
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px"
-                          }}
+                          className={`${styles.boostBtn} ${styles.boostUnavailableBtn}`}
                         >
                           <AlertTriangle size={14} color="#f59e0b" />
                           Boosting Unavailable
                         </button>
                         <div className={styles.boostTooltipContent}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#f59e0b", fontWeight: 700, marginBottom: "4px" }}>
+                          <div className={styles.boostTooltipRow}>
                             <AlertTriangle size={14} />
                             Boosting Unavailable
                           </div>
@@ -964,16 +970,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 </button>
                 <a
                   href={`/user/adPage?id=${ad.id}`}
-                  className={styles.shareAdBtn}
-                  style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(99, 102, 241, 0.15)", borderColor: "rgba(99, 102, 241, 0.3)", color: "#818cf8" }}
+                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
                 >
                   Edit Ad
                 </a>
                 <button
                   type="button"
                   onClick={() => handleCancelAd(ad.id)}
-                  className={styles.cancelBtn}
-                  style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#ef4444" }}
+                  className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
                 >
                   Cancel
                 </button>
@@ -986,7 +990,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         {expandedSpecsMap[ad.id] && (
           <div className={styles.specsDrawer}>
             <div className={styles.specsHeading}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <span className={styles.specsHeadingInner}>
                 <SlidersHorizontal size={15} color="#1d9bf0" /> Advertiser Campaign Specifications & Budget Breakdown
               </span>
             </div>
@@ -1017,11 +1021,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 <span className={styles.specLabel}>Rollover & Schedule Status</span>
                 <div>
                   {daysInfo.isRollover ? (
-                    <span className={styles.rolloverActiveBadge} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span className={`${styles.rolloverActiveBadge} ${styles.rolloverBadgeInner}`}>
                       <AlertTriangle size={12} color="#f59e0b" /> Rollover Active (+{daysInfo.rolloverDays}d exceeded)
                     </span>
                   ) : (
-                    <span className={styles.rolloverNormalBadge} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span className={`${styles.rolloverNormalBadge} ${styles.rolloverBadgeInner}`}>
                       <CheckCircle2 size={12} color="#10b981" /> On Schedule ({daysInfo.remaining}d remaining)
                     </span>
                   )}
@@ -1030,7 +1034,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
               <div className={styles.specItem}>
                 <span className={styles.specLabel}>Ad Health & Shield Report</span>
-                <span className={styles.specVal} style={{ color: reportsCount > 0 ? "#ef4444" : "#10b981", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span className={`${styles.specVal} ${reportsCount > 0 ? styles.specValRed : styles.specValGreen}`}>
                   {reportsCount > 0 ? (
                     <><AlertTriangle size={13} color="#ef4444" /> {reportsCount} Reports ({dismissalsCount} Dismissals)</>
                   ) : (
@@ -1057,7 +1061,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 <span className={styles.specLabel}>Mutual+ Settings</span>
                 <span className={styles.specVal}>
                   {ad.display_mutual_button ? (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span className={styles.mutualEnabledSpan}>
                       <Check size={13} color="#10b981" /> Enabled ({ad.mutual_adds_count ?? 0} gained)
                     </span>
                   ) : (
@@ -1068,11 +1072,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             </div>
 
             {clicksCount > 0 && (
-              <div style={{ background: "var(--card-bg)", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--card-border)", display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: "700", color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Detailed Click Type Breakdown
-                </span>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "0.8rem", color: "var(--foreground)" }}>
+              <div className={styles.clickBreakdownBox}>
+                <span className={styles.clickBreakdownTitle}>Detailed Click Type Breakdown</span>
+                <div className={styles.clickBreakdownRow}>
                   {productCtaClicks > 0 ? <span>🛒 Product CTA: <strong>{productCtaClicks}</strong></span> : null}
                   {phoneClicks > 0 ? <span>📞 Calls: <strong>{phoneClicks}</strong></span> : null}
                   {whatsappClicks > 0 ? <span>💬 WhatsApp: <strong>{whatsappClicks}</strong></span> : null}
@@ -1153,7 +1155,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         <div className={styles.modalOverlay} onClick={() => setBoosterAd(null)}>
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div className={styles.modalHeaderLeft}>
                 <Zap size={18} color="#f59e0b" />
                 <h3 className={styles.modalTitle}>Boost & Top Up Campaign</h3>
               </div>
@@ -1179,9 +1181,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               </div>
 
               <div className={styles.boosterGroup}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className={styles.boosterLabelRow}>
                   <label className={styles.boosterLabel}>Extend Duration</label>
-                  <span style={{ fontSize: "0.82rem", fontWeight: "700", color: "#1d9bf0" }}>+{addDays} Days</span>
+                  <span className={styles.boosterDaysValue}>+{addDays} Days</span>
                 </div>
                 <input
                   type="range"
@@ -1190,9 +1192,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   step={1}
                   value={addDays}
                   onChange={(e) => setAddDays(Number(e.target.value))}
-                  style={{ width: "100%", accentColor: "#1d9bf0", cursor: "pointer" }}
+                  className={styles.boosterSliderBlue}
                 />
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                <span className={styles.boosterSliderHint}>
                   Extend campaign schedule by up to 30 days. No extra fee charged for day extensions.
                 </span>
               </div>
@@ -1206,15 +1208,15 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   value={newBidPrice}
                   onChange={(e) => setNewBidPrice(Number(e.target.value))}
                 />
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                <span className={styles.boosterSliderHint}>
                   Current bid: ₦{boosterAd.cost_per_impression || 25}/attention. Higher bids boost feed placement priority.
                 </span>
               </div>
 
               <div className={styles.boosterGroup}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className={styles.boosterLabelRow}>
                   <label className={styles.boosterLabel}>Frequency per user</label>
-                  <span style={{ fontSize: "0.82rem", fontWeight: "700", color: "#818cf8" }}>{boosterFrequencyCap} Views/User/Day</span>
+                  <span className={styles.boosterFreqValue}>{boosterFrequencyCap} Views/User/Day</span>
                 </div>
                 <input
                   type="range"
@@ -1223,9 +1225,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   step={1}
                   value={boosterFrequencyCap}
                   onChange={(e) => setBoosterFrequencyCap(Number(e.target.value))}
-                  style={{ width: "100%", accentColor: "#818cf8", cursor: "pointer" }}
+                  className={styles.boosterSliderPurple}
                 />
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                <span className={styles.boosterSliderHint}>
                   Limit max impressions per individual user (1 to 30 views/day).
                 </span>
               </div>
@@ -1264,22 +1266,20 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               </div>
             </div>
 
-            <div className={styles.boosterGroup} style={{ marginTop: "0.5rem" }}>
+            <div className={`${styles.boosterGroup} ${styles.boosterGroupMt}`}>
               <label className={styles.boosterLabel}>Payment Method</label>
               <div className={styles.paymentSelectRow}>
                 <button
                   type="button"
-                  className={`${styles.paymentSelectBtn} ${boosterPaymentMethod === "wallet" ? styles.paymentSelectBtnActive : ""}`}
+                  className={`${styles.paymentSelectBtn} ${styles.paymentSelectBtnFlex} ${boosterPaymentMethod === "wallet" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("wallet")}
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "3px" }}
                 >
                   <Wallet size={12} /> Wallet Balance
                 </button>
                 <button
                   type="button"
-                  className={`${styles.paymentSelectBtn} ${boosterPaymentMethod === "card" ? styles.paymentSelectBtnActive : ""}`}
+                  className={`${styles.paymentSelectBtn} ${styles.paymentSelectBtnFlex} ${boosterPaymentMethod === "card" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("card")}
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "3px" }}
                 >
                   <CreditCard size={12} /> Card / Bank Transfer
                 </button>
@@ -1288,8 +1288,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
             <button
               type="button"
-              className={styles.boostBtn}
-              style={{ marginTop: "0.5rem", padding: "0.85rem", fontSize: "0.9rem", height: "auto" }}
+              className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
               onClick={handleExecuteBoost}
               disabled={boosting}
             >
@@ -1305,36 +1304,26 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       {noticeModal && (
         <div className={styles.modalOverlay} onClick={() => setNoticeModal(null)}>
           <div
-            className={styles.modalContent}
+            className={`${styles.modalContent} ${styles.noticeModal}`}
             onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: "480px",
-              width: "90%",
-              boxSizing: "border-box",
-              fontFamily: "inherit",
-              borderRadius: "16px",
-              padding: "1.5rem",
-              margin: "auto"
-            }}
           >
             <div className={styles.modalHeader}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div className={styles.modalHeaderLeft}>
                 <AlertTriangle size={22} color="#f59e0b" />
-                <h3 className={styles.modalTitle} style={{ fontSize: "1.1rem", fontWeight: 700, fontFamily: "inherit" }}>{noticeModal.title}</h3>
+                <h3 className={`${styles.modalTitle} ${styles.noticeModalTitle}`}>{noticeModal.title}</h3>
               </div>
               <button className={styles.modalClose} onClick={() => setNoticeModal(null)}>
                 <XCircle size={24} />
               </button>
             </div>
-            <div style={{ padding: "0.5rem 0", color: "var(--foreground)", fontSize: "0.92rem", lineHeight: 1.6, wordBreak: "break-word", fontFamily: "inherit" }}>
-              <p style={{ margin: 0 }}>{noticeModal.message}</p>
+            <div className={styles.noticeModalBody}>
+              <p className={styles.noticeModalBodyPara}>{noticeModal.message}</p>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem" }}>
+            <div className={styles.noticeModalFooter}>
               <button
                 type="button"
-                className={styles.boostBtn}
+                className={`${styles.boostBtn} ${styles.gotItBtn}`}
                 onClick={() => setNoticeModal(null)}
-                style={{ padding: "0.5rem 1.25rem", width: "auto", fontFamily: "inherit", fontSize: "0.85rem" }}
               >
                 Got It
               </button>
@@ -1342,6 +1331,93 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           </div>
         </div>
       )}
+
+      {/* ==================================================== */}
+      {/* MODAL: ADVERTISER RATING FOR LISTENERS */}
+      {/* ==================================================== */}
+      {ratingAdId && (
+        <div className={styles.modalOverlay} onClick={() => { setRatingAdId(null); setRatingMessage(null); }}>
+          <div
+            className={`${styles.modalContent} ${styles.ratingModalContainer}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.ratingModalHeader}>
+              <div className={styles.ratingModalHeaderLeft}>
+                <Star size={20} fill="#f59e0b" color="#f59e0b" />
+                <h3 className={styles.ratingModalTitle}>Rate Audience Engagement</h3>
+              </div>
+              <button className={styles.modalClose} onClick={() => { setRatingAdId(null); setRatingMessage(null); }}>
+                <XCircle size={22} />
+              </button>
+            </div>
+
+            <p className={styles.ratingModalSubtitle}>
+              How well did the audience engage with your ad? Your 1 to 5 star rating adds Attention Score points to all participating viewers.
+            </p>
+
+            {/* Interactive Star Picker */}
+            <div className={styles.starPicker}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRatingStars(star)}
+                  className={`${styles.starBtn} ${ratingStars >= star ? styles.starSelected : ""}`}
+                  title={`${star} Star${star > 1 ? "s" : ""} (+0.0${star} ATW Score)`}
+                >
+                  <Star
+                    size={32}
+                    fill={ratingStars >= star ? "#f59e0b" : "transparent"}
+                    color={ratingStars >= star ? "#f59e0b" : "#4b5563"}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.starLabel}>
+              {ratingStars} Star{ratingStars > 1 ? "s" : ""} selected
+            </div>
+
+            {ratingMessage && (
+              <div className={ratingMessage.type === "success" ? styles.ratingAlertSuccess : styles.ratingAlertError}>
+                {ratingMessage.text}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
+              disabled={ratingSubmitting}
+              onClick={async () => {
+                setRatingSubmitting(true);
+                setRatingMessage(null);
+                try {
+                  const res = await fetch("/api/campaigns/rate-listeners", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ad_id: ratingAdId, star_rating: ratingStars })
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Failed to submit rating");
+                  setRatedAdIds((prev) => new Set([...prev, ratingAdId!]));
+                  setRatingMessage({ type: "success", text: data.message });
+                  setTimeout(() => {
+                    setRatingAdId(null);
+                    setRatingMessage(null);
+                  }, 2000);
+                } catch (err: any) {
+                  setRatingMessage({ type: "error", text: err.message || "Failed to submit rating" });
+                } finally {
+                  setRatingSubmitting(false);
+                }
+              }}
+            >
+              {ratingSubmitting ? "Submitting Rating..." : `Submit ${ratingStars}-Star Rating`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

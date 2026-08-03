@@ -615,3 +615,316 @@
     flex-direction: column;
   }
 }
+
+/* ── Baggyt Premium Subsidy Banner ── */
+.subsidyBanner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: #34d399;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* ── CTA Label Row (label + premium subscriber link) ── */
+.ctaLabelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.ctaLabelRow label {
+  margin: 0;
+}
+
+.premiumLink {
+  font-size: 0.78rem;
+  color: #38bdf8;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.premiumLink:hover {
+  color: #7dd3fc;
+}
+
+/* ── Ad Account Suspended / Error Page ── */
+.suspendedCard {
+  max-width: 620px;
+  margin: 4rem auto;
+  padding: 2.25rem 1.75rem;
+  background-color: var(--card-bg);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+}
+
+.suspendedIconWrap {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+}
+
+.suspendedTitle {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--foreground);
+  margin-bottom: 0.5rem;
+}
+
+.suspendedBody {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.suspendedReasonBox {
+  padding: 0.85rem 1rem;
+  background-color: var(--sidebar-bg);
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  font-size: 0.85rem;
+  color: var(--foreground);
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.suspendedNote {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.appealBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--primary);
+  color: #ffffff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+/* ── Stepper Step Item Wrapper ── */
+.stepItemWrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 0.5rem;
+}
+
+/* ── Page Header ── */
+.pageHeading {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageSubtitle {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 1.25rem;
+}
+
+.stepTitle {
+  font-size: 1.1rem;
+}
+
+/* ── Age Range Row ── */
+.ageRangeRow {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ageRangeField {
+  flex: 1;
+}
+
+.ageRangeLabel {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Impression Slider Row ── */
+.impressionRow {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.impressionSlider {
+  flex: 1;
+  margin: 0;
+}
+
+.impressionInput {
+  width: 140px;
+  text-align: right;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background-color: var(--sidebar-bg);
+  color: var(--foreground);
+}
+
+/* ── Delivery Controls Labels ── */
+.labelBlock {
+  margin-top: 1rem;
+  display: block;
+}
+
+.hintText {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.hintTextItalic {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* ── Mutual Features Section ── */
+.mutualSection {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--card-border);
+  padding-top: 1rem;
+}
+
+.mutualLabel {
+  font-weight: 600;
+}
+
+.mutualActivatedBox {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background-color: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #16a34a;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mutualActivatedTitle {
+  font-weight: 700;
+}
+
+.mutualActivatedHint {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+/* ── Selected Media Files Hint ── */
+.selectedFilesHint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── Textarea auto-resize ── */
+.textareaAutoResize {
+  overflow: hidden;
+  resize: none;
+}
+
+/* ── Section Title Spaced ── */
+.sectionTitleMt {
+  margin-top: 2rem;
+}
+
+/* ── CTA Link Sub-text ── */
+.ctaLinkMuted {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+/* ── Cost Row Variants ── */
+.costRowGreen {
+  color: #16a34a;
+}
+
+.costKeyGreen {
+  color: #16a34a;
+}
+
+.costValBold {
+  font-weight: 600;
+}
+
+/* ── Monetization Progress (Dashboard sidebar) ── */
+.monetizeProgressSection {
+  margin-top: 10px;
+}
+
+.monetizeProgressHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.monetizeProgressValue {
+  color: #38bdf8;
+}
+
+.monetizeProgressTrack {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.monetizeProgressFill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 6px;
+}
+
+.monetizeProgressNote {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.monetizeProgressLink {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+  font-size: 0.8rem;
+  padding: 8px 12px;
+}
