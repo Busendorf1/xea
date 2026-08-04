@@ -1,6 +1,7 @@
 .header {
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   background-image: url("../../public/image/images.jpg"); /* Place image in public/backgrounds */
   background-size: cover;
   background-position: center;

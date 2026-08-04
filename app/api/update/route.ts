@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     // Invalidate cached profile in Redis
     await invalidateCachedProfile(email);
 
-    return NextResponse.json({ message: "User registered successfully" }, { status: 201 });
+    return NextResponse.json({ success: true, message: "Profile updated successfully" }, { status: 200 });
   } catch (err: any) {
     console.error("Unexpected error:", err);
     return NextResponse.json({ error: "Server error." }, { status: 500 });

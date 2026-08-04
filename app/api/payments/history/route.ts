@@ -10,12 +10,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fetch user payments ordered by created_at desc
+    const emailLower = email.toLowerCase().trim();
+    const cacheKey = `statement:payments:${emailLower}`;
+
+    // 1. Redis Cache Read Path
+    try {
+      const { default: redisConnection } = await import("@/lib/redis");
+      const cached = await redisConnection.get(cacheKey);
+      if (cached) {
+        return NextResponse.json(JSON.parse(cached));
+      }
+    } catch (redisErr) {
+      console.warn("⚠️ Redis read warning in payments history:", redisErr);
+    }
+
+    // 2. Database Fetch Path
     const { data: payments, error } = await supabaseAdmin
       .from("payments")
       .select("*")
-      .ilike("user_email", email)
-      .not("type", "eq", "withdrawal") // Filter out withdrawals since they go to withdrawals history
+      .ilike("user_email", emailLower)
+      .not("type", "eq", "withdrawal")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -23,7 +37,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(payments);
+    const payload = payments || [];
+
+    // Cache in Redis for 5 minutes (invalidated when new transactions occur)
+    try {
+      const { default: redisConnection } = await import("@/lib/redis");
+      await redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 300);
+    } catch (redisErr) {
+      console.warn("⚠️ Redis write warning in payments history:", redisErr);
+    }
+
+    return NextResponse.json(payload);
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/payments/history:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

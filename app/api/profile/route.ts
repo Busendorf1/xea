@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
 
     console.log(`🔄 Profile cache miss in /api/profile for: ${email}. Fetching from Supabase...`);
 
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at`;
+
     // Fetch user profile from Supabase with retries (resilience to flaky hotspot networks)
     let error = null;
     const attempts = 3;
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
       try {
         const { data, error: dbErr } = await supabaseReadOnly
           .from("users")
-          .select("*")
+          .select(PROFILE_COLUMNS)
           .ilike("email", email)
           .maybeSingle();
 
@@ -78,7 +80,7 @@ export async function GET(req: NextRequest) {
       // Fetch the newly created profile
       const { data: newUser, error: fetchError } = await supabaseAdmin
         .from("users")
-        .select("*")
+        .select(PROFILE_COLUMNS)
         .ilike("email", email)
         .maybeSingle();
 

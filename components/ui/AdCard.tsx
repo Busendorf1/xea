@@ -213,7 +213,10 @@ export default function AdCard({
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [isDismissing, setIsDismissing] = useState(false);
 
-  const ADMIN_EMAILS = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
+  const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
   const isPlatformPost = ad.user_email ? ADMIN_EMAILS.includes(ad.user_email.toLowerCase()) : false;
   const advertiserProfile = ad.user_email ? advertiserProfiles[ad.user_email.toLowerCase()] : null;
   const brandName = advertiserProfile?.business_name || advertiserProfile?.firstName || "Paayh";

@@ -8,18 +8,20 @@ export async function POST(req: NextRequest) {
   try {
     const signature = req.headers.get("x-paystack-signature");
     const bodyText = await req.text();
-    const paystackSecret = process.env.PAYSTACK_SECRET_KEY || "sk_test_mock_1234567890abcdef";
+    const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
+    if (!paystackSecret) {
+      console.error("❌ Webhook error: PAYSTACK_SECRET_KEY is missing from environment variables!");
+      return NextResponse.json({ error: "Webhook configuration error" }, { status: 500 });
+    }
 
-    // 1. Verify Signature (only check if NOT mock key)
-    if (!paystackSecret.startsWith("sk_test_mock")) {
-      if (!signature) {
-        return NextResponse.json({ error: "Missing signature header" }, { status: 401 });
-      }
-      const hash = createHmac("sha512", paystackSecret).update(bodyText).digest("hex");
-      if (hash !== signature) {
-        console.error("❌ Webhook Signature mismatch!");
-        return NextResponse.json({ error: "Signature mismatch" }, { status: 401 });
-      }
+    if (!signature) {
+      return NextResponse.json({ error: "Missing signature header" }, { status: 401 });
+    }
+
+    const hash = createHmac("sha512", paystackSecret).update(bodyText).digest("hex");
+    if (hash !== signature) {
+      console.error("❌ Webhook Signature mismatch!");
+      return NextResponse.json({ error: "Signature mismatch" }, { status: 401 });
     }
 
     const payload = JSON.parse(bodyText);

@@ -116,7 +116,7 @@
   width: 100%;
   min-height: 280px;
   max-height: 550px;
-  border-radius: 16px;
+  border-radius: 4px;
   overflow: hidden;
   border: 1px solid var(--card-border);
   margin-bottom: 0.75rem;
@@ -1020,8 +1020,8 @@
   margin-top: 4px;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  box-shadow: none;
   padding: 6px;
   z-index: 99999;
   min-width: 210px;
@@ -1053,7 +1053,7 @@
   color: var(--foreground);
   font-size: 0.82rem;
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   text-align: left;
   transition: background-color 0.15s ease;

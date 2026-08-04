@@ -109,7 +109,7 @@ const flushBatch = async () => {
     }));
   }
 
-  // 5. Increment user click progress towards 300 clicks & update activity timestamp
+  // 5. Increment user click progress, enforce ₦50k balance cap & ₦30k notification checks
   const activeEmails = new Set<string>();
   currentBatch.forEach((item) => {
     if (item.job?.data?.email) {
@@ -120,11 +120,38 @@ const flushBatch = async () => {
   await Promise.all(
     Array.from(activeEmails).map(async (userEmail) => {
       try {
-        await supabaseAdmin.rpc("increment_user_click_progress", {
-          p_email: userEmail,
-        });
+        const { data: userData } = await supabaseAdmin
+          .from("users")
+          .select("balance")
+          .ilike("email", userEmail)
+          .maybeSingle();
+
+        const currentBal = parseFloat(userData?.balance || 0);
+
+        if (currentBal >= 50000) {
+          console.log(`ℹ️ Wallet balance cap of ₦50,000 reached for ${userEmail}. Diverting click earnings to platform revenue.`);
+          // Send polite notification once balance hits cap
+          await supabaseAdmin.from("notifications").insert({
+            user_email: userEmail,
+            title: "Wallet Holding Limit Reached 💼",
+            message: "Your wallet balance has reached the ₦50,000 maximum holding limit. Please initiate a withdrawal to continue receiving instant payouts.",
+          });
+        } else {
+          await supabaseAdmin.rpc("increment_user_click_progress", {
+            p_email: userEmail,
+          });
+
+          // Check if balance crosses ₦30,000 threshold
+          if (currentBal >= 30000 && currentBal < 50000) {
+            await supabaseAdmin.from("notifications").insert({
+              user_email: userEmail,
+              title: "Withdrawal Threshold Reached 🎉",
+              message: "Your wallet balance has reached ₦30,000! You can withdraw your earnings anytime between ₦10,000 and ₦50,000.",
+            });
+          }
+        }
       } catch (err: any) {
-        console.error("❌ Error updating user click progress:", err?.message || err);
+        console.error("❌ Error updating user click progress / balance limits:", err?.message || err);
       }
 
       try {
@@ -135,8 +162,8 @@ const flushBatch = async () => {
     })
   );
 
-  // Resolve all jobs in this batch after flushing
-  currentBatch.forEach(j => j.resolve());
+  // Resolve successful jobs in this batch
+  currentBatch.forEach((j) => j.resolve());
 };
 
 const queueJob = (job: any): Promise<void> => {
@@ -161,8 +188,27 @@ feedWorker.on("completed", (job) => {
   console.log(`✅ Feed Worker: Job [${job.name}] successfully completed.`);
 });
 
-feedWorker.on("failed", (job, err) => {
-  console.error(`❌ Feed Worker: Job [${job?.name}] failed:`, err.message);
+feedWorker.on("failed", async (job, err) => {
+  console.error(`❌ Feed Worker: Job [${job?.name}] failed (Attempt ${job?.attemptsMade}/${job?.opts?.attempts || 5}):`, err.message);
+  
+  // Route exhausted jobs to Dead Letter Queue (DLQ) in Redis
+  if (job && job.attemptsMade >= (job.opts?.attempts || 5)) {
+    try {
+      const { default: redisConnection } = await import("./redis");
+      const dlqKey = "queue:dlq:dead_letter_events";
+      const payload = JSON.stringify({
+        id: job.id,
+        name: job.name,
+        data: job.data,
+        failedReason: err.message,
+        failedAt: new Date().toISOString(),
+      });
+      await redisConnection.hset(dlqKey, job.id || `job_${Date.now()}`, payload);
+      console.log(`📥 Routed failed job [${job.id}] to Dead Letter Queue (DLQ).`);
+    } catch (dlqErr) {
+      console.error("❌ Failed to push job to DLQ:", dlqErr);
+    }
+  }
 });
 
 // ----------------------------------------------------

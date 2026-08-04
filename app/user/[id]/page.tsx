@@ -1,8 +1,9 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
-import DashboardClient from "@/components/DashboardClient/page";
+import DashboardClient, { UserProfile } from "@/components/DashboardClient/page";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
+import { safeParseArray } from "@/lib/utils/parsers";
 
 export default async function UserDashboard() {
   const session = await auth0.getSession();
@@ -115,13 +116,11 @@ export default async function UserDashboard() {
     redirect("/user/profile-setup");
   }
 
-  const parsedInterest = Array.isArray(user.interest)
-    ? user.interest
-    : JSON.parse(user.interest || "[]");
+  const parsedInterest = safeParseArray(user.interest);
 
   return (
     <DashboardClient 
-      user={user as any} 
+      user={user as UserProfile} 
       parsedInterest={parsedInterest} 
       email={email} 
     />

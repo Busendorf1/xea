@@ -96,11 +96,11 @@ export default function StatementPage() {
   // Calculate totals
   const totalSpent = payments
     .filter((p) => p.status.toLowerCase() === "success")
-    .reduce((sum, p) => sum + parseFloat(p.amount as any), 0);
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const totalWithdrawn = withdrawals
     .filter((w) => w.status.toLowerCase() === "success")
-    .reduce((sum, w) => sum + parseFloat(w.amount as any), 0);
+    .reduce((sum, w) => sum + Number(w.amount || 0), 0);
 
   return (
     <>
@@ -152,7 +152,7 @@ export default function StatementPage() {
                 </div>
               </div>
               <div className={`${styles.statCard} ${styles.spent}`}>
-                <div className={styles.statLabel}>Total Paid (Ads/Monetization)</div>
+                <div className={styles.statLabel}>Total Paid (Ads & Highlights)</div>
                 <div className={styles.statValue}>
                   {formatAmount(totalSpent)}
                 </div>
@@ -187,7 +187,7 @@ export default function StatementPage() {
                 payments.length === 0 ? (
                   <div className={styles.emptyState}>
                     <div className={styles.emptyTitle}>No Payments Found</div>
-                    <p>You have not made any payments for Ads, Highlights, or Monetization yet.</p>
+                    <p>You have not made any payments for Ads or Highlights yet.</p>
                   </div>
                 ) : (
                   <table className={styles.table}>

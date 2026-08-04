@@ -5,7 +5,8 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { createHash } from "crypto";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 
-const MIN_WITHDRAWAL_THRESHOLD = 30000; // 30,000 NGN
+const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
+const MAX_WITHDRAWAL_AMOUNT = 50000; // 50,000 NGN
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,11 +16,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { bankCode, bankName, accountNumber, amount, phone, bvn } = body;
+    const { bankCode, bankName, accountNumber, amount, phone } = body;
 
     const withdrawAmount = parseFloat(amount);
-    if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
-      return NextResponse.json({ error: "Invalid withdrawal amount" }, { status: 400 });
+    if (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT || withdrawAmount > MAX_WITHDRAWAL_AMOUNT) {
+      return NextResponse.json({
+        error: `Withdrawal amount must be between ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")} and ₦${MAX_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}.`,
+      }, { status: 400 });
     }
 
     if (!bankCode || !bankName || !accountNumber || !phone) {
@@ -41,29 +44,20 @@ export async function POST(req: NextRequest) {
     const currentBalance = parseFloat(user.balance || 0);
     const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-    // 2. Validate against withdrawal rules
-    // Rule A: Minimum threshold of 30,000 NGN for everyone
-    if (currentBalance < MIN_WITHDRAWAL_THRESHOLD) {
+    if (currentBalance < withdrawAmount) {
       return NextResponse.json({
-        error: `Insufficient balance. Minimum threshold for withdrawal is ₦${MIN_WITHDRAWAL_THRESHOLD.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
+        error: `Insufficient available balance. Your balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
       }, { status: 400 });
     }
 
-    // Rule B: Deplete to zero (must withdraw exact total balance)
-    if (withdrawAmount !== currentBalance) {
-      return NextResponse.json({
-        error: "Withdrawals must deplete your account to zero. You must withdraw your entire available balance.",
-      }, { status: 400 });
-    }
-
-    // Rule C: Phone matching user profile (Normalized comparison of the last 10 digits)
+    // Rule C: Phone matching user profile (Normalized comparison of last 10 digits)
     const normalizePhone = (num: string) => {
       const cleaned = num.replace(/\D/g, "");
       return cleaned.slice(-10);
     };
 
     if (!user.phone || normalizePhone(user.phone) !== normalizePhone(phone)) {
-      console.warn(`❌ Security Block: Phone mismatch. Input: "${phone}" (normalized: "${normalizePhone(phone)}"), Profile: "${user.phone}" (normalized: "${normalizePhone(user.phone)}")`);
+      console.warn(`❌ Security Block: Phone mismatch. Input: "${phone}", Profile: "${user.phone}"`);
       return NextResponse.json({ error: "Verification failed. Phone number must match your registered account phone number." }, { status: 400 });
     }
 
@@ -85,10 +79,10 @@ export async function POST(req: NextRequest) {
 
     if (duplicateBank && duplicateBank.length > 0) {
       console.warn(`❌ Security Block: Bank details already used by ${duplicateBank[0].user_email}`);
-      return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
+      return NextResponse.json({ error: "Verification failed. Bank account details are registered to another profile." }, { status: 400 });
     }
 
-    // Rule E: First Bank Account Enforcement (Fraud Prevention)
+    // Rule E: First Bank Account Enforcement
     const { data: pastWithdrawal, error: pastWithdrawalErr } = await supabaseAdmin
       .from("payments")
       .select("metadata")
@@ -98,31 +92,35 @@ export async function POST(req: NextRequest) {
       .order("created_at", { ascending: true })
       .limit(1);
 
-    if (pastWithdrawalErr) {
-      console.error("❌ Database error checking past withdrawals:", pastWithdrawalErr);
-      return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 500 });
-    }
-
-    if (pastWithdrawal && pastWithdrawal.length > 0) {
+    if (!pastWithdrawalErr && pastWithdrawal && pastWithdrawal.length > 0) {
       const firstMeta = pastWithdrawal[0].metadata as any;
       const firstAccNum = firstMeta?.accountNumber;
       const firstBankCode = firstMeta?.bankCode;
 
       if (firstAccNum && firstBankCode) {
         if (firstAccNum.trim() !== accountNumber.trim() || firstBankCode.trim() !== bankCode.trim()) {
-          console.warn(`❌ Security Block: Bank mismatch for ${email}. First: ${firstAccNum} (${firstBankCode}), Input: ${accountNumber} (${bankCode})`);
-          return NextResponse.json({ error: "For security and fraud prevention, you must continue to withdraw to the bank account used on your first withdrawal. Please contact support to update your bank details." }, { status: 400 });
+          return NextResponse.json({ error: "For security and fraud prevention, withdrawals must use the bank account associated with your initial payout." }, { status: 400 });
         }
       }
     }
 
-    // 3. Resolve account details to verify account name (for transaction log description)
-    console.log(`🏦 Resolving bank account ${accountNumber} with code ${bankCode}`);
-    const resolvedAccount = await PaystackService.resolveAccount(accountNumber, bankCode);
-    const accountName = resolvedAccount.account_name;
+    // Attempt Bank Resolution & Payout Initiation with Network Fault Recovery
+    let accountName = "Verified Account";
+    try {
+      console.log(`🏦 Resolving bank account ${accountNumber} with code ${bankCode}`);
+      const resolvedAccount = await PaystackService.resolveAccount(accountNumber, bankCode);
+      if (resolvedAccount && resolvedAccount.account_name) {
+        accountName = resolvedAccount.account_name;
+      }
+    } catch (netErr: any) {
+      console.warn("⚠️ Network/API issue resolving bank account. Resetting balance state for user retry:", netErr?.message || netErr);
+      return NextResponse.json({
+        error: "Network error connecting to payout gateway. Your balance remains unchanged. Please try again shortly.",
+      }, { status: 503 });
+    }
 
-    // 4. Update user's balance atomically using Optimistic Concurrency Control (OCC)
-    const newBalance = 0;
+    // Deduct user's balance atomically using Optimistic Concurrency Control (OCC)
+    const newBalance = Math.max(0, currentBalance - withdrawAmount);
     const newWithdrawal = currentWithdrawal + withdrawAmount;
 
     const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
@@ -132,21 +130,18 @@ export async function POST(req: NextRequest) {
         withdrawal: newWithdrawal,
       })
       .ilike("email", email)
-      .eq("balance", currentBalance) // Ensures no race conditions / double spends occurred
+      .eq("balance", currentBalance)
       .select();
 
     if (userUpdateErr || !updatedUser || updatedUser.length === 0) {
-      console.error("❌ Error updating user balance during withdrawal (OCC check failed):", userUpdateErr);
-      return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 400 });
+      console.error("❌ OCC check failed during withdrawal balance deduction:", userUpdateErr);
+      return NextResponse.json({ error: "Balance mismatch or concurrent transaction detected. Please refresh and try again." }, { status: 409 });
     }
 
-    // Invalidate cached profile in Redis
-    await invalidateCachedProfile(email);
+    // Generate unique transaction reference
+    const reference = `trsf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    // Generate a unique transaction reference
-    const reference = `trsf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // 5. Log pending withdrawal transaction in payments table
+    // Record pending withdrawal in payments ledger
     const { error: paymentInsertErr } = await supabaseAdmin.from("payments").insert({
       user_email: email,
       reference,
@@ -160,24 +155,33 @@ export async function POST(req: NextRequest) {
         accountNumber,
         accountName,
         phone,
-        requires_review: false, // Since it's automatically approved for the next batch run
       },
     });
 
     if (paymentInsertErr) {
-      console.error("❌ Error inserting withdrawal payment record:", paymentInsertErr);
+      console.error("❌ Error inserting payment ledger record:", paymentInsertErr);
+      // Auto-rollback balance update on ledger write error to ensure zero locked balance
+      await supabaseAdmin
+        .from("users")
+        .update({ balance: currentBalance, withdrawal: currentWithdrawal })
+        .ilike("email", email);
+
+      await invalidateCachedProfile(email);
+      return NextResponse.json({ error: "Failed to queue withdrawal record due to network error. Balance restored." }, { status: 500 });
     }
 
-    // 6. Create user notification
+    await invalidateCachedProfile(email);
+
+    // Send user notification
     await supabaseAdmin.from("notifications").insert({
       user_email: email,
       title: "Withdrawal Queued 🏦",
-      message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${bankName} (${accountNumber}) has been queued and will be processed in the next batch.`,
+      message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${bankName} (${accountNumber}) has been queued and will be processed shortly.`,
     });
 
     return NextResponse.json({
       success: true,
-      message: "Withdrawal requested and queued successfully.",
+      message: "Withdrawal requested successfully.",
       reference,
       newBalance,
     });

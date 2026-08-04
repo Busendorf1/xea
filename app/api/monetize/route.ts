@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import redisConnection from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
+
+const MONETIZE_STATUS_TTL_SECONDS = 15;
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,11 +16,24 @@ export async function GET(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
+    const cacheKey = `monetize:status:${emailLower}`;
 
-    // Call RPC check_and_update_monetization_status to enforce 7-day inactivity rule and fetch status
+    // 1. Edge Redis Cache Read Path for High-Scale Viral Traffic
+    try {
+      const cached = await redisConnection.get(cacheKey);
+      if (cached) {
+        return NextResponse.json(JSON.parse(cached));
+      }
+    } catch (e) {
+      console.warn("⚠️ Redis get error in /api/monetize:", e);
+    }
+
+    // 2. Call RPC check_and_update_monetization_status to enforce 7-day inactivity rule and fetch status
     const { data: statusData, error: statusErr } = await supabaseAdmin.rpc("check_and_update_monetization_status", {
       p_email: emailLower,
     });
+
+    let payload: any;
 
     if (statusErr || !statusData || statusData.length === 0) {
       console.warn("⚠️ RPC check_and_update_monetization_status warning, querying users directly:", statusErr?.message);
@@ -31,7 +47,7 @@ export async function GET(req: NextRequest) {
       const clicks = uData?.monetization_clicks ?? 0;
       const isMonetized = !!(uData?.monetized === "true" || uData?.monetized === "yes" || uData?.monetized === true || clicks >= 300);
       
-      return NextResponse.json({
+      payload = {
         success: true,
         isMonetized,
         clicksCount: clicks,
@@ -39,27 +55,29 @@ export async function GET(req: NextRequest) {
         targetClicks: 300,
         daysInactive: 0,
         lastActiveAt: uData?.last_active_at || null,
-      });
+      };
+    } else {
+      const row = statusData[0];
+      const isMonetized = !!row.monetized;
+      const clicksCount = Number(row.monetization_clicks || 0);
+      const clicksRemaining = Number(row.clicks_remaining || Math.max(0, 300 - clicksCount));
+      const daysInactive = Number(row.days_inactive || 0);
+
+      payload = {
+        success: true,
+        isMonetized,
+        clicksCount,
+        clicksRemaining,
+        targetClicks: 300,
+        daysInactive,
+        statusMessage: row.status_message,
+      };
     }
 
-    const row = statusData[0];
-    const isMonetized = !!row.monetized;
-    const clicksCount = Number(row.monetization_clicks || 0);
-    const clicksRemaining = Number(row.clicks_remaining || Math.max(0, 300 - clicksCount));
-    const daysInactive = Number(row.days_inactive || 0);
+    // Cache payload for 15s to absorb viral surge reads
+    redisConnection.set(cacheKey, JSON.stringify(payload), "EX", MONETIZE_STATUS_TTL_SECONDS).catch(() => {});
 
-    // Invalidate Redis profile cache to keep session synced
-    invalidateCachedProfile(emailLower).catch(() => {});
-
-    return NextResponse.json({
-      success: true,
-      isMonetized,
-      clicksCount,
-      clicksRemaining,
-      targetClicks: 300,
-      daysInactive,
-      statusMessage: row.status_message,
-    });
+    return NextResponse.json(payload);
   } catch (err: any) {
     console.error("❌ Error in GET /api/monetize:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
@@ -86,6 +104,7 @@ export async function POST(req: NextRequest) {
     }
 
     invalidateCachedProfile(emailLower).catch(() => {});
+    redisConnection.del(`monetize:status:${emailLower}`).catch(() => {});
 
     const row = data?.[0] || { new_click_count: 0, is_now_monetized: false };
     return NextResponse.json({

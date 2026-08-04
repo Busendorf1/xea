@@ -27,9 +27,18 @@ export async function setCachedProfile(email: string, profile: any): Promise<voi
   }
 }
 
-// Rely 100% on Natural TTL Expiry across the entire app
-export async function invalidateCachedProfile(_email: string): Promise<void> {
-  // No-op: relying on natural 60-second TTL expiry to eliminate write-path Redis churn
+export async function invalidateCachedProfile(email: string): Promise<void> {
+  if (!email) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    await Promise.all([
+      redisConnection.del(`user:profile:${emailLower}`),
+      redisConnection.del(`statement:payments:${emailLower}`),
+      redisConnection.del(`statement:withdrawals:${emailLower}`),
+    ]);
+  } catch (err) {
+    console.error("❌ Redis invalidateCachedProfile error:", err);
+  }
 }
 
 // ----------------------------------------------------

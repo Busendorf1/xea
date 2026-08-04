@@ -7,11 +7,9 @@ export const dynamic = "force-dynamic";
 
 // Admin email whitelist logic
 const getAdminEmails = (): string[] => {
-  const defaultAdmins = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
-  const envAdmins = process.env.ADMIN_EMAILS
-    ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase())
+  return process.env.ADMIN_EMAILS
+    ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
     : [];
-  return envAdmins.length > 0 ? envAdmins : defaultAdmins;
 };
 
 // Middleware-like verification helper

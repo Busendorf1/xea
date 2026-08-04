@@ -31,13 +31,13 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  // Define admin emails whitelist (defaulting to the requested ones)
-  const defaultAdmins = ["admin@xea.com", "nonsom019@gmail.com", "nonsom2023@gmail.com"];
-  const envAdmins = process.env.ADMIN_EMAILS 
-    ? process.env.ADMIN_EMAILS.split(",").map(e => e.trim().toLowerCase())
-    : [];
-  
-  const adminEmails = envAdmins.length > 0 ? envAdmins : defaultAdmins;
+  // Define admin emails whitelist via environment variables
+  const envAdmins = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const adminEmails = envAdmins;
 
   const isAdmin = adminEmails.includes(email);
 

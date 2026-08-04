@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, getCachedHighlights, setCachedHighlights } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
+import { safeParseArray } from "@/lib/utils/parsers";
 
 export const dynamic = "force-dynamic";
 
@@ -48,11 +49,7 @@ export async function GET(req: NextRequest) {
     } else {
       const user = await getCachedProfile(email);
       if (user && user.interest) {
-        interests = Array.isArray(user.interest)
-          ? user.interest
-          : typeof user.interest === "string"
-          ? user.interest.split(",").map((i: string) => i.trim()).filter(Boolean)
-          : [];
+        interests = safeParseArray(user.interest);
       } else {
         const { data: dbUser } = await supabaseReadOnly
           .from("users")
@@ -61,11 +58,7 @@ export async function GET(req: NextRequest) {
           .maybeSingle();
 
         if (dbUser && dbUser.interest) {
-          interests = Array.isArray(dbUser.interest)
-            ? dbUser.interest
-            : typeof dbUser.interest === "string"
-            ? dbUser.interest.split(",").map((i: string) => i.trim()).filter(Boolean)
-            : [];
+          interests = safeParseArray(dbUser.interest);
         }
       }
     }

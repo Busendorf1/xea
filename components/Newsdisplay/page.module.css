@@ -8,7 +8,7 @@
 
 .adCard {
   border: 1px solid var(--card-border);
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 0.3rem;
   background: var(--card-bg);
   transition: all 0.3s ease;
@@ -30,7 +30,7 @@
 
 .adCard {
   border: 1px solid var(--card-border);
-  border-radius: 12px;
+  border-radius: 4px;
   background: var(--card-bg);
   transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
   transform-origin: center;
@@ -45,7 +45,7 @@
 
 .adImage {
   width: 100%;
-  border-radius: 8px;
+  border-radius: 4px;
   margin-bottom: 0.5rem;
   max-height: 115px;
   object-fit: cover;
@@ -67,7 +67,7 @@
   background: var(--primary-glow);
   color: var(--primary);
   padding: 0.2rem 0.6rem;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.6rem;
 }
 
@@ -77,7 +77,7 @@
   text-align: center;
   padding: 1.5rem 1rem;
   background-color: var(--card-bg);
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px dashed var(--card-border);
   margin-top: 1rem;
   line-height: 1.4;
@@ -102,7 +102,7 @@
   padding: 0.5rem 1.25rem;
   font-size: 0.75rem;
   font-weight: 500;
-  border-radius: 980px;
+  border-radius: 4px;
   background-color: var(--card-bg);
   color: var(--foreground);
   border: 1px solid var(--card-border);

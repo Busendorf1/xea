@@ -58,7 +58,7 @@ interface AdminDashboardClientProps {
   adminEmails: string[];
 }
 
-type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads";
+type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues";
 
 function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -255,6 +255,12 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     helpTicketsCount: 0,
     pausedAdsCount: 0
   });
+
+  // DLQ Queues state
+  const [dlqJobs, setDlqJobs] = useState<any[]>([]);
+  const [dlqCount, setDlqCount] = useState<number>(0);
+  const [dlqLoading, setDlqLoading] = useState<boolean>(false);
+  const [dlqActionStatus, setDlqActionStatus] = useState<string>("");
 
   // Direct posting form states
   const [adForm, setAdForm] = useState({
@@ -573,6 +579,71 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
+  const fetchDlqJobs = useCallback(async () => {
+    try {
+      setDlqLoading(true);
+      const res = await fetch("/api/admin/queues");
+      if (res.ok) {
+        const data = await res.json();
+        setDlqJobs(data.jobs || []);
+        setDlqCount(data.count || 0);
+      }
+    } catch (err: any) {
+      console.error("Error fetching DLQ jobs:", err);
+    } finally {
+      setDlqLoading(false);
+    }
+  }, []);
+
+  const handleRetryDlqAll = async () => {
+    setDlqActionStatus("Retrying all failed jobs...");
+    try {
+      const res = await fetch("/api/admin/queues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry_all" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDlqActionStatus(`Successfully re-queued ${data.retriedCount || 0} failed jobs!`);
+        fetchDlqJobs();
+      }
+    } catch (err: any) {
+      setDlqActionStatus(`Retry failed: ${err.message}`);
+    }
+  };
+
+  const handleRetryDlqSingle = async (jobId: string) => {
+    try {
+      const res = await fetch("/api/admin/queues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry_job", jobId }),
+      });
+      if (res.ok) {
+        fetchDlqJobs();
+      }
+    } catch (err: any) {
+      console.error("Single job retry failed:", err);
+    }
+  };
+
+  const handleClearDlqAll = async () => {
+    if (!confirm("Are you sure you want to clear all DLQ records?")) return;
+    try {
+      const res = await fetch("/api/admin/queues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_all" }),
+      });
+      if (res.ok) {
+        fetchDlqJobs();
+      }
+    } catch (err: any) {
+      console.error("Clear DLQ failed:", err);
+    }
+  };
+
   // Synchronize loading on state changes
   useEffect(() => {
     if (activeTab === "overview") {
@@ -591,6 +662,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     } else if (activeTab === "reported-ads") {
       fetchReportedAds(reportedAdsPage, reportedAdsSearch);
+    } else if (activeTab === "queues") {
+      fetchDlqJobs();
     }
   }, [activeTab, usersPage, usersLimit, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage, reportedAdsSearch]);
 
@@ -1933,6 +2006,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <span>Ad Guard / Reports ({reportedAdsCount})</span>
           </button>
 
+          <button onClick={() => handleTabChange("queues")} className={`${styles.tabButton} ${activeTab === "queues" ? styles.tabButtonActive : ""}`}>
+            <AlertCircle size={18} />
+            <span>Failed Queues / DLQ</span>
+          </button>
+
           <div style={{ marginTop: "auto", padding: "1rem", borderTop: "1px solid var(--card-border)" }}>
             <button onClick={handleRefresh} disabled={refreshing || loading} className={styles.btnAction} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
               <RefreshCw size={14} className={refreshing ? "spin" : ""} />
@@ -2991,6 +3069,85 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   </div>
                   {renderPagination(reportedAdsPage, setReportedAdsPage, reportedAdsCount)}
                 </>
+              )}
+            </>
+          )}
+
+          {/* 11. FAILED QUEUES / DLQ TAB */}
+          {activeTab === "queues" && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h1 className={styles.sectionTitle}>Failed Queues & Dead Letter Queue (DLQ)</h1>
+                  <p className={styles.sectionSubtitle}>Inspect background queue jobs that failed maximum retries. Manually trigger retries or clear stale queue entries.</p>
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    onClick={handleRetryDlqAll}
+                    disabled={dlqLoading || dlqJobs.length === 0}
+                    className={styles.btnAction}
+                    style={{ backgroundColor: "#10b981", color: "#fff", display: "flex", alignItems: "center", gap: "0.5rem" }}
+                  >
+                    <RefreshCw size={14} className={dlqLoading ? "spin" : ""} />
+                    <span>Retry All Failed Jobs ({dlqCount})</span>
+                  </button>
+                  <button
+                    onClick={handleClearDlqAll}
+                    disabled={dlqLoading || dlqJobs.length === 0}
+                    className={`${styles.btnAction} ${styles.btnDanger}`}
+                  >
+                    Clear DLQ
+                  </button>
+                </div>
+              </div>
+
+              {dlqActionStatus && (
+                <div style={{ padding: "0.75rem 1rem", borderRadius: "8px", backgroundColor: "#1e293b", color: "#38bdf8", marginBottom: "1rem", fontSize: "0.85rem" }}>
+                  {dlqActionStatus}
+                </div>
+              )}
+
+              {dlqLoading ? (
+                <div className={styles.loadingText}>Fetching DLQ entries from Redis...</div>
+              ) : dlqJobs.length === 0 ? (
+                <div className={styles.emptyState}>No failed background queue jobs. All systems operational! 🎉</div>
+              ) : (
+                <div className={styles.cardsGrid}>
+                  {dlqJobs.map((job) => (
+                    <div key={job.id} className={styles.cardItem}>
+                      <div className={styles.cardHeader}>
+                        <div>
+                          <h3 className={styles.cardTitle}>Job: {job.name || job.id}</h3>
+                          <span className={styles.cardMeta}>
+                            Failed at: {job.failedAt ? new Date(job.failedAt).toLocaleString() : "Unknown"}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "0.75rem", padding: "0.2rem 0.6rem", borderRadius: "4px", backgroundColor: "#ef444422", color: "#ef4444", fontWeight: 700 }}>
+                          FAILED
+                        </span>
+                      </div>
+
+                      <div className={styles.cardBody}>
+                        <div style={{ fontSize: "0.85rem", color: "#f87171", marginBottom: "0.5rem" }}>
+                          <strong>Reason:</strong> {job.failedReason || "Exhausted retry limits"}
+                        </div>
+                        <pre style={{ fontSize: "0.75rem", backgroundColor: "#090d16", padding: "0.75rem", borderRadius: "6px", overflowX: "auto", color: "#94a3b8" }}>
+                          {JSON.stringify(job.data || job.rawPayload || {}, null, 2)}
+                        </pre>
+                      </div>
+
+                      <div className={styles.cardFooter}>
+                        <button
+                          onClick={() => handleRetryDlqSingle(job.id)}
+                          className={styles.btnAction}
+                          style={{ backgroundColor: "#3b82f6", color: "#fff" }}
+                        >
+                          Retry Job
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}

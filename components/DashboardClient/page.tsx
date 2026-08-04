@@ -30,7 +30,7 @@ import styles from "./page.module.css";
 import Footer from "../Footers/page";
 import { resolveAtwTier } from "@/lib/attentionTierEngine";
 
-interface UserProfile {
+export interface UserProfile {
   id: string;
   profileImage: string | null;
   username: string;
@@ -297,13 +297,13 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
       return;
     }
 
-    if (amountNum < 30000) {
-      setWithdrawalError(`Minimum withdrawal threshold is ${formatCurrency(30000)}`);
+    if (amountNum < 10000 || amountNum > 50000) {
+      setWithdrawalError("Withdrawal amount must be between ₦10,000 and ₦50,000");
       return;
     }
 
-    if (amountNum !== user.balance) {
-      setWithdrawalError("Withdrawals must deplete your account to zero. You must withdraw your entire balance.");
+    if (amountNum > user.balance) {
+      setWithdrawalError("Insufficient wallet balance for this withdrawal amount");
       return;
     }
 
@@ -910,7 +910,7 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
         {/* Withdrawal Modal */}
         {showWithdrawModal && (
           <div className={styles.modalOverlay}>
-            <div className={styles.modalContainer}>
+            <div className={styles.modalContent}>
               <div className={styles.modalHeader}>
                 <h3>Request Bank Withdrawal</h3>
                 <button onClick={() => setShowWithdrawModal(false)} className={styles.closeBtn}>
@@ -967,15 +967,19 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                 )}
 
                    <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Amount (₦)</label>
+                  <label className={styles.formLabel}>Withdrawal Amount (₦)</label>
                   <input
-                    type="text"
-                    readOnly
-                    value={formatCurrency(withdrawAmount)}
-                    className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    type="number"
+                    min={10000}
+                    max={50000}
+                    placeholder="Enter amount between 10,000 and 50,000"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    required
+                    className={styles.formInput}
                   />
                   <span className={styles.formHintSmall}>
-                    Note: Withdrawals must deplete your wallet to zero. Minimum threshold is {formatCurrency(30000)}.
+                    Note: You can withdraw any amount between ₦10,000 and ₦50,000.
                   </span>
                 </div>
 

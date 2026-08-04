@@ -28,7 +28,27 @@ export default function ProfileSetup() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const [formData, setFormData] = useState({
+interface ProfileFormData {
+  dob: string;
+  phone: string;
+  country: string;
+  state: string;
+  location: string;
+  bio: string;
+  gender: string;
+  employment: string;
+  intlTravel: string;
+  localTravel: string;
+  industry: string[];
+  interest: string[];
+  behavior: string[];
+  lifestyle: string[];
+  personality: string[];
+  businessName: string;
+  [key: string]: string | string[];
+}
+
+  const [formData, setFormData] = useState<ProfileFormData>({
     dob: "",
     phone: "",
     country: "",
@@ -74,7 +94,7 @@ export default function ProfileSetup() {
 
   const handleCheckboxChange = (name: string, value: string, checked: boolean) => {
     setFormData(prev => {
-      const arr = (prev as any)[name] as string[];
+      const arr = Array.isArray(prev[name]) ? (prev[name] as string[]) : [];
       const updated = checked ? [...arr, value] : arr.filter(v => v !== value);
       return { ...prev, [name]: updated };
     });
@@ -88,20 +108,6 @@ export default function ProfileSetup() {
       const msg = "Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.";
       setErrorMessage(msg);
       setFieldErrors({ country: "Required", state: "Required", location: "Required" });
-      return false;
-    }
-
-    if (!formData.interest || formData.interest.length === 0) {
-      const msg = "Select at least one Interest so we can target relevant ads for you.";
-      setErrorMessage(msg);
-      setFieldErrors({ interest: "Select at least one interest" });
-      return false;
-    }
-
-    if (!formData.industry || formData.industry.length === 0) {
-      const msg = "Select at least one Industry so we can target relevant ads for you.";
-      setErrorMessage(msg);
-      setFieldErrors({ industry: "Select at least one industry" });
       return false;
     }
 
@@ -122,7 +128,17 @@ export default function ProfileSetup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep1()) return;
+    if (!validateStep1()) {
+      setStep(1);
+      return;
+    }
+
+    if (!formData.interest || formData.interest.length === 0) {
+      const msg = "Select at least one Interest so we can target relevant ads for you.";
+      setErrorMessage(msg);
+      setFieldErrors({ interest: "Select at least one interest" });
+      return;
+    }
 
     setLoading(true);
     setErrorMessage(null);
@@ -169,29 +185,32 @@ export default function ProfileSetup() {
     }
   };
 
-  const renderMultiSelect = (label: string, name: keyof typeof openDropdowns, options: string[]) => (
-    <div className={styles.dropdownContainer}>
-      <label className={styles.inputLabel}>{label}</label>
-      <div className={styles.dropdownHeader} onClick={() => toggleDropdown(name)}>
-        <span>{(formData as any)[name].length > 0 ? `${(formData as any)[name].length} selected` : `Select ${label}`}</span>
-        <span>{openDropdowns[name] ? "▲" : "▼"}</span>
-      </div>
-      {openDropdowns[name] && (
-        <div className={styles.checkboxGroup}>
-          {options.map((opt, i) => (
-            <label key={i} className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={(formData as any)[name].includes(opt)}
-                onChange={(e) => handleCheckboxChange(name, opt, e.target.checked)}
-              />
-              <span>{opt}</span>
-            </label>
-          ))}
+  const renderMultiSelect = (label: string, name: keyof typeof openDropdowns, options: string[]) => {
+    const selectedArr = (formData[name] as string[]) || [];
+    return (
+      <div className={styles.dropdownContainer}>
+        <label className={styles.inputLabel}>{label}</label>
+        <div className={styles.dropdownHeader} onClick={() => toggleDropdown(name)}>
+          <span>{selectedArr.length > 0 ? `${selectedArr.length} selected` : `Select ${label}`}</span>
+          <span>{openDropdowns[name] ? "▲" : "▼"}</span>
         </div>
-      )}
-    </div>
-  );
+        {openDropdowns[name] && (
+          <div className={styles.checkboxGroup}>
+            {options.map((opt, i) => (
+              <label key={i} className={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={selectedArr.includes(opt)}
+                  onChange={(e) => handleCheckboxChange(name, opt, e.target.checked)}
+                />
+                <span>{opt}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (authLoading) {
     return (

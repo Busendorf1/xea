@@ -63,34 +63,41 @@ export async function bufferAdClick(adId: string, clickType: "phone" | "whatsapp
   }
 }
 
+// Atomic Lua script: fetches all key-value pairs from a hash and deletes the hash atomically in a single Redis transaction
+const LUA_FETCH_AND_DEL = `
+  local data = redis.call('HGETALL', KEYS[1])
+  if #data > 0 then
+    redis.call('DEL', KEYS[1])
+  end
+  return data
+`;
+
 /**
- * Bulk Flush Worker: Flushes accumulated Redis impression & click counts to PostgreSQL in a single batch.
- * Can be called periodically by Cron or API background runner.
+ * Bulk Flush Worker: Flushes accumulated Redis impression & click counts to PostgreSQL atomically in batches.
  */
-export async function flushImpressionBuffersToDB(): Promise<{ flushedImpressions: number }> {
+export async function flushImpressionBuffersToDB(): Promise<{ flushedImpressions: number; flushedClicks: number }> {
   if (!redisConnection || redisConnection.status !== "ready") {
-    return { flushedImpressions: 0 };
+    return { flushedImpressions: 0, flushedClicks: 0 };
   }
 
-  try {
-    // 1. Fetch and clear impression buffer atomically
-    const impressionsData = await redisConnection.hgetall(REDIS_KEY_IMPRESSIONS);
-    if (impressionsData && Object.keys(impressionsData).length > 0) {
-      await redisConnection.del(REDIS_KEY_IMPRESSIONS);
+  let flushedImpressions = 0;
+  let flushedClicks = 0;
 
-      let count = 0;
-      for (const [adId, deltaStr] of Object.entries(impressionsData)) {
-        const delta = parseInt(deltaStr, 10);
+  try {
+    // 1. Atomically fetch and clear impression buffer using Lua script
+    const rawImpressionPairs = (await redisConnection.eval(LUA_FETCH_AND_DEL, 1, REDIS_KEY_IMPRESSIONS)) as string[];
+    if (rawImpressionPairs && rawImpressionPairs.length > 0) {
+      for (let i = 0; i < rawImpressionPairs.length; i += 2) {
+        const adId = rawImpressionPairs[i];
+        const delta = parseInt(rawImpressionPairs[i + 1], 10);
         if (delta > 0) {
-          count += delta;
-          // Atomically increment in DB
+          flushedImpressions += delta;
           try {
             await supabaseAdmin.rpc("increment_ad_impressions_bulk", {
               p_ad_id: adId,
               p_count: delta,
             });
           } catch (err) {
-            // Direct update fallback
             const { data: current } = await supabaseAdmin
               .from("addsactive")
               .select("impression_count")
@@ -107,11 +114,41 @@ export async function flushImpressionBuffersToDB(): Promise<{ flushedImpressions
           }
         }
       }
-      return { flushedImpressions: count };
+    }
+
+    // 2. Atomically fetch and clear all click types
+    const clickKeys: Record<string, "phone" | "whatsapp" | "website" | "email" | "product_cta"> = {
+      [REDIS_KEY_CLICKS_PHONE]: "phone",
+      [REDIS_KEY_CLICKS_WHATSAPP]: "whatsapp",
+      [REDIS_KEY_CLICKS_WEBSITE]: "website",
+      [REDIS_KEY_CLICKS_EMAIL]: "email",
+      [REDIS_KEY_CLICKS_PRODUCT_CTA]: "product_cta",
+    };
+
+    for (const [key, clickType] of Object.entries(clickKeys)) {
+      const rawClickPairs = (await redisConnection.eval(LUA_FETCH_AND_DEL, 1, key)) as string[];
+      if (rawClickPairs && rawClickPairs.length > 0) {
+        for (let i = 0; i < rawClickPairs.length; i += 2) {
+          const adId = rawClickPairs[i];
+          const count = parseInt(rawClickPairs[i + 1], 10);
+          if (count > 0) {
+            flushedClicks += count;
+            try {
+              await supabaseAdmin.rpc("increment_ad_clicks_bulk", {
+                p_ad_id: adId,
+                p_click_type: clickType,
+                p_count: count,
+              });
+            } catch (err) {
+              console.error(`❌ Error flushing ${clickType} clicks for ad ${adId}:`, err);
+            }
+          }
+        }
+      }
     }
   } catch (err) {
-    console.error("❌ Error flushing impression buffer to DB:", err);
+    console.error("❌ Error in flushImpressionBuffersToDB:", err);
   }
 
-  return { flushedImpressions: 0 };
+  return { flushedImpressions, flushedClicks };
 }

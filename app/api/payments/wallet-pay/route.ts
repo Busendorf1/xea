@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { type, amount, metadata } = body;
 
-    // Validate type
-    const validTypes = ["ad", "highlight", "monetization_standard", "monetization_instant"];
+    // Validate type (Only Ad & Highlight campaigns)
+    const validTypes = ["ad", "highlight"];
     if (!validTypes.includes(type)) {
       return NextResponse.json({ error: "Invalid payment type" }, { status: 400 });
     }
@@ -278,24 +278,6 @@ export async function POST(req: NextRequest) {
         message: isBidded
           ? `Your priority bidded campaign with ${adData.impressions} attentions was paid using your wallet balance and submitted for priority delivery!`
           : `Your ad campaign with ${adData.impressions} attentions was paid using your wallet balance and submitted for review.`,
-      });
-    } else if (type === "monetization_standard" || type === "monetization_instant") {
-      const planType = type === "monetization_instant" ? "instant" : "standard";
-
-      const { error: rpcError } = await supabaseAdmin.rpc("activate_monetization", {
-        p_email: email,
-        p_type: planType,
-      });
-
-      if (rpcError) {
-        console.error(`❌ Wallet pay: activate_monetization RPC failed for ${email}:`, rpcError);
-        return NextResponse.json({ error: "Payment succeeded but failed to activate monetization" }, { status: 500 });
-      }
-
-      await supabaseAdmin.from("notifications").insert({
-        user_email: email,
-        title: "Monetization Subscription Active",
-        message: `Your account monetization is now active on the ${planType} plan. Payment was deducted from your wallet balance.`,
       });
     }
     // Invalidate cached profile in Redis

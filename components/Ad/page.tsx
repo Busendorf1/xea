@@ -797,7 +797,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     type="range"
                     id="impression"
                     min={1}
-                    max={5000000}
+                    max={10000} /*as our user increases, we increase the targetable number so we can deliver on our capacity*/
                     step={1}
                     value={formSelections.impressions}
                     onChange={(e) =>
@@ -992,7 +992,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       />
                       {formSelections.productCtaLink && isSubsidizedLink(formSelections.productCtaLink) && (
                         <div className={styles.subsidyBanner}>
-                          <Sparkles size={16} color="#34d399" />
+                          {/* <Sparkles size={16} color="#34d399" /> */}
                           <span>Baggyt is a premium subscriber, 30% Off your ad cost applies.</span>
                         </div>
                       )}

@@ -57,7 +57,7 @@ padding: "2rem"
   padding: 0.75rem 1rem;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 8px;
+  border-radius: 4px;
   text-decoration: none;
   color: var(--foreground);
   font-weight: 500;
@@ -79,7 +79,7 @@ padding: "2rem"
   padding: 0.75rem 1rem;
   background-color: var(--card-bg);
   border: 1px solid #ff0000;
-  border-radius: 8px;
+  border-radius: 4px;
   text-decoration: none;
   color: #cc0000;
   font-weight: 500;
@@ -203,7 +203,7 @@ padding: "2rem"
   border: 1px solid var(--card-border);
   background-color: var(--card-bg);
   color: var(--foreground);
-  border-radius: 980px;
+  border-radius: 4px;
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
@@ -297,7 +297,7 @@ padding: "2rem"
   background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(14, 165, 233, 0.02) 100%);
   border: 1px solid rgba(14, 165, 233, 0.2);
   padding: 0.5rem 0.85rem;
-  border-radius: 12px;
+  border-radius: 4px;
   font-weight: 600;
   margin-top: 0.5rem;
   width: fit-content;
@@ -332,7 +332,7 @@ padding: "2rem"
 .walletCard {
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.04) 0%, rgba(138, 43, 226, 0.02) 100%);
   padding: 1.25rem 1.5rem;
-  border-radius: 16px;
+  border-radius: 4px;
   border: none;
   display: flex;
   flex-direction: column;
@@ -370,7 +370,7 @@ padding: "2rem"
   background: var(--foreground);
   color: var(--background);
   border: none;
-  border-radius: 980px;
+  border-radius: 4px;
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
@@ -435,7 +435,7 @@ padding: "2rem"
   background-color: var(--sidebar-bg);
   color: var(--text-muted);
   padding: 0.25rem 0.75rem;
-  border-radius: 980px;
+  border-radius: 4px;
   font-size: 0.75rem;
   font-weight: 600;
   white-space: normal;
@@ -525,7 +525,7 @@ padding: "2rem"
   padding: 0.5rem 1rem;
   background: rgba(0, 102, 204, 0.05);
   border: 1px solid rgba(0, 102, 204, 0.1);
-  border-radius: 20px;
+  border-radius: 4px;
   display: inline-flex;
   flex-direction: row;
   align-items: center;

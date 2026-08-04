@@ -187,8 +187,12 @@ export async function GET(req: NextRequest) {
 
       const candidateAds = Array.from(candidateAdsMap.values());
 
-      // Shuffle candidate ads in memory
-      const shuffledCandidateAds = candidateAds.sort(() => 0.5 - Math.random());
+      // Shuffle candidate ads in memory using performant O(N) Fisher-Yates shuffle
+      const shuffledCandidateAds = [...candidateAds];
+      for (let i = shuffledCandidateAds.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledCandidateAds[i], shuffledCandidateAds[j]] = [shuffledCandidateAds[j], shuffledCandidateAds[i]];
+      }
       const candidateAdIds = shuffledCandidateAds.map((a: Ad) => a.id);
 
       // Extract publisher emails to fetch basic profile info server-side

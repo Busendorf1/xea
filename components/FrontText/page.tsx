@@ -89,7 +89,7 @@ export default function FrontText() {
               className={styles.howItWorksBtn}
             >
               <span>How Paayh Works</span>
-              <span className={styles.arrowIcon}>▶</span>
+              <span className={styles.arrowIcon}></span>
             </button>
           </div>
 

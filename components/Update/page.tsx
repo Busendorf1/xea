@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Footer from "../Footer/page";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
+import AppleSpinner from "@/components/ui/AppleSpinner";
 
 import {
   ALL_INDUSTRIES as industries,
@@ -359,7 +360,21 @@ export default function Update({ email }: Props) {
     </div>
   );
 
-  if (loading) return <p>Loading profile...</p>;
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "var(--background)",
+        }}
+      >
+        <AppleSpinner size={42} />
+      </div>
+    );
+  }
   if (!dbProfile) return <p>Profile not found.</p>;
 
   const isFormDisabled = timeRemaining !== null && timeRemaining > 0;

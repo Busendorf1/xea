@@ -15,11 +15,25 @@ export async function GET() {
       return NextResponse.json({ error: "No email associated with session" }, { status: 400 });
     }
 
-    // Fetch user withdrawals ordered by created_at desc
+    const emailLower = email.toLowerCase().trim();
+    const cacheKey = `statement:withdrawals:${emailLower}`;
+
+    // 1. Redis Cache Read Path
+    try {
+      const { default: redisConnection } = await import("@/lib/redis");
+      const cached = await redisConnection.get(cacheKey);
+      if (cached) {
+        return NextResponse.json(JSON.parse(cached));
+      }
+    } catch (redisErr) {
+      console.warn("⚠️ Redis read warning in withdrawals history:", redisErr);
+    }
+
+    // 2. Database Fetch Path
     const { data: withdrawals, error } = await supabaseAdmin
       .from("payments")
       .select("*")
-      .ilike("user_email", email)
+      .ilike("user_email", emailLower)
       .eq("type", "withdrawal")
       .order("created_at", { ascending: false });
 
@@ -28,7 +42,17 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(withdrawals);
+    const payload = withdrawals || [];
+
+    // Cache in Redis for 5 minutes (invalidated when new transactions occur)
+    try {
+      const { default: redisConnection } = await import("@/lib/redis");
+      await redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 300);
+    } catch (redisErr) {
+      console.warn("⚠️ Redis write warning in withdrawals history:", redisErr);
+    }
+
+    return NextResponse.json(payload);
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/withdrawals/history:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -1,14 +1,23 @@
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANNON_KEY || "placeholder-key";
+const serviceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "placeholder-key";
 
 if (typeof window === "undefined" && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn(
-    "⚠️ WARNING: SUPABASE_SERVICE_ROLE_KEY is not defined in environment variables. " +
-    "supabaseAdmin is falling back to the public anon/publishable key. " +
-    "Direct SELECT queries on RLS-protected tables (like 'users') will fail or return empty results!"
-  );
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "🚨 CRITICAL CONFIG ERROR: SUPABASE_SERVICE_ROLE_KEY is required in production environment!"
+    );
+  } else {
+    console.warn(
+      "⚠️ WARNING: SUPABASE_SERVICE_ROLE_KEY is not defined in environment variables. " +
+        "supabaseAdmin is falling back to public key. Queries on RLS-protected tables may return empty results!"
+    );
+  }
 }
 
 export const supabaseAdmin = createClient(supabaseUrl, serviceKey, {

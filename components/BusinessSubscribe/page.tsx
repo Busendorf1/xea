@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
-import { CheckCircle2, Globe, ShieldCheck, Sparkles, Building2, ArrowRight } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { useUser } from "@auth0/nextjs-auth0";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, Globe, ShieldCheck, Sparkles, Building2, ArrowRight, Lock } from "lucide-react";
 import styles from "./page.module.css";
 
 export default function BusinessSubscribeComponent() {
+  const { user: authUser, isLoading: authLoading } = useUser();
+  const router = useRouter();
+
   const [businessName, setBusinessName] = useState("");
   const [domain, setDomain] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -13,8 +18,35 @@ export default function BusinessSubscribeComponent() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push("/auth/login?connection=google-oauth2");
+    }
+  }, [authUser, authLoading, router]);
+
   const MONTHLY_RATE = 45000;
   const totalPrice = durationMonths * MONTHLY_RATE;
+
+  if (authLoading) {
+    return (
+      <div className={styles.loadingContainer}>
+        <p>Loading session...</p>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className={styles.loginRequiredCard}>
+        <Lock size={36} color="#3b82f6" />
+        <h2>Login Required</h2>
+        <p>You must be signed in to register your business domain as a Paayh Premium Subscriber.</p>
+        <a href="/auth/login?connection=google-oauth2" className={styles.submitBtn}>
+          Sign in to Continue <ArrowRight size={18} />
+        </a>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

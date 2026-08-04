@@ -76,11 +76,21 @@ a {
   text-decoration: none;
 }
 
-/* Universal Harmonized Pill Button System */
+/* Clean Universal Button, Container, and Card System - 4px Border Radius */
 button, input[type="button"], input[type="submit"], .btn {
-  border-radius: 9999px !important;
+  border-radius: 4px !important;
   font-family: inherit;
+  box-shadow: none !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"], input[type="date"], select, textarea {
+  border-radius: 4px;
+}
+
+/* Global shadow removal */
+*, ::before, ::after {
+  box-shadow: none !important;
 }
 
 
