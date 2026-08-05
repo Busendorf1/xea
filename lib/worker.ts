@@ -16,8 +16,10 @@ const connectionOptions = {
 // ----------------------------------------------------
 
 interface JobItem {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   job: any;
   resolve: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (err: any) => void;
 }
 
@@ -51,18 +53,18 @@ const flushBatch = async () => {
       await supabaseAdmin
         .from("ad_impressions")
         .upsert(rows, { onConflict: "user_email,ad_id" });
-    } catch (err: any) {
-      console.error("❌ Error upserting ad_impressions:", err?.message || err);
+    } catch (err: unknown) {
+      console.error("❌ Error upserting ad_impressions:", (err as Error)?.message || err);
     }
 
     await Promise.all(seens.map(async (s) => {
       try {
         await supabaseAdmin.rpc("record_ad_seen", {
-          p_ad_id: s.job.data.adId,
-          p_user_email: s.job.data.email
+          p_ad_id: s.job.data?.adId,
+          p_user_email: s.job.data?.email
         });
-      } catch (err: any) {
-        console.error(`❌ Error recording ad seen for ${s.job.data.adId}:`, err?.message || err);
+      } catch (err: unknown) {
+        console.error(`❌ Error recording ad seen for ${s.job.data?.adId}:`, (err as Error)?.message || err);
       }
     }));
   }
@@ -72,11 +74,11 @@ const flushBatch = async () => {
     await Promise.all(earns.map(async (e) => {
       try {
         await supabaseAdmin.rpc("handle_earn_click", {
-          p_ad_id: e.job.data.adId,
-          p_user_email: e.job.data.email
+          p_ad_id: e.job.data?.adId,
+          p_user_email: e.job.data?.email
         });
-      } catch (err: any) {
-        console.error(`❌ Error handling earn click for ${e.job.data.adId}:`, err?.message || err);
+      } catch (err: unknown) {
+        console.error(`❌ Error handling earn click for ${e.job.data?.adId}:`, (err as Error)?.message || err);
       }
     }));
   }
@@ -86,11 +88,11 @@ const flushBatch = async () => {
     await Promise.all(mutuals.map(async (m) => {
       try {
         await supabaseAdmin.rpc("handle_mutual_click", {
-          p_ad_id: m.job.data.adId,
-          p_user_email: m.job.data.email
+          p_ad_id: m.job.data?.adId,
+          p_user_email: m.job.data?.email
         });
-      } catch (err: any) {
-        console.error(`❌ Error handling mutual click for ${m.job.data.adId}:`, err?.message || err);
+      } catch (err: unknown) {
+        console.error(`❌ Error handling mutual click for ${m.job.data?.adId}:`, (err as Error)?.message || err);
       }
     }));
   }
@@ -100,11 +102,11 @@ const flushBatch = async () => {
     await Promise.all(actions.map(async (act) => {
       try {
         await supabaseAdmin.rpc("increment_ad_click", {
-          p_ad_id: act.job.data.adId,
-          p_click_type: act.job.data.clickType
+          p_ad_id: act.job.data?.adId,
+          p_click_type: act.job.data?.clickType
         });
-      } catch (err: any) {
-        console.error(`❌ Error incrementing ad click for ${act.job.data.adId}:`, err?.message || err);
+      } catch (err: unknown) {
+        console.error(`❌ Error incrementing ad click for ${act.job.data?.adId}:`, (err as Error)?.message || err);
       }
     }));
   }
@@ -150,14 +152,14 @@ const flushBatch = async () => {
             });
           }
         }
-      } catch (err: any) {
-        console.error("❌ Error updating user click progress / balance limits:", err?.message || err);
+      } catch (err: unknown) {
+        console.error("❌ Error updating user click progress / balance limits:", (err as Error)?.message || err);
       }
 
       try {
         await invalidateCachedProfile(userEmail);
-      } catch (err: any) {
-        console.error(`❌ Error invalidating profile cache for ${userEmail}:`, err?.message || err);
+      } catch (err: unknown) {
+        console.error(`❌ Error invalidating profile cache for ${userEmail}:`, (err as Error)?.message || err);
       }
     })
   );
@@ -166,6 +168,7 @@ const flushBatch = async () => {
   currentBatch.forEach((j) => j.resolve());
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const queueJob = (job: any): Promise<void> => {
   return new Promise((resolve, reject) => {
     pendingJobs.push({ job, resolve, reject });
@@ -232,8 +235,8 @@ const campaignsWorker = new Worker("campaigns-events", async (job) => {
       if (error) throw new Error(error.message);
       await invalidateAllHighlights();
     }
-  } catch (err: any) {
-    console.error(`❌ Campaigns Worker: Failed to create ${type}:`, err.message);
+  } catch (err: unknown) {
+    console.error(`❌ Campaigns Worker: Failed to create ${type}:`, (err as Error)?.message || err);
     throw err;
   }
 }, {
@@ -284,4 +287,5 @@ hlsWorker.on("failed", (job, err) => {
   console.error(`❌ HLS Worker: Job [${job?.name}] failed:`, err.message);
 });
 
-export default { feedWorker, campaignsWorker, hlsWorker };
+const workers = { feedWorker, campaignsWorker, hlsWorker };
+export default workers;

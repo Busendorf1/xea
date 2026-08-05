@@ -10,7 +10,7 @@ export interface PaystackVerifyResponse {
   status: string;
   reference: string;
   amount: number; // in kobo
-  metadata: any;
+  metadata: Record<string, unknown>;
   gateway_response: string;
 }
 
@@ -46,15 +46,14 @@ export class PaystackService {
     email: string,
     amountInNaira: number,
     callbackUrl: string,
-    metadata: any = {},
+    metadata: Record<string, unknown> = {},
     channels?: string[]
   ): Promise<PaystackInitializeResponse> {
     const amountInKobo = Math.round(amountInNaira * 100);
-    const reference = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const reference = `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     if (this.isMock()) {
-      console.warn("⚠️ Using Mock Paystack implementation for initializeTransaction");
-      // Simulated redirect back with reference
+      console.log(`⚠️ Paystack MOCK mode: Initializing mock transaction ref=${reference}`);
       const url = new URL(callbackUrl);
       url.searchParams.set("reference", reference);
       url.searchParams.set("trxref", reference);
@@ -65,7 +64,7 @@ export class PaystackService {
       };
     }
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       email,
       amount: amountInKobo,
       callback_url: callbackUrl,
@@ -171,7 +170,7 @@ export class PaystackService {
       throw new Error(result.message || "Failed to fetch bank list from Paystack");
     }
 
-    return result.data.map((bank: any) => ({
+    return result.data.map((bank: { name: string; code: string }) => ({
       name: bank.name,
       code: bank.code,
     }));
@@ -413,7 +412,7 @@ export class PaystackService {
     }
 
     // Map list of transfers from response data
-    return result.data.transfers.map((t: any) => ({
+    return result.data.transfers.map((t: { transfer_code: string; status?: string; reference: string }) => ({
       transfer_code: t.transfer_code,
       status: t.status || "pending",
       reference: t.reference,

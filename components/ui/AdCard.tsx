@@ -5,10 +5,6 @@ import {
   Globe,
   Mail,
   Share2,
-  Eye,
-  Coins,
-  UserPlus,
-  Check,
   Play,
   Pause,
   Volume2,
@@ -128,11 +124,10 @@ export default function AdCard({
   onAdMutual,
   onMarkSeen,
   onShare,
-  onDismiss,
+  onDismiss: _onDismiss,
   style,
 }: AdCardProps) {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const [avatarError, setAvatarError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -141,6 +136,9 @@ export default function AdCard({
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const [dragOffsetX, setDragOffsetX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -428,12 +426,19 @@ export default function AdCard({
   const currentUrl = mediaUrls[currentMediaIndex] || "";
   // Detect type per individual URL so mixed ads (images + video) render correctly
   const mediaType = /\.(mp4|webm|mov|avi)$/i.test(currentUrl) ? "video" : "image";
-  const activeAspectRatio = 16 / 9;
-
-  const touchStartX = React.useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    setIsDragging(true);
+    setDragOffsetX(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const diff = e.touches[0].clientX - touchStartX.current;
+    // Clamp drag to 60% of the width so it feels bounded
+    const maxDrag = (e.currentTarget as HTMLElement).offsetWidth * 0.6;
+    setDragOffsetX(Math.max(-maxDrag, Math.min(maxDrag, diff)));
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -448,6 +453,8 @@ export default function AdCard({
       setCurrentMediaIndex((prev) => (prev - 1 + mediaUrls.length) % mediaUrls.length);
     }
     touchStartX.current = null;
+    setDragOffsetX(0);
+    setIsDragging(false);
   };
 
   const handleMediaClick = (e: React.MouseEvent) => {
@@ -585,7 +592,7 @@ export default function AdCard({
                     onClick={handleDontShowAgain}
                   >
                     <EyeOff size={14} className={styles.dropdownIconMuted} />
-                    <span>Don't show this Ad again</span>
+                    <span>Don&apos;t show this Ad again</span>
                   </button>
                 </div>
               )}
@@ -624,6 +631,7 @@ export default function AdCard({
           <div 
             className={styles.mediaBox}
             onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onClick={handleMediaClick}
             style={{ 
@@ -631,9 +639,9 @@ export default function AdCard({
             }}
           >
             <div 
-              className={styles.mediaTrack}
+              className={`${styles.mediaTrack} ${isDragging ? styles.mediaTrackDragging : ""}`}
               style={{
-                transform: `translateX(-${currentMediaIndex * 100}%)`,
+                transform: `translateX(calc(-${currentMediaIndex * 100}% + ${dragOffsetX}px))`,
               }}
             >
               {mediaUrls.map((url, index) => {

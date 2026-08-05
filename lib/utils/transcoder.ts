@@ -107,11 +107,12 @@ export async function transcodeVideoToHLS(
       success: true,
       masterPlaylistUrl: publicUrlData.publicUrl,
     };
-  } catch (err: any) {
-    console.error("❌ HLS Transcoder Error:", err.message);
+  } catch (err: unknown) {
+    const errorMsg = (err as Error)?.message || "Transcoding failed";
+    console.error("❌ HLS Transcoder Error:", errorMsg);
     return {
       success: false,
-      error: err.message,
+      error: errorMsg,
     };
   } finally {
     // Cleanup temporary directory

@@ -31,7 +31,7 @@ export async function bufferAdImpression(adId: string): Promise<void> {
   // Fallback to direct DB update if Redis is unavailable
   try {
     await supabaseAdmin.rpc("increment_ad_impression", { p_ad_id: adId });
-  } catch (e) {
+  } catch (_e) {
     await supabaseAdmin
       .from("addsactive")
       .update({ impression_count: 1 }) // fallback incremental update
@@ -97,7 +97,7 @@ export async function flushImpressionBuffersToDB(): Promise<{ flushedImpressions
               p_ad_id: adId,
               p_count: delta,
             });
-          } catch (err) {
+          } catch (_err) {
             const { data: current } = await supabaseAdmin
               .from("addsactive")
               .select("impression_count")

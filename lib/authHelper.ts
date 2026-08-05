@@ -45,8 +45,8 @@ export async function getAuthenticatedEmail(req: NextRequest): Promise<string | 
         expiresAt = payload.exp * 1000;
       }
       console.log("✅ Next.js Server: Local JWT signature verified successfully.");
-    } catch (err: any) {
-      console.warn("⚠️ Next.js Server: Local JWT verification failed, falling back to Auth0 userinfo fetch:", err.message);
+    } catch (err: unknown) {
+      console.warn("⚠️ Next.js Server: Local JWT verification failed, falling back to Auth0 userinfo fetch:", (err as Error)?.message);
     }
 
     // 3. Fallback to /userinfo fetch with Abort timeout and retries (resilience to flaky hotspot networks)
@@ -72,8 +72,8 @@ export async function getAuthenticatedEmail(req: NextRequest): Promise<string | 
             const errText = await res.text();
             console.warn("❌ Next.js Server: Auth0 userinfo request failed:", errText);
           }
-        } catch (fetchErr: any) {
-          console.warn(`⚠️ Next.js Server: Auth0 userinfo fetch attempt ${i + 1} failed:`, fetchErr.message || fetchErr);
+        } catch (fetchErr: unknown) {
+          console.warn(`⚠️ Next.js Server: Auth0 userinfo fetch attempt ${i + 1} failed:`, (fetchErr as Error)?.message || fetchErr);
           if (i < attempts - 1) {
             await new Promise((r) => setTimeout(r, 800)); // wait 800ms before retrying
           }

@@ -1,7 +1,11 @@
 // lib/payment/processPayment.ts
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 
-export async function processSuccessfulPayment(reference: string, metadata: any, amount: number) {
+export async function processSuccessfulPayment(
+  reference: string,
+  metadata: Record<string, unknown>,
+  _amount?: number
+) {
   // 1. Check if the payment has already been processed successfully
   const { data: existingPayment, error: fetchError } = await supabaseAdmin
     .from("payments")
@@ -52,7 +56,7 @@ export async function processSuccessfulPayment(reference: string, metadata: any,
       message: `Your highlight "${title}" has been submitted for review. It will be published shortly!`,
     });
   } else if (type === "ad") {
-    const { adData } = metadata;
+    const adData = metadata.adData as Record<string, unknown> | undefined;
     if (!adData) {
       throw new Error("Ad data missing from payment metadata");
     }

@@ -29,7 +29,7 @@ export default function PolicyPage() {
             <li className={styles.listItem}><strong>&quot;Highlights&quot;</strong> are short promotional ads that appear every 10 minutes and automatically expire after 24 hours.</li>
             <li className={styles.listItem}><strong>&quot;Monetization&quot;</strong> is the feature that enables eligible users to earn real income from verified ad interactions.</li>
             <li className={styles.listItem}><strong>&quot;Impression&quot;</strong> is a verified ad view, recorded when a user watches an ad and clicks &quot;Seen&quot;, &quot;Earn&quot;, or &quot;Mutual.&quot; Each impression confirms that the ad was delivered to a real person.</li>
-          <li className={styles.listItem}><strong>&quot;Attention&quot;</strong> Attention is a person's focused awareness and engagement with an ad for a period of time. Attention is a scarce resource that companies compete for. Users provide their attention by intentionally viewing ads.</li>
+          <li className={styles.listItem}><strong>&quot;Attention&quot;</strong> Attention is a person&apos;s focused awareness and engagement with an ad for a period of time. Attention is a scarce resource that companies compete for. Users provide their attention by intentionally viewing ads.</li>
         
           </ul></section>
 

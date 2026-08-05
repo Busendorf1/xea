@@ -26,7 +26,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   ...restProps
 }, ref) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
-  const hlsRef = useRef<any>(null);
+  const hlsRef = useRef<{ destroy: () => void } | null>(null);
 
   useImperativeHandle(ref, () => internalVideoRef.current as HTMLVideoElement);
 
@@ -70,7 +70,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
               hls.loadSource(targetSource);
               hls.attachMedia(video);
 
-              hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
+              hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
                 if (data.fatal) {
                   console.warn("⚠️ HLS playback error encountered, falling back to MP4:", data.type);
                   hls.destroy();

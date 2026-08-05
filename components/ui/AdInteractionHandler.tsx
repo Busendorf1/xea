@@ -34,13 +34,13 @@ type ChallengeType = "swipe" | "hold" | "tap";
 
 export default function AdInteractionHandler({
   ad,
-  userEmail,
+  userEmail: _userEmail,
   isPlatformPost,
-  isMutualTarget,
+  isMutualTarget: _isMutualTarget,
   isAlreadyMutual,
   viewerProfile,
   isProcessing,
-  isSuspended,
+  isSuspended: _isSuspended,
   successAction,
   activeAction,
   handleAction,

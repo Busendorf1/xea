@@ -13,7 +13,7 @@ export function useFeedAds({ userEmail, initialLimit = 10 }: UseFeedAdsOptions) 
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [advertiserProfiles, setAdvertiserProfiles] = useState<Record<string, any>>({});
+  const [advertiserProfiles, setAdvertiserProfiles] = useState<Record<string, unknown>>({});
   const processingRef = useRef<Set<string>>(new Set());
 
   // Fetch paginated feed ads from server API
@@ -55,9 +55,9 @@ export function useFeedAds({ userEmail, initialLimit = 10 }: UseFeedAdsOptions) 
         });
 
         setHasMore(incomingAds.length >= initialLimit);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("❌ useFeedAds error:", err);
-        setError(err.message || "Failed to load feed");
+        setError((err as Error)?.message || "Failed to load feed");
       } finally {
         setLoading(false);
         setLoadingMore(false);

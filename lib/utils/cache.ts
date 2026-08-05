@@ -4,6 +4,7 @@ import redisConnection from "../redis";
 // USER PROFILE NATURAL 60-SECOND REDIS CACHING
 // ----------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getCachedProfile(email: string): Promise<any | null> {
   try {
     const data = await redisConnection.get(`user:profile:${email.toLowerCase()}`);
@@ -14,6 +15,7 @@ export async function getCachedProfile(email: string): Promise<any | null> {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function setCachedProfile(email: string, profile: any): Promise<void> {
   try {
     await redisConnection.set(
@@ -45,6 +47,7 @@ export async function invalidateCachedProfile(email: string): Promise<void> {
 // DAILY HIGHLIGHTS NATURAL 30-SECOND REDIS CACHING
 // ----------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getCachedHighlights(interests: string[], country?: string | null, state?: string | null): Promise<any[] | null> {
   try {
     const sortedInterests = [...interests].sort();
@@ -57,6 +60,7 @@ export async function getCachedHighlights(interests: string[], country?: string 
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function setCachedHighlights(interests: string[], highlights: any[], country?: string | null, state?: string | null): Promise<void> {
   try {
     const sortedInterests = [...interests].sort();

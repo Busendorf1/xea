@@ -4,7 +4,7 @@ export interface GpsLocationResult {
   country: string;
   state: string;
   location: string;
-  rawAddress?: any;
+  rawAddress?: Record<string, unknown>;
   error?: string;
 }
 
@@ -14,7 +14,7 @@ export interface GpsLocationResult {
  */
 export function normalizeStateName(rawState: string, country: string): string {
   if (!rawState) return "";
-  let clean = rawState.replace(/\s+(State|Province|Region|Governorate|Department|District|Territory)$/i, "").trim();
+  const clean = rawState.replace(/\s+(State|Province|Region|Governorate|Department|District|Territory)$/i, "").trim();
 
   // If country is in locationData, check for case-insensitive match in predefined states
   const statesInCountry = locationData[country];
@@ -32,7 +32,7 @@ export function normalizeStateName(rawState: string, country: string): string {
  */
 export function normalizeCityName(rawCity: string, country: string, state: string): string {
   if (!rawCity) return "";
-  let clean = rawCity.trim();
+  const clean = rawCity.trim();
 
   const statesInCountry = locationData[country];
   if (statesInCountry) {
@@ -92,13 +92,13 @@ export async function detectGpsLocation(): Promise<GpsLocationResult> {
             location: matchedCity,
             rawAddress: data,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error("GPS Reverse Geocoding Error:", err);
           resolve({
             country: "",
             state: "",
             location: "",
-            error: err.message || "Failed to reverse geocode GPS location.",
+            error: (err as Error)?.message || "Failed to reverse geocode GPS location.",
           });
         }
       },

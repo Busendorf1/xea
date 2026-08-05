@@ -2,7 +2,7 @@
  * Helper utility to safely parse potential JSON strings or array values.
  * Ensures resilient, fail-safe array parsing across components and API routes.
  */
-export function safeParseArray(value: any): string[] {
+export function safeParseArray(value: unknown): string[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(String);
   if (typeof value === "string") {

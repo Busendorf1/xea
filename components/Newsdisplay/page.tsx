@@ -82,19 +82,19 @@
 //
 "use client";
 
-import { useEffect, useState } from "react";
-import supabase from "@/lib/utils/db";
+import { useEffect, useState, useCallback } from "react";
 import styles from "../Newsdisplay/page.module.css";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Skeleton from "../ui/Skeleton";
 
 interface Ad {
-  id: string; // id is UUID (string) in public.newsactive
+  id: string;
   title: string;
   content: string;
   image_url: string;
-  interest: string;
+  interest: string[];
+  user_email: string;
   created_at: string;
 }
 
@@ -109,57 +109,59 @@ export default function AdDisplay({
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
-  const fetchAll = async (pageNum = 0, isLoadMore = false) => {
-    if (!userInterest || userInterest.length === 0) {
-      setAds([]);
-      setLoading(false);
-      return;
-    }
-
-    if (!isLoadMore) {
-      setLoading(true);
-      setError(false);
-      setPage(0);
-      setHasMore(true);
-    }
-
-    console.log(`➡️ Fetching active highlights page ${pageNum} via API...`);
-
-    try {
-      const interestsQuery = userInterest.join(",");
-      const response = await fetch(`/api/highlights?interests=${encodeURIComponent(interestsQuery)}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch highlights: ${response.status}`);
+  const fetchAll = useCallback(
+    async (pageNum = 0, isLoadMore = false) => {
+      if (!userInterest || userInterest.length === 0) {
+        setAds([]);
+        setLoading(false);
+        return;
       }
 
-      const allMatchedHighlights = await response.json();
-      console.log("📣 Highlights fetched from API:", allMatchedHighlights.length);
-
-      const ITEMS_PER_PAGE = 20;
-      const fromOffset = pageNum * ITEMS_PER_PAGE;
-      const toOffset = fromOffset + ITEMS_PER_PAGE;
-      
-      const pagedHighlights = allMatchedHighlights.slice(fromOffset, toOffset);
-
-      if (isLoadMore) {
-        setAds((prev) => [...prev, ...pagedHighlights]);
-      } else {
-        setAds(pagedHighlights);
-      }
-
-      if (toOffset >= allMatchedHighlights.length) {
-        setHasMore(false);
-      } else {
+      if (!isLoadMore) {
+        setLoading(true);
+        setError(false);
+        setPage(0);
         setHasMore(true);
       }
-    } catch (err: any) {
-      console.error("❌ Error fetching highlights:", err);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      console.log(`➡️ Fetching active highlights page ${pageNum} via API...`);
+
+      try {
+        const interestsQuery = userInterest.join(",");
+        const response = await fetch(`/api/highlights?interests=${encodeURIComponent(interestsQuery)}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch highlights: ${response.status}`);
+        }
+
+        const allMatchedHighlights = await response.json();
+        console.log("📣 Highlights fetched from API:", allMatchedHighlights.length);
+
+        const ITEMS_PER_PAGE = 20;
+        const fromOffset = pageNum * ITEMS_PER_PAGE;
+        const toOffset = fromOffset + ITEMS_PER_PAGE;
+        const pageItems = allMatchedHighlights.slice(fromOffset, toOffset);
+
+        if (pageNum === 0 || !isLoadMore) {
+          setAds(pageItems);
+        } else {
+          setAds((prev) => [...prev, ...pageItems]);
+        }
+
+        if (toOffset >= allMatchedHighlights.length) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
+      } catch (err: unknown) {
+        console.error("❌ Error fetching highlights:", err);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [userInterest]
+  );
 
   const handleLoadMore = () => {
     const nextPage = page + 1;
@@ -171,15 +173,13 @@ export default function AdDisplay({
     fetchAll(0, false); // Initial fetch
 
     // Refresh every 10 minutes.
-    // NOTE: The 10-minute interval is mandatory to satisfy the requirement
-    // that drops are spaced to give highlights enough time to be seen.
     const interval = setInterval(() => {
       console.log("🔁 Refreshing active ads (mandatory 10-minute visibility interval)...");
       fetchAll(0, false);
     }, 600000); // 10 minutes in milliseconds
 
     return () => clearInterval(interval); // Cleanup
-  }, [userInterest]);
+  }, [userInterest, fetchAll]);
 
   if (loading && page === 0) {
     return (
