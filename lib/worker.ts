@@ -135,7 +135,7 @@ const flushBatch = async () => {
           // Send polite notification once balance hits cap
           await supabaseAdmin.from("notifications").insert({
             user_email: userEmail,
-            title: "Wallet Holding Limit Reached 💼",
+            title: "Wallet Holding Limit Reached",
             message: "Your wallet balance has reached the ₦50,000 maximum holding limit. Please initiate a withdrawal to continue receiving instant payouts.",
           });
         } else {
@@ -147,7 +147,7 @@ const flushBatch = async () => {
           if (currentBal >= 30000 && currentBal < 50000) {
             await supabaseAdmin.from("notifications").insert({
               user_email: userEmail,
-              title: "Withdrawal Threshold Reached 🎉",
+              title: "Withdrawal Threshold Reached",
               message: "Your wallet balance has reached ₦30,000! You can withdraw your earnings anytime between ₦10,000 and ₦50,000.",
             });
           }
@@ -287,5 +287,39 @@ hlsWorker.on("failed", (job, err) => {
   console.error(`❌ HLS Worker: Job [${job?.name}] failed:`, err.message);
 });
 
-const workers = { feedWorker, campaignsWorker, hlsWorker };
+// ----------------------------------------------------
+// PAYMENT PROCESSING QUEUE: P2P TRANSFERS & AUDIT JOBS
+// ----------------------------------------------------
+
+const paymentWorker = new Worker("payment-processing", async (job) => {
+  const { type, senderEmail, recipientEmail, amount, reference } = job.data;
+  console.log(`💳 Payment Worker: Processing ${type} job [${reference}] from ${senderEmail} to ${recipientEmail}...`);
+
+  try {
+    if (type === "p2p_transfer") {
+      // Invalidate profile and payment statement caches in Redis for both accounts
+      await Promise.all([
+        invalidateCachedProfile(senderEmail),
+        invalidateCachedProfile(recipientEmail),
+      ]);
+      console.log(`✅ Payment Worker: Completed P2P transfer audit and cache sync for reference [${reference}].`);
+    }
+  } catch (err: unknown) {
+    console.error(`❌ Payment Worker: Error processing transfer job [${reference}]:`, (err as Error)?.message || err);
+    throw err;
+  }
+}, {
+  connection: connectionOptions,
+  concurrency: 3,
+});
+
+paymentWorker.on("completed", (job) => {
+  console.log(`✅ Payment Worker: Job [${job.name}] successfully completed.`);
+});
+
+paymentWorker.on("failed", (job, err) => {
+  console.error(`❌ Payment Worker: Job [${job?.name}] failed:`, err.message);
+});
+
+const workers = { feedWorker, campaignsWorker, hlsWorker, paymentWorker };
 export default workers;

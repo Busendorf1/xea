@@ -3110,7 +3110,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               {dlqLoading ? (
                 <div className={styles.loadingText}>Fetching DLQ entries from Redis...</div>
               ) : dlqJobs.length === 0 ? (
-                <div className={styles.emptyState}>No failed background queue jobs. All systems operational! 🎉</div>
+                <div className={styles.emptyState}>No failed background queue jobs. All systems operational!</div>
               ) : (
                 <div className={styles.cardsGrid}>
                   {dlqJobs.map((job) => (

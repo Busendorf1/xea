@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useTheme } from "../ThemeProvider";
 import supabase from "@/lib/utils/db";
 import { 
@@ -20,7 +21,13 @@ import {
   X,
   Bell,
   Plus,
-  Coins
+  Coins,
+  Send,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Wallet,
+  ShieldAlert,
+  CheckCircle2
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
@@ -90,6 +97,74 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const [resolvingAccount, setResolvingAccount] = useState(false);
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState("");
+
+  // Send Money states
+  const [showSendMoneyModal, setShowSendMoneyModal] = useState(false);
+  const [sendRecipientEmail, setSendRecipientEmail] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [submittingSend, setSubmittingSend] = useState(false);
+  const [sendMoneyError, setSendMoneyError] = useState("");
+
+  const handleSendMoneySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSendMoneyError("");
+
+    const cleanEmail = sendRecipientEmail.trim().toLowerCase();
+    const amountNum = parseFloat(sendAmount);
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setSendMoneyError("Please enter a valid recipient email address.");
+      return;
+    }
+
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setSendMoneyError("Please enter a valid transfer amount.");
+      return;
+    }
+
+    if (cleanEmail === email.toLowerCase().trim()) {
+      setSendMoneyError("You cannot send money to your own email account.");
+      return;
+    }
+
+    const max20Percent = user.balance * 0.20;
+    if (amountNum > max20Percent + 0.01) {
+      setSendMoneyError(`Transfer amount cannot exceed 20% of your total balance (${formatCurrency(max20Percent)} max at a time).`);
+      return;
+    }
+
+    if (amountNum > user.balance) {
+      setSendMoneyError("Insufficient wallet balance for this transfer.");
+      return;
+    }
+
+    setSubmittingSend(true);
+    try {
+      const res = await fetch("/api/payments/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientEmail: cleanEmail,
+          amount: amountNum,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`Success! ${data.message || `Sent ${formatCurrency(amountNum)} to ${cleanEmail}`}`);
+        setShowSendMoneyModal(false);
+        setSendRecipientEmail("");
+        setSendAmount("");
+        window.location.reload();
+      } else {
+        setSendMoneyError(data.error || "Failed to process transfer. Your balance remains unchanged.");
+      }
+    } catch (e: any) {
+      setSendMoneyError(e.message || "Network error occurred. Your balance remains unchanged.");
+    } finally {
+      setSubmittingSend(false);
+    }
+  };
 
   // Notification states
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -173,6 +248,31 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  const stripEmoji = (str: string) => {
+    if (!str) return "";
+    return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}]/gu, "").trim();
+  };
+
+  const getNotificationIcon = (title: string, message: string) => {
+    const t = (title + " " + message).toLowerCase();
+    if (t.includes("sent") || t.includes("transfer_sent") || t.includes("money sent")) {
+      return <ArrowUpRight size={15} color="#10b981" />;
+    }
+    if (t.includes("received") || t.includes("transfer_received") || t.includes("money received")) {
+      return <ArrowDownLeft size={15} color="#6366f1" />;
+    }
+    if (t.includes("withdrawal") || t.includes("payout") || t.includes("bank")) {
+      return <Wallet size={15} color="#3b82f6" />;
+    }
+    if (t.includes("limit") || t.includes("holding") || t.includes("suspended") || t.includes("alert")) {
+      return <ShieldAlert size={15} color="#f59e0b" />;
+    }
+    if (t.includes("threshold") || t.includes("unlocked") || t.includes("completed") || t.includes("success")) {
+      return <CheckCircle2 size={15} color="#10b981" />;
+    }
+    return <Bell size={15} color="var(--primary)" />;
+  };
+
   const renderNotificationBell = () => (
     <div className={`${styles.notificationContainer} ${styles.notificationRow}`}>
       {showEarnFeedback && (
@@ -215,9 +315,12 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   onClick={() => handleMarkAsRead(n.id)}
                   className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
                 >
+                  <div className={styles.notificationIconWrapper}>
+                    {getNotificationIcon(n.title || "", n.message || "")}
+                  </div>
                   <div className={styles.notificationContent}>
-                    <div className={styles.notificationTitle}>{n.title}</div>
-                    <div className={styles.notificationMsg}>{n.message}</div>
+                    <div className={styles.notificationTitle}>{stripEmoji(n.title)}</div>
+                    <div className={styles.notificationMsg}>{stripEmoji(n.message)}</div>
                     <span className={styles.notificationTime}>
                       {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -742,10 +845,13 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
               <div className={styles.avatarRow}>
                 <div className={styles.profileImgContainer}>
                   {user.profileImage ? (
-                    <img
+                    <Image
                       src={user.profileImage}
                       alt="Profile picture"
                       className={styles.profileImg}
+                      width={70}
+                      height={70}
+                      unoptimized
                     />
                   ) : (
                     <div className={styles.profileAvatarPlaceholder}>
@@ -867,19 +973,31 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   Pending Withdrawal: {formatCurrency(user.withdrawal)}
                 </p>
               )}
-              <button
-                onClick={() => setShowWithdrawModal(true)}
-                className={styles.withdrawBtn}
-                disabled={
-                  !((user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
-                    (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now()))
-                }
-              >
-                {(user.monetized === "yes" || user.monetized === "true" || user.monetized === true) &&
-                (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
-                  ? "Request Withdrawal"
-                  : "Monetize to withdraw earnings"}
-              </button>
+              <div className={styles.walletBtnGroup}>
+                <button
+                  onClick={() => setShowWithdrawModal(true)}
+                  className={styles.withdrawBtn}
+                  disabled={
+                    !((user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) &&
+                      (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now()))
+                  }
+                >
+                  {((user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) &&
+                  (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now()))
+                    ? "Request Withdrawal"
+                    : "Monetize to withdraw earnings"}
+                </button>
+
+                <button
+                  onClick={() => setShowSendMoneyModal(true)}
+                  className={styles.sendMoneyBtn}
+                  title="Send Money to User Email"
+                  type="button"
+                >
+                  <Send size={15} />
+                  <span>Send Money</span>
+                </button>
+              </div>
               <Link href="/user/statement" className={styles.statementLink}>
                 View Account Statement
               </Link>
@@ -995,8 +1113,6 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   />
                 </div>
 
-
-
                 {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
 
                 <button
@@ -1005,6 +1121,74 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
                   className={styles.submitBtn}
                 >
                   {submittingWithdrawal ? "Processing Withdrawal..." : "Withdraw Funds"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Send Money Modal */}
+        {showSendMoneyModal && (
+          <div className={styles.modalOverlay}>
+            <div className={styles.modalContent}>
+              <div className={styles.modalHeader}>
+                <h3>Send Money to User</h3>
+                <button onClick={() => setShowSendMoneyModal(false)} className={styles.closeBtn}>
+                  <X size={18} />
+                </button>
+              </div>
+              <form onSubmit={handleSendMoneySubmit} className={styles.modalBody}>
+                <div className={styles.balanceRow}>
+                  <span>Available Balance:</span>
+                  <span className={styles.balanceValue}>{formatCurrency(user.balance ?? 0)}</span>
+                </div>
+
+                <div className={styles.balanceRowSub}>
+                  <span>Max Transfer Limit (20%):</span>
+                  <span className={styles.maxAllowedValue}>{formatCurrency((user.balance ?? 0) * 0.20)}</span>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Recipient Email Account</label>
+                  <input
+                    type="email"
+                    placeholder="Enter recipient registered email (e.g. user@example.com)"
+                    value={sendRecipientEmail}
+                    onChange={(e) => setSendRecipientEmail(e.target.value)}
+                    required
+                    className={styles.formInput}
+                  />
+                  <span className={styles.formHintSmall}>
+                    Enter the exact email address of the recepient.
+                  </span>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Amount to Send (₦)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={1}
+                    max={user.balance * 0.20}
+                    placeholder={`Max ${formatCurrency((user.balance ?? 0) * 0.20)}`}
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                    required
+                    className={styles.formInput}
+                  />
+                  <span className={styles.formHintSmall}>
+                    Security Rules: Max 20% of your total balance at a time. Max 6 recipient users per day.
+                  </span>
+                </div>
+
+                {sendMoneyError && <div className={styles.errorText}>{sendMoneyError}</div>}
+
+                <button
+                  type="submit"
+                  disabled={submittingSend || user.balance <= 0}
+                  className={styles.submitBtn}
+                >
+                  {submittingSend ? "Processing Transfer..." : "Send Funds Instantly"}
                 </button>
               </form>
             </div>

@@ -368,6 +368,19 @@
   background-color: var(--primary-glow);
 }
 
+.notificationIconWrapper {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 .unreadDot {
   width: 6px;
   height: 6px;

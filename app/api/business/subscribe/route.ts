@@ -1,12 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import redisConnection from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   try {
     const authEmail = await getAuthenticatedEmail(req);
     const body = await req.json();
     const { business_name, domain, contact_email, duration_months = 1 } = body;
+
+    // Enforce 3 Submissions Per Day Rate Limit
+    const userEmail = authEmail ? authEmail.toLowerCase().trim() : (contact_email ? contact_email.toLowerCase().trim() : null);
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous_ip";
+    const userIdentifier = userEmail ? `email_${userEmail}` : `ip_${ip}`;
+
+    const rateLimitKey = `ratelimit:business_subscribe:${userIdentifier}`;
+    try {
+      const currentCount = await redisConnection.incr(rateLimitKey);
+      if (currentCount === 1) {
+        await redisConnection.expire(rateLimitKey, 86400); // 24 Hours TTL
+      }
+      if (currentCount > 3) {
+        console.warn(`⚠️ Business Subscribe Rate Limit Exceeded for ${userIdentifier}: ${currentCount} attempts in 24h.`);
+        return NextResponse.json(
+          { error: "Daily limit reached. You can only submit up to 3 business applications per day." },
+          { status: 429 }
+        );
+      }
+    } catch (redisErr) {
+      console.warn("⚠️ Business subscribe rate limit Redis check warning:", redisErr);
+    }
 
     if (!business_name || !domain) {
       return NextResponse.json({ error: "Business name and domain are required" }, { status: 400 });

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useUser } from "@auth0/nextjs-auth0";
 import styles from "../Header/page.module.css";
 import { useTheme } from "../ThemeProvider";
-import { Sun, Moon, Contrast, Bell } from "lucide-react";
+import { Sun, Moon, Contrast, Bell, ArrowUpRight, ArrowDownLeft, Wallet, ShieldAlert, CheckCircle2 } from "lucide-react";
 import SidebarMenu from "@/components/SidebarToggle/page";
 
 export default function Header() {
@@ -17,6 +17,31 @@ export default function Header() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
   const hamburgerRef = useRef<HTMLDivElement>(null);
+
+  const stripEmoji = (str: string) => {
+    if (!str) return "";
+    return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}]/gu, "").trim();
+  };
+
+  const getNotificationIcon = (title: string, message: string) => {
+    const t = (title + " " + message).toLowerCase();
+    if (t.includes("sent") || t.includes("transfer_sent") || t.includes("money sent")) {
+      return <ArrowUpRight size={15} color="#10b981" />;
+    }
+    if (t.includes("received") || t.includes("transfer_received") || t.includes("money received")) {
+      return <ArrowDownLeft size={15} color="#6366f1" />;
+    }
+    if (t.includes("withdrawal") || t.includes("payout") || t.includes("bank")) {
+      return <Wallet size={15} color="#3b82f6" />;
+    }
+    if (t.includes("limit") || t.includes("holding") || t.includes("suspended") || t.includes("alert")) {
+      return <ShieldAlert size={15} color="#f59e0b" />;
+    }
+    if (t.includes("threshold") || t.includes("unlocked") || t.includes("completed") || t.includes("success")) {
+      return <CheckCircle2 size={15} color="#10b981" />;
+    }
+    return <Bell size={15} color="var(--primary)" />;
+  };
 
   // Close hamburger dropdown on click outside
   useEffect(() => {
@@ -184,9 +209,12 @@ export default function Header() {
                   onClick={() => handleMarkAsRead(n.id)}
                   className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
                 >
+                  <div className={styles.notificationIconWrapper}>
+                    {getNotificationIcon(n.title || "", n.message || "")}
+                  </div>
                   <div className={styles.notificationContent}>
-                    <div className={styles.notificationTitle}>{n.title}</div>
-                    <div className={styles.notificationMsg}>{n.message}</div>
+                    <div className={styles.notificationTitle}>{stripEmoji(n.title)}</div>
+                    <div className={styles.notificationMsg}>{stripEmoji(n.message)}</div>
                     <span className={styles.notificationTime}>
                       {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>

@@ -1,3 +1,8 @@
+.footer,
+.footer * {
+  font-family: inherit;
+}
+
 .footer {
   background-color: var(--sidebar-bg);
   padding: 40px 20px;
@@ -17,8 +22,9 @@
 }
 
 .heading {
+  font-family: inherit;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 12px;
   color: var(--foreground);
 }
@@ -30,10 +36,12 @@
 }
 
 .link {
+  font-family: inherit;
   color: var(--text-muted);
   text-decoration: none;
   margin-bottom: 8px;
   display: block;
+  font-size: 0.92rem;
   transition: color 0.2s ease-in-out;
 }
 
@@ -43,8 +51,9 @@
 }
 
 .copyRight {
+  font-family: inherit;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--text-muted);
   padding-top: 10px;
   border-top: 1px solid var(--card-border);
@@ -55,6 +64,7 @@
 }
 
 .faqQuestion {
+  font-family: inherit;
   background: none;
   font-size: 0.9rem;
   border: none;
@@ -73,9 +83,9 @@
 }
 
 .faqAnswer {
+  font-family: inherit;
   margin-top: 5px;
   color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1.4;
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
-

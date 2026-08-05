@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 
 export const DEFAULT_AVATAR_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="50" fill="%231e293b"/><circle cx="50" cy="38" r="18" fill="%2394a3b8"/><path d="M50 62c-18 0-32 10-34 22 4 10 16 16 34 16s30-6 34-16c-2-12-16-22-34-22z" fill="%2394a3b8"/></svg>`;
 
@@ -60,10 +61,13 @@ export default function UserAvatar({
     }
 
     return (
-      <img
+      <Image
         src={DEFAULT_AVATAR_SVG}
         alt={alt}
         className={className}
+        width={size}
+        height={size}
+        unoptimized
         style={{
           width: size,
           height: size,
@@ -77,10 +81,13 @@ export default function UserAvatar({
   }
 
   return (
-    <img
-      src={src}
+    <Image
+      src={src!}
       alt={alt}
       className={className}
+      width={size}
+      height={size}
+      unoptimized
       onError={() => setError(true)}
       style={{
         width: size,

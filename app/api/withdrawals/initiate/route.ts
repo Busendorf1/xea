@@ -32,13 +32,27 @@ export async function POST(req: NextRequest) {
     // 1. Fetch user's current profile details
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, bvn_hash, monetized")
+      .select("balance, withdrawal, phone, bvn_hash, monetized, monetized_until, monetization_clicks")
       .ilike("email", email)
       .maybeSingle();
 
     if (userFetchErr || !user) {
       console.error("❌ Error fetching user for withdrawal:", userFetchErr);
       return NextResponse.json({ error: "Failed to verify account balance" }, { status: 500 });
+    }
+
+    // 2. Strict Monetization Enforcement Check (Only monetized users can withdraw)
+    const clicksCount = user.monetization_clicks ?? 0;
+    const isMonetized = !!(
+      (user.monetized === "yes" || user.monetized === "true" || user.monetized === true || clicksCount >= 300) &&
+      (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
+    );
+
+    if (!isMonetized) {
+      console.warn(`❌ Security Block: Non-monetized user ${email} attempted to withdraw.`);
+      return NextResponse.json({
+        error: "Withdrawal restricted: Only monetized users are eligible to withdraw earnings. Please monetize your account to request bank payouts.",
+      }, { status: 403 });
     }
 
     const currentBalance = parseFloat(user.balance || 0);
@@ -175,7 +189,7 @@ export async function POST(req: NextRequest) {
     // Send user notification
     await supabaseAdmin.from("notifications").insert({
       user_email: email,
-      title: "Withdrawal Queued 🏦",
+      title: "Withdrawal Queued",
       message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${bankName} (${accountNumber}) has been queued and will be processed shortly.`,
     });
 

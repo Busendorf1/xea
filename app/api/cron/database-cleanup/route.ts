@@ -83,6 +83,24 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error purging help tickets:", err.message || err);
     }
 
+    // 6. Purge notifications older than 15 days
+    try {
+      console.log("🧹 Cron: Purging notifications older than 15 days...");
+      const { error: errNotifs } = await supabaseAdmin.rpc("delete_expired_notifications");
+      if (errNotifs) {
+        console.warn("⚠️ Cron: RPC delete_expired_notifications failed, executing direct fallback deletion:", errNotifs.message);
+        const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+        await Promise.all([
+          supabaseAdmin.from("notifications").delete().lt("created_at", fifteenDaysAgo),
+          supabaseAdmin.from("global_announcements").delete().lt("created_at", fifteenDaysAgo)
+        ]);
+      } else {
+        console.log("✅ Cron: Expired notifications purged successfully.");
+      }
+    } catch (err: any) {
+      console.error("❌ Cron: Unexpected error purging notifications:", err.message || err);
+    }
+
     console.log("🧹 Cron: Database-cleanup task completed successfully.");
 
     return NextResponse.json({

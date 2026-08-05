@@ -1,9 +1,24 @@
-// app/user/statement/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  RefreshCw,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownLeft,
+  TrendingUp,
+  Search,
+  Filter,
+  Copy,
+  Check,
+  CreditCard,
+  Building,
+  Clock,
+  Coins,
+  Download
+} from "lucide-react";
 import Header from "@/components/Header/page";
 import Footer from "@/components/Footer/page";
 import styles from "./page.module.css";
@@ -25,14 +40,17 @@ export default function StatementPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"payments" | "withdrawals">("payments");
   const [refreshing, setRefreshing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [copiedRef, setCopiedRef] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (isRefresh = false) => {
     try {
-      // Fetch profile, payments, and withdrawals
+      const refreshParam = isRefresh ? "?refresh=true" : "";
       const [profileRes, paymentsRes, withdrawalsRes] = await Promise.all([
         fetch("/api/profile"),
-        fetch("/api/payments/history"),
-        fetch("/api/withdrawals/history"),
+        fetch(`/api/payments/history${refreshParam}`),
+        fetch(`/api/withdrawals/history${refreshParam}`),
       ]);
 
       if (profileRes.ok) {
@@ -63,7 +81,50 @@ export default function StatementPage() {
 
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    fetchData(true);
+  };
+
+  const handleCopy = (ref: string) => {
+    navigator.clipboard.writeText(ref);
+    setCopiedRef(ref);
+    setTimeout(() => setCopiedRef(null), 2000);
+  };
+
+  const handleDownloadCSV = () => {
+    const dataToExport = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
+    if (!dataToExport || dataToExport.length === 0) {
+      alert("No statement records available to download.");
+      return;
+    }
+
+    const headers = activeTab === "payments" 
+      ? ["Date & Time", "Reference", "Type", "Description", "Amount (NGN)", "Status"]
+      : ["Date & Time", "Reference", "Destination Account", "Amount (NGN)", "Status"];
+
+    const rows = dataToExport.map((tx) => {
+      const formattedDate = `"${new Date(tx.created_at).toLocaleString("en-US")}"`;
+      const ref = `"${tx.reference}"`;
+      const desc = `"${(tx.description || "").replace(/"/g, '""')}"`;
+      const status = `"${tx.status}"`;
+      
+      if (activeTab === "payments") {
+        const type = `"${tx.type}"`;
+        const amt = tx.type === "transfer_received" ? tx.amount : -tx.amount;
+        return [formattedDate, ref, type, desc, amt, status].join(",");
+      } else {
+        return [formattedDate, ref, desc, -tx.amount, status].join(",");
+      }
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    const filename = `Paayh_Statement_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const formatAmount = (amt: number | string) => {
@@ -78,29 +139,105 @@ export default function StatementPage() {
     });
   };
 
-  const getStatusClass = (status: string) => {
-    switch (status.toLowerCase()) {
+  const getStatusBadge = (status: string) => {
+    const s = status.toLowerCase();
+    switch (s) {
       case "success":
-        return `${styles.status} ${styles.statusSuccess}`;
+        return <span className={`${styles.status} ${styles.statusSuccess}`}>Completed</span>;
       case "pending":
-        return `${styles.status} ${styles.statusPending}`;
+        return <span className={`${styles.status} ${styles.statusPending}`}>Pending</span>;
       case "failed":
-        return `${styles.status} ${styles.statusFailed}`;
+        return <span className={`${styles.status} ${styles.statusFailed}`}>Failed</span>;
       case "reversed":
-        return `${styles.status} ${styles.statusReversed}`;
+        return <span className={`${styles.status} ${styles.statusReversed}`}>Reversed</span>;
       default:
-        return styles.status;
+        return <span className={styles.status}>{status}</span>;
     }
   };
 
-  // Calculate totals
+  const getTypeBadge = (type: string) => {
+    const t = type.toLowerCase();
+    if (t === "transfer_sent") {
+      return (
+        <span className={`${styles.typeBadge} ${styles.typeTransferSent}`}>
+          <ArrowUpRight size={13} />
+          Sent Money
+        </span>
+      );
+    }
+    if (t === "transfer_received") {
+      return (
+        <span className={`${styles.typeBadge} ${styles.typeTransferReceived}`}>
+          <ArrowDownLeft size={13} />
+          Received Money
+        </span>
+      );
+    }
+    if (t === "withdrawal") {
+      return (
+        <span className={`${styles.typeBadge} ${styles.typeWithdrawal}`}>
+          <Building size={13} />
+          Withdrawal
+        </span>
+      );
+    }
+    if (t === "ad") {
+      return (
+        <span className={`${styles.typeBadge} ${styles.typeAd}`}>
+          <TrendingUp size={13} />
+          Ad Campaign
+        </span>
+      );
+    }
+    if (t === "highlight") {
+      return (
+        <span className={`${styles.typeBadge} ${styles.typeHighlight}`}>
+          <CreditCard size={13} />
+          Highlight
+        </span>
+      );
+    }
+    return (
+      <span className={styles.typeBadge}>
+        {type.replace("_", " ")}
+      </span>
+    );
+  };
+
+  // Filter transactions
+  const filterList = (list: Transaction[]) => {
+    return list.filter((tx) => {
+      const matchesSearch =
+        tx.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (tx.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (tx.type || "").toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus =
+        statusFilter === "all" || tx.status.toLowerCase() === statusFilter.toLowerCase();
+
+      return matchesSearch && matchesStatus;
+    });
+  };
+
+  // Totals calculations
   const totalSpent = payments
-    .filter((p) => p.status.toLowerCase() === "success")
+    .filter((p) => p.status.toLowerCase() === "success" && p.type !== "transfer_received" && p.type !== "transfer_sent")
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const totalSent = payments
+    .filter((p) => p.status.toLowerCase() === "success" && p.type === "transfer_sent")
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const totalReceived = payments
+    .filter((p) => p.status.toLowerCase() === "success" && p.type === "transfer_received")
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const totalWithdrawn = withdrawals
     .filter((w) => w.status.toLowerCase() === "success")
     .reduce((sum, w) => sum + Number(w.amount || 0), 0);
+
+  const filteredPayments = filterList(payments);
+  const filteredWithdrawals = filterList(withdrawals);
 
   return (
     <>
@@ -109,91 +246,154 @@ export default function StatementPage() {
         <div className={styles.header}>
           <div>
             <h1 className={styles.title}>Account Statement</h1>
-            <p style={{ color: "var(--text-muted)", marginTop: "0.5rem" }}>
-              Detailed statement of your payments, ad campaigns, and withdrawals.
+            <p className={styles.subtitle}>
+              Track your payments, ad campaigns, money transfers, and bank withdrawals.
             </p>
           </div>
-          <div style={{ display: "flex", gap: "0.75rem" }}>
+          <div className={styles.headerActions}>
+            <button
+              onClick={handleDownloadCSV}
+              className={styles.downloadBtn}
+              title="Download Statement CSV file"
+            >
+              <Download size={15} />
+              <span>Download File</span>
+            </button>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className={styles.backBtn}
-              style={{ cursor: "pointer" }}
+              className={styles.refreshBtn}
               title="Refresh Statement Data"
             >
-              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-              {refreshing ? "Refreshing..." : "Refresh"}
+              <RefreshCw size={15} className={refreshing ? styles.spin : ""} />
+              <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
             </button>
             <Link href="/user/dashboard" className={styles.backBtn}>
-              <ArrowLeft size={16} />
-              Back to Dashboard
+              <ArrowLeft size={15} />
+              <span>Dashboard</span>
             </Link>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "4rem" }}>
-            <p style={{ color: "var(--text-muted)" }}>Loading statement history...</p>
+          <div className={styles.loadingWrapper}>
+            <div className={styles.loadingSpinner} />
+            <p>Loading your statement history...</p>
           </div>
         ) : (
           <>
-            {/* Stats Summary Cards */}
+            {/* Stats Summary Grid */}
             <div className={styles.statsGrid}>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Available Balance</div>
-                <div className={styles.statValue} style={{ color: "#10b981" }}>
-                  {formatAmount(profile?.balance ?? 0)}
+              <div className={`${styles.statCard} ${styles.statBalance}`}>
+                <div className={styles.statIconWrap}>
+                  <Wallet size={18} color="#10b981" />
+                </div>
+                <div className={styles.statContent}>
+                  <div className={styles.statLabel}>Available Balance</div>
+                  <div className={styles.statValue}>{formatAmount(profile?.balance ?? 0)}</div>
                 </div>
               </div>
-              <div className={`${styles.statCard} ${styles.withdraw}`}>
-                <div className={styles.statLabel}>Pending Withdrawals</div>
-                <div className={styles.statValue} style={{ color: "#3b82f6" }}>
-                  {formatAmount(profile?.withdrawal ?? 0)}
+
+              <div className={`${styles.statCard} ${styles.statWithdraw}`}>
+                <div className={styles.statIconWrap}>
+                  <Clock size={18} color="#3b82f6" />
+                </div>
+                <div className={styles.statContent}>
+                  <div className={styles.statLabel}>Pending Withdrawal</div>
+                  <div className={styles.statValue}>{formatAmount(profile?.withdrawal ?? 0)}</div>
                 </div>
               </div>
-              <div className={`${styles.statCard} ${styles.spent}`}>
-                <div className={styles.statLabel}>Total Paid (Ads & Highlights)</div>
-                <div className={styles.statValue}>
-                  {formatAmount(totalSpent)}
+
+              <div className={`${styles.statCard} ${styles.statSent}`}>
+                <div className={styles.statIconWrap}>
+                  <ArrowUpRight size={18} color="#ef4444" />
+                </div>
+                <div className={styles.statContent}>
+                  <div className={styles.statLabel}>Total P2P Sent</div>
+                  <div className={styles.statValue}>{formatAmount(totalSent)}</div>
                 </div>
               </div>
-              <div className={`${styles.statCard} ${styles.withdrawn}`}>
-                <div className={styles.statLabel}>Total Withdrawn</div>
-                <div className={styles.statValue}>
-                  {formatAmount(totalWithdrawn)}
+
+              <div className={`${styles.statCard} ${styles.statReceived}`}>
+                <div className={styles.statIconWrap}>
+                  <ArrowDownLeft size={18} color="#6366f1" />
+                </div>
+                <div className={styles.statContent}>
+                  <div className={styles.statLabel}>Total P2P Received</div>
+                  <div className={styles.statValue}>{formatAmount(totalReceived)}</div>
+                </div>
+              </div>
+
+              <div className={`${styles.statCard} ${styles.statWithdrawn}`}>
+                <div className={styles.statIconWrap}>
+                  <Building size={18} color="#f59e0b" />
+                </div>
+                <div className={styles.statContent}>
+                  <div className={styles.statLabel}>Total Withdrawn</div>
+                  <div className={styles.statValue}>{formatAmount(totalWithdrawn)}</div>
                 </div>
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className={styles.tabsContainer}>
-              <button
-                className={`${styles.tabBtn} ${activeTab === "payments" ? styles.activeTabBtn : ""}`}
-                onClick={() => setActiveTab("payments")}
-              >
-                Payments & Ads ({payments.length})
-              </button>
-              <button
-                className={`${styles.tabBtn} ${activeTab === "withdrawals" ? styles.activeTabBtn : ""}`}
-                onClick={() => setActiveTab("withdrawals")}
-              >
-                Withdrawals ({withdrawals.length})
-              </button>
+            {/* Controls Bar: Tabs & Search Filter */}
+            <div className={styles.controlsBar}>
+              <div className={styles.tabsContainer}>
+                <button
+                  className={`${styles.tabBtn} ${activeTab === "payments" ? styles.activeTabBtn : ""}`}
+                  onClick={() => setActiveTab("payments")}
+                >
+                  Payments & Transfers ({payments.length})
+                </button>
+                <button
+                  className={`${styles.tabBtn} ${activeTab === "withdrawals" ? styles.activeTabBtn : ""}`}
+                  onClick={() => setActiveTab("withdrawals")}
+                >
+                  Withdrawals ({withdrawals.length})
+                </button>
+              </div>
+
+              <div className={styles.filterControls}>
+                <div className={styles.searchWrapper}>
+                  <Search size={15} className={styles.searchIcon} />
+                  <input
+                    type="text"
+                    placeholder="Search reference or description..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className={styles.searchInput}
+                  />
+                </div>
+
+                <div className={styles.selectWrapper}>
+                  <Filter size={14} className={styles.filterIcon} />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className={styles.statusSelect}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="success">Completed</option>
+                    <option value="pending">Pending</option>
+                    <option value="failed">Failed</option>
+                    <option value="reversed">Reversed</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* History Table */}
             <div className={styles.tableWrapper}>
               {activeTab === "payments" ? (
-                payments.length === 0 ? (
+                filteredPayments.length === 0 ? (
                   <div className={styles.emptyState}>
-                    <div className={styles.emptyTitle}>No Payments Found</div>
-                    <p>You have not made any payments for Ads or Highlights yet.</p>
+                    <div className={styles.emptyTitle}>No Transactions Found</div>
+                    <p>No payment or transfer records match your current filters.</p>
                   </div>
                 ) : (
                   <table className={styles.table}>
                     <thead>
                       <tr>
-                        <th className={styles.th}>Date</th>
+                        <th className={styles.th}>Date & Time</th>
                         <th className={styles.th}>Reference</th>
                         <th className={styles.th}>Type</th>
                         <th className={styles.th}>Description</th>
@@ -202,57 +402,76 @@ export default function StatementPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {payments.map((tx) => (
-                        <tr key={tx.id} className={styles.row}>
-                          <td className={styles.td}>{formatDate(tx.created_at)}</td>
-                          <td className={styles.td} style={{ fontFamily: "monospace" }}>
-                            {tx.reference}
-                          </td>
-                          <td className={styles.td} style={{ textTransform: "capitalize" }}>
-                            {tx.type.replace("_", " ")}
-                          </td>
-                          <td className={styles.td}>{tx.description}</td>
-                          <td className={styles.td} style={{ fontWeight: "700" }}>
-                            {formatAmount(tx.amount)}
-                          </td>
-                          <td className={styles.td}>
-                            <span className={getStatusClass(tx.status)}>{tx.status}</span>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredPayments.map((tx) => {
+                        const isCredit = tx.type === "transfer_received";
+                        return (
+                          <tr key={tx.id} className={styles.row}>
+                            <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
+                            <td className={styles.tdRef}>
+                              <span className={styles.refCode}>{tx.reference}</span>
+                              <button
+                                onClick={() => handleCopy(tx.reference)}
+                                className={styles.copyBtn}
+                                title="Copy Reference"
+                              >
+                                {copiedRef === tx.reference ? (
+                                  <Check size={12} color="#10b981" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            </td>
+                            <td className={styles.td}>{getTypeBadge(tx.type)}</td>
+                            <td className={styles.tdDesc}>{tx.description}</td>
+                            <td className={`${styles.tdAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
+                              {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
+                            </td>
+                            <td className={styles.td}>{getStatusBadge(tx.status)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )
-              ) : withdrawals.length === 0 ? (
+              ) : filteredWithdrawals.length === 0 ? (
                 <div className={styles.emptyState}>
                   <div className={styles.emptyTitle}>No Withdrawals Found</div>
-                  <p>You have not initiated any bank account withdrawals yet.</p>
+                  <p>No bank withdrawal records match your current filters.</p>
                 </div>
               ) : (
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th className={styles.th}>Date</th>
+                      <th className={styles.th}>Date & Time</th>
                       <th className={styles.th}>Reference</th>
-                      <th className={styles.th}>Description</th>
+                      <th className={styles.th}>Destination Account</th>
                       <th className={styles.th}>Amount</th>
                       <th className={styles.th}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {withdrawals.map((tx) => (
+                    {filteredWithdrawals.map((tx) => (
                       <tr key={tx.id} className={styles.row}>
-                        <td className={styles.td}>{formatDate(tx.created_at)}</td>
-                        <td className={styles.td} style={{ fontFamily: "monospace" }}>
-                          {tx.reference}
+                        <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
+                        <td className={styles.tdRef}>
+                          <span className={styles.refCode}>{tx.reference}</span>
+                          <button
+                            onClick={() => handleCopy(tx.reference)}
+                            className={styles.copyBtn}
+                            title="Copy Reference"
+                          >
+                            {copiedRef === tx.reference ? (
+                              <Check size={12} color="#10b981" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
                         </td>
-                        <td className={styles.td}>{tx.description}</td>
-                        <td className={styles.td} style={{ fontWeight: "700", color: "#ef4444" }}>
+                        <td className={styles.tdDesc}>{tx.description}</td>
+                        <td className={`${styles.tdAmount} ${styles.amountDebit}`}>
                           - {formatAmount(tx.amount)}
                         </td>
-                        <td className={styles.td}>
-                          <span className={getStatusClass(tx.status)}>{tx.status}</span>
-                        </td>
+                        <td className={styles.td}>{getStatusBadge(tx.status)}</td>
                       </tr>
                     ))}
                   </tbody>

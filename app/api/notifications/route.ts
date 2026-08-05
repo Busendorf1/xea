@@ -25,23 +25,26 @@ export async function GET(req: NextRequest) {
 
     const userSignupDate = user.created_at;
     const isMonetized = user.monetized === "yes" || user.monetized === true;
+    const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
 
-    // 2. Fetch private notifications
+    // 2. Fetch private notifications (within 15 days retention window)
     const { data: privateNotifications, error: privErr } = await supabaseReadOnly
       .from("notifications")
       .select("*")
-      .ilike("user_email", email);
+      .ilike("user_email", email)
+      .gte("created_at", fifteenDaysAgo);
 
     if (privErr) {
       console.error("❌ Error fetching private notifications:", privErr);
       return NextResponse.json({ error: privErr.message }, { status: 500 });
     }
 
-    // 3. Fetch active global announcements
+    // 3. Fetch active global announcements (within 15 days retention window)
     let announcementQuery = supabaseReadOnly
       .from("global_announcements")
       .select("*")
-      .gte("created_at", userSignupDate); // Only fetch announcements made since user registered
+      .gte("created_at", userSignupDate)
+      .gte("created_at", fifteenDaysAgo);
 
     if (isMonetized) {
       announcementQuery = announcementQuery.in("target", ["all", "monetized"]);
