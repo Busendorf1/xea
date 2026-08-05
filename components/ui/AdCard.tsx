@@ -676,23 +676,6 @@ export default function AdCard({
                           }}
                         />
 
-                        {/* Top Right Corner Play/Pause Button */}
-                        <button 
-                          type="button" 
-                          className={styles.videoTopRightPlayBtn} 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            togglePlay();
-                          }}
-                          title={isPlaying ? "Pause video" : "Play video"}
-                        >
-                          {isPlaying ? (
-                            <Pause size={14} fill="#fff" color="#fff" />
-                          ) : (
-                            <Play size={14} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />
-                          )}
-                        </button>
-
                         {/* Sleek Bottom Control Bar */}
                         <div className={styles.videoControlBar} onClick={(e) => e.stopPropagation()}>
                           {/* Left: Countdown Duration Badge (00:00 format, counting down towards 00:00) */}
