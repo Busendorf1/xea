@@ -11,6 +11,8 @@ import {
   VolumeX,
   Apple,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Video,
   MoreVertical,
   ShieldAlert,
@@ -135,10 +137,16 @@ export default function AdCard({
   const [isPlaying, setIsPlaying] = useState(true);
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const touchStartX = useRef<number | null>(null);
-  const [dragOffsetX, setDragOffsetX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef<number | null>(null);
+  const dragStartY = useRef<number | null>(null);
+  const isSwiping = useRef<boolean>(false);
+  const isScrollLocked = useRef<boolean>(false);
+  const isDragging = useRef<boolean>(false);
+  const [isCardVisible, setIsCardVisible] = useState(false);
 
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -168,22 +176,24 @@ export default function AdCard({
   };
 
   const togglePlay = () => {
-    if (videoRef.current) {
+    const activeVideo = videoRefs.current[currentMediaIndex];
+    if (activeVideo) {
       if (isPlaying) {
-        videoRef.current.pause();
+        activeVideo.pause();
         setIsPlaying(false);
       } else {
-        videoRef.current.play().catch(() => {});
+        activeVideo.play().catch(() => {});
         setIsPlaying(true);
       }
     }
   };
 
   const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-    }
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    videoRefs.current.forEach((video) => {
+      if (video) video.muted = nextMuted;
+    });
   };
 
   const handleBlockAndReportAd = () => {
@@ -238,8 +248,6 @@ export default function AdCard({
       if (success) {
         setSuccessAction(type);
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        // Keep the card in view in its verified/disabled state to prevent list layout shifts.
-        // It will be removed from the feed on the next refresh/reload.
       }
     } catch (err) {
       console.error("Action error:", err);
@@ -249,28 +257,18 @@ export default function AdCard({
     }
   };
 
-  const cardRef = useRef<HTMLDivElement>(null);
-
   // Reset media error whenever the user navigates to a different item in the carousel
   React.useEffect(() => {
     setMediaError(false);
   }, [currentMediaIndex]);
 
-  // Pause video automatically when card leaves viewport (< 65% visible)
+  // Track card visibility in viewport
   React.useEffect(() => {
     if (!cardRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (videoRef.current) {
-            if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
-              videoRef.current.play().catch(() => {});
-              setIsPlaying(true);
-            } else {
-              videoRef.current.pause();
-              setIsPlaying(false);
-            }
-          }
+          setIsCardVisible(entry.isIntersecting && entry.intersectionRatio >= 0.65);
         });
       },
       { threshold: [0.6, 0.65, 0.75] }
@@ -278,6 +276,22 @@ export default function AdCard({
     observer.observe(cardRef.current);
     return () => observer.disconnect();
   }, []);
+
+  // Play/pause active video based on visibility and active slide index
+  React.useEffect(() => {
+    videoRefs.current.forEach((video, idx) => {
+      if (!video) return;
+      if (idx === currentMediaIndex && isCardVisible) {
+        video.play().catch(() => {});
+        setIsPlaying(true);
+      } else {
+        video.pause();
+        if (idx === currentMediaIndex) {
+          setIsPlaying(false);
+        }
+      }
+    });
+  }, [currentMediaIndex, isCardVisible]);
 
 
 
@@ -417,50 +431,97 @@ export default function AdCard({
     : [];
   // Sort media: images first, videos last
   const mediaUrls = [...rawMediaUrls].sort((a, b) => {
-    const aIsVideo = /\.(mp4|webm|mov|avi)$/i.test(a);
-    const bIsVideo = /\.(mp4|webm|mov|avi)$/i.test(b);
+    const aIsVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(a);
+    const bIsVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(b);
     if (aIsVideo && !bIsVideo) return 1;
     if (!aIsVideo && bIsVideo) return -1;
     return 0;
   });
   const currentUrl = mediaUrls[currentMediaIndex] || "";
   // Detect type per individual URL so mixed ads (images + video) render correctly
-  const mediaType = /\.(mp4|webm|mov|avi)$/i.test(currentUrl) ? "video" : "image";
+  const mediaType = /\.(mp4|webm|mov|avi|m3u8)$/i.test(currentUrl) ? "video" : "image";
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    setIsDragging(true);
-    setDragOffsetX(0);
+  const handlePointerDown = (e: React.TouchEvent | React.MouseEvent) => {
+    if (mediaUrls.length <= 1) return;
+
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+    dragStartX.current = clientX;
+    dragStartY.current = clientY;
+    isSwiping.current = false;
+    isScrollLocked.current = false;
+    isDragging.current = true;
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const diff = e.touches[0].clientX - touchStartX.current;
-    // Clamp drag to 60% of the width so it feels bounded
-    const maxDrag = (e.currentTarget as HTMLElement).offsetWidth * 0.6;
-    setDragOffsetX(Math.max(-maxDrag, Math.min(maxDrag, diff)));
-  };
+  const handlePointerMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!isDragging.current || dragStartX.current === null || dragStartY.current === null) return;
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchStartX.current - touchEndX;
-    const threshold = 50;
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-    if (diff > threshold) {
-      setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
-    } else if (diff < -threshold) {
-      setCurrentMediaIndex((prev) => (prev - 1 + mediaUrls.length) % mediaUrls.length);
+    const deltaX = clientX - dragStartX.current;
+    const deltaY = clientY - dragStartY.current;
+
+    if (!isSwiping.current && !isScrollLocked.current) {
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 6) {
+        isScrollLocked.current = true;
+        return;
+      }
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 6) {
+        isSwiping.current = true;
+      }
     }
-    touchStartX.current = null;
-    setDragOffsetX(0);
-    setIsDragging(false);
+
+    if (isScrollLocked.current) return;
+
+    if (isSwiping.current) {
+      if ("touches" in e && e.cancelable) {
+        e.preventDefault();
+      }
+
+      if (trackRef.current) {
+        trackRef.current.style.transition = "none";
+        const containerWidth = trackRef.current.offsetWidth || 1;
+        let adjustedDeltaX = deltaX;
+        if (
+          (currentMediaIndex === 0 && deltaX > 0) ||
+          (currentMediaIndex === mediaUrls.length - 1 && deltaX < 0)
+        ) {
+          adjustedDeltaX = deltaX * 0.3;
+        }
+        const basePercent = -currentMediaIndex * 100;
+        const offsetPercent = (adjustedDeltaX / containerWidth) * 100;
+        trackRef.current.style.transform = `translate3d(${basePercent + offsetPercent}%, 0, 0)`;
+      }
+    }
   };
 
-  const handleMediaClick = (e: React.MouseEvent) => {
-    if (mediaType === "video") return;
-    e.stopPropagation();
-    setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
+  const handlePointerEnd = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+
+    if (trackRef.current) {
+      trackRef.current.style.transition = "";
+      trackRef.current.style.transform = "";
+    }
+
+    if (isSwiping.current && dragStartX.current !== null) {
+      const clientX = "changedTouches" in e ? e.changedTouches[0].clientX : e.clientX;
+      const deltaX = clientX - dragStartX.current;
+      const threshold = 40;
+
+      if (deltaX < -threshold && currentMediaIndex < mediaUrls.length - 1) {
+        setCurrentMediaIndex((prev) => prev + 1);
+      } else if (deltaX > threshold && currentMediaIndex > 0) {
+        setCurrentMediaIndex((prev) => prev - 1);
+      }
+    }
+
+    dragStartX.current = null;
+    dragStartY.current = null;
+    isSwiping.current = false;
+    isScrollLocked.current = false;
   };
 
   const actionButtons = [
@@ -628,20 +689,57 @@ export default function AdCard({
 
         {/* Media Section */}
         {mediaUrls.length > 0 && !mediaError && (
-          <div 
+          <div
             className={styles.mediaBox}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onClick={handleMediaClick}
-            style={{ 
-              cursor: mediaType === "image" ? "pointer" : "default" 
-            }}
+            onTouchStart={handlePointerDown}
+            onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerEnd}
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerEnd}
+            onMouseLeave={handlePointerEnd}
           >
-            <div 
-              className={`${styles.mediaTrack} ${isDragging ? styles.mediaTrackDragging : ""}`}
+            {/* Media Counter Badge */}
+            {mediaUrls.length > 1 && (
+              <div className={styles.mediaBadge}>
+                {currentMediaIndex + 1} / {mediaUrls.length}
+              </div>
+            )}
+
+            {/* Navigation Arrows */}
+            {mediaUrls.length > 1 && currentMediaIndex > 0 && (
+              <button
+                type="button"
+                className={styles.navBtnLeft}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentMediaIndex((prev) => Math.max(0, prev - 1));
+                }}
+                aria-label="Previous slide"
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
+
+            {mediaUrls.length > 1 && currentMediaIndex < mediaUrls.length - 1 && (
+              <button
+                type="button"
+                className={styles.navBtnRight}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentMediaIndex((prev) => Math.min(mediaUrls.length - 1, prev + 1));
+                }}
+                aria-label="Next slide"
+              >
+                <ChevronRight size={18} />
+              </button>
+            )}
+
+            <div
+              ref={trackRef}
+              className={styles.mediaTrack}
               style={{
-                transform: `translateX(calc(-${currentMediaIndex * 100}% + ${dragOffsetX}px))`,
+                transform: `translate3d(-${currentMediaIndex * 100}%, 0, 0)`,
               }}
             >
               {mediaUrls.map((url, index) => {
@@ -650,43 +748,48 @@ export default function AdCard({
                   <div key={index} className={styles.mediaWrapper}>
                     {isVideo ? (
                       <div className={styles.webVideoContainer} onClick={(e) => e.stopPropagation()}>
-                        <HlsVideoPlayer 
-                          ref={videoRef}
+                        <HlsVideoPlayer
+                          ref={(el) => {
+                            videoRefs.current[index] = el;
+                          }}
                           key={url}
                           src={url}
                           hlsSrc={ad.hls_url || (url.endsWith(".m3u8") ? url : undefined)}
                           loop
-                          autoPlay
+                          autoPlay={index === currentMediaIndex && isCardVisible}
                           muted={isMuted}
                           controls={false}
-                          className={styles.mediaVideo} 
+                          className={styles.mediaVideo}
                           onClick={togglePlay}
-                          onPlay={() => setIsPlaying(true)}
-                          onPause={() => setIsPlaying(false)}
+                          onPlay={() => {
+                            if (index === currentMediaIndex) setIsPlaying(true);
+                          }}
+                          onPause={() => {
+                            if (index === currentMediaIndex) setIsPlaying(false);
+                          }}
                           onTimeUpdate={(e) => {
-                            if (e.currentTarget.currentTime) {
+                            if (index === currentMediaIndex && e.currentTarget.currentTime) {
                               setVideoCurrentTime(e.currentTarget.currentTime);
                             }
                           }}
                           onLoadedMetadata={(e) => {
-                            const { duration } = e.currentTarget;
-                            if (duration) {
-                              setVideoDuration(duration);
+                            if (index === currentMediaIndex && e.currentTarget.duration) {
+                              setVideoDuration(e.currentTarget.duration);
                             }
                           }}
                         />
 
                         {/* Sleek Bottom Control Bar */}
                         <div className={styles.videoControlBar} onClick={(e) => e.stopPropagation()}>
-                          {/* Left: Countdown Duration Badge (00:00 format, counting down towards 00:00) */}
+                          {/* Left: Countdown Duration Badge */}
                           <div className={styles.videoDurationBadge} title="Remaining duration">
                             {formatVideoTime(Math.max(0, (videoDuration || 0) - (videoCurrentTime || 0)))}
                           </div>
 
                           {/* Right: Mic Unmute/Mute Button */}
-                          <button 
+                          <button
                             type="button"
-                            className={styles.videoMuteBtn} 
+                            className={styles.videoMuteBtn}
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleMute();
@@ -702,6 +805,7 @@ export default function AdCard({
                         src={url}
                         alt="Ad Media"
                         className={styles.adImgElement}
+                        draggable={false}
                         onError={() => setMediaError(true)}
                       />
                     )}
