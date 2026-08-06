@@ -11,8 +11,6 @@ import {
   VolumeX,
   Apple,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Video,
   MoreVertical,
   ShieldAlert,
@@ -441,81 +439,98 @@ export default function AdCard({
   // Detect type per individual URL so mixed ads (images + video) render correctly
   const mediaType = /\.(mp4|webm|mov|avi|m3u8)$/i.test(currentUrl) ? "video" : "image";
 
-  const handlePointerDown = (e: React.TouchEvent | React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (mediaUrls.length <= 1) return;
 
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    // Ignore clicks on buttons or control bars inside mediaBox
+    const targetEl = e.target as HTMLElement;
+    if (
+      targetEl.closest("button") ||
+      targetEl.closest(`.${styles.videoControlBar}`) ||
+      targetEl.closest(`.${styles.dotsContainer}`)
+    ) {
+      return;
+    }
 
-    dragStartX.current = clientX;
-    dragStartY.current = clientY;
+    dragStartX.current = e.clientX;
+    dragStartY.current = e.clientY;
     isSwiping.current = false;
     isScrollLocked.current = false;
     isDragging.current = true;
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Fallback if setPointerCapture is unsupported
+    }
   };
 
-  const handlePointerMove = (e: React.TouchEvent | React.MouseEvent) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging.current || dragStartX.current === null || dragStartY.current === null) return;
 
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-
-    const deltaX = clientX - dragStartX.current;
-    const deltaY = clientY - dragStartY.current;
+    const deltaX = e.clientX - dragStartX.current;
+    const deltaY = e.clientY - dragStartY.current;
 
     if (!isSwiping.current && !isScrollLocked.current) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 6) {
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
         isScrollLocked.current = true;
         return;
       }
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 6) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 5) {
         isSwiping.current = true;
       }
     }
 
     if (isScrollLocked.current) return;
 
-    if (isSwiping.current) {
-      if ("touches" in e && e.cancelable) {
-        e.preventDefault();
+    if (isSwiping.current && trackRef.current) {
+      trackRef.current.style.transition = "none";
+      const containerWidth = trackRef.current.offsetWidth || 1;
+      let adjustedDeltaX = deltaX;
+      if (
+        (currentMediaIndex === 0 && deltaX > 0) ||
+        (currentMediaIndex === mediaUrls.length - 1 && deltaX < 0)
+      ) {
+        adjustedDeltaX = deltaX * 0.25;
       }
-
-      if (trackRef.current) {
-        trackRef.current.style.transition = "none";
-        const containerWidth = trackRef.current.offsetWidth || 1;
-        let adjustedDeltaX = deltaX;
-        if (
-          (currentMediaIndex === 0 && deltaX > 0) ||
-          (currentMediaIndex === mediaUrls.length - 1 && deltaX < 0)
-        ) {
-          adjustedDeltaX = deltaX * 0.3;
-        }
-        const basePercent = -currentMediaIndex * 100;
-        const offsetPercent = (adjustedDeltaX / containerWidth) * 100;
-        trackRef.current.style.transform = `translate3d(${basePercent + offsetPercent}%, 0, 0)`;
-      }
+      const basePercent = -currentMediaIndex * 100;
+      const offsetPercent = (adjustedDeltaX / containerWidth) * 100;
+      trackRef.current.style.transform = `translate3d(${basePercent + offsetPercent}%, 0, 0)`;
     }
   };
 
-  const handlePointerEnd = (e: React.TouchEvent | React.MouseEvent) => {
+  const handlePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging.current) return;
     isDragging.current = false;
 
-    if (trackRef.current) {
-      trackRef.current.style.transition = "";
-      trackRef.current.style.transform = "";
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Fallback
     }
 
-    if (isSwiping.current && dragStartX.current !== null) {
-      const clientX = "changedTouches" in e ? e.changedTouches[0].clientX : e.clientX;
-      const deltaX = clientX - dragStartX.current;
-      const threshold = 40;
+    if (isSwiping.current && dragStartX.current !== null && trackRef.current) {
+      const deltaX = e.clientX - dragStartX.current;
+      const threshold = 35;
 
+      let targetIndex = currentMediaIndex;
       if (deltaX < -threshold && currentMediaIndex < mediaUrls.length - 1) {
-        setCurrentMediaIndex((prev) => prev + 1);
+        targetIndex = currentMediaIndex + 1;
       } else if (deltaX > threshold && currentMediaIndex > 0) {
-        setCurrentMediaIndex((prev) => prev - 1);
+        targetIndex = currentMediaIndex - 1;
       }
+
+      trackRef.current.style.transition = "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)";
+      trackRef.current.style.transform = `translate3d(-${targetIndex * 100}%, 0, 0)`;
+
+      if (targetIndex !== currentMediaIndex) {
+        setCurrentMediaIndex(targetIndex);
+      }
+    } else if (trackRef.current) {
+      trackRef.current.style.transition = "transform 0.2s ease-out";
+      trackRef.current.style.transform = `translate3d(-${currentMediaIndex * 100}%, 0, 0)`;
     }
 
     dragStartX.current = null;
@@ -691,48 +706,16 @@ export default function AdCard({
         {mediaUrls.length > 0 && !mediaError && (
           <div
             className={styles.mediaBox}
-            onTouchStart={handlePointerDown}
-            onTouchMove={handlePointerMove}
-            onTouchEnd={handlePointerEnd}
-            onMouseDown={handlePointerDown}
-            onMouseMove={handlePointerMove}
-            onMouseUp={handlePointerEnd}
-            onMouseLeave={handlePointerEnd}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerEnd}
+            onPointerCancel={handlePointerEnd}
           >
             {/* Media Counter Badge */}
             {mediaUrls.length > 1 && (
               <div className={styles.mediaBadge}>
                 {currentMediaIndex + 1} / {mediaUrls.length}
               </div>
-            )}
-
-            {/* Navigation Arrows */}
-            {mediaUrls.length > 1 && currentMediaIndex > 0 && (
-              <button
-                type="button"
-                className={styles.navBtnLeft}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentMediaIndex((prev) => Math.max(0, prev - 1));
-                }}
-                aria-label="Previous slide"
-              >
-                <ChevronLeft size={18} />
-              </button>
-            )}
-
-            {mediaUrls.length > 1 && currentMediaIndex < mediaUrls.length - 1 && (
-              <button
-                type="button"
-                className={styles.navBtnRight}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentMediaIndex((prev) => Math.min(mediaUrls.length - 1, prev + 1));
-                }}
-                aria-label="Next slide"
-              >
-                <ChevronRight size={18} />
-              </button>
             )}
 
             <div

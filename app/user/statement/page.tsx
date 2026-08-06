@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Search,
   Filter,
+  ChevronDown,
   Copy,
   Check,
   CreditCard,
@@ -370,6 +371,7 @@ export default function StatementPage() {
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className={styles.statusSelect}
+                    aria-label="Filter transactions by status"
                   >
                     <option value="all">All Statuses</option>
                     <option value="success">Completed</option>
@@ -377,6 +379,7 @@ export default function StatementPage() {
                     <option value="failed">Failed</option>
                     <option value="reversed">Reversed</option>
                   </select>
+                  <ChevronDown size={14} className={styles.selectChevron} />
                 </div>
               </div>
             </div>
