@@ -43,3 +43,16 @@ export function getScoreIncrementForStars(stars: number): number {
   const validStars = Math.min(5, Math.max(1, Math.round(stars)));
   return STAR_RATING_INCREMENTS[validStars] || 0.01;
 }
+
+/**
+ * Computes maximum wallet balance holding limit based on user's ATW tier level.
+ * Each ATW level increases the account balance limit by ₦100,000.
+ * Level 1 (ATW1) = ₦100,000, Level 2 (ATW2) = ₦200,000, ..., Level 14 (ATW14) = ₦1,400,000.
+ */
+export function getAtwBalanceLimit(atwTier?: string | null): number {
+  if (!atwTier) return 100000;
+  const match = atwTier.match(/\d+/);
+  const levelNum = match ? parseInt(match[0], 10) : 1;
+  const safeLevel = Math.max(1, levelNum);
+  return safeLevel * 100000;
+}

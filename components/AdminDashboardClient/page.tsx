@@ -3268,8 +3268,18 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 marginBottom: "1.5rem"
               }}>
                 <div>
-                  <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, color: reconciliationData?.transfersPaused ? "#ef4444" : "var(--foreground)" }}>
-                    {reconciliationData?.transfersPaused ? "🚨 EMERGENCY P2P TRANSFERS PAUSED" : "🛡️ System P2P Transfers Active"}
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, color: reconciliationData?.transfersPaused ? "#ef4444" : "var(--foreground)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    {reconciliationData?.transfersPaused ? (
+                      <>
+                        <ShieldAlert size={20} style={{ color: "#ef4444" }} />
+                        <span>EMERGENCY P2P TRANSFERS PAUSED</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={20} style={{ color: "#10b981" }} />
+                        <span>System P2P Transfers Active</span>
+                      </>
+                    )}
                   </h3>
                   <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
                     {reconciliationData?.transfersPaused
@@ -3289,9 +3299,22 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                       color: "#fff",
                       fontWeight: 700,
                       padding: "0.6rem 1.2rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.4rem"
                     }}
                   >
-                    {reconciliationData?.transfersPaused ? "Unpause P2P Transfers ✅" : "Emergency Pause Transfers 🔒"}
+                    {reconciliationData?.transfersPaused ? (
+                      <>
+                        <Play size={15} />
+                        <span>Unpause P2P Transfers</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pause size={15} />
+                        <span>Emergency Pause Transfers</span>
+                      </>
+                    )}
                   </button>
 
                   <button
@@ -3299,8 +3322,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     onClick={fetchReconciliationData}
                     disabled={reconciliationLoading}
                     className={styles.btnAction}
+                    style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
                   >
-                    Run Audit Scan 🔍
+                    <Search size={15} />
+                    <span>Run Audit Scan</span>
                   </button>
                 </div>
               </div>
@@ -3319,9 +3344,22 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     fontSize: "1.1rem",
                     fontWeight: 800,
                     marginTop: "0.5rem",
-                    color: reconciliationData?.metrics?.status === "HEALTHY" ? "#10b981" : "#ef4444"
+                    color: reconciliationData?.metrics?.status === "HEALTHY" ? "#10b981" : "#ef4444",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem"
                   }}>
-                    {reconciliationData?.metrics?.status === "HEALTHY" ? "HEALTHY (0.00 Variance) ✅" : "FLAGGED (Discrepancy) 🚨"}
+                    {reconciliationData?.metrics?.status === "HEALTHY" ? (
+                      <>
+                        <CheckCircle size={18} />
+                        <span>HEALTHY (0.00 Variance)</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={18} />
+                        <span>FLAGGED (Discrepancy)</span>
+                      </>
+                    )}
                   </div>
                 </div>
 

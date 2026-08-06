@@ -142,3 +142,32 @@ EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
 $$;
+
+-- 5. Automated Notification Trigger on ATW Tier Upgrade
+CREATE OR REPLACE FUNCTION public.notify_atw_tier_upgrade()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_new_level INT;
+    v_new_cap_naira NUMERIC(15,2);
+BEGIN
+    IF OLD.atw_tier IS DISTINCT FROM NEW.atw_tier THEN
+        v_new_level := COALESCE(NULLIF(regexp_replace(NEW.atw_tier, '\D', '', 'g'), '')::INT, 1);
+        v_new_cap_naira := v_new_level * 100000.00;
+
+        INSERT INTO public.notifications (user_email, title, message)
+        VALUES (
+            NEW.email,
+            '🎉 ATW Level Up Unlocked!',
+            'Congratulations! You unlocked ' || NEW.atw_tier || '! Your maximum wallet balance holding limit has been increased to ₦' || TO_CHAR(v_new_cap_naira, 'FM999,999,990.00') || '.'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_notify_atw_tier_upgrade ON public.users;
+CREATE TRIGGER trg_notify_atw_tier_upgrade
+    AFTER UPDATE OF atw_tier ON public.users
+    FOR EACH ROW
+    WHEN (OLD.atw_tier IS DISTINCT FROM NEW.atw_tier)
+    EXECUTE FUNCTION public.notify_atw_tier_upgrade();

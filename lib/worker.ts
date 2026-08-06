@@ -124,31 +124,35 @@ const flushBatch = async () => {
       try {
         const { data: userData } = await supabaseAdmin
           .from("users")
-          .select("balance")
+          .select("balance, atw_tier")
           .ilike("email", userEmail)
           .maybeSingle();
 
         const currentBal = parseFloat(userData?.balance || 0);
+        const { getAtwBalanceLimit } = await import("./attentionTierEngine");
+        const balanceCap = getAtwBalanceLimit(userData?.atw_tier);
+        const formattedCap = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(balanceCap);
 
-        if (currentBal >= 50000) {
-          console.log(`ℹ️ Wallet balance cap of ₦50,000 reached for ${userEmail}. Diverting click earnings to platform revenue.`);
-          // Send polite notification once balance hits cap
+        if (currentBal >= balanceCap) {
+          console.log(`ℹ️ ATW tier balance cap of ${formattedCap} reached for ${userEmail}. Diverting click earnings to platform revenue (Earnings permanently missed).`);
+          // Send explicit notification once balance hits ATW tier cap
           await supabaseAdmin.from("notifications").insert({
             user_email: userEmail,
             title: "Wallet Holding Limit Reached",
-            message: "Your wallet balance has reached the ₦50,000 maximum holding limit. Please initiate a withdrawal to continue receiving instant payouts.",
+            message: `Your wallet balance has reached the ${formattedCap} maximum holding limit for your ATW level (${userData?.atw_tier || "ATW1"}). Click earnings during this period are permanently missed and will not be paid back later. Please initiate a withdrawal or upgrade your ATW level to resume earning.`,
           });
         } else {
           await supabaseAdmin.rpc("increment_user_click_progress", {
             p_email: userEmail,
           });
 
-          // Check if balance crosses ₦30,000 threshold
-          if (currentBal >= 30000 && currentBal < 50000) {
+          // Check if balance crosses 50% threshold of tier cap
+          const alertThreshold = balanceCap * 0.5;
+          if (currentBal >= alertThreshold && currentBal < balanceCap) {
             await supabaseAdmin.from("notifications").insert({
               user_email: userEmail,
               title: "Withdrawal Threshold Reached",
-              message: "Your wallet balance has reached ₦30,000! You can withdraw your earnings anytime between ₦10,000 and ₦50,000.",
+              message: `Your wallet balance has reached ₦${currentBal.toLocaleString("en-NG")}! You can withdraw your earnings anytime up to your ATW limit of ${formattedCap}.`,
             });
           }
         }

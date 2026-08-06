@@ -441,13 +441,18 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
       return;
     }
 
-    if (amountNum < 10000 || amountNum > 50000) {
-      setWithdrawalError("Withdrawal amount must be between ₦10,000 and ₦50,000");
+    if (user.balance < 10000) {
+      setWithdrawalError("Minimum wallet balance required to initiate a withdrawal is ₦10,000.00.");
+      return;
+    }
+
+    if (amountNum < 10000) {
+      setWithdrawalError("Minimum withdrawal amount per transaction is ₦10,000.00.");
       return;
     }
 
     if (amountNum > user.balance) {
-      setWithdrawalError("Insufficient wallet balance for this withdrawal amount");
+      setWithdrawalError("Insufficient wallet balance for this withdrawal amount.");
       return;
     }
 
@@ -1142,15 +1147,15 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
                   <input
                     type="number"
                     min={10000}
-                    max={50000}
-                    placeholder="Enter amount between 10,000 and 50,000"
+                    max={user.balance}
+                    placeholder={`Enter amount (min ₦10,000 up to ₦${user.balance.toLocaleString("en-NG")})`}
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                     required
                     className={styles.formInput}
                   />
                   <span className={styles.formHintSmall}>
-                    Note: You can withdraw any amount between ₦10,000 and ₦50,000.
+                    Note: Minimum balance to withdraw is ₦10,000. You can withdraw any amount up to your full available balance (₦{user.balance.toLocaleString("en-NG")}).
                   </span>
                 </div>
 

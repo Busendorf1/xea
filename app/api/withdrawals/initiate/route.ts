@@ -18,21 +18,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { bankCode, bankName, accountNumber, amount, phone } = body;
 
-    const withdrawAmount = parseFloat(amount);
-    if (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT || withdrawAmount > MAX_WITHDRAWAL_AMOUNT) {
-      return NextResponse.json({
-        error: `Withdrawal amount must be between ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")} and ₦${MAX_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}.`,
-      }, { status: 400 });
-    }
-
-    if (!bankCode || !bankName || !accountNumber || !phone) {
-      return NextResponse.json({ error: "bankCode, bankName, accountNumber, and phone are required" }, { status: 400 });
-    }
-
     // 1. Fetch user's current profile details
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, bvn_hash, monetized, monetized_until, monetization_clicks")
+      .select("balance, withdrawal, phone, bvn_hash, monetized, monetized_until, monetization_clicks, atw_tier")
       .ilike("email", email)
       .maybeSingle();
 
@@ -41,26 +30,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to verify account balance" }, { status: 500 });
     }
 
-    // 2. Strict Monetization Enforcement Check (Only monetized users can withdraw)
-    const clicksCount = user.monetization_clicks ?? 0;
-    const isMonetized = !!(
-      (user.monetized === "yes" || user.monetized === "true" || user.monetized === true || clicksCount >= 300) &&
-      (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now())
-    );
-
-    if (!isMonetized) {
-      console.warn(`❌ Security Block: Non-monetized user ${email} attempted to withdraw.`);
-      return NextResponse.json({
-        error: "Withdrawal restricted: Only monetized users are eligible to withdraw earnings. Please monetize your account to request bank payouts.",
-      }, { status: 403 });
+    if (!bankCode || !bankName || !accountNumber || !phone) {
+      return NextResponse.json({ error: "bankCode, bankName, accountNumber, and phone are required" }, { status: 400 });
     }
 
     const currentBalance = parseFloat(user.balance || 0);
     const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-    if (currentBalance < withdrawAmount) {
+    // Rule 1: Minimum balance requirement (User must have at least ₦10,000 to initiate a withdrawal)
+    if (currentBalance < MIN_WITHDRAWAL_AMOUNT) {
       return NextResponse.json({
-        error: `Insufficient available balance. Your balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
+        error: `Minimum wallet balance required to initiate a withdrawal is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}. Your current balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
+      }, { status: 400 });
+    }
+
+    // Rule 2: Minimum withdrawal amount per transaction is ₦10,000
+    const withdrawAmount = parseFloat(amount);
+    if (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT) {
+      return NextResponse.json({
+        error: `Minimum withdrawal amount per transaction is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}.`,
+      }, { status: 400 });
+    }
+
+    // Rule 3: Users can withdraw ANY amount up to their full available balance (can empty account to ₦0)
+    if (withdrawAmount > currentBalance) {
+      return NextResponse.json({
+        error: `Insufficient available balance. Your total available balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
       }, { status: 400 });
     }
 
