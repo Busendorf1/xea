@@ -82,9 +82,14 @@ const formatCurrency = (amount: number | string) => {
   return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-export default function DashboardClient({ user, parsedInterest, email }: DashboardClientProps) {
+export default function DashboardClient({ user: initialUser, parsedInterest, email }: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
+  const [user, setUser] = useState<UserProfile>(initialUser);
   const [monetizing, setMonetizing] = useState(false);
+
+  useEffect(() => {
+    setUser(initialUser);
+  }, [initialUser]);
 
   // Withdrawal states
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -104,6 +109,20 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
   const [sendAmount, setSendAmount] = useState("");
   const [submittingSend, setSubmittingSend] = useState(false);
   const [sendMoneyError, setSendMoneyError] = useState("");
+
+  const refreshProfileQuietly = async () => {
+    try {
+      const res = await fetch("/api/profile");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && !data.error && data.email) {
+          setUser(data);
+        }
+      }
+    } catch (e) {
+      // Quiet background error catch
+    }
+  };
 
   const handleSendMoneySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +174,13 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
         setShowSendMoneyModal(false);
         setSendRecipientEmail("");
         setSendAmount("");
-        window.location.reload();
+        // Seamlessly update balance without reloading the page
+        setUser((prev) => ({
+          ...prev,
+          balance: Math.max(0, (prev.balance || 0) - amountNum),
+        }));
+        refreshProfileQuietly();
+        fetchNotifications();
       } else {
         setSendMoneyError(data.error || "Failed to process transfer. Your balance remains unchanged.");
       }
@@ -199,8 +224,24 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    refreshProfileQuietly();
+
+    const interval = setInterval(() => {
+      fetchNotifications();
+      refreshProfileQuietly();
+    }, 20000);
+
+    const onFocus = () => {
+      refreshProfileQuietly();
+      fetchNotifications();
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [email]);
 
   useEffect(() => {
@@ -439,7 +480,13 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
       if (res.ok) {
         alert("Success! Your withdrawal request has been queued for the next batch.");
         setShowWithdrawModal(false);
-        window.location.reload();
+        setUser((prev) => ({
+          ...prev,
+          balance: Math.max(0, (prev.balance || 0) - amountNum),
+          withdrawal: (prev.withdrawal || 0) + amountNum,
+        }));
+        refreshProfileQuietly();
+        fetchNotifications();
       } else {
         setWithdrawalError(data.error || "Failed to process withdrawal");
       }
@@ -503,7 +550,13 @@ export default function DashboardClient({ user, parsedInterest, email }: Dashboa
         alert(`Payment failed: ${data.error || "Server error"}`);
       } else {
         alert("✅ Subscription renewed! Your Standard Monetization is now active.");
-        window.location.reload();
+        setUser((prev) => ({
+          ...prev,
+          balance: Math.max(0, (prev.balance || 0) - 28000),
+          monetized: true,
+        }));
+        refreshProfileQuietly();
+        fetchNotifications();
       }
     } catch (e: any) {
       alert(`An error occurred: ${e.message}`);

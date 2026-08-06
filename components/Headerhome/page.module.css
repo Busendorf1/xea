@@ -410,13 +410,17 @@
   font-size: 0.8rem;
 }
 
-@media screen and (max-width: 480px) {
+@media screen and (max-width: 768px) {
   .notificationDropdown {
     position: fixed !important;
-    top: 68px !important;
-    left: 1rem !important;
-    right: 1rem !important;
+    top: 76px !important;
+    left: 12px !important;
+    right: 12px !important;
     width: auto !important;
-    max-height: calc(100vh - 100px) !important;
+    margin: 0 auto !important;
+    max-height: calc(100vh - 115px) !important;
+    max-height: calc(100dvh - 115px) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35) !important;
+    border-radius: 12px !important;
   }
 }
