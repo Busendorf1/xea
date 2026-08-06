@@ -128,6 +128,18 @@ interface ProfileFormData {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // If submitted on Step 1 (e.g. by pressing Enter in an input field), validate Step 1 and move to Step 2
+    if (step === 1) {
+      if (validateStep1()) {
+        setStep(2);
+        setErrorMessage(null);
+        setFieldErrors({});
+      }
+      return;
+    }
+
+    // On Step 2 (Final submission):
     if (!validateStep1()) {
       setStep(1);
       return;
@@ -374,7 +386,11 @@ interface ProfileFormData {
                   <button
                     type="button"
                     onClick={() => {
-                      if (validateStep1()) setStep(2);
+                      if (validateStep1()) {
+                        setStep(2);
+                        setErrorMessage(null);
+                        setFieldErrors({});
+                      }
                     }}
                     className={styles.nextBtn}
                   >
@@ -437,7 +453,11 @@ interface ProfileFormData {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setStep(1)}
+                    onClick={() => {
+                      setStep(1);
+                      setErrorMessage(null);
+                      setFieldErrors({});
+                    }}
                     className={styles.backBtn}
                     disabled={loading}
                   >

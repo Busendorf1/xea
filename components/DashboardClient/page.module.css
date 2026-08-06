@@ -125,36 +125,51 @@
 /* Theme switcher */
 .themeSwitcher {
   display: flex;
-  background-color: var(--sidebar-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 4px;
-  padding: 2px;
   align-items: center;
-  gap: 1px;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  padding: 0;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+[data-theme='white'] .themeSwitcher {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 .themeBtn {
   background: transparent;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s ease;
+  padding: 0;
 }
 
 .themeBtn:hover {
-  color: var(--foreground);
+  color: var(--primary);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='white'] .themeBtn:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .themeBtnActive {
-  background-color: var(--card-bg);
-  color: var(--primary) !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: var(--primary);
+  color: #ffffff !important;
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
 /* Dashboard Container */
@@ -1480,11 +1495,15 @@
     height: 32px;
   }
   .themeBtn {
-    width: 20px;
-    height: 20px;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
   }
   .themeSwitcher {
-    padding: 1px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    padding: 0;
   }
 }
 

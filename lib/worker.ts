@@ -296,7 +296,45 @@ const paymentWorker = new Worker("payment-processing", async (job) => {
   console.log(`💳 Payment Worker: Processing ${type} job [${reference}] from ${senderEmail} to ${recipientEmail}...`);
 
   try {
-    if (type === "p2p_transfer") {
+    if (type === "p2p_transfer" || type === "transfer-settlement") {
+      // Execute final DB balance updates for sender & recipient
+      const { data: senderUser } = await supabaseAdmin
+        .from("users")
+        .select("balance")
+        .ilike("email", senderEmail)
+        .maybeSingle();
+
+      const { data: recipientUser } = await supabaseAdmin
+        .from("users")
+        .select("balance")
+        .ilike("email", recipientEmail)
+        .maybeSingle();
+
+      if (senderUser && recipientUser) {
+        const newSenderBal = Math.max(0, parseFloat(senderUser.balance || 0) - amount);
+        const newRecipientBal = parseFloat(recipientUser.balance || 0) + amount;
+
+        await Promise.all([
+          supabaseAdmin.from("users").update({ balance: newSenderBal }).ilike("email", senderEmail),
+          supabaseAdmin.from("users").update({ balance: newRecipientBal }).ilike("email", recipientEmail),
+        ]);
+      }
+
+      // Add user notifications
+      const formattedAmount = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(amount);
+      await Promise.all([
+        supabaseAdmin.from("notifications").insert({
+          user_email: senderEmail,
+          title: "Money Sent",
+          message: `You successfully sent ${formattedAmount} to ${recipientEmail}`,
+        }),
+        supabaseAdmin.from("notifications").insert({
+          user_email: recipientEmail,
+          title: "Money Received",
+          message: `You received ${formattedAmount} from ${senderEmail}`,
+        }),
+      ]);
+
       // Invalidate profile and payment statement caches in Redis for both accounts
       await Promise.all([
         invalidateCachedProfile(senderEmail),
@@ -310,15 +348,31 @@ const paymentWorker = new Worker("payment-processing", async (job) => {
   }
 }, {
   connection: connectionOptions,
-  concurrency: 3,
+  concurrency: 5,
 });
 
 paymentWorker.on("completed", (job) => {
   console.log(`✅ Payment Worker: Job [${job.name}] successfully completed.`);
 });
 
-paymentWorker.on("failed", (job, err) => {
+paymentWorker.on("failed", async (job, err) => {
   console.error(`❌ Payment Worker: Job [${job?.name}] failed:`, err.message);
+  if (job && job.attemptsMade >= (job.opts?.attempts || 5)) {
+    try {
+      const { default: redisConnection } = await import("./redis");
+      const dlqKey = "queue:dlq:payment_transfers";
+      await redisConnection.hset(dlqKey, job.id || `job_${Date.now()}`, JSON.stringify({
+        id: job.id,
+        name: job.name,
+        data: job.data,
+        failedReason: err.message,
+        failedAt: new Date().toISOString(),
+      }));
+      console.log(`📥 Routed failed payment job [${job.id}] to Payment Dead Letter Queue (DLQ).`);
+    } catch (dlqErr) {
+      console.error("❌ Failed to push payment job to DLQ:", dlqErr);
+    }
+  }
 });
 
 const workers = { feedWorker, campaignsWorker, hlsWorker, paymentWorker };

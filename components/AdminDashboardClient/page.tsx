@@ -40,7 +40,8 @@ import {
   AlertTriangle,
   AlertCircle,
   HelpCircle,
-  PauseCircle
+  PauseCircle,
+  ShieldCheck
 } from "lucide-react";
 import styles from "./page.module.css";
 import { v4 as uuidv4 } from "uuid";
@@ -58,7 +59,7 @@ interface AdminDashboardClientProps {
   adminEmails: string[];
 }
 
-type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues";
+type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues" | "reconciliation";
 
 function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -163,6 +164,73 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [helpTicketsPage, setHelpTicketsPage] = useState(0);
   const [helpTicketSearch, setHelpTicketSearch] = useState("");
   const [replyingTicket, setReplyingTicket] = useState<any | null>(null);
+
+  // Financial Reconciliation State
+  const [reconciliationData, setReconciliationData] = useState<{
+    transfersPaused: boolean;
+    metrics: { total_sent_naira: number; total_received_naira: number; variance_naira: number; status: string };
+    logs: any[];
+  } | null>(null);
+  const [reconciliationLoading, setReconciliationLoading] = useState(false);
+  const [reconciliationActionLoading, setReconciliationActionLoading] = useState(false);
+  const [reconciliationMsg, setReconciliationMsg] = useState<string | null>(null);
+
+  const fetchReconciliationData = async () => {
+    setReconciliationLoading(true);
+    setReconciliationMsg(null);
+    try {
+      const res = await fetch("/api/admin/reconciliation");
+      if (res.ok) {
+        const data = await res.json();
+        setReconciliationData(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch reconciliation data:", err);
+    } finally {
+      setReconciliationLoading(false);
+    }
+  };
+
+  const handleToggleEmergencyPause = async () => {
+    setReconciliationActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/reconciliation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_pause" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReconciliationMsg(data.message);
+        await fetchReconciliationData();
+      }
+    } catch (err: any) {
+      setReconciliationMsg(err.message || "Failed to toggle emergency pause.");
+    } finally {
+      setReconciliationActionLoading(false);
+    }
+  };
+
+  const handleResolveReconciliationLog = async (logId: string) => {
+    const notes = prompt("Enter audit notes or resolution details for this discrepancy:");
+    if (!notes) return;
+
+    setReconciliationActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/reconciliation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve_issue", logId, notes }),
+      });
+      if (res.ok) {
+        await fetchReconciliationData();
+      }
+    } catch (err) {
+      console.error("Failed to resolve reconciliation issue:", err);
+    } finally {
+      setReconciliationActionLoading(false);
+    }
+  };
   const [replyText, setReplyText] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
 
@@ -1937,10 +2005,29 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             </div>
             
             {/* Theme Swapper */}
-            <div style={{ display: "flex", backgroundColor: "var(--sidebar-bg)", border: "1px solid var(--card-border)", borderRadius: "99px", padding: "2px" }}>
-              <button onClick={() => setTheme("white")} style={{ background: "transparent", border: "none", width: "24px", height: "24px", color: theme === "white" ? "var(--primary)" : "var(--text-muted)", cursor: "pointer" }}><Sun size={14} /></button>
-              <button onClick={() => setTheme("dark")} style={{ background: "transparent", border: "none", width: "24px", height: "24px", color: theme === "dark" ? "var(--primary)" : "var(--text-muted)", cursor: "pointer" }}><Moon size={14} /></button>
-            </div>
+            <button
+              onClick={() => setTheme(theme === "white" ? "dark" : "white")}
+              title={theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
+              aria-label="Toggle Theme"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "36px",
+                height: "36px",
+                borderRadius: "50%",
+                background: "var(--primary)",
+                border: "1px solid var(--card-border)",
+                color: "#ffffff",
+                cursor: "pointer",
+                boxShadow: "0 0 10px var(--primary-glow)",
+                transition: "all 0.2s ease",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              {theme === "white" ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
 
             <Link href="/user/dashboard">
               <button className={styles.btnExit}>
@@ -2009,6 +2096,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           <button onClick={() => handleTabChange("queues")} className={`${styles.tabButton} ${activeTab === "queues" ? styles.tabButtonActive : ""}`}>
             <AlertCircle size={18} />
             <span>Failed Queues / DLQ</span>
+          </button>
+
+          <button onClick={() => handleTabChange("reconciliation")} className={`${styles.tabButton} ${activeTab === "reconciliation" ? styles.tabButtonActive : ""}`}>
+            <ShieldCheck size={18} />
+            <span>Financial Reconciliation</span>
           </button>
 
           <div style={{ marginTop: "auto", padding: "1rem", borderTop: "1px solid var(--card-border)" }}>
@@ -3149,6 +3241,172 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   ))}
                 </div>
               )}
+            </>
+          )}
+
+          {/* 12. FINANCIAL RECONCILIATION & SECURITY AUDITS TAB */}
+          {activeTab === "reconciliation" && (
+            <>
+              <div>
+                <h1 className={styles.sectionTitle}>Financial Reconciliation & Security Audits</h1>
+                <p className={styles.sectionSubtitle}>
+                  Real-time double-entry ledger audits, nightly variance detection, and emergency P2P transfer circuit breaker controls.
+                </p>
+              </div>
+
+              {/* Emergency Control Bar & Action Buttons */}
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: reconciliationData?.transfersPaused ? "rgba(239, 68, 68, 0.15)" : "var(--card-bg)",
+                border: `1px solid ${reconciliationData?.transfersPaused ? "rgba(239, 68, 68, 0.3)" : "var(--card-border)"}`,
+                padding: "1.25rem",
+                borderRadius: "12px",
+                gap: "1rem",
+                flexWrap: "wrap",
+                marginBottom: "1.5rem"
+              }}>
+                <div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, color: reconciliationData?.transfersPaused ? "#ef4444" : "var(--foreground)" }}>
+                    {reconciliationData?.transfersPaused ? "🚨 EMERGENCY P2P TRANSFERS PAUSED" : "🛡️ System P2P Transfers Active"}
+                  </h3>
+                  <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+                    {reconciliationData?.transfersPaused
+                      ? "P2P transfer processing is currently frozen to contain financial variance."
+                      : "System double-entry ledger is operating normally without balance drift."}
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={handleToggleEmergencyPause}
+                    disabled={reconciliationActionLoading}
+                    className={styles.btnAction}
+                    style={{
+                      backgroundColor: reconciliationData?.transfersPaused ? "#10b981" : "#ef4444",
+                      color: "#fff",
+                      fontWeight: 700,
+                      padding: "0.6rem 1.2rem",
+                    }}
+                  >
+                    {reconciliationData?.transfersPaused ? "Unpause P2P Transfers ✅" : "Emergency Pause Transfers 🔒"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={fetchReconciliationData}
+                    disabled={reconciliationLoading}
+                    className={styles.btnAction}
+                  >
+                    Run Audit Scan 🔍
+                  </button>
+                </div>
+              </div>
+
+              {reconciliationMsg && (
+                <div style={{ color: "#34d399", fontSize: "0.875rem", background: "rgba(52,211,153,0.1)", padding: "0.75rem", borderRadius: "8px", border: "1px solid rgba(52,211,153,0.2)", marginBottom: "1.5rem" }}>
+                  {reconciliationMsg}
+                </div>
+              )}
+
+              {/* Health Metrics Grid */}
+              <div className={styles.statsGrid} style={{ marginBottom: "2rem" }}>
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Ledger Audit Status</span>
+                  <div style={{
+                    fontSize: "1.1rem",
+                    fontWeight: 800,
+                    marginTop: "0.5rem",
+                    color: reconciliationData?.metrics?.status === "HEALTHY" ? "#10b981" : "#ef4444"
+                  }}>
+                    {reconciliationData?.metrics?.status === "HEALTHY" ? "HEALTHY (0.00 Variance) ✅" : "FLAGGED (Discrepancy) 🚨"}
+                  </div>
+                </div>
+
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Total Sent Money</span>
+                  <div className={styles.statValue}>
+                    ₦{(reconciliationData?.metrics?.total_sent_naira || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Total Received Money</span>
+                  <div className={styles.statValue}>
+                    ₦{(reconciliationData?.metrics?.total_received_naira || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Net Variance Difference</span>
+                  <div className={styles.statValue} style={{ color: reconciliationData?.metrics?.variance_naira === 0 ? "#10b981" : "#ef4444" }}>
+                    ₦{(reconciliationData?.metrics?.variance_naira || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reconciliation Logs Table */}
+              <div>
+                <h3 className={styles.cardTitle} style={{ marginBottom: "1rem" }}>System Audit & Reconciliation Log History</h3>
+                {reconciliationLoading ? (
+                  <div className={styles.loadingText}>Fetching reconciliation logs...</div>
+                ) : !reconciliationData?.logs || reconciliationData.logs.length === 0 ? (
+                  <div className={styles.emptyState}>No audit logs found. Run a nightly reconciliation scan.</div>
+                ) : (
+                  <div className={styles.cardsGrid}>
+                    {reconciliationData.logs.map((log: any) => (
+                      <div key={log.id} className={styles.cardItem}>
+                        <div className={styles.cardHeader}>
+                          <div>
+                            <h3 className={styles.cardTitle}>Audit Log #{log.id.slice(0, 8)}</h3>
+                            <span className={styles.cardMeta}>
+                              Run at: {new Date(log.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <span style={{
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            padding: "4px 10px",
+                            borderRadius: "99px",
+                            backgroundColor: log.status === "HEALTHY" ? "rgba(16,185,129,0.15)" : log.status === "FLAGGED" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)",
+                            color: log.status === "HEALTHY" ? "#10b981" : log.status === "FLAGGED" ? "#ef4444" : "#3b82f6",
+                            border: `1px solid ${log.status === "HEALTHY" ? "rgba(16,185,129,0.3)" : log.status === "FLAGGED" ? "rgba(239,68,68,0.3)" : "rgba(59,130,246,0.3)"}`
+                          }}>
+                            {log.status}
+                          </span>
+                        </div>
+
+                        <div className={styles.cardBody} style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                          <div><strong>Total Sent:</strong> ₦{(log.total_debits_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</div>
+                          <div><strong>Total Received:</strong> ₦{(log.total_credits_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</div>
+                          <div><strong>Variance:</strong> ₦{(log.variance_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</div>
+                          {log.notes && (
+                            <div className={styles.reportReasonBox}>
+                              <strong>Audit Note:</strong> {log.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {log.status === "FLAGGED" && (
+                          <div className={styles.cardFooter}>
+                            <button
+                              type="button"
+                              onClick={() => handleResolveReconciliationLog(log.id)}
+                              disabled={reconciliationActionLoading}
+                              className={styles.btnAction}
+                              style={{ backgroundColor: "#3b82f6", color: "#fff" }}
+                            >
+                              Mark Resolved & Add Audit Note
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
 

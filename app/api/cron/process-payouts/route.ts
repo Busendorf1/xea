@@ -1,7 +1,7 @@
-// app/api/cron/process-payouts/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import redisConnection from "@/lib/redis";
 
 const BATCH_SIZE = 80; // Safe threshold under Paystack's 100 limit
 const COOLDOWN_MS = 6000; // 6 seconds delay between bulk calls
@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleCron(req: NextRequest) {
+  const lockKey = "REDIS_LOCK:cron:process_payouts";
+  let lockAcquired = false;
+
   try {
     // 1. Optional security check: verify CRON_SECRET if configured
     const authHeader = req.headers.get("authorization");
@@ -24,6 +27,18 @@ async function handleCron(req: NextRequest) {
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       console.warn("⚠️ Unauthorized cron trigger attempt.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Acquire Distributed Mutex Lock (TTL 5 minutes)
+    try {
+      const lockRes = await redisConnection.set(lockKey, "LOCKED", "EX", 300, "NX");
+      if (!lockRes) {
+        console.warn("⚠️ Payout cron skipped: Previous payout batch job is still running.");
+        return NextResponse.json({ success: true, message: "Previous payout cron is currently running. Skipping duplicate trigger." });
+      }
+      lockAcquired = true;
+    } catch (redisLockErr) {
+      console.warn("⚠️ Distributed cron lock Redis warning:", redisLockErr);
     }
 
     // 2. Fetch all pending withdrawals, oldest first
@@ -155,6 +170,10 @@ async function handleCron(req: NextRequest) {
   } catch (err: any) {
     console.error("❌ Cron: Unexpected crash in process-payouts:", err);
     return NextResponse.json({ error: err.message || "Cron task failed" }, { status: 500 });
+  } finally {
+    if (lockAcquired) {
+      await redisConnection.del(lockKey).catch(() => {});
+    }
   }
 }
 

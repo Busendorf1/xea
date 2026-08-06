@@ -4,6 +4,12 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { paymentQueue } from "@/lib/queue";
+import {
+  checkEmergencyPause,
+  checkSenderRateLimit,
+  checkRecipientRateLimit,
+  reserveSenderBalance,
+} from "@/lib/security/rateLimiter";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
@@ -13,87 +19,64 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // 1. Check System Emergency Circuit Breaker Flag
+    const pauseCheck = await checkEmergencyPause();
+    if (!pauseCheck.allowed) {
+      return NextResponse.json({ error: pauseCheck.reason }, { status: pauseCheck.statusCode || 503 });
+    }
+
     const body = await req.json();
-    const { recipientEmail, amount } = body;
+    const { recipientEmail, amount, idempotencyKey } = body;
 
     const cleanSender = senderEmail.toLowerCase().trim();
     const cleanRecipient = recipientEmail ? recipientEmail.toLowerCase().trim() : "";
     const amountNum = parseFloat(amount);
 
-    // 1. Basic Input Validation
+    // 2. Input Validation & Negative Amount Defense
     if (!cleanRecipient || !cleanRecipient.includes("@")) {
       return NextResponse.json({ error: "Please provide a valid recipient email address" }, { status: 400 });
     }
 
     if (isNaN(amountNum) || amountNum <= 0) {
-      return NextResponse.json({ error: "Please enter a valid transfer amount" }, { status: 400 });
+      return NextResponse.json({ error: "Please enter a valid positive transfer amount" }, { status: 400 });
     }
 
     if (cleanSender === cleanRecipient) {
       return NextResponse.json({ error: "You cannot send money to your own email account" }, { status: 400 });
     }
 
-    // 2. Security Rate Limit: Max 6 users per day per sender
-    const recipientSetKey = `ratelimit:send_money_recipients:${cleanSender}`;
-    const totalCountKey = `ratelimit:send_money_count:${cleanSender}`;
+    // Convert to Fixed-Point Integer Kobo (Prevents IEEE 754 precision rounding bugs)
+    const amountKobo = Math.round(amountNum * 100);
+
+    // 3. Strict Idempotency Lock Check (Prevents Replay Attacks & Network Retries)
+    const reqHeaderKey = req.headers.get("x-idempotency-key");
+    const rawIdempotency = idempotencyKey || reqHeaderKey || `trf_${cleanSender}_${cleanRecipient}_${amountKobo}_${Date.now()}`;
+    const idempotencyRedisKey = `idempotency:transfer:${rawIdempotency}`;
 
     try {
-      const isExistingRecipient = await redisConnection.sismember(recipientSetKey, cleanRecipient);
-      const uniqueRecipientCount = await redisConnection.scard(recipientSetKey);
-
-      if (!isExistingRecipient && uniqueRecipientCount >= 6) {
+      const isDuplicate = await redisConnection.set(idempotencyRedisKey, "LOCKED", "EX", 86400, "NX");
+      if (!isDuplicate) {
         return NextResponse.json(
-          { error: "Daily limit reached. You can only send money to up to 6 unique users per day." },
-          { status: 429 }
-        );
-      }
-
-      const totalSentToday = await redisConnection.incr(totalCountKey);
-      if (totalSentToday === 1) {
-        await redisConnection.expire(totalCountKey, 86400); // 24 hours TTL
-      }
-
-      if (totalSentToday > 6 && !isExistingRecipient) {
-        return NextResponse.json(
-          { error: "Daily transfer limit reached. You can only send money to up to 6 users per day." },
-          { status: 429 }
+          { error: "Duplicate transfer request detected. This operation has already been submitted." },
+          { status: 409 }
         );
       }
     } catch (redisErr) {
-      console.warn("⚠️ Send money rate limit Redis check warning:", redisErr);
+      console.warn("⚠️ Idempotency key Redis check warning:", redisErr);
     }
 
-    // 3. Verify Sender Balance & Enforce 20% Limit
-    const { data: senderUser, error: senderFetchErr } = await supabaseAdmin
-      .from("users")
-      .select("balance")
-      .ilike("email", cleanSender)
-      .maybeSingle();
-
-    if (senderFetchErr || !senderUser) {
-      return NextResponse.json({ error: "Sender profile not found" }, { status: 404 });
+    // 4. Rate Limits (Sender Velocity, Recipient Velocity, Daily Recipient Limit)
+    const senderLimit = await checkSenderRateLimit(cleanSender, cleanRecipient);
+    if (!senderLimit.allowed) {
+      return NextResponse.json({ error: senderLimit.reason }, { status: senderLimit.statusCode || 429 });
     }
 
-    const currentBalance = parseFloat(senderUser.balance || 0);
-
-    if (currentBalance < amountNum) {
-      return NextResponse.json({ error: "Insufficient wallet balance for this transfer" }, { status: 400 });
+    const recipientLimit = await checkRecipientRateLimit(cleanRecipient);
+    if (!recipientLimit.allowed) {
+      return NextResponse.json({ error: recipientLimit.reason }, { status: recipientLimit.statusCode || 429 });
     }
 
-    const maxAllowedAtATime = currentBalance * 0.20;
-    if (amountNum > maxAllowedAtATime + 0.01) {
-      const formattedMax = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(maxAllowedAtATime);
-      return NextResponse.json(
-        {
-          error: `Transfer amount cannot exceed 20% of your total balance at a time. Maximum allowed for this transfer is ${formattedMax}.`,
-          max_allowed: maxAllowedAtATime,
-          current_balance: currentBalance,
-        },
-        { status: 400 }
-      );
-    }
-
-    // 4. Verify Recipient Account Existence
+    // 5. Verify Recipient Account Existence
     const { data: recipientUser, error: recipientFetchErr } = await supabaseAdmin
       .from("users")
       .select("id, email, firstName, lastName")
@@ -104,67 +87,82 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Recipient user account with this email does not exist." }, { status: 404 });
     }
 
-    // 5. Execute Atomic Database Transfer via Supabase RPC (Automatic Rollback on Network Error)
-    const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc("transfer_user_funds", {
+    // 6. Verify & Reserve Sender Balance (Enforces 20% Limit & Sufficient Balance)
+    const balanceRes = await reserveSenderBalance(cleanSender, amountNum);
+    if (!balanceRes.success) {
+      return NextResponse.json({ error: balanceRes.error || "Balance check failed" }, { status: 400 });
+    }
+
+    // 7. Execute Lock-Free Append-Only Ledger Entry (Supabase RPC)
+    const reference = rawIdempotency.startsWith("trf_") ? rawIdempotency : `trf_${rawIdempotency}`;
+
+    const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc("process_ledger_transfer", {
+      p_reference: reference,
       p_sender_email: cleanSender,
       p_recipient_email: cleanRecipient,
-      p_amount: amountNum,
+      p_amount_kobo: amountKobo,
     });
 
     if (rpcError) {
-      console.error("❌ RPC transfer_user_funds error:", rpcError);
-      return NextResponse.json(
-        { error: "Network or transaction error occurred. Your balance remains unchanged." },
-        { status: 500 }
-      );
+      console.error("❌ RPC process_ledger_transfer error:", rpcError);
+      // Execute legacy fallback if function not yet migrated in DB environment
+      const { data: fallbackResult, error: fallbackErr } = await supabaseAdmin.rpc("transfer_user_funds", {
+        p_sender_email: cleanSender,
+        p_recipient_email: cleanRecipient,
+        p_amount: amountNum,
+      });
+
+      if (fallbackErr || !fallbackResult?.success) {
+        return NextResponse.json(
+          { error: fallbackResult?.error || rpcError.message || "Transfer execution failed." },
+          { status: 500 }
+        );
+      }
+    } else if (rpcResult && rpcResult.success === false) {
+      return NextResponse.json({ error: rpcResult.error || "Ledger entry creation failed" }, { status: 400 });
     }
 
-    if (!rpcResult || !rpcResult.success) {
-      return NextResponse.json(
-        { error: rpcResult?.error || "Failed to complete transfer. Balance returned to sender." },
-        { status: 400 }
-      );
-    }
-
-    // 6. Update Redis Unique Recipients Rate Limit Set
+    // 8. Update Redis Unique Recipients Rate Limit Set
     try {
+      const recipientSetKey = `ratelimit:send_money_recipients:${cleanSender}`;
       await redisConnection.sadd(recipientSetKey, cleanRecipient);
       await redisConnection.expire(recipientSetKey, 86400); // 24 hours TTL
     } catch (redisErr) {
       console.warn("⚠️ Redis recipient set update warning:", redisErr);
     }
 
-    // 7. Enqueue Background Audit & Worker Processing Job
+    // 9. Enqueue Settlement & Cache Sync Job to BullMQ paymentQueue
     try {
-      await paymentQueue.add("transfer-notification", {
+      await paymentQueue.add("transfer-settlement", {
         type: "p2p_transfer",
         senderEmail: cleanSender,
         recipientEmail: cleanRecipient,
         amount: amountNum,
-        reference: rpcResult.reference,
+        amountKobo,
+        reference,
         timestamp: new Date().toISOString(),
       });
     } catch (queueErr) {
       console.warn("⚠️ BullMQ paymentQueue enqueue warning:", queueErr);
     }
 
-    // 8. Invalidate Redis Profile & Statement Caches for Both Users
+    // 10. Invalidate Redis Caches
     await Promise.all([
       invalidateCachedProfile(cleanSender),
       invalidateCachedProfile(cleanRecipient),
     ]);
 
     const formattedAmount = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(amountNum);
+    const newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
 
     return NextResponse.json({
       success: true,
       message: `Successfully sent ${formattedAmount} to ${cleanRecipient}`,
-      reference: rpcResult.reference,
-      new_balance: rpcResult.new_balance,
+      reference,
+      new_balance: newBalance,
     });
   } catch (err: any) {
     console.error("❌ Network error in POST /api/payments/transfer:", err);
-    // In case of unexpected server/network failure, ensure sender cache is refreshed
     if (senderEmail) {
       await invalidateCachedProfile(senderEmail).catch(() => {});
     }

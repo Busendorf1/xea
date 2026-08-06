@@ -210,36 +210,50 @@
 .themeSwitcher {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.25rem;
-  border-radius: 999px;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
   margin-left: 0.5rem;
+  padding: 0;
   transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+[data-theme='white'] .themeSwitcher {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 .themeBtn {
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 0.4rem;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
   transition: all 0.2s ease;
+  padding: 0;
 }
 
 .themeBtn:hover {
   color: var(--primary);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='white'] .themeBtn:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .themeBtnActive {
   background: var(--primary);
-  color: white !important;
+  color: #ffffff !important;
   box-shadow: 0 0 10px var(--primary-glow);
 }
 

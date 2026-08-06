@@ -3,6 +3,7 @@ import { createHmac } from "crypto";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import redisConnection from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing signature header" }, { status: 401 });
     }
 
+    // 1. HMAC Signature Verification
     const hash = createHmac("sha512", paystackSecret).update(bodyText).digest("hex");
     if (hash !== signature) {
       console.error("❌ Webhook Signature mismatch!");
@@ -27,12 +29,26 @@ export async function POST(req: NextRequest) {
     const payload = JSON.parse(bodyText);
     const event = payload.event;
     const data = payload.data;
+    const reference = data?.reference;
 
-    console.log(`📥 Received Paystack Webhook Event: ${event}`);
+    console.log(`📥 Received Paystack Webhook Event: ${event} [${reference}]`);
 
-    // 2. Handle specific Paystack Webhook events
+    // 2. Atomic Exactly-Once Execution Lock (Prevents Replay Attacks & Concurrent Double Refunds)
+    if (reference) {
+      const lockKey = `webhook:lock:${reference}:${event}`;
+      try {
+        const acquired = await redisConnection.set(lockKey, "PROCESSED", "EX", 86400, "NX");
+        if (!acquired) {
+          console.warn(`⚠️ Duplicate Webhook Event ignored (Idempotent Lock): ${event} [${reference}]`);
+          return NextResponse.json({ message: "Event already processed" }, { status: 200 });
+        }
+      } catch (redisErr) {
+        console.warn("⚠️ Webhook Redis lock error:", redisErr);
+      }
+    }
+
+    // 3. Process Specific Events
     if (event === "charge.success") {
-      const reference = data.reference;
       const amount = data.amount / 100; // convert kobo to Naira
       const metadata = data.metadata || {};
 
@@ -44,13 +60,10 @@ export async function POST(req: NextRequest) {
         }
       } catch (procErr: any) {
         console.error("❌ Error processing webhook charge.success:", procErr);
-        // Return 200 so Paystack doesn't keep retrying, but we log the error
       }
     } else if (event === "transfer.success") {
-      const reference = data.reference;
       const amount = data.amount / 100; // in Naira
 
-      // Fetch payment record
       const { data: payment, error: fetchErr } = await supabaseAdmin
         .from("payments")
         .select("*")
@@ -63,7 +76,6 @@ export async function POST(req: NextRequest) {
       } else if (payment) {
         const userEmail = payment.user_email;
 
-        // Fetch user current withdrawal balance
         const { data: user, error: userFetchErr } = await supabaseAdmin
           .from("users")
           .select("withdrawal")
@@ -74,7 +86,6 @@ export async function POST(req: NextRequest) {
           const currentWithdrawal = parseFloat(user.withdrawal || 0);
           const newWithdrawal = Math.max(0, currentWithdrawal - amount);
 
-           // Update user withdrawal balance
           await supabaseAdmin
             .from("users")
             .update({ withdrawal: newWithdrawal })
@@ -83,13 +94,11 @@ export async function POST(req: NextRequest) {
           await invalidateCachedProfile(userEmail);
         }
 
-        // Update payment status
         await supabaseAdmin
           .from("payments")
           .update({ status: "success" })
           .eq("reference", reference);
 
-        // Add user notification
         await supabaseAdmin.from("notifications").insert({
           user_email: userEmail,
           title: "Withdrawal Completed Successfully",
@@ -99,10 +108,8 @@ export async function POST(req: NextRequest) {
         console.log(`✅ Webhook: Withdrawal successful for ${userEmail}`);
       }
     } else if (event === "transfer.failed" || event === "transfer.reversed") {
-      const reference = data.reference;
       const amount = data.amount / 100; // in Naira
 
-      // Fetch payment record
       const { data: payment, error: fetchErr } = await supabaseAdmin
         .from("payments")
         .select("*")
@@ -115,7 +122,6 @@ export async function POST(req: NextRequest) {
       } else if (payment && payment.status !== "failed" && payment.status !== "reversed") {
         const userEmail = payment.user_email;
 
-        // Fetch user current balances
         const { data: user, error: userFetchErr } = await supabaseAdmin
           .from("users")
           .select("balance, withdrawal")
@@ -126,10 +132,9 @@ export async function POST(req: NextRequest) {
           const currentBalance = parseFloat(user.balance || 0);
           const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-          const newBalance = currentBalance + amount; // refund
+          const newBalance = currentBalance + amount;
           const newWithdrawal = Math.max(0, currentWithdrawal - amount);
 
-          // Update user balances (refund)
           await supabaseAdmin
             .from("users")
             .update({ balance: newBalance, withdrawal: newWithdrawal })
@@ -138,13 +143,11 @@ export async function POST(req: NextRequest) {
           await invalidateCachedProfile(userEmail);
         }
 
-        // Update payment status to failed or reversed
         await supabaseAdmin
           .from("payments")
           .update({ status: event === "transfer.reversed" ? "reversed" : "failed" })
           .eq("reference", reference);
 
-        // Add user notification
         await supabaseAdmin.from("notifications").insert({
           user_email: userEmail,
           title: `Withdrawal ${event === "transfer.reversed" ? "Reversed" : "Failed"}`,
