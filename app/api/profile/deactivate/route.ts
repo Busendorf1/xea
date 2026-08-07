@@ -14,6 +14,15 @@ export async function POST(req: NextRequest) {
     const emailLower = email.toLowerCase().trim();
     const body = await req.json().catch(() => ({}));
     const forfeitConfirmed = body?.forfeitConfirmed === true;
+    const confirmEmail = body?.confirmEmail ? String(body.confirmEmail).toLowerCase().trim() : "";
+
+    // Human Action Verification: Ensure confirmEmail matches authenticated email
+    if (!confirmEmail || confirmEmail !== emailLower) {
+      return NextResponse.json(
+        { error: "Email verification failed. Please type your exact email address to confirm account deactivation." },
+        { status: 400 }
+      );
+    }
 
     // 0. Verify User Balance Status
     const { data: userProfile } = await supabaseAdmin

@@ -20,6 +20,10 @@ WHERE is_paused IS NOT TRUE;
 CREATE INDEX IF NOT EXISTS idx_help_tickets_user_status 
 ON public.help_tickets (lower(user_email), resolved_at);
 
+-- Composite B-Tree index for 100M+ scale advertiser rating lookups
+CREATE INDEX IF NOT EXISTS idx_ad_impressions_ad_rating_lookup 
+ON public.ad_impressions (ad_id, lower(user_email));
+
 -- 4. Table for Newsletter Subscribers with 3-email per user lifetime cap
 CREATE TABLE IF NOT EXISTS public.newsletter_subscribers (
     id BIGSERIAL PRIMARY KEY,

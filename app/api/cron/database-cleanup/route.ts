@@ -133,6 +133,24 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error inspecting auto-partitioning threshold:", err.message || err);
     }
 
+    // 9. Forfeit balances of accounts inactive for 60+ days (last_active_at < 60 days ago)
+    try {
+      console.log("🧹 Cron: Checking for 60-day inactive accounts with unclaimed balances...");
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: forfeitedUsers } = await supabaseAdmin
+        .from("users")
+        .update({ balance: 0 })
+        .lt("last_active_at", sixtyDaysAgo)
+        .gt("balance", 0)
+        .select("email, balance");
+
+      if (forfeitedUsers && forfeitedUsers.length > 0) {
+        console.log(`⚠️ Cron: Forfeited unclaimed balances for ${forfeitedUsers.length} account(s) inactive for 60+ days.`);
+      }
+    } catch (err: any) {
+      console.error("❌ Cron: Error executing 60-day inactive balance forfeiture:", err.message || err);
+    }
+
     console.log("🧹 Cron: Database-cleanup task completed successfully.");
 
     return NextResponse.json({

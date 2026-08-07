@@ -27,7 +27,8 @@ import {
   ArrowDownLeft,
   Wallet,
   ShieldAlert,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
@@ -69,6 +70,7 @@ export interface UserProfile {
   monetization_clicks?: number;
   last_active_at?: string | null;
   attention_worth_score?: number | null;
+  daysInactive?: number;
 }
 
 interface DashboardClientProps {
@@ -820,6 +822,34 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
 
       {/* 2. Main Dashboard Layout Area */}
       <div className={`${styles.dashboardContainer} ${showHeader ? "" : styles.dashboardContainerHeaderHidden}`}>
+        {/* 30-Day Inactive Account Warning Banner */}
+        {(() => {
+          const daysInactive = user.daysInactive ?? (user.last_active_at ? Math.floor((Date.now() - new Date(user.last_active_at).getTime()) / (86400 * 1000)) : 0);
+          if (daysInactive < 30) return null;
+          return (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid #f59e0b",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                marginBottom: "16px",
+                color: "#f59e0b",
+                fontSize: "0.88rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                lineHeight: "1.4",
+              }}
+            >
+              <AlertTriangle size={24} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Inactive Account Warning (30+ Days):</strong> Your account has been inactive for {daysInactive} days. Please initiate a wallet withdrawal or resume feed interactions to keep your balance active. Unclaimed balances on inactive accounts are forfeited after 60 days of zero activity.
+              </div>
+            </div>
+          );
+        })()}
         {/* Left Sidebar - Highlights Section */}
         {/* On tablet: hidden if profile is toggled. On mobile: hidden by default, slides in full screen. */}
         <aside className={`${styles.leftSidebar} ${

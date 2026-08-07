@@ -77,37 +77,40 @@ BEGIN
         RAISE EXCEPTION 'Invalid star rating. Must be between 1 and 5.';
     END IF;
 
-    -- Fetch all distinct listeners who viewed this ad
-    SELECT ARRAY_AGG(DISTINCT lower(user_email))
-    INTO v_listeners
+    -- Count distinct viewers for this ad
+    SELECT COUNT(DISTINCT lower(user_email))
+    INTO v_listener_count
     FROM public.ad_impressions
     WHERE ad_id = p_ad_id AND user_email IS NOT NULL AND user_email != '';
 
-    IF v_listeners IS NOT NULL AND cardinality(v_listeners) > 0 THEN
-        v_listener_count := cardinality(v_listeners);
-
-        -- Update attention_worth_score with a peak ceiling of 1,000,000
-        UPDATE public.users
-        SET attention_worth_score = LEAST(1000000.0000, COALESCE(attention_worth_score, 0.1000) + v_increment),
+    IF v_listener_count > 0 THEN
+        -- Streaming Set-Based Join Update for 100M+ Scale (Zero RAM Array Copying)
+        UPDATE public.users u
+        SET attention_worth_score = LEAST(1000000.0000, COALESCE(u.attention_worth_score, 0.1000) + v_increment),
             atw_tier = (
                 CASE
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 1000000.0000 THEN 'ATW14'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 500000.0000 THEN 'ATW13'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 250000.0000 THEN 'ATW12'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 150000.0000 THEN 'ATW11'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 90000.0000 THEN 'ATW10'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 70000.0000 THEN 'ATW9'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 50000.0000 THEN 'ATW8'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 40000.0000 THEN 'ATW7'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 30000.0000 THEN 'ATW6'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 20000.0000 THEN 'ATW5'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 10000.0000 THEN 'ATW4'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 5000.0000 THEN 'ATW3'
-                    WHEN (COALESCE(attention_worth_score, 0.1000) + v_increment) >= 1000.0000 THEN 'ATW2'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 1000000.0000 THEN 'ATW14'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 500000.0000 THEN 'ATW13'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 250000.0000 THEN 'ATW12'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 150000.0000 THEN 'ATW11'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 90000.0000 THEN 'ATW10'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 70000.0000 THEN 'ATW9'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 50000.0000 THEN 'ATW8'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 40000.0000 THEN 'ATW7'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 30000.0000 THEN 'ATW6'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 20000.0000 THEN 'ATW5'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 10000.0000 THEN 'ATW4'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 5000.0000 THEN 'ATW3'
+                    WHEN (COALESCE(u.attention_worth_score, 0.1000) + v_increment) >= 1000.0000 THEN 'ATW2'
                     ELSE 'ATW1'
                 END
             )
-        WHERE lower(email) = ANY(v_listeners);
+        FROM (
+            SELECT DISTINCT lower(user_email) AS listener_email
+            FROM public.ad_impressions
+            WHERE ad_id = p_ad_id AND user_email IS NOT NULL AND user_email != ''
+        ) i
+        WHERE lower(u.email) = i.listener_email;
     END IF;
 
     -- Record in rating ledger
