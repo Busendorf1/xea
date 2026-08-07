@@ -1,4 +1,5 @@
 // lib/payment/paystack.ts
+import redisConnection from "@/lib/redis";
 
 export interface PaystackInitializeResponse {
   authorization_url: string;
@@ -230,6 +231,16 @@ export class PaystackService {
       return "rcp_mock_recipient_code";
     }
 
+    const cacheKey = `paystack:recipient:${bankCode}:${accountNumber}`;
+    try {
+      const cachedRecipient = await redisConnection.get(cacheKey);
+      if (cachedRecipient) {
+        return cachedRecipient;
+      }
+    } catch (err) {
+      console.warn("⚠️ Redis read error in Paystack transfer recipient lookup:", err);
+    }
+
     const response = await fetch("https://api.paystack.co/transferrecipient", {
       method: "POST",
       headers: {
@@ -250,7 +261,12 @@ export class PaystackService {
       throw new Error(result.message || "Failed to create Paystack transfer recipient");
     }
 
-    return result.data.recipient_code;
+    const recipientCode = result.data.recipient_code;
+    if (recipientCode) {
+      redisConnection.set(cacheKey, recipientCode, "EX", 2592000).catch(() => {}); // 30 Days TTL
+    }
+
+    return recipientCode;
   }
 
   /**

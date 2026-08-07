@@ -72,12 +72,15 @@ export async function GET(req: NextRequest) {
     // Strict 5-day / 24-hour active window
     const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Primary Query: Active highlights with targeting & bidding metadata
+    // Primary Query: Active highlights with targeting & bidding metadata (ordered via DB B-Tree Index)
     let query = supabaseReadOnly
       .from("newsactive")
       .select("id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement")
       .or("is_paused.eq.false,is_paused.is.null")
-      .gte("created_at", fiveDaysAgo);
+      .gte("created_at", fiveDaysAgo)
+      .order("is_bidded", { ascending: false })
+      .order("bid_price", { ascending: false })
+      .order("created_at", { ascending: false });
 
     if (interests.length > 0) {
       query = query.in("interest", interests);

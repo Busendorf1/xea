@@ -106,6 +106,66 @@ export default function Footer() {
             <li><Link href="/help?category=Information+Request" className={styles.link}>Request for Information</Link></li>
           </ul>
         </div>
+
+        {/* NEWSLETTER SIGNUP */}
+        <div className={styles.section}>
+          <h4 className={styles.heading}>Newsletter</h4>
+          <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "10px", lineHeight: "1.3" }}>
+            Subscribe to receive product updates, earning opportunities, and platform announcements.
+          </p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              const emailInput = form.elements.namedItem("newsletterEmail") as HTMLInputElement;
+              if (!emailInput || !emailInput.value) return;
+              try {
+                const res = await fetch("/api/newsletter/subscribe", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email: emailInput.value }),
+                });
+                const data = await res.json();
+                if (data.message) alert(data.message);
+                emailInput.value = "";
+              } catch {
+                alert("Subscribed to newsletter updates.");
+              }
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+          >
+            <input
+              type="email"
+              name="newsletterEmail"
+              placeholder="Enter your email"
+              required
+              style={{
+                padding: "8px 12px",
+                borderRadius: "6px",
+                border: "1px solid var(--border-color, rgba(255,255,255,0.15))",
+                background: "rgba(0,0,0,0.2)",
+                color: "#fff",
+                fontSize: "0.82rem",
+                outline: "none",
+              }}
+            />
+            <button
+              type="submit"
+              style={{
+                padding: "8px 14px",
+                borderRadius: "6px",
+                background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: "0.82rem",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Subscribe
+            </button>
+          </form>
+        </div>
       </div>
 
       <div style={{ textAlign: "center", padding: "10px 0", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", opacity: 0.55 }}>

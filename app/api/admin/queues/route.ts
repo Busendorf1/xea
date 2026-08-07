@@ -79,19 +79,21 @@ export async function POST(req: NextRequest) {
 
     if (action === "retry_all") {
       const rawDlqJobs = await redisConnection.hgetall(dlqKey);
-      let retriedCount = 0;
-
-      for (const [id, payloadStr] of Object.entries(rawDlqJobs || {})) {
-        try {
-          const parsed = JSON.parse(payloadStr);
-          await feedQueue.add(parsed.name || "retried-dlq-job", parsed.data || parsed);
-          await redisConnection.hdel(dlqKey, id);
-          retriedCount++;
-        } catch (err) {
-          console.error(`❌ Failed to re-queue DLQ job [${id}]:`, err);
-        }
-      }
-
+      const entries = Object.entries(rawDlqJobs || {});
+      const results = await Promise.all(
+        entries.map(async ([id, payloadStr]) => {
+          try {
+            const parsed = JSON.parse(payloadStr);
+            await feedQueue.add(parsed.name || "retried-dlq-job", parsed.data || parsed);
+            await redisConnection.hdel(dlqKey, id);
+            return true;
+          } catch (err) {
+            console.error(`❌ Failed to re-queue DLQ job [${id}]:`, err);
+            return false;
+          }
+        })
+      );
+      const retriedCount = results.filter(Boolean).length;
       return NextResponse.json({ success: true, retriedCount });
     } else if (action === "clear_all") {
       await redisConnection.del(dlqKey);

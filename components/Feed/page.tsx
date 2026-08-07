@@ -214,10 +214,9 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
       a?.toLowerCase() === b?.toLowerCase();
 
     const hasOverlap = (a: string[], b: string[] | string | null) => {
-      const bArr = parseToArray(b);
-      return a.some((val) =>
-        bArr.map((v) => v.toLowerCase()).includes(val.toLowerCase())
-      );
+      if (!a || a.length === 0 || !b) return false;
+      const bSet = new Set(parseToArray(b).map((v) => v.toLowerCase()));
+      return a.some((val) => bSet.has(val.toLowerCase()));
     };
 
     if (ad.province && stringMatch(ad.province, user.location)) score += 5;

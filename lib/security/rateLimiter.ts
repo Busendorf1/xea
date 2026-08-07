@@ -54,8 +54,10 @@ export async function checkSenderRateLimit(senderEmail: string, recipientEmail: 
     }
 
     // 2. Unique recipient count check (Max 6 unique recipients per day)
-    const isExistingRecipient = await redisConnection.sismember(recipientSetKey, cleanRecipient);
-    const uniqueCount = await redisConnection.scard(recipientSetKey);
+    const [isExistingRecipient, uniqueCount] = await Promise.all([
+      redisConnection.sismember(recipientSetKey, cleanRecipient),
+      redisConnection.scard(recipientSetKey),
+    ]);
 
     if (!isExistingRecipient && uniqueCount >= 6) {
       return {

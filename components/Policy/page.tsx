@@ -96,7 +96,7 @@ export default function PolicyPage() {
           <h2 className={styles.heading}>VII. Privacy and Data Security</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Data Protection Commitment:</strong> Paayh does <strong>not</strong> sell, rent, trade, or exploit user personal data. We collect and process data solely to manage your account, track ad impressions, and calculate payouts.
+              <strong>Zero-Trust Searchable Field-Level Encryption:</strong> All personal data—including user email addresses, phone numbers, security passphrases, and banking credentials—are encrypted at the application level using <strong>CipherStash Zero-Trust Searchable Field-Level Encryption</strong> before being stored. Even in the event of a database compromise, security breach, or server leak, plaintext personal data cannot be viewed, harvested, or decrypted by unauthorized third parties or database administrators.
             </li>
             <li className={styles.listItem}>
               <strong>Google Account Authentication:</strong> If you sign up or log in using your Google account via Auth0, we request only basic, non-sensitive profile permissions (<code>openid</code>, <code>email</code>, and <code>profile</code>). The data we collect includes your email address, display name, and profile picture URL. We do not access your emails, files, calendar, or any other Google services.

@@ -143,11 +143,10 @@ const flushBatch = async () => {
             message: `Your wallet balance has reached the ${formattedCap} maximum holding limit for your ATW level (${userData?.atw_tier || "ATW1"}). Click earnings during this period are permanently missed and will not be paid back later. Please initiate a withdrawal or upgrade your ATW level to resume earning.`,
           });
         } else {
-          for (let i = 0; i < clickCount; i++) {
-            await supabaseAdmin.rpc("increment_user_click_progress", {
-              p_email: userEmail,
-            });
-          }
+          await supabaseAdmin.rpc("increment_user_click_progress", {
+            p_email: userEmail,
+            p_count: clickCount,
+          });
 
           // Check if balance crosses 50% threshold of tier cap
           const alertThreshold = balanceCap * 0.5;

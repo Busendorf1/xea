@@ -20,6 +20,17 @@ WHERE is_paused IS NOT TRUE;
 CREATE INDEX IF NOT EXISTS idx_help_tickets_user_status 
 ON public.help_tickets (lower(user_email), resolved_at);
 
+-- 4. Table for Newsletter Subscribers with 3-email per user lifetime cap
+CREATE TABLE IF NOT EXISTS public.newsletter_subscribers (
+    id BIGSERIAL PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    added_by_user TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.newsletter_subscribers ADD COLUMN IF NOT EXISTS added_by_user TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletter_subscribers_email ON public.newsletter_subscribers (lower(email));
+CREATE INDEX IF NOT EXISTS idx_newsletter_subscribers_user ON public.newsletter_subscribers (lower(added_by_user));
+
 
 -- ------------------------------------------------------------
 -- PART 2: AUTOMATIC 1 MILLION ROW TABLE PARTITIONING

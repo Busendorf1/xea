@@ -12,7 +12,39 @@ export async function POST(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
-    console.log(`👤 Permanently deactivating and deleting account for: ${emailLower}`);
+    const body = await req.json().catch(() => ({}));
+    const forfeitConfirmed = body?.forfeitConfirmed === true;
+
+    // 0. Verify User Balance Status
+    const { data: userProfile } = await supabaseAdmin
+      .from("users")
+      .select("balance")
+      .ilike("email", emailLower)
+      .maybeSingle();
+
+    const currentBalance = parseFloat(userProfile?.balance || 0);
+
+    if (currentBalance >= 10000) {
+      const formattedBal = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(currentBalance);
+      return NextResponse.json(
+        { error: `You have an active balance of ${formattedBal}. Please initiate a withdrawal before deactivating your account.` },
+        { status: 400 }
+      );
+    }
+
+    if (currentBalance > 0 && !forfeitConfirmed) {
+      const formattedBal = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(currentBalance);
+      return NextResponse.json(
+        {
+          error: "FORFEIT_REQUIRED",
+          message: `Your balance of ${formattedBal} is below the ₦10,000 minimum withdrawal limit. You must confirm that you willingly forfeit these remaining funds before deactivating your account.`,
+          balance: currentBalance,
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`👤 Permanently deactivating and deleting account for: ${emailLower} (Balance: ₦${currentBalance})`);
 
     // 1. Delete all associated user campaigns, bids, highlights, payments, impressions, and notifications
     await Promise.all([
