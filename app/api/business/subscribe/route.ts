@@ -1,13 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
+// Zod Schema for Business Subscription Request Validation
+const businessSubscribeSchema = z.object({
+  business_name: z
+    .string()
+    .trim()
+    .min(2, { message: "Business name must be at least 2 characters long." })
+    .max(100, { message: "Business name is too long." }),
+  domain: z
+    .string()
+    .trim()
+    .min(3, { message: "Domain name is required." })
+    .max(150, { message: "Domain name is too long." }),
+  contact_email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email({ message: "Please provide a valid contact email address." })
+    .optional()
+    .nullable(),
+  duration_months: z
+    .number()
+    .optional()
+    .default(1),
+});
+
+const businessQuerySchema = z.object({
+  domain: z.string().trim().toLowerCase().max(150).optional().nullable(),
+});
+
 export async function POST(req: NextRequest) {
   try {
     const authEmail = await getAuthenticatedEmail(req);
-    const body = await req.json();
-    const { business_name, domain, contact_email, duration_months = 1 } = body;
+    const rawBody = await req.json().catch(() => ({}));
+
+    // Parse & Validate payload via Zod
+    const parseResult = businessSubscribeSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      const errorMessage = parseResult.error.issues[0]?.message || "Invalid input parameters.";
+      return NextResponse.json({ error: errorMessage }, { status: 400 });
+    }
+
+    const { business_name, domain, contact_email, duration_months } = parseResult.data;
 
     // Enforce 3 Submissions Per Day Rate Limit
     const userEmail = authEmail ? authEmail.toLowerCase().trim() : (contact_email ? contact_email.toLowerCase().trim() : null);
@@ -31,10 +69,6 @@ export async function POST(req: NextRequest) {
       console.warn("⚠️ Business subscribe rate limit Redis check warning:", redisErr);
     }
 
-    if (!business_name || !domain) {
-      return NextResponse.json({ error: "Business name and domain are required" }, { status: 400 });
-    }
-
     const months = [1, 3, 6].includes(Number(duration_months)) ? Number(duration_months) : 1;
     const monthlyRate = 45000;
     const totalPrice = months * monthlyRate;
@@ -44,7 +78,7 @@ export async function POST(req: NextRequest) {
     cleanDomain = cleanDomain.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].split("?")[0];
 
     if (!cleanDomain || !cleanDomain.includes(".")) {
-      return NextResponse.json({ error: "Invalid domain format" }, { status: 400 });
+      return NextResponse.json({ error: "Please enter a valid domain format (e.g., mystore.com)." }, { status: 400 });
     }
 
     const emailToUse = authEmail || contact_email || null;
@@ -96,7 +130,10 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const queryDomain = searchParams.get("domain");
+    const rawDomain = searchParams.get("domain");
+
+    const queryResult = businessQuerySchema.safeParse({ domain: rawDomain });
+    const queryDomain = queryResult.success ? queryResult.data.domain : null;
 
     if (queryDomain) {
       let cleanDomain = queryDomain.trim().toLowerCase();
