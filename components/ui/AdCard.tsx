@@ -282,6 +282,10 @@ export default function AdCard({
       if (idx === currentMediaIndex && isCardVisible) {
         video.play().catch(() => {});
         setIsPlaying(true);
+        if (video.duration && !isNaN(video.duration)) {
+          setVideoDuration(video.duration);
+        }
+        setVideoCurrentTime(video.currentTime || 0);
       } else {
         video.pause();
         if (idx === currentMediaIndex) {
@@ -751,12 +755,17 @@ export default function AdCard({
                             if (index === currentMediaIndex) setIsPlaying(false);
                           }}
                           onTimeUpdate={(e) => {
-                            if (index === currentMediaIndex && e.currentTarget.currentTime) {
-                              setVideoCurrentTime(e.currentTarget.currentTime);
+                            if (index === currentMediaIndex) {
+                              setVideoCurrentTime(e.currentTarget.currentTime || 0);
                             }
                           }}
                           onLoadedMetadata={(e) => {
-                            if (index === currentMediaIndex && e.currentTarget.duration) {
+                            if (e.currentTarget.duration && !isNaN(e.currentTarget.duration)) {
+                              setVideoDuration(e.currentTarget.duration);
+                            }
+                          }}
+                          onDurationChange={(e) => {
+                            if (e.currentTarget.duration && !isNaN(e.currentTarget.duration)) {
                               setVideoDuration(e.currentTarget.duration);
                             }
                           }}
@@ -764,9 +773,11 @@ export default function AdCard({
 
                         {/* Sleek Bottom Control Bar */}
                         <div className={styles.videoControlBar} onClick={(e) => e.stopPropagation()}>
-                          {/* Left: Countdown Duration Badge */}
-                          <div className={styles.videoDurationBadge} title="Remaining duration">
-                            {formatVideoTime(Math.max(0, (videoDuration || 0) - (videoCurrentTime || 0)))}
+                          {/* Left: Duration Counter Badge (Responds to pause & play) */}
+                          <div className={styles.videoDurationBadge} title="Video duration timer">
+                            {videoDuration > 0
+                              ? formatVideoTime(Math.max(0, videoDuration - videoCurrentTime))
+                              : formatVideoTime(videoCurrentTime)}
                           </div>
 
                           {/* Right: Mic Unmute/Mute Button */}
