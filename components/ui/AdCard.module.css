@@ -243,10 +243,12 @@
 
 .actionButtons {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  max-width: 425px;
-  margin-top: 0.25rem;
-  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.25rem 0;
   background-color: transparent;
 }
 
@@ -802,13 +804,21 @@
   box-shadow: 0 0 6px rgba(99, 102, 241, 0.6);
 }
 
-/* Unlocked Row */
+/* Unlocked Row - Spreads buttons evenly to utilize 100% full width of media card */
 .unlockedRow {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
+}
+
+.unlockedRow > button,
+.unlockedRow > a {
+  flex: 1 1 0%;
+  min-width: 0;
+  justify-content: center;
+  text-align: center;
 }
 
 /* Product Sales Ad Layout Styles */

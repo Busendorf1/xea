@@ -35,12 +35,17 @@ export async function POST(request: NextRequest) {
       type: "seen"
     });
 
-    // Add adId to active seen set in Redis so next feed load filters it out instantly without destroying candidate ID cache
+    // Add adId to active seen set and increment daily RAM pacing hash for <0.1ms ultra-scale filtering
+    const todayDate = new Date().toISOString().slice(0, 10);
     const seenSetKey = `seen:ads:${emailKey}`;
+    const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
+
     await Promise.all([
       redisConnection.sadd(seenSetKey, adId),
       redisConnection.expire(seenSetKey, 86400), // 24 Hours TTL
-    ]).catch((err) => console.error("❌ Redis seen set update error:", err));
+      redisConnection.hincrby(pacingHashKey, adId, 1),
+      redisConnection.expire(pacingHashKey, 86400), // 24 Hours TTL
+    ]).catch((err) => console.error("❌ Redis seen set / RAM pacing update error:", err));
 
     return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {

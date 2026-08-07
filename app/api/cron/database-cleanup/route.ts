@@ -101,6 +101,38 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error purging notifications:", err.message || err);
     }
 
+    // 7. Reset 7-day inactive monetized users
+    try {
+      console.log("🧹 Cron: Resetting 7-day inactive monetized users...");
+      const { data: resetCnt, error: errReset } = await supabaseAdmin.rpc("reset_inactive_monetized_users");
+      if (errReset) {
+        console.warn("⚠️ Cron: RPC reset_inactive_monetized_users failed, executing direct fallback:", errReset.message);
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        await supabaseAdmin
+          .from("users")
+          .update({ monetized: "false", monetization_clicks: 0 })
+          .lt("last_active_at", sevenDaysAgo)
+          .or("monetized.eq.true,monetized.eq.yes,monetization_clicks.gt.0");
+      } else {
+        console.log(`✅ Cron: 7-day inactive monetized users reset successfully (Count: ${resetCnt ?? 0}).`);
+      }
+    } catch (err: any) {
+      console.error("❌ Cron: Unexpected error resetting inactive users:", err.message || err);
+    }
+
+    // 8. Auto-partition inspector (Triggers automatic partitioning as soon as ad_impressions hits 1 Million rows)
+    try {
+      console.log("🧹 Cron: Inspecting ad_impressions row count for 1M-row auto-partitioning...");
+      const { data: isPartitioned, error: errPartition } = await supabaseAdmin.rpc("check_and_auto_partition_at_1m");
+      if (errPartition) {
+        console.warn("⚠️ Cron: check_and_auto_partition_at_1m warning:", errPartition.message);
+      } else if (isPartitioned) {
+        console.log("🚀 Cron: ad_impressions reached 1 Million rows! Automatic table partitioning executed successfully.");
+      }
+    } catch (err: any) {
+      console.error("❌ Cron: Unexpected error inspecting auto-partitioning threshold:", err.message || err);
+    }
+
     console.log("🧹 Cron: Database-cleanup task completed successfully.");
 
     return NextResponse.json({

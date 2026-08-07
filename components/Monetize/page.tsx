@@ -32,7 +32,7 @@ export default function Monetize({ session }: MonetizeProps) {
     if (!email) return;
     try {
       setLoading(true);
-      const res = await fetch("/api/monetize");
+      const res = await fetch(`/api/monetize?t=${Date.now()}`);
       if (!res.ok) {
         setMessage("Failed to load monetization status.");
         return;

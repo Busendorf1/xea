@@ -45,11 +45,15 @@ export async function GET(req: NextRequest) {
 
     let cacheHit = false;
 
-    // Fetch user's active seen set and blocked sets in Redis to exclude seen/blocked ads without purging candidate feed
-    const [seenAdIdsList, blockedAdIdsList, blockedAdvertisersList] = await Promise.all([
+    const todayDate = now.toISOString().slice(0, 10);
+    const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
+
+    // Fetch user's active seen set, blocked sets, and daily pacing hash in Redis (<0.1ms RAM)
+    const [seenAdIdsList, blockedAdIdsList, blockedAdvertisersList, todayPacingMap] = await Promise.all([
       redisConnection.smembers(seenAdsSetKey).catch(() => []),
       redisConnection.smembers(blockedAdsSetKey).catch(() => []),
       redisConnection.smembers(blockedAdvertisersSetKey).catch(() => []),
+      redisConnection.hgetall(pacingHashKey).catch(() => ({}) as Record<string, string>),
     ]);
 
     const seenAdIdsSet = new Set<string>(seenAdIdsList);
@@ -167,7 +171,22 @@ export async function GET(req: NextRequest) {
       const candidateAdsMap = new Map<string, Ad>();
       (ads || []).forEach((ad: any) => {
         if (ad.completed_at) return;
-        if (seenAdIdsSet.has(ad.id) || blockedAdIdsSet.has(ad.id)) return; // Exclude currently seen/blocked ads
+        if (blockedAdIdsSet.has(ad.id)) return; // Exclude explicitly blocked ads
+
+        // Exclude seen ads UNLESS user_frequency_cap > 1 allows retargeting
+        const userCap = Number(ad.user_frequency_cap || 1);
+        if (seenAdIdsSet.has(ad.id) && userCap <= 1) return;
+
+        // Ultra-Scale Redis RAM Pacing Filter (<0.1ms):
+        // Enforce daily user pacing cap = CEIL(user_frequency_cap / campaign_days)
+        const campaignDays = Number(ad.campaign_days || 1);
+        const dailyUserCap = Math.max(1, Math.ceil(userCap / Math.max(campaignDays, 1)));
+        const viewsToday = Number((todayPacingMap as Record<string, string>)[ad.id] || 0);
+
+        if (userCap > 1 && viewsToday >= dailyUserCap) {
+          return;
+        }
+
         if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) return; // Exclude blocked advertisers
 
         // Exclude expired active platform campaigns

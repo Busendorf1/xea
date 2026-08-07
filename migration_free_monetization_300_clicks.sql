@@ -84,9 +84,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 3. RPC to record user click and increment 300-clicks progress atomically
+-- 3. RPC to record user click(s) and increment 300-clicks progress atomically
 CREATE OR REPLACE FUNCTION public.increment_user_click_progress(
-  p_email TEXT
+  p_email TEXT,
+  p_count INT DEFAULT 1
 )
 RETURNS TABLE (
   new_click_count INT,
@@ -98,8 +99,10 @@ DECLARE
   v_is_monetized BOOLEAN;
   v_last_active TIMESTAMPTZ;
   v_days_diff INT;
+  v_increment INT;
 BEGIN
   v_email_lower := lower(p_email);
+  v_increment := GREATEST(1, COALESCE(p_count, 1));
 
   SELECT 
     COALESCE(monetization_clicks, 0),
@@ -117,7 +120,7 @@ BEGIN
     v_is_monetized := false;
   END IF;
 
-  v_current_clicks := v_current_clicks + 1;
+  v_current_clicks := v_current_clicks + v_increment;
 
   IF v_current_clicks >= 300 THEN
     v_is_monetized := true;
@@ -138,3 +141,27 @@ BEGIN
   RETURN QUERY SELECT v_current_clicks, v_is_monetized;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 4. Scheduled cleanup function for 7-day inactive users (suitable for pg_cron or Vercel Cron)
+CREATE OR REPLACE FUNCTION public.reset_inactive_monetized_users()
+RETURNS INT AS $$
+DECLARE
+  v_reset_count INT;
+BEGIN
+  WITH reset_rows AS (
+    UPDATE public.users
+    SET monetized = 'false',
+        monetization_clicks = 0
+    WHERE last_active_at < (timezone('utc'::text, now()) - INTERVAL '7 days')
+      AND (monetized = 'true' OR monetized = 'yes' OR monetization_clicks > 0)
+    RETURNING 1
+  )
+  SELECT COUNT(*)::INT INTO v_reset_count FROM reset_rows;
+
+  RETURN v_reset_count;
+END;
+-- 5. (OPTIONAL) Schedule via Supabase pg_cron extension to run daily at midnight
+-- CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- SELECT cron.schedule('daily-inactivity-monetization-reset', '0 0 * * *', 'SELECT public.reset_inactive_monetized_users();');
+
+

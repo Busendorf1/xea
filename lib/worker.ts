@@ -111,16 +111,17 @@ const flushBatch = async () => {
     }));
   }
 
-  // 5. Increment user click progress, enforce ₦50k balance cap & ₦30k notification checks
-  const activeEmails = new Set<string>();
+  // 5. Count clicks per email in this batch and increment click progress
+  const emailClickCounts = new Map<string, number>();
   currentBatch.forEach((item) => {
-    if (item.job?.data?.email) {
-      activeEmails.add(item.job.data.email.toLowerCase().trim());
+    const email = item.job?.data?.email?.toLowerCase().trim();
+    if (email) {
+      emailClickCounts.set(email, (emailClickCounts.get(email) || 0) + 1);
     }
   });
 
   await Promise.all(
-    Array.from(activeEmails).map(async (userEmail) => {
+    Array.from(emailClickCounts.entries()).map(async ([userEmail, clickCount]) => {
       try {
         const { data: userData } = await supabaseAdmin
           .from("users")
@@ -142,9 +143,11 @@ const flushBatch = async () => {
             message: `Your wallet balance has reached the ${formattedCap} maximum holding limit for your ATW level (${userData?.atw_tier || "ATW1"}). Click earnings during this period are permanently missed and will not be paid back later. Please initiate a withdrawal or upgrade your ATW level to resume earning.`,
           });
         } else {
-          await supabaseAdmin.rpc("increment_user_click_progress", {
-            p_email: userEmail,
-          });
+          for (let i = 0; i < clickCount; i++) {
+            await supabaseAdmin.rpc("increment_user_click_progress", {
+              p_email: userEmail,
+            });
+          }
 
           // Check if balance crosses 50% threshold of tier cap
           const alertThreshold = balanceCap * 0.5;

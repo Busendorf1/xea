@@ -6,7 +6,7 @@ import redisConnection from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
-const MONETIZE_STATUS_TTL_SECONDS = 15;
+const MONETIZE_STATUS_TTL_SECONDS = 10;
 
 export async function GET(req: NextRequest) {
   try {
