@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { verifyAdminUser } from "@/lib/authHelper";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const authEmail = await getAuthenticatedEmail(req);
-    if (!authEmail) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -21,11 +21,13 @@ export async function GET(req: NextRequest) {
     const cleanId = id.trim();
 
     // 1. Search in active ads table
-    let { data: ad, error } = await supabaseAdmin
+    const { data: initialAd } = await supabaseAdmin
       .from("addsactive")
       .select("*")
       .eq("id", cleanId)
       .maybeSingle();
+
+    let ad = initialAd;
 
     let table = "addsactive";
 

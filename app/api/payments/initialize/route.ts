@@ -20,6 +20,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid payment type" }, { status: 400 });
     }
 
+    const { isAdminEmail } = await import("@/lib/authHelper");
+    const isAdmin = isAdminEmail(email);
+    if (isAdmin && (type === "ad" || type === "highlight")) {
+      return NextResponse.json({
+        status: true,
+        data: {
+          authorization_url: `${callbackUrl || "/user/statement"}?admin_free=true`,
+          reference: `ADMIN_FREE_${Date.now()}`,
+        },
+      });
+    }
+
     // Determine and enforce amount based on business rules
     let verifiedAmount = 0;
     if (type === "monetization_standard") {

@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
         const { data: user, error: userFetchErr } = await supabaseAdmin
           .from("users")
           .select("withdrawal")
-          .ilike("email", userEmail)
+          .eq("email", userEmail.toLowerCase().trim())
           .maybeSingle();
 
         if (!userFetchErr && user) {
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin
             .from("users")
             .update({ withdrawal: newWithdrawal })
-            .ilike("email", userEmail);
+            .eq("email", userEmail.toLowerCase().trim());
 
           await invalidateCachedProfile(userEmail);
         }
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         const { data: user, error: userFetchErr } = await supabaseAdmin
           .from("users")
           .select("balance, withdrawal")
-          .ilike("email", userEmail)
+          .eq("email", userEmail.toLowerCase().trim())
           .maybeSingle();
 
         if (!userFetchErr && user) {
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin
             .from("users")
             .update({ balance: newBalance, withdrawal: newWithdrawal })
-            .ilike("email", userEmail);
+            .eq("email", userEmail.toLowerCase().trim());
 
           await invalidateCachedProfile(userEmail);
         }

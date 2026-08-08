@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
-    if (!email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
     const cacheKey = "admin:overview:stats";

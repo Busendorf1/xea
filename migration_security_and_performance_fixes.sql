@@ -430,9 +430,7 @@ BEGIN
 
   ORDER BY
     -- Mutual targets first
-    (CASE WHEN v_email_lower = ANY(
-      ARRAY(SELECT lower(t) FROM unnest(COALESCE(a.mutual_targets, '{}'::text[])) t)
-    ) THEN 0 ELSE 1 END) ASC,
+    (CASE WHEN ARRAY[v_email_lower] && COALESCE(a.mutual_targets, '{}'::text[]) THEN 0 ELSE 1 END) ASC,
     -- Then oldest campaign first
     a.created_at ASC
   LIMIT p_limit

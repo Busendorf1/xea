@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { createHash } from "crypto";
@@ -37,16 +37,18 @@ export async function POST(req: NextRequest) {
     const currentBalance = parseFloat(user.balance || 0);
     const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-    // Rule 1: Minimum balance requirement (User must have at least ₦10,000 to initiate a withdrawal)
-    if (currentBalance < MIN_WITHDRAWAL_AMOUNT) {
+    const isAdmin = isAdminEmail(email);
+    const withdrawAmount = parseFloat(amount);
+
+    // Rule 1: Minimum balance requirement (Bypassed for Admins)
+    if (!isAdmin && currentBalance < MIN_WITHDRAWAL_AMOUNT) {
       return NextResponse.json({
         error: `Minimum wallet balance required to initiate a withdrawal is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}. Your current balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
       }, { status: 400 });
     }
 
-    // Rule 2: Minimum withdrawal amount per transaction is ₦10,000
-    const withdrawAmount = parseFloat(amount);
-    if (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT) {
+    // Rule 2: Minimum withdrawal amount per transaction (Bypassed for Admins)
+    if (!isAdmin && (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT)) {
       return NextResponse.json({
         error: `Minimum withdrawal amount per transaction is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}.`,
       }, { status: 400 });

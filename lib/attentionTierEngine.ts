@@ -49,7 +49,8 @@ export function getScoreIncrementForStars(stars: number): number {
  * Each ATW level increases the account balance limit by ₦100,000.
  * Level 1 (ATW1) = ₦100,000, Level 2 (ATW2) = ₦200,000, ..., Level 14 (ATW14) = ₦1,400,000.
  */
-export function getAtwBalanceLimit(atwTier?: string | null): number {
+export function getAtwBalanceLimit(atwTier?: string | null, isAdmin?: boolean): number {
+  if (isAdmin) return Infinity;
   if (!atwTier) return 100000;
   const match = atwTier.match(/\d+/);
   const levelNum = match ? parseInt(match[0], 10) : 1;

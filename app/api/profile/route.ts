@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
         const { data, error: dbErr } = await supabaseReadOnly
           .from("users")
           .select(PROFILE_COLUMNS)
-          .ilike("email", email)
+          .eq("email", email.toLowerCase().trim())
           .maybeSingle();
 
         if (dbErr) {
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
       const { data: newUser, error: fetchError } = await supabaseAdmin
         .from("users")
         .select(PROFILE_COLUMNS)
-        .ilike("email", email)
+        .eq("email", email.toLowerCase().trim())
         .maybeSingle();
 
       if (fetchError) {

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import styles from "./page.module.css";
+import { newsletterSchema } from "@/lib/validationSchemas";
+import { Info } from "lucide-react";
 
 const faqs = [
   {
@@ -39,6 +41,7 @@ const faqs = [
 
 export default function Footer() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
 
   const toggleFAQ = (index: number) => {
     setOpenIndex((prev) => (prev === index ? null : index));
@@ -116,20 +119,35 @@ export default function Footer() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              if (newsletterSubmitting) return;
               const form = e.currentTarget;
               const emailInput = form.elements.namedItem("newsletterEmail") as HTMLInputElement;
-              if (!emailInput || !emailInput.value) return;
+              const rawEmail = emailInput?.value || "";
+
+              const parseResult = newsletterSchema.safeParse({ email: rawEmail });
+              if (!parseResult.success) {
+                alert(parseResult.error.issues[0]?.message || "Please enter a valid email address.");
+                return;
+              }
+
+              setNewsletterSubmitting(true);
               try {
                 const res = await fetch("/api/newsletter/subscribe", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ email: emailInput.value }),
+                  body: JSON.stringify({ email: parseResult.data.email }),
                 });
                 const data = await res.json();
-                if (data.message) alert(data.message);
-                emailInput.value = "";
+                if (data.error) {
+                  alert(data.error);
+                } else if (data.message) {
+                  alert(data.message);
+                  if (emailInput) emailInput.value = "";
+                }
               } catch {
                 alert("Subscribed to newsletter updates.");
+              } finally {
+                setNewsletterSubmitting(false);
               }
             }}
             style={{ display: "flex", flexDirection: "column", gap: "8px" }}
@@ -139,6 +157,7 @@ export default function Footer() {
               name="newsletterEmail"
               placeholder="Enter your email"
               required
+              disabled={newsletterSubmitting}
               style={{
                 padding: "8px 12px",
                 borderRadius: "6px",
@@ -147,23 +166,45 @@ export default function Footer() {
                 color: "#fff",
                 fontSize: "0.82rem",
                 outline: "none",
+                opacity: newsletterSubmitting ? 0.6 : 1,
               }}
             />
             <button
               type="submit"
+              disabled={newsletterSubmitting}
               style={{
                 padding: "8px 14px",
                 borderRadius: "6px",
-                background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                background: newsletterSubmitting ? "#4b5563" : "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
                 color: "#fff",
                 fontWeight: 600,
                 fontSize: "0.82rem",
                 border: "none",
-                cursor: "pointer",
+                cursor: newsletterSubmitting ? "not-allowed" : "pointer",
+                opacity: newsletterSubmitting ? 0.7 : 1,
               }}
             >
-              Subscribe
+              {newsletterSubmitting ? "Subscribing..." : "Subscribe"}
             </button>
+
+            <div style={{
+              marginTop: "8px",
+              padding: "6px 10px",
+              borderRadius: "6px",
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              fontSize: "0.75rem",
+              color: "var(--text-muted)",
+              lineHeight: "1.35",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "6px"
+            }}>
+              <Info size={14} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <span>
+                <strong>Privacy Notice:</strong> Subscribing constitutes sharing your email.
+                </span>
+            </div>
           </form>
         </div>
       </div>

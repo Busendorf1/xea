@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
 import { Zap, Calendar, ShieldAlert } from "lucide-react";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
+import { newsSchema } from "@/lib/validationSchemas";
+import { isAdminEmail } from "@/lib/authHelper";
 
 interface Session {
   user?: {
@@ -28,6 +30,10 @@ const formatCurrency = (amount: number | string) => {
 };
 
 export default function News({ session }: NewsProps) {
+  const isAdmin = useMemo(() => isAdminEmail(session?.user?.email), [session?.user?.email]);
+  const [customSponsorName, setCustomSponsorName] = useState("");
+  const [customSponsorHandle, setCustomSponsorHandle] = useState("");
+
   const [step, setStep] = useState(0);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
@@ -123,9 +129,20 @@ export default function News({ session }: NewsProps) {
   const capitalizeFirst = (txt: string) =>
     txt.trim() ? txt.trim().charAt(0).toUpperCase() + txt.trim().slice(1) : "";
 
-  const isFormComplete = () => mediaFile && title && content && interest;
-
   const totalCost = isBiddingEnabled ? (bidPrice * campaignDays) : (1000 * campaignDays);
+
+  const isFormComplete = () => {
+    if (!mediaFile) return false;
+    const result = newsSchema.safeParse({
+      title,
+      content,
+      interest,
+      country,
+      campaignDays,
+      bidPrice: isBiddingEnabled ? bidPrice : undefined,
+    });
+    return result.success;
+  };
 
   const handleSubmit = async () => {
     if (!session || !session.user?.email) {
@@ -133,9 +150,24 @@ export default function News({ session }: NewsProps) {
       return;
     }
 
-    if (!isFormComplete()) return alert("Please complete all fields.");
+    const validationResult = newsSchema.safeParse({
+      title,
+      content,
+      interest,
+      country,
+      campaignDays,
+      bidPrice: isBiddingEnabled ? bidPrice : undefined,
+    });
 
-    if (paymentMethod === "wallet" && balance < totalCost) {
+    if (!mediaFile || !validationResult.success) {
+      const errorMsg = !mediaFile
+        ? "Please select a cover image for your highlight."
+        : validationResult.error?.issues[0]?.message || "Please check your highlight form fields.";
+      alert(errorMsg);
+      return;
+    }
+
+    if (!isAdmin && paymentMethod === "wallet" && balance < totalCost) {
       alert(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
       return;
     }
@@ -162,7 +194,7 @@ export default function News({ session }: NewsProps) {
         .getPublicUrl(filename);
         
       let paymentUrl = "/api/payments/initialize";
-      if (paymentMethod === "wallet") {
+      if (isAdmin || paymentMethod === "wallet") {
         paymentUrl = "/api/payments/wallet-pay";
       }
 
@@ -184,7 +216,10 @@ export default function News({ session }: NewsProps) {
             province: province || null,
             campaign_days: campaignDays,
             is_bidded: isBiddingEnabled,
-            bid_price: isBiddingEnabled ? bidPrice : null
+            bid_price: isBiddingEnabled ? bidPrice : null,
+            is_admin_post: isAdmin,
+            custom_sponsor_name: customSponsorName || null,
+            custom_sponsor_handle: customSponsorHandle || null,
           },
           callbackUrl: `${window.location.origin}/user/statement`
         })
@@ -342,6 +377,33 @@ export default function News({ session }: NewsProps) {
             {/* STEP 3: TARGETING, LOCATION & BIDDING */}
             {step === 3 && (
               <div className={styles.formGroup} style={{ gap: "1.5rem" }}>
+                {isAdmin && (
+                  <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "rgba(234, 179, 8, 0.1)", borderRadius: "14px", border: "1px solid rgba(234, 179, 8, 0.3)", marginBottom: "1.25rem" }}>
+                    <h4 style={{ color: "var(--primary)", fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem" }}>
+                      👑 Admin Privilege: Custom Branding & Free Publishing
+                    </h4>
+                    <div style={{ marginBottom: "0.75rem" }}>
+                      <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Sponsor Name (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Acme News (defaults to Sponsored)"
+                        value={customSponsorName}
+                        onChange={(e) => setCustomSponsorName(e.target.value)}
+                        className={styles.inputBox}
+                      />
+                    </div>
+                    <div>
+                      <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Handle (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. @acme_news (defaults to @Sponsored)"
+                        value={customSponsorHandle}
+                        onChange={(e) => setCustomSponsorHandle(e.target.value)}
+                        className={styles.inputBox}
+                      />
+                    </div>
+                  </div>
+                )}
                 {/* Category Card */}
                 <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
                   <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Category & Interest</label>
@@ -464,25 +526,34 @@ export default function News({ session }: NewsProps) {
                 </div>
 
                 {/* Payment selector */}
-                <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
-                  <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--foreground)" }}>Select Payment Method</h4>
-                  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
-                      <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Paystack (Card/Bank/Transfer)
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
-                      <input type="radio" name="pay" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} /> Pay from Wallet Balance ({formatCurrency(balance)})
-                    </label>
+                {isAdmin ? (
+                  <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "rgba(234, 179, 8, 0.12)", borderRadius: "12px", border: "1px solid rgba(234, 179, 8, 0.35)", textAlign: "center" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--primary)" }}>👑 Admin Privilege: 100% Free Highlight Publishing (₦0.00 Total)</h4>
+                    <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "4px", margin: 0 }}>
+                      No payment gateway or wallet balance deduction required.
+                    </p>
                   </div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
-                    Total Payment: {formatCurrency(totalCost)}
+                ) : (
+                  <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--foreground)" }}>Select Payment Method</h4>
+                    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+                        <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Paystack (Card/Bank/Transfer)
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+                        <input type="radio" name="pay" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} /> Pay from Wallet Balance ({formatCurrency(balance)})
+                      </label>
+                    </div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
+                      Total Payment: {formatCurrency(totalCost)}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(3)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
                   <button disabled={isSubmitting} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-                    {isSubmitting ? "Processing Submission..." : `Pay ${formatCurrency(totalCost)} & Submit`}
+                    {isSubmitting ? "Processing Submission..." : isAdmin ? "🚀 Publish Highlight Free (Admin)" : `Pay ${formatCurrency(totalCost)} & Submit`}
                   </button>
                 </div>
               </div>

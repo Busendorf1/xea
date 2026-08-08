@@ -201,7 +201,7 @@ export const adCreativeProductSchema = z.object({
 export const helpSchema = z.object({
   name: z.string().max(100, "Name must be 100 characters or fewer").optional().or(z.literal("")),
 
-  email: z.string().email("Enter a valid email address"),
+  email: z.string().min(1, "Enter a valid username or email address"),
 
   category: z.string().min(1, "Select a category"),
 
@@ -215,3 +215,119 @@ export const helpSchema = z.object({
 });
 
 export type HelpFormData = z.infer<typeof helpSchema>;
+
+// ─── Newsletter Form ─────────────────────────────────────────────────────────
+
+export const newsletterSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Please enter a valid email address format.")
+    .max(120, "Email address is too long."),
+});
+
+export type NewsletterFormData = z.infer<typeof newsletterSchema>;
+
+// ─── News Form ───────────────────────────────────────────────────────────────
+
+export const newsSchema = z.object({
+  title: safeStr("Title", 120).min(3, "Title must be at least 3 characters"),
+  content: safeStr("Content", 2000).min(10, "Content must be at least 10 characters"),
+  interest: z.string().min(1, "Select an interest category"),
+  country: z.string().min(1, "Select a country"),
+  campaignDays: z.number().min(1, "Minimum 1 day").max(365, "Maximum 365 days"),
+  bidPrice: z.number().min(100, "Minimum bid is ₦100").optional(),
+});
+
+// ─── Send Money / P2P Transfer ───────────────────────────────────────────────
+
+export const sendMoneySchema = z.object({
+  recipientEmail: z.string().email("Enter a valid recipient email address"),
+  amount: z
+    .number()
+    .min(1, "Minimum transfer amount is ₦1")
+    .max(1_000_000_000, "Transfer limit exceeded"),
+});
+
+// ─── Withdrawal Form ─────────────────────────────────────────────────────────
+
+export const withdrawalSchema = z.object({
+  amount: z
+    .number()
+    .min(500, "Minimum withdrawal amount is ₦500")
+    .max(5_000_000, "Maximum withdrawal limit per transaction is ₦5,000,000"),
+  bankCode: z.string().min(1, "Select a bank"),
+  accountNumber: z
+    .string()
+    .regex(/^\d{10}$/, "Account number must be exactly 10 digits"),
+  accountName: z.string().min(1, "Account name resolution required"),
+});
+
+// ─── Boost Form ──────────────────────────────────────────────────────────────
+
+export const boostSchema = z.object({
+  adId: z.string().min(1, "Ad ID is required"),
+  bidAmount: z
+    .number()
+    .min(100, "Minimum bid amount is ₦100")
+    .max(1_000_000, "Maximum bid amount per boost is ₦1,000,000"),
+  paymentMethod: z.enum(["card", "wallet"]),
+});
+
+// ─── Cancel Monetization ─────────────────────────────────────────────────────
+
+export const cancelMonetizationSchema = z.object({
+  email: z.string().email("Enter a valid email address to confirm monetization cancellation"),
+});
+
+// ─── Account Deactivation ────────────────────────────────────────────────────
+
+export const deactivationSchema = z.object({
+  confirmEmail: z.string().email("Enter a valid email address"),
+  reason: z.string().max(500, "Reason must be 500 characters or fewer").optional().or(z.literal("")),
+});
+
+// ─── Admin Dashboard Actions ──────────────────────────────────────────────────
+
+export const adminNotificationSchema = z.object({
+  title: safeStr("Notification title", 120).min(3, "Title must be at least 3 characters"),
+  message: safeStr("Notification message", 2000).min(5, "Message must be at least 5 characters"),
+  target: z.enum(["all", "monetized", "user"]),
+  targetEmail: z.string().email("Enter a valid target user email").optional().or(z.literal("")),
+}).refine(
+  (data) => {
+    if (data.target === "user") {
+      return !!data.targetEmail && data.targetEmail.includes("@");
+    }
+    return true;
+  },
+  {
+    message: "Target user email is required when sending to a single user",
+    path: ["targetEmail"],
+  }
+);
+
+export const adminDirectAdSchema = z.object({
+  headline: safeStr("Ad headline", 150).min(3, "Headline must be at least 3 characters"),
+  content: safeStr("Ad content", 2000).min(5, "Content must be at least 5 characters"),
+  ctaLink: z.string().url("Enter a valid CTA URL").or(z.string().min(1, "CTA link required")),
+  impressions: z.number().min(10, "Minimum 10 impressions required"),
+  campaignDays: z.number().min(1, "Minimum 1 campaign day"),
+  userEmail: z.string().email("Enter a valid target advertiser email"),
+});
+
+export const adminDirectHighlightSchema = z.object({
+  title: safeStr("Highlight title", 150).min(3, "Title must be at least 3 characters"),
+  content: safeStr("Highlight content", 2000).min(5, "Content must be at least 5 characters"),
+  interest: z.string().min(1, "Select an interest category"),
+  country: z.string().min(1, "Select a target country"),
+  campaignDays: z.number().min(1, "Minimum 1 campaign day"),
+  userEmail: z.string().email("Enter a valid target email"),
+});
+
+export const adminTicketReplySchema = z.object({
+  ticketId: z.string().min(1, "Ticket ID is required"),
+  replyText: safeStrInject("Reply text").min(2, "Reply text must be at least 2 characters"),
+});
+

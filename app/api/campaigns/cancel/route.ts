@@ -22,11 +22,13 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 Cleaned adId for cancel lookup: "${adId}"`);
 
     // 1. Try finding in 'adds' master table
-    let { data: ad, error: fetchError } = await supabaseAdmin
+    const { data: initialAd, error: fetchError } = await supabaseAdmin
       .from("adds")
       .select("user_email, completed_at")
       .eq("id", adId)
       .maybeSingle();
+
+    let ad = initialAd;
 
     if (fetchError) {
       console.error("❌ Error fetching from adds table:", fetchError.message);

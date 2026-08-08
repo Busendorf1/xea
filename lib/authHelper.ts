@@ -96,3 +96,31 @@ export async function getAuthenticatedEmail(req: NextRequest): Promise<string | 
   }
   return session?.user?.email?.toLowerCase() || null;
 }
+
+/**
+ * Helper to check if an email belongs to an administrator.
+ */
+export function isAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const adminEmails = (process.env.ADMIN_EMAILS || process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email.trim().toLowerCase());
+}
+
+/**
+ * Secure helper to verify if the caller is an authenticated Admin user.
+ * Supports both Web Session cookies and Mobile Bearer tokens.
+ */
+export async function verifyAdminUser(req: NextRequest): Promise<{ email: string } | null> {
+  const email = await getAuthenticatedEmail(req);
+  if (!email) return null;
+
+  if (!isAdminEmail(email)) {
+    return null;
+  }
+
+  return { email: email.toLowerCase() };
+}
+

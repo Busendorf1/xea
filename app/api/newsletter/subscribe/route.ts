@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import redisConnection from "@/lib/redis";
-
-// Zod Schema for Strict Input Validation & Anti-XSS Sanitation
-const subscribeSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email({ message: "Please enter a valid email address format." })
-    .max(120, { message: "Email address is too long." }),
-});
+import { newsletterSchema } from "@/lib/validationSchemas";
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Parse & Validate Payload using Zod
     const body = await req.json().catch(() => ({}));
-    const parseResult = subscribeSchema.safeParse(body);
+    const parseResult = newsletterSchema.safeParse(body);
 
     if (!parseResult.success) {
       const errorMessage = parseResult.error.issues[0]?.message || "Invalid email input.";

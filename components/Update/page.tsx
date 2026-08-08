@@ -8,6 +8,7 @@ import Footer from "../Footer/page";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
 import AppleSpinner from "@/components/ui/AppleSpinner";
+import { CheckCircle2, AlertCircle, Info } from "lucide-react";
 
 import {
   ALL_INDUSTRIES as industries,
@@ -16,6 +17,7 @@ import {
   ALL_LIFESTYLES as lifestyles,
   ALL_PERSONALITY_TRAITS as personalityTraits,
 } from "@/lib/categoryTargetingMap";
+import { isAdminEmail } from "@/lib/authHelper";
 
 
 interface Props {
@@ -50,6 +52,7 @@ interface UserProfileData {
 }
 
 export default function Update({ email }: Props) {
+  const isAdmin = isAdminEmail(email);
   const [dbProfile, setDbProfile] = useState<UserProfileData | null>(null);
   const [formData, setFormData] = useState<Partial<UserProfileData>>({});
   const [loading, setLoading] = useState(true);
@@ -123,7 +126,7 @@ export default function Update({ email }: Props) {
   }, [email]);
 
   useEffect(() => {
-    if (!dbProfile || !dbProfile.has_updated_profile) return;
+    if (isAdmin || !dbProfile || !dbProfile.has_updated_profile) return;
 
     const lastUpdated = new Date(dbProfile.lastUpdated || 0);
     const nextAvailableDate = new Date(lastUpdated.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -196,7 +199,7 @@ export default function Update({ email }: Props) {
       return;
     }
 
-    if (timeRemaining !== null && timeRemaining > 0) {
+    if (!isAdmin && timeRemaining !== null && timeRemaining > 0) {
       setStatus("⚠️ You can only update your profile once every 30 days.");
       return;
     }
@@ -221,7 +224,7 @@ export default function Update({ email }: Props) {
     }
 
     const now = new Date();
-    if (latestUser.has_updated_profile) {
+    if (!isAdmin && latestUser.has_updated_profile) {
       const lastUpdated = new Date(latestUser.lastUpdated || 0);
       const diffDays =
         (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
@@ -317,7 +320,7 @@ export default function Update({ email }: Props) {
     }
 
     // 5. Reset state and show success
-    setStatus("✅ Profile updated successfully. Redirecting...");
+    setStatus("Successful.");
     setImageFile(null); // Reset image
     setLoading(false);
 
@@ -377,7 +380,7 @@ export default function Update({ email }: Props) {
   }
   if (!dbProfile) return <p>Profile not found.</p>;
 
-  const isFormDisabled = timeRemaining !== null && timeRemaining > 0;
+  const isFormDisabled = !isAdmin && timeRemaining !== null && timeRemaining > 0;
 
   return (
     <>
@@ -385,6 +388,21 @@ export default function Update({ email }: Props) {
     <div className={styles.profileContainer}>
       <h1 className={styles.update}>Update Profile</h1>
       
+      {isAdmin && (
+        <div style={{
+          background: "rgba(234, 179, 8, 0.12)",
+          border: "1px solid rgba(234, 179, 8, 0.4)",
+          borderRadius: "8px",
+          padding: "0.85rem 1rem",
+          marginBottom: "1.5rem",
+          textAlign: "center",
+          color: "var(--primary)",
+          fontWeight: "700"
+        }}>
+          👑 Admin Privilege: Unlimited Profile Updates (30-day cooldown bypassed)
+        </div>
+      )}
+
       {isFormDisabled && (
         <div style={{
           background: "rgba(16, 185, 129, 0.1)",
@@ -400,20 +418,60 @@ export default function Update({ email }: Props) {
         </div>
       )}
 
-      {status && <p className={styles.status}>{status}</p>}
+      {status && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+          padding: "10px 16px",
+          borderRadius: "10px",
+          margin: "14px 0",
+          fontSize: "0.9rem",
+          fontWeight: 600,
+          backgroundColor: status.includes("Successful") ? "rgba(16, 185, 129, 0.12)" : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌") ? "rgba(239, 68, 68, 0.12)" : "rgba(59, 130, 246, 0.12)",
+          color: status.includes("Successful") ? "#10b981" : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌") ? "#ef4444" : "#3b82f6",
+          border: `1px solid ${status.includes("Successful") ? "rgba(16, 185, 129, 0.3)" : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌") ? "rgba(239, 68, 68, 0.3)" : "rgba(59, 130, 246, 0.3)"}`
+        }}>
+          {status.includes("Successful") ? (
+            <CheckCircle2 size={18} color="#10b981" />
+          ) : (
+            <AlertCircle size={18} color={status.includes("Failed") || status.includes("❌") ? "#ef4444" : "#f59e0b"} />
+          )}
+          <span>{status.replace(/^[✅⚠️❌⏳]\s*/, "")}</span>
+        </div>
+      )}
 
       {/* Section 1: Personal & Contact Info */}
       <div className={styles.formSection}>
         <div className={styles.formGrid}>
-          <div className={styles.formGroup}>
-            <label>Username</label>
+          <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
+            <label>Username / Handle</label>
             <input
               name="username"
-              placeholder={dbProfile.username || "Username (Email)"}
+              placeholder={dbProfile.username || "e.g. alex_dev or user@example.com"}
               value={formData.username || ""}
               onChange={handleChange}
               disabled={isFormDisabled}
             />
+            <div style={{
+              marginTop: "6px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              backgroundColor: "rgba(99, 102, 241, 0.08)",
+              border: "1px solid rgba(99, 102, 241, 0.25)",
+              fontSize: "0.78rem",
+              color: "var(--text-muted)",
+              lineHeight: "1.4",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "8px"
+            }}>
+              <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <span>
+                <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform and are <strong>not encrypted</strong>. Email privacy protections only apply to account login records.
+              </span>
+            </div>
           </div>
           <div className={styles.formGroup}>
             <label>Date of Birth</label>

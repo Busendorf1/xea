@@ -190,6 +190,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import supabase from "@/lib/utils/db";
+import { boostSchema } from "@/lib/validationSchemas";
 import styles from "../MyAds/page.module.css";
 import Link from "next/link";
 import LocationSelector from "../LocationSelector";
@@ -539,7 +540,6 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
     return null;
   };
-
   const handleExecuteBoost = async () => {
     if (!boosterAd) return;
     const reportsCount = reportsMap[boosterAd.id] || 0;
@@ -549,6 +549,18 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       setBoosterAd(null);
       return;
     }
+
+    const validation = boostSchema.safeParse({
+      adId: boosterAd.id,
+      bidAmount: newBidPrice > 0 ? newBidPrice : 100,
+      paymentMethod: boosterPaymentMethod,
+    });
+
+    if (!validation.success) {
+      alert(validation.error.issues[0]?.message || "Invalid boost parameters.");
+      return;
+    }
+
     setBoosting(true);
     try {
       const res = await fetch("/api/campaigns/boost", {

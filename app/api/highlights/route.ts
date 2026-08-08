@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
         const { data: dbUser } = await supabaseReadOnly
           .from("users")
           .select("interest")
-          .ilike("email", email)
+          .eq("email", email.toLowerCase().trim())
           .maybeSingle();
 
         if (dbUser && dbUser.interest) {
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Fetch user's daily render count hash from Redis for per-highlight tracking
-    let userViewsMap: Record<string, number> = {};
+    const userViewsMap: Record<string, number> = {};
     if (email) {
       try {
         const dateStr = new Date().toISOString().split("T")[0];

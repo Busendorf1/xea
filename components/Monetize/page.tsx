@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cancelMonetizationSchema } from "@/lib/validationSchemas";
 import styles from "./page.module.css";
 import Link from "next/link";
 import Footer from "../Footers/page";
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Activity } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Activity, AlertCircle } from "lucide-react";
 
 interface Session {
   user?: {
@@ -164,7 +165,7 @@ export default function Monetize({ session }: MonetizeProps) {
                     </label>
                     <input
                       type="email"
-                      placeholder={email || "your.email@domain.com"}
+                      placeholder="Enter Email"
                       value={confirmEmailInput}
                       onChange={(e) => setConfirmEmailInput(e.target.value)}
                       style={{
@@ -181,9 +182,10 @@ export default function Monetize({ session }: MonetizeProps) {
                   </div>
 
                   {cancelError && (
-                    <p style={{ color: "#f59e0b", fontSize: "0.85rem", marginBottom: "12px", fontWeight: 500 }}>
-                      ⚠️ {cancelError}
-                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#ef4444", fontSize: "0.85rem", marginBottom: "14px", fontWeight: 600 }}>
+                      <AlertCircle size={16} color="#ef4444" />
+                      <span>{cancelError}</span>
+                    </div>
                   )}
 
                   <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
@@ -197,19 +199,21 @@ export default function Monetize({ session }: MonetizeProps) {
                         padding: "8px 16px",
                         borderRadius: "6px",
                         background: "rgba(255,255,255,0.1)",
-                        border: "none",
+                        border: "1px solid var(--border-color, rgba(255,255,255,0.2))",
                         color: "#fff",
                         cursor: "pointer",
-                        fontWeight: 500,
+                        fontWeight: 600,
                       }}
                     >
-                      Keep Active
+                      Not now
                     </button>
+
                     <button
                       disabled={isSubmittingCancel}
                       onClick={async () => {
-                        if (!confirmEmailInput) {
-                          setCancelError("Please type your exact email address to confirm.");
+                        const validation = cancelMonetizationSchema.safeParse({ email: confirmEmailInput });
+                        if (!validation.success) {
+                          setCancelError(validation.error.issues[0]?.message || "Please type a valid email address.");
                           return;
                         }
                         try {

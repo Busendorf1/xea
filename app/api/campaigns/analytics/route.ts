@@ -3,8 +3,8 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 
 export async function GET(req: NextRequest) {
-  let reportsMap: Record<string, number> = {};
-  let dismissalsMap: Record<string, number> = {};
+  const reportsMap: Record<string, number> = {};
+  const dismissalsMap: Record<string, number> = {};
   let advertiserBlockCount = 0;
 
   try {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useTheme } from "../ThemeProvider";
 import supabase from "@/lib/utils/db";
+import { sendMoneySchema, withdrawalSchema } from "@/lib/validationSchemas";
 import { 
   Sun, 
   Moon, 
@@ -133,13 +134,13 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
     const cleanEmail = sendRecipientEmail.trim().toLowerCase();
     const amountNum = parseFloat(sendAmount);
 
-    if (!cleanEmail || !cleanEmail.includes("@")) {
-      setSendMoneyError("Please enter a valid recipient email address.");
-      return;
-    }
+    const validation = sendMoneySchema.safeParse({
+      recipientEmail: cleanEmail,
+      amount: amountNum,
+    });
 
-    if (isNaN(amountNum) || amountNum <= 0) {
-      setSendMoneyError("Please enter a valid transfer amount.");
+    if (!validation.success) {
+      setSendMoneyError(validation.error.issues[0]?.message || "Invalid transfer details.");
       return;
     }
 
@@ -438,8 +439,15 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
     setWithdrawalError("");
     
     const amountNum = parseFloat(withdrawAmount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      setWithdrawalError("Please enter a valid amount");
+    const validation = withdrawalSchema.safeParse({
+      amount: amountNum,
+      bankCode: selectedBank,
+      accountNumber,
+      accountName: resolvedAccountName || "Resolving...",
+    });
+
+    if (!validation.success) {
+      setWithdrawalError(validation.error.issues[0]?.message || "Invalid withdrawal details.");
       return;
     }
 

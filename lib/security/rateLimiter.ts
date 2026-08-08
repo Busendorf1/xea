@@ -1,5 +1,5 @@
-import redisConnection from "@/lib/redis";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import redisConnection from "../redis";
+import supabaseAdmin from "../utils/dbAdmin";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -124,14 +124,19 @@ export async function reserveSenderBalance(senderEmail: string, amountNaira: num
     return { success: false, currentBalance: currentBal, error: "Insufficient wallet balance for this transfer" };
   }
 
-  const maxAllowed = currentBal * 0.20;
-  if (amountNaira > maxAllowed + 0.01) {
-    const formattedMax = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(maxAllowed);
-    return {
-      success: false,
-      currentBalance: currentBal,
-      error: `Transfer amount cannot exceed 20% of your total balance at a time. Maximum allowed is ${formattedMax}.`,
-    };
+  const { isAdminEmail } = await import("../authHelper");
+  const isAdmin = isAdminEmail(cleanSender);
+
+  if (!isAdmin) {
+    const maxAllowed = currentBal * 0.20;
+    if (amountNaira > maxAllowed + 0.01) {
+      const formattedMax = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(maxAllowed);
+      return {
+        success: false,
+        currentBalance: currentBal,
+        error: `Transfer amount cannot exceed 20% of your total balance at a time. Maximum allowed is ${formattedMax}.`,
+      };
+    }
   }
 
   return { success: true, currentBalance: currentBal };

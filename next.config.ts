@@ -12,10 +12,10 @@ const nextConfig = {
     ],
   },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   webpack: (config: any) => {
     config.resolve.fallback = { fs: false, path: false };

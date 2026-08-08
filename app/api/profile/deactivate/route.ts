@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const { data: userProfile } = await supabaseAdmin
       .from("users")
       .select("balance")
-      .ilike("email", emailLower)
+      .eq("email", emailLower)
       .maybeSingle();
 
     const currentBalance = parseFloat(userProfile?.balance || 0);
@@ -57,22 +57,22 @@ export async function POST(req: NextRequest) {
 
     // 1. Delete all associated user campaigns, bids, highlights, payments, impressions, and notifications
     await Promise.all([
-      supabaseAdmin.from("adds").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("addsactive").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("bidded_ads").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("news").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("newsactive").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("payments").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("notifications").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("ad_impressions").delete().ilike("user_email", emailLower),
-      supabaseAdmin.from("read_announcements").delete().ilike("user_email", emailLower),
+      supabaseAdmin.from("adds").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("addsactive").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("bidded_ads").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("news").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("newsactive").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("payments").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("notifications").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("ad_impressions").delete().eq("user_email", emailLower),
+      supabaseAdmin.from("read_announcements").delete().eq("user_email", emailLower),
     ]).catch((err) => console.error("⚠️ Error deleting user active campaigns:", err));
 
     // 2. Delete user profile record from users table
     const { error: deleteUserErr } = await supabaseAdmin
       .from("users")
       .delete()
-      .ilike("email", emailLower);
+      .eq("email", emailLower);
 
     if (deleteUserErr) {
       console.error("❌ Error deleting user from users table:", deleteUserErr);

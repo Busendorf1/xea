@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { adminNotificationSchema } from "@/lib/validationSchemas";
+import redisConnection from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
@@ -38,37 +40,56 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { target, title, message, targetEmail } = body;
 
-    if (!target || !title || !message) {
-      return NextResponse.json({ error: "target, title, and message are required" }, { status: 400 });
+    // 1. Synchronous Zod Validation (Zero CPU / Zero DB overhead on invalid payload)
+    const validation = adminNotificationSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: validation.error.issues[0]?.message || "Invalid notification payload" },
+        { status: 400 }
+      );
     }
 
-    if (target === "user" && !targetEmail) {
-      return NextResponse.json({ error: "targetEmail is required when target is user" }, { status: 400 });
-    }
+    const { target, title, message, targetEmail } = validation.data;
 
-    if (!["all", "monetized", "user"].includes(target)) {
-      return NextResponse.json({ error: "Invalid target. Must be 'all', 'monetized', or 'user'" }, { status: 400 });
-    }
-
-    if (target === "user") {
+    if (target === "user" && targetEmail) {
       const emailLower = targetEmail.toLowerCase().trim();
 
-      // Check if user exists
-      const { data: userExists, error: checkErr } = await supabaseAdmin
-        .from("users")
-        .select("email")
-        .ilike("email", emailLower)
-        .maybeSingle();
+      // 2. High-Performance Redis Cache Lookup for User Existence (Eliminates redundant DB roundtrips)
+      const cacheKey = `cache:user_exists:${emailLower}`;
+      let userExists = false;
 
-      if (checkErr) {
-        console.error("❌ Database error checking user existence:", checkErr);
-        return NextResponse.json({ error: "Internal database error" }, { status: 500 });
+      try {
+        const cached = await redisConnection.get(cacheKey);
+        if (cached === "true") {
+          userExists = true;
+        }
+      } catch (redisErr) {
+        console.warn("⚠️ Redis cache read warning:", redisErr);
       }
 
       if (!userExists) {
-        return NextResponse.json({ error: `User with email ${targetEmail} does not exist.` }, { status: 400 });
+        const { data: dbUser, error: checkErr } = await supabaseAdmin
+          .from("users")
+          .select("email")
+          .ilike("email", emailLower)
+          .maybeSingle();
+
+        if (checkErr) {
+          console.error("❌ Database error checking user existence:", checkErr);
+          return NextResponse.json({ error: "Internal database error" }, { status: 500 });
+        }
+
+        if (!dbUser) {
+          return NextResponse.json({ error: `User with email ${targetEmail} does not exist.` }, { status: 400 });
+        }
+
+        userExists = true;
+        try {
+          await redisConnection.set(cacheKey, "true", "EX", 3600); // Cache for 1 hour
+        } catch (redisErr) {
+          console.warn("⚠️ Redis cache write warning:", redisErr);
+        }
       }
 
       // Insert private notification

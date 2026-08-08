@@ -19,10 +19,21 @@ export async function POST(req: NextRequest) {
     // 3. Extract submission data
     const { name, email, category, subject, message } = body;
 
-    // 4. Determine which email to validate and associate with the ticket.
-    // If user is authenticated, force using their authenticated email to prevent spoofing.
-    // Otherwise, use the email provided in the body.
-    const targetEmail = (authEmail || email || "").toLowerCase().trim();
+    // 4. Determine which identifier/email to validate and associate with the ticket.
+    let rawIdentifier = (authEmail || email || "").toLowerCase().trim();
+    let targetEmail = rawIdentifier;
+
+    if (rawIdentifier && !rawIdentifier.includes(".")) {
+      const cleanUsername = rawIdentifier.replace(/^@/, "");
+      const { data: userRow } = await supabaseAdmin
+        .from("users")
+        .select("email")
+        .ilike("username", cleanUsername)
+        .maybeSingle();
+      if (userRow?.email) {
+        targetEmail = userRow.email;
+      }
+    }
 
     // 5. Validate the input payload
     const validationInput = {

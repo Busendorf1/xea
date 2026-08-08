@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Activity, Zap } from "lucide-react";
 import styles from "./AttentionMarketTicker.module.css";
 
@@ -28,7 +28,7 @@ const CATEGORY_NAMES: Record<string, string> = {
   product_sales: "Product Sales",
 };
 
-export default function AttentionMarketTicker({
+function AttentionMarketTicker({
   selectedCategory,
   isBiddingEnabled,
   onToggleBidding,
@@ -46,7 +46,7 @@ export default function AttentionMarketTicker({
   });
   const [inputError, setInputError] = useState("");
 
-  const fetchRates = async () => {
+  const fetchRates = useCallback(async () => {
     try {
       const res = await fetch("/api/bidding/market-rates");
       if (res.ok) {
@@ -58,13 +58,13 @@ export default function AttentionMarketTicker({
     } catch (e) {
       console.error("Error fetching market rates:", e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRates();
     const interval = setInterval(fetchRates, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchRates]);
 
   const catKey = (selectedCategory || "business").toLowerCase();
   const currentCategoryRate = rates[catKey] || {
@@ -84,7 +84,7 @@ export default function AttentionMarketTicker({
       const suggestedBid = Math.max(currentCategoryRate.highestBid, currentCategoryRate.floorPrice);
       onBidPriceChange(suggestedBid);
     }
-  }, [isBiddingEnabled, catKey, currentCategoryRate.floorPrice, currentCategoryRate.highestBid]);
+  }, [isBiddingEnabled, catKey, bidPrice, currentCategoryRate.floorPrice, currentCategoryRate.highestBid, onBidPriceChange]);
 
   const handlePriceInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
@@ -234,3 +234,5 @@ export default function AttentionMarketTicker({
     </div>
   );
 }
+
+export default React.memo(AttentionMarketTicker);

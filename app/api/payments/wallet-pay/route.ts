@@ -21,8 +21,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid payment type" }, { status: 400 });
     }
 
+    const { isAdminEmail } = await import("@/lib/authHelper");
+    const isAdmin = isAdminEmail(email);
     const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
+
+    if (!isAdmin && (isNaN(amountNum) || amountNum <= 0)) {
       return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
     }
 
@@ -36,7 +39,7 @@ export async function POST(req: NextRequest) {
       const rate = isBidded && bidPrice ? bidPrice : parseFloat(adData.costPerImpression || 15);
       const impressions = parseInt(adData.impressions || 1000, 10);
       const expectedCost = rate * impressions;
-      if (Math.abs(amountNum - expectedCost) > 0.01) {
+      if (!isAdmin && Math.abs(amountNum - expectedCost) > 0.01) {
         return NextResponse.json({ error: "Cost validation mismatch. Payment amount does not match campaign configurations." }, { status: 400 });
       }
     }
@@ -245,6 +248,16 @@ export async function POST(req: NextRequest) {
       if (rpcError) {
         console.error("❌ Wallet pay: RPC submit_ad_campaign failed:", rpcError);
         return NextResponse.json({ error: "Payment succeeded but failed to submit ad campaign" }, { status: 500 });
+      }
+
+      if (isAdmin || adData.isAdminPost) {
+        await supabaseAdmin.from("ads").update({
+          is_admin_post: true,
+          custom_sponsor_name: adData.customSponsorName || null,
+          custom_sponsor_handle: adData.customSponsorHandle || null,
+          custom_sponsor_logo: adData.customSponsorLogo || null,
+          cost_per_impression: 0,
+        }).eq("id", adData.id);
       }
 
       // If ad is bidded, record in bidded_ads table and update Redis ZSET

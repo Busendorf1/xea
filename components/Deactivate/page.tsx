@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { deactivationSchema } from "@/lib/validationSchemas";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
 import HeaderJoin from "../HeaderJoin/page";
 import Footer from "../Footer/page";
-import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldAlert, AlertCircle } from "lucide-react";
 
 interface Session {
   user?: {
@@ -25,11 +26,22 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
   const [step, setStep] = useState<"confirm" | "done">("confirm");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
+  const [confirmEmailInput, setConfirmEmailInput] = useState("");
   const email = session?.user?.email;
 
   const handleDeleteAccount = async () => {
     if (!email) return;
+
+    if (!confirmEmailInput || confirmEmailInput.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      setError("Email address does not match your account email.");
+      return;
+    }
+
+    const validation = deactivationSchema.safeParse({ confirmEmail: confirmEmailInput.trim() });
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message || "Invalid account email.");
+      return;
+    }
 
     const confirmDelete = window.confirm(
       "WARNING: This will permanently delete your account and all associated data. Are you absolutely sure?"
@@ -94,7 +106,34 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                 <li> User Profile & Demographics</li>
               </ul>
 
-              {error && <p className={styles.error}>{error}</p>}
+              <div style={{ marginBottom: "16px", marginTop: "16px" }}>
+                <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-muted, #94a3b8)", marginBottom: "6px" }}>
+                  Type your email address to confirm deactivation:
+                </label>
+                <input
+                  type="email"
+                  placeholder="Enter Email"
+                  value={confirmEmailInput}
+                  onChange={(e) => setConfirmEmailInput(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-color, rgba(255,255,255,0.2))",
+                    background: "rgba(0,0,0,0.3)",
+                    color: "#fff",
+                    fontSize: "0.9rem",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {error && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#ef4444", fontSize: "0.85rem", margin: "12px 0", fontWeight: 600 }}>
+                  <AlertCircle size={16} color="#ef4444" />
+                  <span>{error}</span>
+                </div>
+              )}
 
               <div className={styles.buttons}>
                 <button
@@ -109,7 +148,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                   disabled={loading}
                   className={styles.cancel}
                 >
-                  Cancel
+                  Not now
                 </button>
               </div>
             </div>

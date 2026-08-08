@@ -131,7 +131,9 @@ const flushBatch = async () => {
 
         const currentBal = parseFloat(userData?.balance || 0);
         const { getAtwBalanceLimit } = await import("./attentionTierEngine");
-        const balanceCap = getAtwBalanceLimit(userData?.atw_tier);
+        const { isAdminEmail } = await import("./authHelper");
+        const isAdmin = isAdminEmail(userEmail);
+        const balanceCap = getAtwBalanceLimit(userData?.atw_tier, isAdmin);
         const formattedCap = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(balanceCap);
 
         if (currentBal >= balanceCap) {

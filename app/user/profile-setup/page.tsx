@@ -8,6 +8,7 @@ import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
 import LocationSelector from "@/components/LocationSelector";
 import { profileSetupStep1Schema } from "@/lib/validationSchemas";
+import { CheckCircle2, AlertCircle, Loader2, XCircle, Info } from "lucide-react";
 
 
 import {
@@ -29,6 +30,7 @@ export default function ProfileSetup() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
 interface ProfileFormData {
+  username: string;
   dob: string;
   phone: string;
   country: string;
@@ -49,6 +51,7 @@ interface ProfileFormData {
 }
 
   const [formData, setFormData] = useState<ProfileFormData>({
+    username: "",
     dob: "",
     phone: "",
     country: "",
@@ -74,6 +77,50 @@ interface ProfileFormData {
     lifestyle: false,
     personality: false,
   });
+
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameStatus, setUsernameStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Pre-fill username default from auth user if empty
+    if (authUser && !formData.username) {
+      const defaultUsername = authUser.nickname || authUser.email?.split("@")[0] || "";
+      const cleanDefault = defaultUsername.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+      if (cleanDefault.length >= 3) {
+        setFormData(prev => ({ ...prev, username: cleanDefault }));
+      }
+    }
+  }, [authUser]);
+
+  // Debounced real-time username availability check (100M+ scale fast lookup)
+  useEffect(() => {
+    const rawUsername = formData.username || "";
+    const clean = rawUsername.trim().toLowerCase().replace(/^@/, "");
+
+    if (!clean || clean.length < 3) {
+      setUsernameAvailable(null);
+      setUsernameStatus(null);
+      return;
+    }
+
+    setCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/profile/check-username?username=${encodeURIComponent(clean)}`);
+        const data = await res.json();
+        setUsernameAvailable(data.available);
+        setUsernameStatus(data.message);
+      } catch {
+        setUsernameAvailable(null);
+        setUsernameStatus(null);
+      } finally {
+        setCheckingUsername(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [formData.username]);
 
   useEffect(() => {
     // If not logged in after auth finishes loading, redirect to home
@@ -102,6 +149,13 @@ interface ProfileFormData {
 
   const validateStep1 = () => {
     setFieldErrors({});
+
+    if (usernameAvailable === false) {
+      const msg = "This username is already taken. Please choose another unique username.";
+      setErrorMessage(msg);
+      setFieldErrors({ username: "Already taken" });
+      return false;
+    }
 
     // Location is required — GPS toggle must be enabled and detected
     if (!formData.country || !formData.state || !formData.location) {
@@ -162,6 +216,7 @@ interface ProfileFormData {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          username: formData.username,
           dob: formData.dob,
           phone: formData.phone,
           country: formData.country,
@@ -264,6 +319,72 @@ interface ProfileFormData {
             {step === 1 && (
               <div className={styles.formStep}>
                 <div className={styles.grid}>
+                  <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="username" className={styles.inputLabel}>Choose your Unique Username / Handle</label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        placeholder="e.g. alex_dev or crypto_king"
+                        required
+                        maxLength={30}
+                        value={formData.username}
+                        onChange={handleInputChange}
+                        className={styles.inputField}
+                        style={{
+                          paddingLeft: "32px",
+                          borderColor: usernameAvailable === true ? "#10b981" : usernameAvailable === false ? "#ef4444" : undefined
+                        }}
+                      />
+                      <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontWeight: 700 }}>
+                        @
+                      </span>
+                    </div>
+
+                    {checkingUsername && (
+                      <p style={{ fontSize: "0.78rem", color: "#3b82f6", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
+                        <Loader2 size={14} className="animate-spin" color="#3b82f6" />
+                        <span>Checking availability...</span>
+                      </p>
+                    )}
+
+                    {!checkingUsername && usernameStatus && (
+                      <p style={{
+                        fontSize: "0.78rem",
+                        marginTop: "6px",
+                        fontWeight: 600,
+                        color: usernameAvailable ? "#10b981" : "#ef4444",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}>
+                        {usernameAvailable ? <CheckCircle2 size={14} color="#10b981" /> : <XCircle size={14} color="#ef4444" />}
+                        <span>{usernameStatus}</span>
+                      </p>
+                    )}
+
+                    <div style={{
+                      marginTop: "8px",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      backgroundColor: "rgba(99, 102, 241, 0.08)",
+                      border: "1px solid rgba(99, 102, 241, 0.25)",
+                      fontSize: "0.78rem",
+                      color: "var(--text-muted)",
+                      lineHeight: "1.4",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "8px"
+                    }}>
+                      <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+                      <span>
+                        <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform and are <strong>not encrypted</strong>. Email privacy protections only apply to account login records.
+                      </span>
+                    </div>
+
+                    {fieldErrors.username && <span className={styles.fieldError}>{fieldErrors.username}</span>}
+                  </div>
                   <div className={styles.inputGroup}>
                     <label htmlFor="dob" className={styles.inputLabel}>Date of Birth</label>
                     <input

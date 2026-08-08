@@ -13,13 +13,15 @@ export async function GET(req: NextRequest) {
 
     console.log(`🔍 Fetching campaigns list for: ${email}`);
 
-    // Query all queues in parallel on read replica database
+    const emailLower = email.toLowerCase().trim();
+
+    // Query all queues in parallel on read replica database using B-tree indexed lookups
     const [adsQueue, adsActiveReal, adsCompleted, highlightsQueue, highlightsActive] = await Promise.all([
-      supabaseReadOnly.from("adds").select("*").ilike("user_email", email),
-      supabaseReadOnly.from("addsactive").select("*").ilike("user_email", email),
-      supabaseReadOnly.from("completed_ads").select("*").ilike("user_email", email),
-      supabaseReadOnly.from("news").select("*").ilike("user_email", email),
-      supabaseReadOnly.from("newsactive").select("*").ilike("user_email", email),
+      supabaseReadOnly.from("adds").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("addsactive").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("completed_ads").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("news").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("newsactive").select("*").eq("user_email", emailLower),
     ]);
 
     const combinedActive = [

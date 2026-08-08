@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { verifyAdminUser } from "@/lib/authHelper";
 
 export async function POST(req: NextRequest) {
   try {
-    const authEmail = await getAuthenticatedEmail(req);
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
 
     const body = await req.json();
     const { action, ticketId, replyText } = body;

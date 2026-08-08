@@ -3,6 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import supabase from "@/lib/utils/db";
+import {
+  adminNotificationSchema,
+  adminDirectAdSchema,
+  adminDirectHighlightSchema,
+  adminTicketReplySchema,
+} from "@/lib/validationSchemas";
 import { useTheme } from "../ThemeProvider";
 import { 
   Users, 
@@ -804,7 +810,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   const handleReplyTicket = async (ticketId: string) => {
-    if (!replyText.trim()) return;
+    const validation = adminTicketReplySchema.safeParse({ ticketId, replyText });
+    if (!validation.success) {
+      alert(validation.error.issues[0]?.message || "Invalid ticket reply text.");
+      return;
+    }
     setReplyLoading(true);
     try {
       const res = await fetch("/api/admin/help-tickets", {
@@ -876,13 +886,15 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     setNotificationSuccessMsg("");
     setNotificationErrorMsg("");
 
-    if (!notificationTitle.trim() || !notificationMessage.trim()) {
-      setNotificationErrorMsg("Title and Message are required.");
-      return;
-    }
+    const validation = adminNotificationSchema.safeParse({
+      title: notificationTitle,
+      message: notificationMessage,
+      target: notificationTarget,
+      targetEmail: notificationTargetEmail,
+    });
 
-    if (notificationTarget === "user" && !notificationTargetEmail.trim()) {
-      setNotificationErrorMsg("Please enter the target user email address.");
+    if (!validation.success) {
+      setNotificationErrorMsg(validation.error.issues[0]?.message || "Invalid notification input.");
       return;
     }
 
@@ -1118,7 +1130,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
 
     try {
-      let updateData: any = { is_paused: targetState };
+      const updateData: any = { is_paused: targetState };
       if (statement) updateData.admin_statement = statement;
 
       let { error: errorActive } = await supabase
@@ -1161,7 +1173,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
     const now = new Date().toISOString();
     try {
-      let updateData: any = { completed_at: now, is_paused: true };
+      const updateData: any = { completed_at: now, is_paused: true };
       if (reason) updateData.admin_statement = reason;
 
       let { error: errActive } = await supabase.from("addsactive").update(updateData).eq("id", ad.id);
@@ -1379,6 +1391,21 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handlePostAdDirect = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const adValidation = adminDirectAdSchema.safeParse({
+      headline: adForm.adContent.slice(0, 50) || "Direct Admin Ad",
+      content: adForm.adContent || "Admin direct ad content",
+      ctaLink: adForm.actionWebsite || "https://xea.app",
+      impressions: adForm.impressions,
+      campaignDays: adForm.campaignDays,
+      userEmail: adForm.userEmail,
+    });
+
+    if (!adValidation.success) {
+      alert(adValidation.error.issues[0]?.message || "Invalid ad form submission.");
+      return;
+    }
+
     if (adForm.adMediaType !== "text" && adFormFiles.length === 0) {
       alert("Please select at least one media file to upload.");
       return;
@@ -1416,28 +1443,26 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             mediaUrls.push(publicUrlData.publicUrl);
           }
         }
-        mediaUrlString = mediaUrls.join(",");
+        mediaUrlString = JSON.stringify(mediaUrls);
       }
 
-      // 2. Insert Campaign Directly into public.addsactive
-      const newAd = {
+      // 2. Direct insert bypass into active 'ads' table
+      const { error: dbError } = await supabase.from("ads").insert({
         id: adId,
+        user_email: adForm.userEmail.toLowerCase().trim(),
+        headline: adForm.adContent.slice(0, 50) || "Direct Admin Ad",
+        content: adForm.adContent,
+        cta_link: adForm.actionWebsite || "https://xea.app",
+        cta_button_text: "Learn More",
         ad_type: adForm.adType,
-        industry: adForm.industry,
-        interest: adForm.interest,
-        age_range: [18, 65],
+        ad_media_type: adForm.adMediaType,
+        media_url: mediaUrlString,
         impressions: adForm.impressions,
+        impressions_remaining: adForm.impressions,
         campaign_days: adForm.campaignDays,
         daily_impression_cap: Math.ceil(adForm.impressions / adForm.campaignDays),
         daily_impression_count: 0,
         user_frequency_cap: adForm.userFrequencyCap,
-        country: adForm.country,
-        state: adForm.state,
-        gender: adForm.gender,
-        employment_status: adForm.employmentStatus,
-        ad_media_type: adForm.adMediaType,
-        ad_content: adForm.adContent,
-        ad_media_url: mediaUrlString,
         ad_media: mediaUrlString,
         ad_action_buttons: [
           adForm.actionPhone && "phone",
@@ -1451,25 +1476,16 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         action_email: adForm.actionEmail || null,
         cost_per_impression: costPerImpression,
         total_cost: totalCost,
-        user_email: adForm.userEmail.toLowerCase(),
         created_at: new Date().toISOString(),
         is_paused: false,
         impression_count: 0,
         seen_users: []
-      };
-
-      const response = await fetch("/api/campaigns/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "ad", payload: newAd })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        alert(`Ad creation failed: ${errorData.error || "Server error"}`);
-      } else {
-        alert("Ad campaign creation enqueued successfully!");
-        setAdForm({
+      if (dbError) throw dbError;
+
+      alert("Ad published directly to active feed!");
+      setAdForm({
           adType: "business",
           industry: [],
           interest: [],
@@ -1491,7 +1507,6 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         });
         setAdFormFiles([]);
         handleTabChange("active-ads");
-      }
     } catch (e: any) {
       alert(`Unexpected direct posting error: ${e.message}`);
     } finally {
@@ -1605,7 +1620,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     const pages: number[] = [];
     const maxVisible = 5;
     let startPage = Math.max(0, currentPage - 2);
-    let endPage = Math.min(totalPages - 1, startPage + maxVisible - 1);
+    const endPage = Math.min(totalPages - 1, startPage + maxVisible - 1);
     if (endPage - startPage + 1 < maxVisible) {
       startPage = Math.max(0, endPage - maxVisible + 1);
     }
@@ -1774,9 +1789,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             {ad.ad_content}
           </p>
 
-          {/* Publisher Email & Metadata */}
+          {/* Publisher Username & Metadata */}
           <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "flex", gap: "14px", flexWrap: "wrap" }}>
-            <span>Publisher: <strong style={{ color: "var(--foreground)" }}>{ad.user_email}</strong></span>
+            <span>Publisher: <strong style={{ color: "var(--foreground)" }}>@{ad.custom_sponsor_handle?.replace(/^@/, "") || ad.username?.replace(/^@/, "") || "user"}</strong></span>
             <span>ID: <code style={{ fontSize: "0.72rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 6px", borderRadius: "4px" }}>{ad.id}</code></span>
             <span>Created: {ad.created_at ? new Date(ad.created_at).toLocaleDateString() : "N/A"}</span>
           </div>
@@ -1902,7 +1917,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           )}
 
           <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.5rem", borderTop: "1px solid var(--card-border)", paddingTop: "0.5rem", display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-            <span>Publisher: <strong>{highlight.user_email}</strong></span>
+            <span>Publisher: <strong>@{highlight.custom_sponsor_handle?.replace(/^@/, "") || highlight.username?.replace(/^@/, "") || "user"}</strong></span>
             <span>{highlight.country || "Global"} {highlight.state ? `(${highlight.state}${highlight.province ? `, ${highlight.province}` : ""})` : ""}</span>
           </div>
         </div>
@@ -2264,8 +2279,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                 ) : (
                                   <div style={{ fontWeight: "700" }}>{user.firstName} {user.lastName}</div>
                                 )}
-                                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>@{user.username.split("@")[0]}</div>
-                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", wordBreak: "break-all" }}>{user.email}</div>
+                                <div style={{ fontSize: "0.82rem", fontWeight: "700", color: "var(--primary)" }}>@{user.username?.replace(/^@/, "") || "user"}</div>
                               </td>
                               <td className={styles.td}>
                                 <div style={{ fontWeight: "800" }}>{formatCurrency(user.balance || 0)}</div>

@@ -44,6 +44,30 @@ export default function HelpCenter({ session }: HelpCenterProps) {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
 
+  // Fetch user profile username from DB
+  useEffect(() => {
+    if (!userEmail) return;
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.username) {
+            const formatted = `@${data.username.replace(/^@/, '')}`;
+            setForm((prev) => ({
+              ...prev,
+              email: formatted,
+              name: prev.name || data.username,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile for HelpCenter:", err);
+      }
+    };
+    fetchProfile();
+  }, [userEmail]);
+
   // Fetch existing tickets for logged-in user
   useEffect(() => {
     if (!userEmail) return;
@@ -220,12 +244,12 @@ export default function HelpCenter({ session }: HelpCenterProps) {
             </div>
 
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Email Address *</label>
+              <label className={styles.formLabel}>Username / Handle *</label>
               <input
-                type="email"
+                type="text"
                 required
                 className={styles.inputField}
-                placeholder="you@example.com"
+                placeholder="@username"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 readOnly={!!userEmail}

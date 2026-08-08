@@ -6,8 +6,13 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "../Feed/page.module.css";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import AdCard, { Ad } from "../ui/AdCard";
+import dynamic from "next/dynamic";
+import { type Ad } from "../ui/AdCard";
 import Skeleton from "../ui/Skeleton";
+
+const AdCard = dynamic(() => import("../ui/AdCard"), {
+  loading: () => <Skeleton />,
+});
 
 interface FeedProps {
   userEmail: string;

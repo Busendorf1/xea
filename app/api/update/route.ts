@@ -31,6 +31,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Check username uniqueness if username is provided in update
+    const usernameInput = data.username;
+    if (usernameInput) {
+      const cleanUsername = usernameInput.trim().toLowerCase().replace(/^@/, "");
+      const { data: usernameCheck, error: userErr } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .ilike("username", cleanUsername)
+        .neq("email", email)
+        .maybeSingle();
+
+      if (userErr) {
+        console.error("❌ Username check error:", userErr);
+      }
+
+      if (usernameCheck) {
+        return NextResponse.json({ error: "This username is already taken. Please choose another." }, { status: 400 });
+      }
+    }
+
     // Build the update payload dynamically
     const allowedFields = [
       "username", "dob", "country", "state", "location", "phone", "passphrase",

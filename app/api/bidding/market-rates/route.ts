@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     // 2. Query Supabase RPC get_industry_attention_prices
     const { data: dbRates, error } = await supabaseReadOnly.rpc("get_industry_attention_prices");
 
-    let result: Record<string, { floorPrice: number; highestBid: number; totalBids: number }> = {};
+    const result: Record<string, { floorPrice: number; highestBid: number; totalBids: number }> = {};
 
     if (error || !dbRates || dbRates.length === 0) {
       console.warn("⚠️ RPC get_industry_attention_prices fallback to defaults:", error?.message);

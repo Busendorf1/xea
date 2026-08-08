@@ -10,10 +10,12 @@ import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
 import { v4 as uuidv4 } from "uuid";
 import supabase from "@/lib/utils/db";
-import AdPreviewCard from "../Adreview/page";
-import AttentionMarketTicker from "./AttentionMarketTicker";
+import dynamic from "next/dynamic";
+const AdPreviewCard = dynamic(() => import("../Adreview/page"));
+const AttentionMarketTicker = dynamic(() => import("./AttentionMarketTicker"), { ssr: false });
 import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/lib/categoryTargetingMap";
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
+import { isAdminEmail } from "@/lib/authHelper";
 
 interface Session {
   user?: {
@@ -52,6 +54,7 @@ type Category =
 type AdMediaType = "text" | "image" | "video" | "mixed";
 
 export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
+  const isAdmin = useMemo(() => isAdminEmail(session?.user?.email), [session?.user?.email]);
   const searchParams = useSearchParams();
   const editAdId = searchParams ? searchParams.get("id") : null;
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -110,6 +113,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     productPrice: "",
     productCtaType: "Buy",
     productCtaLink: "",
+    customSponsorName: "",
+    customSponsorHandle: "",
+    customSponsorLogo: "",
   });
 
   const [mediaError, setMediaError] = useState("");
@@ -273,6 +279,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   };
 
   const calculateTotalCostPerImpression = () => {
+    if (isAdmin) return 0;
     let baseRate = adRates[adType] || 55;
     if (isBiddingEnabled && bidPrice > 0) {
       baseRate = bidPrice;
@@ -284,6 +291,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   };
 
   const calculateTotalCost = () => {
+    if (isAdmin) return 0;
     return calculateTotalCostPerImpression() * formSelections.impressions;
   };
 
@@ -323,6 +331,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       productPrice: "",
       productCtaType: "Buy",
       productCtaLink: "",
+      customSponsorName: "",
+      customSponsorHandle: "",
+      customSponsorLogo: "",
     });
     setAdType("politics");
   };
@@ -405,7 +416,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     const costPerImpression = calculateTotalCostPerImpression();
     const totalCost = calculateTotalCost();
 
-    if (paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
+    if (!isAdmin && paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
       alert(`❌ Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`);
       return;
     }
@@ -443,7 +454,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
       // Initialize Paystack payment or wallet pay depending on selector
       let paymentUrl = "/api/payments/initialize";
-      if (paymentMethod === "wallet") {
+      if (isAdmin || paymentMethod === "wallet") {
         paymentUrl = "/api/payments/wallet-pay";
       }
 
@@ -490,8 +501,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               totalCost,
               isBidded: isBiddingEnabled,
               bidPrice: isBiddingEnabled ? bidPrice : null,
-              adMedia: mediaUrlString,
-              displayMutualButton: formSelections.displayMutualButton ?? true,
+              isAdminPost: isAdmin,
+              customSponsorName: formSelections.customSponsorName || null,
+              customSponsorHandle: formSelections.customSponsorHandle || null,
+              customSponsorLogo: formSelections.customSponsorLogo || null,
               productName: adType === "product_sales" ? formSelections.productName : null,
               productPrice: adType === "product_sales" ? parseFloat(formSelections.productPrice) : null,
               productCtaType: adType === "product_sales" ? formSelections.productCtaType : null,
@@ -906,6 +919,33 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
             {step === 3 && (
               <div className={styles.adCreativeSection}>
+                {isAdmin && (
+                  <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", padding: "16px", borderRadius: "12px", marginBottom: "20px" }}>
+                    <h4 style={{ color: "var(--primary)", fontSize: "0.92rem", fontWeight: 700, marginBottom: "12px" }}>
+                      👑 Admin Privilege: Custom Branding & Free Campaign Publishing
+                    </h4>
+                    <div className={styles.formGroup} style={{ marginBottom: "12px" }}>
+                      <label>Custom Sponsor Name (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Acme Corporation (defaults to Sponsored)"
+                        value={formSelections.customSponsorName}
+                        onChange={(e) => setFormSelections({ ...formSelections, customSponsorName: e.target.value })}
+                        className={styles.inputBox}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Custom Handle (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. @acme_official (defaults to @Sponsored)"
+                        value={formSelections.customSponsorHandle}
+                        onChange={(e) => setFormSelections({ ...formSelections, customSponsorHandle: e.target.value })}
+                        className={styles.inputBox}
+                      />
+                    </div>
+                  </div>
+                )}
                 {adType === "product_sales" && (
                   <>
                     <div className={styles.formGroup}>
@@ -1480,32 +1520,43 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   productCtaLink={formSelections.productCtaLink}
                 />
 
-                <div className={styles.paymentSection}>
-                  <div className={styles.paymentTitle}>Payment Method</div>
-                  <div className={styles.paymentOptions}>
-                    <div
-                      className={`${styles.paymentOptionCard} ${paymentMethod === "card" ? styles.paymentOptionCardActive : ""}`}
-                      onClick={() => setPaymentMethod("card")}
-                    >
-                      <div className={styles.paymentOptionName}>Card / Bank</div>
-                      <div className={styles.paymentOptionSub}>Debit Card, USSD, Bank Transfer</div>
-                    </div>
-                    <div
-                      className={`${styles.paymentOptionCard} ${paymentMethod === "wallet" ? styles.paymentOptionCardActive : ""}`}
-                      onClick={() => setPaymentMethod("wallet")}
-                    >
-                      <div className={styles.paymentOptionName}>Wallet Balance</div>
-                      <div className={styles.paymentOptionSub}>Available: {formatCurrency(userProfile?.balance ?? 0)}</div>
+                {isAdmin ? (
+                  <div style={{ background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.35)", padding: "16px", borderRadius: "12px", margin: "20px 0", textAlign: "center" }}>
+                    <p style={{ color: "var(--primary)", fontSize: "1rem", fontWeight: 700, margin: 0 }}>
+                      👑 Admin Privilege: 100% Free Campaign Publishing (₦0.00 Total)
+                    </p>
+                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+                      No payment gateway or wallet balance deduction required.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={styles.paymentSection}>
+                    <div className={styles.paymentTitle}>Payment Method</div>
+                    <div className={styles.paymentOptions}>
+                      <div
+                        className={`${styles.paymentOptionCard} ${paymentMethod === "card" ? styles.paymentOptionCardActive : ""}`}
+                        onClick={() => setPaymentMethod("card")}
+                      >
+                        <div className={styles.paymentOptionName}>Card / Bank</div>
+                        <div className={styles.paymentOptionSub}>Debit Card, USSD, Bank Transfer</div>
+                      </div>
+                      <div
+                        className={`${styles.paymentOptionCard} ${paymentMethod === "wallet" ? styles.paymentOptionCardActive : ""}`}
+                        onClick={() => setPaymentMethod("wallet")}
+                      >
+                        <div className={styles.paymentOptionName}>Wallet Balance</div>
+                        <div className={styles.paymentOptionSub}>Available: {formatCurrency(userProfile?.balance ?? 0)}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <button
                   className={styles.submitButton}
                   onClick={submitAd}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Submitting Ad..." : "Submit Ad For Review"}
+                  {isSubmitting ? "Publishing Free Ad..." : isAdmin ? "🚀 Publish Campaign Free (Admin)" : "Submit Ad For Review"}
                 </button>
               </>
             )}

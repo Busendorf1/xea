@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
           if (slicedIds.length > 0) {
             // Fetch shared ad details from Redis in bulk
             const detailKeys = slicedIds.map((id) => `ad:detail:${id}`);
-            const cachedDetailsRaw = await redisConnection.mget(...detailKeys);
+            const cachedDetailsRaw = detailKeys.length > 0 ? await redisConnection.mget(detailKeys) : [];
 
             const missingIds: string[] = [];
             const fetchedDetailsMap: Record<string, Ad> = {};
@@ -123,7 +123,8 @@ export async function GET(req: NextRequest) {
                     AD_DETAIL_TTL_SECONDS
                   );
                 });
-                await Promise.all(setPromises).catch((err) =>
+                // Non-blocking background Redis write
+                Promise.all(setPromises).catch((err) =>
                   console.error("❌ Redis write error backfilling ad details:", err)
                 );
               }
@@ -144,11 +145,13 @@ export async function GET(req: NextRequest) {
       console.log(`🔄 Feed cache miss/refresh for user: ${emailKey}. Fetching matching campaigns...`);
 
       // Call Supabase RPC get_user_feed with 100 limit to cache candidate pool
-      let { data: ads, error } = await supabaseReadOnly.rpc("get_user_feed", {
+      const { data: initialFeedAds, error } = await supabaseReadOnly.rpc("get_user_feed", {
         p_user_email: email,
         p_limit: 100,
         p_offset: 0
       });
+
+      let ads = initialFeedAds;
 
       // Fallback: If RPC fails or is missing, query addsactive directly so feed NEVER breaks!
       if (error) {
