@@ -60,6 +60,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://udgaognmnfsiwvvqvxdq.supabase.co" />
+        <link rel="preconnect" href="https://hlhzlieeqcifcohqdmce.supabase.co" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
