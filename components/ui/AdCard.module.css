@@ -297,15 +297,16 @@
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 3px 8px;
-  font-size: 0.65rem;
+  padding: 4px clamp(8px, 2.2vw, 14px);
+  font-size: clamp(0.70rem, 2.2vw, 0.78rem);
   font-weight: 700;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  height: 22px;
+  justify-content: center;
+  gap: 0.3rem;
+  height: clamp(26px, 6vw, 30px);
   line-height: 1;
   white-space: nowrap;
 }
@@ -319,15 +320,16 @@
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 3px 8px;
-  font-size: 0.65rem;
+  padding: 4px clamp(8px, 2.2vw, 14px);
+  font-size: clamp(0.70rem, 2.2vw, 0.78rem);
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  height: 22px;
+  justify-content: center;
+  gap: 0.3rem;
+  height: clamp(26px, 6vw, 30px);
   line-height: 1;
   white-space: nowrap;
 }
@@ -342,14 +344,15 @@
   color: #64748b;
   border: none;
   border-radius: 9999px;
-  padding: 3px 8px;
-  font-size: 0.65rem;
+  padding: 4px clamp(8px, 2.2vw, 14px);
+  font-size: clamp(0.70rem, 2.2vw, 0.78rem);
   font-weight: 700;
   cursor: not-allowed;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  height: 22px;
+  justify-content: center;
+  gap: 0.3rem;
+  height: clamp(26px, 6vw, 30px);
   line-height: 1;
   opacity: 0.7;
   white-space: nowrap;
@@ -367,15 +370,16 @@
   color: var(--text-muted);
   border: 1px solid var(--card-border);
   border-radius: 9999px;
-  padding: 3px 8px;
-  font-size: 0.65rem;
+  padding: 4px clamp(8px, 2.2vw, 14px);
+  font-size: clamp(0.70rem, 2.2vw, 0.78rem);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  height: 22px;
+  justify-content: center;
+  gap: 0.3rem;
+  height: clamp(26px, 6vw, 30px);
   line-height: 1;
   white-space: nowrap;
 }
@@ -535,9 +539,10 @@
   position: absolute;
   top: 12px;
   right: 12px;
-  background-color: rgba(11, 15, 25, 0.65);
+  background-color: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  border: none;
   color: #ffffff;
   font-size: 0.72rem;
   font-weight: 600;
@@ -836,11 +841,13 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  max-width: 100%;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  /* border-top: 1px solid var(--card-border); */
   flex-wrap: wrap;
   gap: 0.75rem;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .productLeftGroup {
@@ -848,6 +855,8 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0.25rem;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .adminRowGroup {
@@ -855,12 +864,14 @@
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .productPriceText {
   font-size: 0.90rem;
   font-weight: 700;
   color: #10b981;
+  white-space: nowrap;
 }
 
 .productCtaButton {
@@ -876,6 +887,10 @@
   text-decoration: none;
   transition: all 0.2s ease;
   cursor: pointer;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .productCtaButton:hover {
@@ -887,6 +902,7 @@
   flex-direction: row;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .productActionButton {
@@ -900,6 +916,7 @@
   transition: all 0.2s ease;
   border: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .productActionButton:hover {
@@ -921,6 +938,20 @@
   flex-direction: row;
   align-items: center;
   margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .productSalesActionBar {
+    gap: 0.5rem;
+  }
+  .productRightGroup {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 0.25rem;
+  }
 }
 
 .spinner {
@@ -998,25 +1029,26 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: linear-gradient(to top, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.4) 70%, transparent);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45), transparent);
   z-index: 10;
 }
 
 .videoDurationBadge {
-  background-color: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background-color: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
   color: #ffffff;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   padding: 0 10px;
-  height: 32px;
-  border-radius: 16px;
+  height: 28px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   letter-spacing: 0.03em;
-  min-width: 48px;
+  min-width: 44px;
 }
 
 .webVideoContainer {
@@ -1029,42 +1061,46 @@
   position: absolute;
   top: 12px;
   right: 12px;
-  background-color: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  width: 32px;
-  height: 32px;
+  background-color: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   z-index: 12;
   transition: transform 0.2s ease, background-color 0.2s ease;
 }
 
 .videoTopRightPlayBtn:hover {
   transform: scale(1.08);
-  background-color: rgba(15, 23, 42, 0.9);
+  background-color: rgba(0, 0, 0, 0.55);
 }
 
-.videoMuteBtn {
-  background-color: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  width: 32px;
-  height: 32px;
+.videoMuteBtn,
+.videoFullscreenBtn {
+  background-color: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.2s ease, background-color 0.2s ease;
 }
 
-.videoMuteBtn:hover {
+.videoMuteBtn:hover,
+.videoFullscreenBtn:hover {
   transform: scale(1.08);
-  background-color: rgba(15, 23, 42, 0.85);
+  background-color: rgba(0, 0, 0, 0.55);
 }
 
 .headerRightContainer {

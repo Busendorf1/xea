@@ -108,7 +108,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     displayMutualButton: false,
     productName: "",
     productPrice: "",
-    productCtaType: "Buy Now",
+    productCtaType: "Buy",
     productCtaLink: "",
   });
 
@@ -321,7 +321,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       displayMutualButton: false,
       productName: "",
       productPrice: "",
-      productCtaType: "Buy Now",
+      productCtaType: "Buy",
       productCtaLink: "",
     });
     setAdType("politics");
@@ -960,7 +960,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         }
                         className={styles.inputBox}
                       >
-                        <option value="Buy Now">Buy Now</option>
+                        <option value="Buy">Buy</option>
                         <option value="Shop">Shop</option>
                         <option value="Order">Order</option>
                         <option value="Visit Website">Visit Website</option>

@@ -29,7 +29,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   adType = "",
   productName = "",
   productPrice = "",
-  productCtaType = "Buy Now",
+  productCtaType = "Buy",
   productCtaLink = "",
 }) => {
   const [mediaURLs, setMediaURLs] = useState<string[]>([]);
@@ -158,7 +158,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
               rel="noopener noreferrer"
               className={styles.productCtaButton}
             >
-              {productCtaType || "Buy Now"}
+              {productCtaType || "Buy"}
             </a>
           </div>
 

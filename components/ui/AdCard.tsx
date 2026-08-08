@@ -16,6 +16,8 @@ import {
   ShieldAlert,
   UserX,
   EyeOff,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -186,12 +188,32 @@ export default function AdCard({
     }
   };
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const toggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
     videoRefs.current.forEach((video) => {
       if (video) video.muted = nextMuted;
     });
+  };
+
+  const toggleFullscreen = (index: number) => {
+    const video = videoRefs.current[index];
+    if (!video) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    } else if (video.requestFullscreen) {
+      video.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else if ((video as any).webkitRequestFullscreen) {
+      (video as any).webkitRequestFullscreen();
+      setIsFullscreen(true);
+    } else if ((video as any).msRequestFullscreen) {
+      (video as any).msRequestFullscreen();
+      setIsFullscreen(true);
+    }
   };
 
   const handleBlockAndReportAd = () => {
@@ -260,16 +282,16 @@ export default function AdCard({
     setMediaError(false);
   }, [currentMediaIndex]);
 
-  // Track card visibility in viewport
+  // Track card visibility in viewport (starts playing immediately at 30% visibility)
   React.useEffect(() => {
     if (!cardRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          setIsCardVisible(entry.isIntersecting && entry.intersectionRatio >= 0.65);
+          setIsCardVisible(entry.isIntersecting && entry.intersectionRatio >= 0.30);
         });
       },
-      { threshold: [0.6, 0.65, 0.75] }
+      { threshold: [0.2, 0.3, 0.5] }
     );
     observer.observe(cardRef.current);
     return () => observer.disconnect();
@@ -780,18 +802,32 @@ export default function AdCard({
                               : formatVideoTime(videoCurrentTime)}
                           </div>
 
-                          {/* Right: Mic Unmute/Mute Button */}
-                          <button
-                            type="button"
-                            className={styles.videoMuteBtn}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleMute();
-                            }}
-                            title={isMuted ? "Unmute sound" : "Mute sound"}
-                          >
-                            {isMuted ? <VolumeX size={15} color="#fff" /> : <Volume2 size={15} color="#fff" />}
-                          </button>
+                          {/* Right: Controls (Mute & Fullscreen) */}
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <button
+                              type="button"
+                              className={styles.videoMuteBtn}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleMute();
+                              }}
+                              title={isMuted ? "Unmute sound" : "Mute sound"}
+                            >
+                              {isMuted ? <VolumeX size={15} color="#fff" /> : <Volume2 size={15} color="#fff" />}
+                            </button>
+
+                            <button
+                              type="button"
+                              className={styles.videoFullscreenBtn}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFullscreen(index);
+                              }}
+                              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Video"}
+                            >
+                              {isFullscreen ? <Minimize size={15} color="#fff" /> : <Maximize size={15} color="#fff" />}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -843,7 +879,7 @@ export default function AdCard({
                     rel="noopener noreferrer"
                     className={styles.productCtaButton}
                     onClick={() => {
-                      const clickType = (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_");
+                      const clickType = (ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_");
                       fetch("/api/campaigns/click", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -851,7 +887,7 @@ export default function AdCard({
                       }).catch(err => console.error("Failed to log CTA click:", err));
                     }}
                   >
-                    {ad.product_cta_type || "Buy Now"}
+                    {ad.product_cta_type || "Buy"}
                   </a>
                 </div>
 
@@ -892,7 +928,7 @@ export default function AdCard({
                     rel="noopener noreferrer"
                     className={styles.productCtaButton}
                     onClick={() => {
-                      const clickType = (ad.product_cta_type || "Buy Now").toLowerCase().replace(/\s+/g, "_");
+                      const clickType = (ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_");
                       fetch("/api/campaigns/click", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -900,7 +936,7 @@ export default function AdCard({
                       }).catch(err => console.error("Failed to log CTA click:", err));
                     }}
                   >
-                    {ad.product_cta_type || "Buy Now"}
+                    {ad.product_cta_type || "Buy"}
                   </a>
                 </div>
 
