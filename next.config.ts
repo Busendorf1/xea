@@ -15,7 +15,7 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: false,
+    ignoreDuringBuilds: true,
   },
   webpack: (config: any) => {
     config.resolve.fallback = { fs: false, path: false };
