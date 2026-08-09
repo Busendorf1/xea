@@ -232,16 +232,20 @@ const campaignsWorker = new Worker("campaigns-events", async (job) => {
 
   try {
     if (type === "ad") {
+      const targetTable = payload.is_admin_post ? "addsactive" : "adds";
       const { error } = await supabaseAdmin
-        .from("addsactive")
+        .from(targetTable)
         .insert([payload]);
       if (error) throw new Error(error.message);
     } else if (type === "highlight") {
+      const targetTable = payload.is_admin_post ? "newsactive" : "news";
       const { error } = await supabaseAdmin
-        .from("newsactive")
+        .from(targetTable)
         .insert([payload]);
       if (error) throw new Error(error.message);
-      await invalidateAllHighlights();
+      if (payload.is_admin_post) {
+        await invalidateAllHighlights();
+      }
     }
   } catch (err: unknown) {
     console.error(`❌ Campaigns Worker: Failed to create ${type}:`, (err as Error)?.message || err);

@@ -32,28 +32,54 @@ export async function processSuccessfulPayment(
 
   // 2. Perform business action based on type (Only Ad & Highlight campaigns)
   if (type === "highlight") {
-    const { title, content, image_url, interest } = metadata;
+    const {
+      title,
+      content,
+      image_url,
+      interest,
+      country,
+      state,
+      province,
+      campaign_days,
+      is_bidded,
+      bid_price,
+      is_admin_post,
+      custom_sponsor_name,
+      custom_sponsor_handle
+    } = metadata as any;
 
-    const { error: insertError } = await supabaseAdmin.from("news").insert([
+    const targetTable = is_admin_post ? "newsactive" : "news";
+
+    const { error: insertError } = await supabaseAdmin.from(targetTable).insert([
       {
         title,
         content,
         image_url,
         interest,
+        country: country || null,
+        state: state || null,
+        province: province || null,
+        campaign_days: campaign_days || 1,
+        is_bidded: !!is_bidded,
+        bid_price: bid_price ? parseFloat(bid_price) : null,
+        custom_sponsor_name: custom_sponsor_name || null,
+        custom_sponsor_handle: custom_sponsor_handle || null,
         user_email,
       },
     ]);
 
     if (insertError) {
-      console.error("❌ Error inserting highlight to news table:", insertError);
+      console.error(`❌ Error inserting highlight to ${targetTable} table:`, insertError);
       throw insertError;
     }
 
     // Insert user notification
     await supabaseAdmin.from("notifications").insert({
       user_email,
-      title: "Highlight Posted 🚀",
-      message: `Your highlight "${title}" has been submitted for review. It will be published shortly!`,
+      title: is_admin_post ? "Highlight Live 🚀" : "Highlight Submitted 🚀",
+      message: is_admin_post
+        ? `Your highlight "${title}" has been published directly.`
+        : `Your highlight "${title}" has been submitted for review. It will be published after admin approval!`,
     });
   } else if (type === "ad") {
     const adData = metadata.adData as Record<string, unknown> | undefined;
