@@ -37,8 +37,23 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   useEffect(() => {
     if (internalVideoRef.current) {
       internalVideoRef.current.muted = !!muted;
+      internalVideoRef.current.defaultMuted = !!muted;
     }
   }, [muted]);
+
+  // Reactive autoPlay effect when autoPlay prop changes
+  useEffect(() => {
+    const video = internalVideoRef.current;
+    if (!video) return;
+
+    if (autoPlay) {
+      video.muted = !!muted;
+      const p = video.play();
+      if (p !== undefined) {
+        p.catch(() => {});
+      }
+    }
+  }, [autoPlay, muted]);
 
   useEffect(() => {
     const video = internalVideoRef.current;
@@ -54,6 +69,10 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       // 1. Native HLS support (Safari iOS / macOS / Native WebViews)
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = targetSource;
+        if (autoPlay) {
+          video.muted = !!muted;
+          video.play().catch(() => {});
+        }
       } else {
         // 2. hls.js for Chrome, Firefox, Edge, Android Browsers
         import("hls.js")
@@ -70,6 +89,13 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
               hls.loadSource(targetSource);
               hls.attachMedia(video);
 
+              hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                if (autoPlay && internalVideoRef.current) {
+                  internalVideoRef.current.muted = !!muted;
+                  internalVideoRef.current.play().catch(() => {});
+                }
+              });
+
               hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
                 if (data.fatal) {
                   console.warn("⚠️ HLS playback error encountered, falling back to MP4:", data.type);
@@ -77,21 +103,37 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
                   hlsRef.current = null;
                   if (fallbackSource) {
                     video.src = fallbackSource;
+                    if (autoPlay) {
+                      video.muted = !!muted;
+                      video.play().catch(() => {});
+                    }
                   }
                 }
               });
             } else if (fallbackSource) {
               video.src = fallbackSource;
+              if (autoPlay) {
+                video.muted = !!muted;
+                video.play().catch(() => {});
+              }
             }
           })
           .catch(() => {
             if (fallbackSource) {
               video.src = fallbackSource;
+              if (autoPlay) {
+                video.muted = !!muted;
+                video.play().catch(() => {});
+              }
             }
           });
       }
     } else if (fallbackSource) {
       video.src = fallbackSource;
+      if (autoPlay) {
+        video.muted = !!muted;
+        video.play().catch(() => {});
+      }
     }
 
     return () => {
@@ -100,7 +142,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hlsRef.current = null;
       }
     };
-  }, [targetSource, fallbackSource]);
+  }, [targetSource, fallbackSource, autoPlay, muted]);
 
   return (
     <video

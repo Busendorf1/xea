@@ -183,10 +183,10 @@ function AdCard({
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          setIsCardVisible(entry.isIntersecting && entry.intersectionRatio >= 0.30);
+          setIsCardVisible(entry.isIntersecting && entry.intersectionRatio >= 0.15);
         });
       },
-      { threshold: [0.2, 0.3, 0.5] }
+      { threshold: [0.15, 0.3, 0.5] }
     );
     observer.observe(cardRef.current);
     return () => observer.disconnect();

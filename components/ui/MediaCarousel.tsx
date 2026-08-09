@@ -42,8 +42,8 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     return [...rawMediaUrls].sort((a, b) => {
       const aIsVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(a);
       const bIsVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(b);
-      if (aIsVideo && !bIsVideo) return 1;
-      if (!aIsVideo && bIsVideo) return -1;
+      if (aIsVideo && !bIsVideo) return -1; // Videos come FIRST so they autoplay immediately in feed!
+      if (!aIsVideo && bIsVideo) return 1;
       return 0;
     });
   }, [adMedia]);
@@ -51,6 +51,34 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   useEffect(() => {
     setMediaError(false);
   }, [currentMediaIndex]);
+
+  // Helper to attempt playing a video safely when ready
+  const attemptPlay = useCallback((idx: number) => {
+    const video = videoRefs.current[idx];
+    if (!video) return;
+
+    video.muted = isMuted;
+    video.defaultMuted = isMuted;
+    
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          if (idx === currentMediaIndex) {
+            setIsPlaying(true);
+            if (video.duration && !isNaN(video.duration)) {
+              setVideoDuration(video.duration);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn("⚠️ Autoplay attempt notice:", err);
+          if (idx === currentMediaIndex) {
+            setIsPlaying(false);
+          }
+        });
+    }
+  }, [currentMediaIndex, isMuted]);
 
   // Keep React isFullscreen state in sync with native fullscreen changes
   useEffect(() => {
@@ -77,21 +105,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     videoRefs.current.forEach((video, idx) => {
       if (!video) return;
       if (idx === currentMediaIndex && isCardVisible) {
-        video.muted = isMuted;
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              setIsPlaying(true);
-              if (video.duration && !isNaN(video.duration)) {
-                setVideoDuration(video.duration);
-              }
-            })
-            .catch((err) => {
-              console.warn("⚠️ Autoplay notice:", err);
-              setIsPlaying(false);
-            });
-        }
+        attemptPlay(idx);
       } else {
         video.pause();
         if (idx === currentMediaIndex) {
@@ -99,7 +113,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         }
       }
     });
-  }, [currentMediaIndex, isCardVisible, isMuted]);
+  }, [currentMediaIndex, isCardVisible, isMuted, attemptPlay]);
 
   const togglePlay = useCallback(() => {
     const activeVideo = videoRefs.current[currentMediaIndex];
@@ -309,6 +323,16 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     muted={isMuted}
                     controls={false}
                     className={styles.mediaVideo}
+                    onCanPlay={() => {
+                      if (index === currentMediaIndex && isCardVisible) {
+                        attemptPlay(index);
+                      }
+                    }}
+                    onLoadedData={() => {
+                      if (index === currentMediaIndex && isCardVisible) {
+                        attemptPlay(index);
+                      }
+                    }}
                     onPlay={() => {
                       if (index === currentMediaIndex) setIsPlaying(true);
                     }}
