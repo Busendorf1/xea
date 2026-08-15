@@ -1,22 +1,8 @@
-import { auth0 } from "@/lib/auth0";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import Monetize from "@/components/Monetize/page";
-import Header from "@/components/Header/page";
 
 export default async function MonetizePage() {
-  const session = await auth0.getSession();
-
-  if (!session || !session.user?.email) {
-    redirect("/");
-  }
-
-  return (
-    <div>
-      <Header />
-      <br />
-      <br />
-      <br />
-      <Monetize session={session} />
-    </div>
-  );
+  const cookieStore = await cookies();
+  cookieStore.set("paayh_active_tab", "monetize", { path: "/" });
+  redirect("/user/logged-in");
 }

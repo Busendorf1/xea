@@ -79,9 +79,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
   };
 
   return (
-    <>
-      <HeaderJoin />
-      <div className={styles.wrapper}>
+    <div className={styles.wrapper}>
         <div className={styles.container}>
           <h1 className={styles.title}>Deactivate Account</h1>
 
@@ -169,7 +167,5 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
           )}
         </div>
       </div>
-      <Footer />
-    </>
   );
 }

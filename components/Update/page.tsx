@@ -383,8 +383,6 @@ export default function Update({ email }: Props) {
   const isFormDisabled = !isAdmin && timeRemaining !== null && timeRemaining > 0;
 
   return (
-    <>
-    <HeaderJoin />
     <div className={styles.profileContainer}>
       <h1 className={styles.update}>Update Profile</h1>
       
@@ -469,7 +467,7 @@ export default function Update({ email }: Props) {
             }}>
               <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
               <span>
-                <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform and are <strong>not encrypted</strong>. Email privacy protections only apply to account login records.
+                <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform.
               </span>
             </div>
           </div>
@@ -658,7 +656,5 @@ export default function Update({ email }: Props) {
         {loading ? "Updating..." : isFormDisabled ? `Locked (Cooldown)` : "Update"}
       </button>
     </div>
-    <Footer />
-    </>
   );
 }

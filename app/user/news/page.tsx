@@ -1,22 +1,8 @@
-
-
-import { auth0 } from "@/lib/auth0";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import News from '@/components/News/page';
-import Footer from '@/components/Footer/page';
 
-export default async function AdPage() {
-  const session = await auth0.getSession();
-
-  if (!session || !session.user?.email) {
-    redirect("/");
-  }
-
-  return (
-    <div>
-      <News session={session} />
-      <Footer />
-    </div>
-  );
+export default async function NewsPage() {
+  const cookieStore = await cookies();
+  cookieStore.set("paayh_active_tab", "news", { path: "/" });
+  redirect("/user/logged-in");
 }
-

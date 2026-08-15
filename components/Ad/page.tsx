@@ -40,10 +40,7 @@ const adRates: Record<string, number> = {
 //we can pay 60%
 const steps = ["Ad", "Targeting", "Location", "Creative", "Summary"];
 
-const formatCurrency = (amount: number | string) => {
-  const val = typeof amount === "string" ? parseFloat(amount) : amount;
-  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
 type Category =
   | "industry"
@@ -126,6 +123,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     last_mutual_spent?: string;
     balance: number;
   } | null>(null);
+
+  const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, formSelections.country);
 
   useEffect(() => {
     if (editAdId) {
@@ -551,9 +550,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     };
 
     return (
-      <>
-        <HeaderJoin />
-        <div className={styles.suspendedCard}>
+      <div className={styles.suspendedCard}>
           <div className={styles.suspendedIconWrap}>
             <ShieldAlert size={32} />
           </div>
@@ -584,7 +581,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             Appeal via Help Center
           </a>
         </div>
-      </>
     );
   }
 

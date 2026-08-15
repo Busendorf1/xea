@@ -22,12 +22,9 @@ type NewsProps = {
   session: Session;
 };
 
-const steps = ["Media", "Title", "Content", "Targeting & Bidding", "Preview"];
+import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
-const formatCurrency = (amount: number | string) => {
-  const val = typeof amount === "string" ? parseFloat(amount) : amount;
-  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+const steps = ["Media", "Title", "Content", "Targeting & Bidding", "Preview"];
 
 export default function News({ session }: NewsProps) {
   const isAdmin = useMemo(() => isAdminEmail(session?.user?.email), [session?.user?.email]);
@@ -58,6 +55,8 @@ export default function News({ session }: NewsProps) {
     reason: string;
     until: string | null;
   }>({ restricted: false, status: "", reason: "", until: null });
+
+  const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, country);
 
   useEffect(() => {
     const fetchBalance = async () => {
@@ -265,9 +264,7 @@ export default function News({ session }: NewsProps) {
     };
 
     return (
-      <>
-        <HeaderJoin />
-        <div style={{ maxWidth: "620px", margin: "4rem auto", padding: "2.25rem 1.75rem", backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "16px", textAlign: "center", boxShadow: "0 15px 35px rgba(0,0,0,0.25)" }}>
+      <div style={{ maxWidth: "620px", margin: "4rem auto", padding: "2.25rem 1.75rem", backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "16px", textAlign: "center", boxShadow: "0 15px 35px rgba(0,0,0,0.25)" }}>
           <div style={{ width: "60px", height: "60px", borderRadius: "50%", backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
             <ShieldAlert size={32} />
           </div>
@@ -298,14 +295,11 @@ export default function News({ session }: NewsProps) {
             Appeal via Help Center
           </a>
         </div>
-      </>
     );
   }
 
   return (
-    <>
-      <HeaderJoin />
-      <div className={styles.pageWapper}>
+    <div className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
           {/* Progress Step Tracker */}
           <div className={styles.progressContainer}>
@@ -558,9 +552,8 @@ export default function News({ session }: NewsProps) {
                 </div>
               </div>
             )}
-          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

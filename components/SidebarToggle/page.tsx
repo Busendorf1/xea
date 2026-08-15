@@ -24,6 +24,14 @@ export default function SidebarMenu() {
     };
   }, [showMenu]);
 
+  const selectTab = (tab: string) => {
+    sessionStorage.setItem("paayh_active_tab", tab);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("paayh_tab_change"));
+    }
+    setShowMenu(false);
+  };
+
   return (
     <div className={styles.accountMenuContainer} ref={menuRef}>
       <button 
@@ -37,16 +45,16 @@ export default function SidebarMenu() {
       </button>
       {showMenu && (
         <div className={styles.menuButtonGroup}>
-          <Link href="/user/profile" className={styles.menuButton} onClick={() => setShowMenu(false)}>Update Profile</Link>
-          <Link href="/user/myads" className={styles.menuButton} onClick={() => setShowMenu(false)}>My Ads</Link>
-          <Link href="/user/news" className={styles.menuButton} onClick={() => setShowMenu(false)}>Post Highlights</Link>
-          <Link href="/user/adPage" className={styles.menuButton} onClick={() => setShowMenu(false)}>Post Advert</Link>
-          <Link href="/user/monetize" className={styles.menuButton} onClick={() => setShowMenu(false)}>Monetize Account</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("profile")}>Update Profile</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("myads")}>My Ads</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("news")}>Post Highlights</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("adPage")}>Post Advert</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("monetize")}>Monetize Account</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("statement")}>Account Statement</Link>
           <Link href="/user/logout" className={styles.menuButton} onClick={() => setShowMenu(false)}>Logout</Link>
-          <Link href="/user/deactivate" className={styles.menuButtonDanger} onClick={() => setShowMenu(false)}>Deactivate Account</Link>
+          <Link href="/user/logged-in" className={styles.menuButtonDanger} onClick={() => selectTab("deactivate")}>Deactivate Account</Link>
         </div>
       )}
     </div>
   );
 }
-

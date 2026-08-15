@@ -2,6 +2,7 @@ import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import AdminDashboardClient from "@/components/AdminDashboardClient/page";
 import Link from "next/link";
+import { isAdminEmail } from "@/lib/authHelper";
 
 export default async function AdminDashboardPage() {
   const session = await auth0.getSession();
@@ -31,15 +32,13 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  // Define admin emails whitelist via environment variables
   const envAdmins = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 
   const adminEmails = envAdmins;
-
-  const isAdmin = adminEmails.includes(email);
+  const isAdmin = isAdminEmail(email);
 
   if (!isAdmin) {
     return (

@@ -145,8 +145,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Filter highlights strictly based on expiration rules:
+    // - If bidded: expires on the exact date/days bidded for (campaign_days * 24h)
+    // - If not bidded: expires strictly after 24 hours
+    const nowMs = Date.now();
+    const validHighlights = (rawHighlights || []).filter((h: any) => {
+      if (h.is_paused) return false;
+      const createdAtMs = new Date(h.created_at).getTime();
+      const diffHours = (nowMs - createdAtMs) / (1000 * 60 * 60);
+
+      if (h.is_bidded) {
+        const allowedHours = Math.max(1, Number(h.campaign_days || 1)) * 24;
+        return diffHours < allowedHours;
+      } else {
+        return diffHours < 24;
+      }
+    });
+
     // Rank Bidded highlights at the top sorted by bid_price DESC, then standard highlights by created_at DESC
-    const sortedHighlights = (rawHighlights || []).sort((a: any, b: any) => {
+    const sortedHighlights = validHighlights.sort((a: any, b: any) => {
       const aIsBidded = !!a.is_bidded;
       const bIsBidded = !!b.is_bidded;
       if (aIsBidded && !bIsBidded) return -1;

@@ -133,10 +133,9 @@ function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaTyp
   );
 }
 
-const formatCurrency = (amount: number | string) => {
-  const val = typeof amount === "string" ? parseFloat(amount) : amount;
-  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+
+const formatCurrency = (amount: number | string, country?: string | null) => globalFormatCurrency(amount, country);
 
 export default function AdminDashboardClient({ session, adminEmails }: AdminDashboardClientProps) {
   const { theme, setTheme } = useTheme();

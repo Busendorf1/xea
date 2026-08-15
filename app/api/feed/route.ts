@@ -192,16 +192,28 @@ export async function GET(req: NextRequest) {
 
         if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) return; // Exclude blocked advertisers
 
-        // Exclude expired active platform campaigns
-        const isPlatformAd = !ad.cost_per_impression || Number(ad.cost_per_impression) === 0;
-        if (isPlatformAd && ad.created_at && ad.campaign_days) {
-          const createdAt = new Date(ad.created_at);
-          const diffTime = now.getTime() - createdAt.getTime();
-          const diffDays = diffTime / (1000 * 60 * 60 * 24);
-          if (diffDays > ad.campaign_days) {
-            return;
-          }
+        // Rollover Evaluation:
+        // If an ad passed its scheduled campaign days but impressions remain unexhausted,
+        // it enters Rollover mode and continues delivering until 100% of impressions are fulfilled.
+        const createdAt = ad.created_at ? new Date(ad.created_at).getTime() : now.getTime();
+        const diffDays = (now.getTime() - createdAt) / (1000 * 60 * 60 * 24);
+        const impressionsTarget = Number(ad.impressions || 0);
+        const impressionCount = Number(ad.impression_count || 0);
+
+        const isRollover = diffDays > campaignDays && impressionsTarget > 0 && impressionCount < impressionsTarget;
+        ad.is_rollover = isRollover;
+
+        // Only exclude if total impression budget is 100% exhausted
+        if (impressionsTarget > 0 && impressionCount >= impressionsTarget) {
+          return;
         }
+
+        // Free platform announcements without impression budget expire after campaign_days
+        const isPlatformFreeAd = (!ad.cost_per_impression || Number(ad.cost_per_impression) === 0) && impressionsTarget === 0;
+        if (isPlatformFreeAd && diffDays > campaignDays) {
+          return;
+        }
+
         if (!candidateAdsMap.has(ad.id)) {
           candidateAdsMap.set(ad.id, ad);
         }

@@ -36,8 +36,7 @@ export default function Monetize({ session }: MonetizeProps) {
   const fetchStatus = async () => {
     if (!email) return;
     try {
-      setLoading(true);
-      const res = await fetch(`/api/monetize?t=${Date.now()}`);
+      const res = await fetch("/api/monetize");
       if (!res.ok) {
         setMessage("Failed to load monetization status.");
         return;
@@ -48,6 +47,18 @@ export default function Monetize({ session }: MonetizeProps) {
         setClicksCount(data.clicksCount || 0);
         setClicksRemaining(data.clicksRemaining ?? Math.max(0, 300 - (data.clicksCount || 0)));
         setDaysInactive(data.daysInactive || 0);
+
+        try {
+          sessionStorage.setItem(
+            "paayh_monetize_cache",
+            JSON.stringify({
+              isMonetized: !!data.isMonetized,
+              clicksCount: data.clicksCount || 0,
+              clicksRemaining: data.clicksRemaining ?? Math.max(0, 300 - (data.clicksCount || 0)),
+              daysInactive: data.daysInactive || 0,
+            })
+          );
+        } catch (e) {}
       }
     } catch (e: any) {
       console.error("Error fetching monetization:", e);
@@ -58,6 +69,18 @@ export default function Monetize({ session }: MonetizeProps) {
   };
 
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem("paayh_monetize_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        setIsMonetized(!!parsed.isMonetized);
+        setClicksCount(parsed.clicksCount || 0);
+        setClicksRemaining(parsed.clicksRemaining ?? Math.max(0, 300 - (parsed.clicksCount || 0)));
+        setDaysInactive(parsed.daysInactive || 0);
+        setLoading(false);
+      }
+    } catch (e) {}
+
     fetchStatus();
   }, [email]);
 

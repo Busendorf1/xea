@@ -99,10 +99,15 @@ interface AdCardProps {
   style?: React.CSSProperties;
 }
 
-const getHref = (type: string, value: string) => {
+const getHref = (type: string, value: string, ad?: Ad) => {
+  if (type === "action_whatsapp") {
+    const cleanPhone = value.replace(/[^0-9+]/g, "");
+    const previewText = ad?.ad_content ? ad.ad_content.slice(0, 45).trim() + "..." : "Ad";
+    const text = `Hello, I saw your ad on Paayh: "${previewText}"\nhttps://paayh.com`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  }
   const map: Record<string, string> = {
     action_phone: `tel:${value}`,
-    action_whatsapp: `https://wa.me/${value}`,
     action_email: `mailto:${value}`,
     action_website: value.startsWith("http") ? value : `https://${value}`,
     action_ios: value.startsWith("http") ? value : `https://${value}`,
@@ -147,10 +152,7 @@ const formatTimestamp = (timestamp: string | null | undefined): string => {
   }
 };
 
-const formatCurrency = (amount: number | string) => {
-  const val = typeof amount === "string" ? parseFloat(amount) : amount;
-  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+import { formatCurrency } from "@/lib/utils/currency";
 
 function AdCard({
   ad,
@@ -177,16 +179,16 @@ function AdCard({
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // IntersectionObserver to observe card visibility
+  // IntersectionObserver with stable hysteresis for smooth playback without flickering
   useEffect(() => {
     if (!cardRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          setIsCardVisible(entry.isIntersecting && entry.intersectionRatio >= 0.15);
+          setIsCardVisible(entry.isIntersecting);
         });
       },
-      { threshold: [0.15, 0.3, 0.5] }
+      { rootMargin: "150px 0px 150px 0px", threshold: 0.1 }
     );
     observer.observe(cardRef.current);
     return () => observer.disconnect();
@@ -442,7 +444,7 @@ function AdCard({
                   {actionButtons.map((type) => (
                     <a
                       key={`${type}-${ad.id}`}
-                      href={getHref(type, ad[type as keyof Ad] as string)}
+                      href={getHref(type, ad[type as keyof Ad] as string, ad)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={styles.productActionButton}
@@ -464,7 +466,7 @@ function AdCard({
             ) : (
               <>
                 <div className={styles.productLeftGroup}>
-                  <span className={styles.productPriceText}>{formatCurrency(ad.product_price || 0)}</span>
+                  <span className={styles.productPriceText}>{formatCurrency(ad.product_price || 0, ad.country)}</span>
                   <a
                     href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
                     target="_blank"
@@ -487,7 +489,7 @@ function AdCard({
                   {actionButtons.map((type) => (
                     <a
                       key={`${type}-${ad.id}`}
-                      href={getHref(type, ad[type as keyof Ad] as string)}
+                      href={getHref(type, ad[type as keyof Ad] as string, ad)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={styles.productActionButton}
@@ -535,84 +537,88 @@ function AdCard({
           </div>
         ) : (
           <div className={styles.actionButtons}>
-            {actionButtons.map((type) => {
-              const isReadMore = type === "action_read_more";
-              if (!isReadMore && !isVerified) return null;
+            <div className={styles.ctaButtonsGroup}>
+              {actionButtons.map((type) => {
+                const isReadMore = type === "action_read_more";
+                if (!isReadMore && !isVerified) return null;
 
-              if (isReadMore) {
+                if (isReadMore) {
+                  return (
+                    <button
+                      key={`${type}-${ad.id}`}
+                      type="button"
+                      className={`${styles.iconButton} ${isExpanded ? styles.expandedButton : ""}`}
+                      title="Read More"
+                      onClick={() => {
+                        setIsExpanded(!isExpanded);
+                        fetch("/api/campaigns/click", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ adId: ad.id, clickType: "read_more" }),
+                        }).catch((err) => console.error("Failed to log click:", err));
+                      }}
+                    >
+                      {getIcon(type)}
+                    </button>
+                  );
+                }
+
                 return (
-                  <button
+                  <a
                     key={`${type}-${ad.id}`}
-                    type="button"
-                    className={`${styles.iconButton} ${isExpanded ? styles.expandedButton : ""}`}
-                    title="Read More"
+                    href={getHref(type, ad[type as keyof Ad] as string, ad)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.iconButton}
+                    title={type.replace("action_", "")}
                     onClick={() => {
-                      setIsExpanded(!isExpanded);
+                      const clickType = type.replace("action_", "");
                       fetch("/api/campaigns/click", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ adId: ad.id, clickType: "read_more" }),
+                        body: JSON.stringify({ adId: ad.id, clickType }),
                       }).catch((err) => console.error("Failed to log click:", err));
                     }}
                   >
                     {getIcon(type)}
-                  </button>
+                  </a>
                 );
-              }
+              })}
 
-              return (
-                <a
-                  key={`${type}-${ad.id}`}
-                  href={getHref(type, ad[type as keyof Ad] as string)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.iconButton}
-                  title={type.replace("action_", "")}
-                  onClick={() => {
-                    const clickType = type.replace("action_", "");
-                    fetch("/api/campaigns/click", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ adId: ad.id, clickType }),
-                    }).catch((err) => console.error("Failed to log click:", err));
-                  }}
-                >
-                  {getIcon(type)}
-                </a>
-              );
-            })}
+              <button
+                title="Share Ad"
+                className={styles.iconButton}
+                type="button"
+                onClick={() => onShare(ad.id)}
+              >
+                <Share2 size={14} strokeWidth={1.5} />
+              </button>
+            </div>
 
-            <button
-              title="Share Ad"
-              className={styles.iconButton}
-              type="button"
-              onClick={() => onShare(ad.id)}
-            >
-              <Share2 size={14} strokeWidth={1.5} />
-            </button>
-
-            {ad.user_email?.toLowerCase() === userEmail.toLowerCase() || ad.is_admin_post || ad.cost_per_impression === 0 ? null : (
-              !seenAds.includes(ad.id) && (
-                <AdInteractionHandler
-                  ad={ad}
-                  userEmail={userEmail}
-                  isPlatformPost={isPlatformPost}
-                  isMutualTarget={isMutualTarget}
-                  isAlreadyMutual={isAlreadyMutual}
-                  viewerProfile={viewerProfile}
-                  isProcessing={isProcessing}
-                  isSuspended={isSuspended}
-                  successAction={successAction}
-                  activeAction={activeAction}
-                  handleAction={handleAction}
-                  onMarkSeen={onMarkSeen}
-                  onAdEarn={onAdEarn}
-                  onAdMutual={onAdMutual}
-                  brandName={brandName}
-                  targetLink={targetLink}
-                />
-              )
-            )}
+            <div className={styles.interactionButtonGroup}>
+              {ad.user_email?.toLowerCase() === userEmail.toLowerCase() || ad.is_admin_post || ad.cost_per_impression === 0 ? null : (
+                !seenAds.includes(ad.id) && (
+                  <AdInteractionHandler
+                    ad={ad}
+                    userEmail={userEmail}
+                    isPlatformPost={isPlatformPost}
+                    isMutualTarget={isMutualTarget}
+                    isAlreadyMutual={isAlreadyMutual}
+                    viewerProfile={viewerProfile}
+                    isProcessing={isProcessing}
+                    isSuspended={isSuspended}
+                    successAction={successAction}
+                    activeAction={activeAction}
+                    handleAction={handleAction}
+                    onMarkSeen={onMarkSeen}
+                    onAdEarn={onAdEarn}
+                    onAdMutual={onAdMutual}
+                    brandName={brandName}
+                    targetLink={targetLink}
+                  />
+                )
+              )}
+            </div>
           </div>
         )}
       </div>

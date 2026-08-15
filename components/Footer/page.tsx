@@ -54,8 +54,30 @@ export default function Footer() {
         <div className={styles.section}>
           <h4 className={styles.heading}>Our Services</h4>
           <ul className={styles.linkList}>
-            <li><Link href="/user/adPage" className={styles.link}>Advert</Link></li>
-            <li><Link href="/user/monetize" className={styles.link}>Monetization</Link></li>
+            <li>
+              <Link
+                href="/user/logged-in"
+                className={styles.link}
+                onClick={() => {
+                  sessionStorage.setItem("paayh_active_tab", "adPage");
+                  if (typeof window !== "undefined") window.dispatchEvent(new Event("paayh_tab_change"));
+                }}
+              >
+                Advert
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/user/logged-in"
+                className={styles.link}
+                onClick={() => {
+                  sessionStorage.setItem("paayh_active_tab", "monetize");
+                  if (typeof window !== "undefined") window.dispatchEvent(new Event("paayh_tab_change"));
+                }}
+              >
+                Monetization
+              </Link>
+            </li>
             <li><Link href="/business-update" className={styles.link}>Business Update</Link></li>
           </ul>
         </div>
@@ -210,7 +232,7 @@ export default function Footer() {
       </div>
 
       <div style={{ textAlign: "center", padding: "10px 0", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", opacity: 0.55 }}>
-        Made on earth by humans &amp; AI will do a lot but humans will buy.
+        Made on earth for humans
       </div>
 
       <div className={styles.copyRight}>

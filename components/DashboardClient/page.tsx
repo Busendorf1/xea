@@ -80,15 +80,14 @@ interface DashboardClientProps {
   email: string;
 }
 
-const formatCurrency = (amount: number | string) => {
-  const val = typeof amount === "string" ? parseFloat(amount) : amount;
-  return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
 export default function DashboardClient({ user: initialUser, parsedInterest, email }: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<UserProfile>(initialUser);
   const [monetizing, setMonetizing] = useState(false);
+
+  const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, user?.country);
 
   useEffect(() => {
     setUser(initialUser);
@@ -720,25 +719,32 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
     );
   };
 
+  const selectTab = (tab: string) => {
+    sessionStorage.setItem("paayh_active_tab", tab);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("paayh_tab_change"));
+    }
+  };
+
   const renderAccountLinks = () => (
     <div className={styles.menuButtonGroup}>
-      <Link href="/user/profile" className={styles.menuButton}>
+      <Link href="/user/logged-in" onClick={() => selectTab("profile")} className={styles.menuButton}>
         <User size={16} />
         <span>Update Profile</span>
       </Link>
-      <Link href="/user/myads" className={styles.menuButton}>
+      <Link href="/user/logged-in" onClick={() => selectTab("myads")} className={styles.menuButton}>
         <TrendingUp size={16} />
         <span>My Ads</span>
       </Link>
-      <Link href="/user/news" className={styles.menuButton}>
+      <Link href="/user/logged-in" onClick={() => selectTab("news")} className={styles.menuButton}>
         <Compass size={16} />
         <span>Post Highlights</span>
       </Link>
-      <Link href="/user/adPage" className={styles.menuButton}>
+      <Link href="/user/logged-in" onClick={() => selectTab("adPage")} className={styles.menuButton}>
         <FileText size={16} />
         <span>Post Advert</span>
       </Link>
-      <Link href="/user/monetize" className={styles.menuButton}>
+      <Link href="/user/logged-in" onClick={() => selectTab("monetize")} className={styles.menuButton}>
         <UserCheck size={16} />
         <span>Monetize Account</span>
       </Link>
@@ -746,7 +752,7 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
         <LogOut size={16} />
         <span>Logout</span>
       </Link>
-      <Link href="/user/deactivate" className={styles.menuButtonDanger}>
+      <Link href="/user/logged-in" onClick={() => selectTab("deactivate")} className={styles.menuButtonDanger}>
         <Trash2 size={16} />
         <span>Deactivate Account</span>
       </Link>
@@ -955,7 +961,7 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
                     </div>
                   )}
                 </div>
-                <Link href="/user/profile" className={styles.editProfileBtn}>
+                <Link href="/user/logged-in" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
                   Edit profile
                 </Link>
               </div>
@@ -1046,7 +1052,8 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
                             {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
                           </p>
                           <Link
-                            href="/user/monetize"
+                            href="/user/logged-in"
+                            onClick={() => selectTab("monetize")}
                             className={`${styles.renewBtn} ${styles.monetizeProgressLink}`}
                           >
                             View Monetization Details
@@ -1094,7 +1101,7 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
                   <span>Send Money</span>
                 </button>
               </div>
-              <Link href="/user/statement" className={styles.statementLink}>
+              <Link href="/user/logged-in" onClick={() => selectTab("statement")} className={styles.statementLink}>
                 View Account Statement
               </Link>
             </div>

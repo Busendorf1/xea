@@ -250,6 +250,22 @@
   margin-top: 0.5rem;
   padding: 0.25rem 0;
   background-color: transparent;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ctaButtonsGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.interactionButtonGroup {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .iconButton {
@@ -480,16 +496,20 @@
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 6px 16px;
-  font-size: 0.8rem;
+  padding: 5px 14px;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  gap: 0.35rem;
   text-decoration: none;
   white-space: nowrap;
+  width: auto;
+  max-width: max-content;
+  flex-shrink: 0;
 }
 
 .visitBrandBtn:hover {

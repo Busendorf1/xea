@@ -1,196 +1,9 @@
-// "use client";
-
-// import { useEffect, useState } from "react";
-// import supabase from "@/lib/utils/db";
-// import styles from "../MyAds/page.module.css";
-// import Image from "next/image";
-// import { FaCheckCircle } from "react-icons/fa";
-// import { Session } from "next-auth";
-// import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
-
-// type MyAdsProps = {
-//   session: Session;
-// };
-
-// type Ad = {
-//   id: number;
-//   ad_media: string;
-//   ad_content: string;
-//   action_phone?: string;
-//   action_whatsapp?: string;
-//   action_email?: string;
-//   action_website?: string;
-//   created_at: string | null;
-//   impression_count: number | null;
-// };
-
-
-// function getHref(type: string, value: string): string {
-//   switch (type) {
-//     case "action_phone":
-//       return `tel:${value}`;
-//     case "action_whatsapp":
-//       return `https://wa.me/${value}`;
-//     case "action_email":
-//       return `mailto:${value}`;
-//     case "action_website":
-//       return value.startsWith("http") ? value : `https://${value}`;
-//     default:
-//       return "#";
-//   }
-// }
-
-// function getIcon(type: string): JSX.Element {
-//   switch (type) {
-//     case "action_phone":
-//       return <span>📞</span>;
-//     case "action_whatsapp":
-//       return <span>💬</span>;
-//     case "action_email":
-//       return <span>✉️</span>;
-//     case "action_website":
-//       return <span>🌐</span>;
-//     default:
-//       return <span>🔗</span>;
-//   }
-// }
-
-// export default function MyAds({ session }: MyAdsProps) {
-//   const [ads, setAds] = useState<Ad[]>([]);
-//   const [seenAds, setSeenAds] = useState<number[]>([]);
-//   const [loading, setLoading] = useState(true);
-//   const [error, setError] = useState(false);
-
-//   useEffect(() => {
-//     const fetchAds = async () => {
-//       try {
-//         const { data, error } = await supabase
-//           .from("adds")
-//           .select("*")
-//           .eq("user_email", session.user.email)
-//           .order("created_at", { ascending: false });
-
-//         if (error) throw error;
-
-//         setAds(data || []);
-//       } catch (err) {
-//         setError(true);
-//       } finally {
-//         setLoading(false);
-//       }
-//     };
-
-//     if (session?.user?.email) {
-//       fetchAds();
-//     }
-//   }, [session]);
-
-//   const markSeen = (ad: Ad) => {
-//     setSeenAds((prev) => [...prev, ad.id]);
-//   };
-
-// function formatTimestamp(timestamp: string | null | undefined): string {
-//   if (!timestamp) return "Unknown time";
-
-//   const created = new Date(timestamp);
-//   const now = new Date();
-//   const diff = (now.getTime() - created.getTime()) / 1000;
-
-//   if (isNaN(diff)) return "Invalid date";
-
-//   if (diff < 60) return "Just now";
-//   if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-//   if (diff < 86400) return `${Math.floor(diff / 3600)} hour(s) ago`;
-//   if (diff < 172800) return "Yesterday";
-
-//   return created.toLocaleDateString(undefined, {
-//     year: "numeric",
-//     month: "short",
-//     day: "numeric",
-//   });
-// }
-
-//   return (
-//     <div className={styles.feedContainer}>
-//       {loading && <p className={styles.loading}>Loading ads…</p>}
-//       {!loading && error && (
-//         <p className={styles.error}>⚠️ Error loading ads.</p>
-//       )}
-//       {!loading && !error && ads.length === 0 && (
-//         <p className={styles.noAds}>No matching ads found for your profile.</p>
-//       )}
-
-//       <div className={styles.adGrid}>
-//         {ads.map((ad) => {
-//           const mediaType = /\.(mp4|webm)$/i.test(ad.ad_media || "")
-//             ? "video"
-//             : "image";
-//           const actionButtons = [
-//             "action_phone",
-//             "action_whatsapp",
-//             "action_email",
-//             "action_website",
-//           ].filter((key) => ad[key as keyof Ad]) as string[];
-
-//           return (
-//             <div key={ad.id} className={styles.card}>
-//               <div className={styles.mediaBox}>
-//                 {mediaType === "image" ? (
-//                   <Image
-//                     src={ad.ad_media || ""}
-//                     alt="Ad"
-//                     width={1000}
-//                     height={1000}
-//                     layout="responsive"
-//                     priority
-//                   />
-//                 ) : (
-//                   <video
-//                     src={ad.ad_media || ""}
-//                     controls
-//                     className={styles.mediaVideo}
-//                   />
-//                 )}
-//               </div>
-//               <p className={styles.adText}>{ad.ad_content}</p>
-//               <div className={styles.actionButtons}>
-//                 {actionButtons.map((type) => (
-//                   <a
-//                     key={`${type}-${ad.id}`}
-//                     href={getHref(type, ad[type as keyof Ad] as string)}
-//                     target="_blank"
-//                     rel="noopener noreferrer"
-//                     className={styles.iconButton}
-//                     title={type}
-//                   >
-//                     {getIcon(type)}
-//                   </a>
-//                 ))}
-//                 <div>
-//                   <p className={styles.adMeta}>
-//   {(ad.impression_count ?? 0).toLocaleString()} views
-// </p>
-
-//                   <p className={styles.adMeta}>
-//                     Posted {formatTimestamp(ad.created_at.toString())}
-//                   </p>
-//                 </div>
-//               </div>
-//             </div>
-//           );
-//         })}
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
 import supabase from "@/lib/utils/db";
 import { boostSchema } from "@/lib/validationSchemas";
+import { formatCurrency } from "@/lib/utils/currency";
 import styles from "../MyAds/page.module.css";
 import Link from "next/link";
 import LocationSelector from "../LocationSelector";
@@ -658,10 +471,10 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
   const getDeletionCountdown = (completedAt: string): string => {
     const completedTime = new Date(completedAt).getTime();
-    const expiryTime = completedTime + 7 * 24 * 60 * 60 * 1000; // 7 Days Grace Window
+    const expiryTime = completedTime + 7 * 24 * 60 * 60 * 1000; // 7 Days Archive Grace Window
     const timeLeft = expiryTime - timeNow;
     
-    if (timeLeft <= 0) return "soon";
+    if (timeLeft <= 0) return "Archived";
     
     const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
     const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -703,6 +516,77 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     } catch (e: any) {
       alert(e.message || "An error occurred while cancelling your campaign.");
     }
+  };
+
+  const exportCampaignCsv = (ad: Ad) => {
+    const seenCount = ad.impression_count ?? 0;
+    const targetImpressions = ad.impressions ?? 1000;
+    const remaining = Math.max(0, targetImpressions - seenCount);
+    const phoneClicks = ad.clicks_phone ?? 0;
+    const whatsappClicks = ad.clicks_whatsapp ?? 0;
+    const websiteClicks = ad.clicks_website ?? 0;
+    const emailClicks = ad.clicks_email ?? 0;
+    const productClicks = ad.clicks_product_cta ?? 0;
+    const totalClicks = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productClicks;
+    const ctr = seenCount > 0 ? ((totalClicks / seenCount) * 100).toFixed(2) : "0.00";
+    const daysInfo = getCampaignDaysInfo(ad);
+
+    const headers = [
+      "Campaign ID",
+      "Created At",
+      "Category",
+      "Status",
+      "Is Rollover",
+      "Rollover Days",
+      "Target Impressions",
+      "Delivered Impressions",
+      "Remaining Impressions",
+      "Total Clicks",
+      "CTR (%)",
+      "Phone Clicks",
+      "WhatsApp Clicks",
+      "Website Clicks",
+      "Email Clicks",
+      "Product CTA Clicks",
+      "Cost Per View",
+      "Country",
+      "State",
+      "Gender Target",
+      "Content Preview"
+    ];
+
+    const values = [
+      `"${ad.id}"`,
+      `"${ad.created_at || ""}"`,
+      `"${ad.ad_type || "General"}"`,
+      `"${ad.completed_at ? "Completed" : ad.is_paused ? "Paused" : "Active"}"`,
+      `"${daysInfo.isRollover ? "Yes" : "No"}"`,
+      daysInfo.rolloverDays,
+      targetImpressions,
+      seenCount,
+      remaining,
+      totalClicks,
+      `${ctr}%`,
+      phoneClicks,
+      whatsappClicks,
+      websiteClicks,
+      emailClicks,
+      productClicks,
+      ad.cost_per_impression || 25,
+      `"${ad.country || "All"}"`,
+      `"${ad.state || "All"}"`,
+      `"${ad.gender || "All"}"`,
+      `"${(ad.ad_content || "").replace(/"/g, '""')}"`
+    ];
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), values.join(",")].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `paayh_campaign_report_${ad.id.slice(0, 8)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const renderAdCard = (ad: Ad, status: "review" | "active") => {
@@ -760,7 +644,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
               {Number(ad.cost_per_impression || 25) > 25 && (
                 <span className={`${styles.tagPill} ${styles.tagPillBidded}`} title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds. You can boost priority anytime.">
-                  <Zap size={13} color="#f59e0b" /> Bidded Priority Ad (₦{ad.cost_per_impression}/view)
+                  <Zap size={13} color="#f59e0b" /> Bidded Priority Ad ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
                 </span>
               )}
             </div>
@@ -780,7 +664,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             <div className={styles.targetTagsRow}>
               {(!!ad.is_bidded || Number(ad.cost_per_impression || 0) > 25) && (
                 <span className={`${styles.tagPill} ${styles.tagPillBidded}`}>
-                  <Zap size={13} color="#f59e0b" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} (₦{ad.cost_per_impression}/view)
+                  <Zap size={13} color="#f59e0b" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
                 </span>
               )}
               <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
@@ -859,9 +743,26 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           <div className={`${styles.footerLeftGroup} ${styles.footerLeftGroupInner}`}>
             {ad.is_paused ? (
               <span className={styles.badgePaused}>PAUSED</span>
-            ) : isCompleted && ad.completed_at ? (
-              <span className={styles.badgeCompleted}>
-                Completed ({getDeletionCountdown(ad.completed_at)})
+            ) : isCompleted ? (
+              <span className={styles.badgeCompleted} title="100% of paid impressions have been delivered and archived">
+                COMPLETED {ad.completed_at ? `(${getDeletionCountdown(ad.completed_at)})` : "(100% Delivered)"}
+              </span>
+            ) : daysInfo.isRollover ? (
+              <span
+                style={{
+                  backgroundColor: "rgba(234, 88, 12, 0.15)",
+                  color: "#ea580c",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "0.75rem",
+                  fontWeight: "800",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}
+                title="Campaign schedule passed but impressions remain unfulfilled. Actively delivering in Rollover mode."
+              >
+                ROLLOVER (+{daysInfo.rolloverDays}d)
               </span>
             ) : (
               <span className={status === "active" ? styles.badgeActive : styles.badgeReview}>
@@ -988,6 +889,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 </a>
                 <button
                   type="button"
+                  onClick={() => exportCampaignCsv(ad)}
+                  className={styles.shareAdBtn}
+                  title="Download CSV Performance Report"
+                >
+                  <FileText size={13} /> Export CSV
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleCancelAd(ad.id)}
                   className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
                 >
@@ -1011,14 +920,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <div className={styles.specItem}>
                 <span className={styles.specLabel}>Total Campaign Budget</span>
                 <span className={styles.specVal}>
-                  ₦{((ad.impressions || 1000) * (ad.cost_per_impression || 25)).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  {formatCurrency((ad.impressions || 1000) * (ad.cost_per_impression || 25), ad.country)}
                 </span>
               </div>
 
               <div className={styles.specItem}>
                 <span className={styles.specLabel}>Daily Budget Rate</span>
                 <span className={styles.specVal}>
-                  ₦{(((ad.impressions || 1000) * (ad.cost_per_impression || 25)) / (ad.campaign_days || 1)).toLocaleString("en-NG", { minimumFractionDigits: 2 })} / day
+                  {formatCurrency(((ad.impressions || 1000) * (ad.cost_per_impression || 25)) / (ad.campaign_days || 1), ad.country)} / day
                 </span>
               </div>
 
@@ -1212,7 +1121,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               </div>
 
               <div className={styles.boosterGroup}>
-                <label className={styles.boosterLabel}>Priority Bid per Attention (₦)</label>
+                <label className={styles.boosterLabel}>Priority Bid per Attention ({formatCurrency(0, boosterAd.country).charAt(0)})</label>
                 <input
                   type="number"
                   min={Number(boosterAd.cost_per_impression || 25)}
@@ -1221,7 +1130,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   onChange={(e) => setNewBidPrice(Number(e.target.value))}
                 />
                 <span className={styles.boosterSliderHint}>
-                  Current bid: ₦{boosterAd.cost_per_impression || 25}/attention. Higher bids boost feed placement priority.
+                  Current bid: {formatCurrency(boosterAd.cost_per_impression || 25, boosterAd.country)}/attention. Higher bids boost feed placement priority.
                 </span>
               </div>
 

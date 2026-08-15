@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import Hls from "hls.js";
 
 export interface HlsVideoPlayerProps
   extends React.VideoHTMLAttributes<HTMLVideoElement> {
@@ -26,14 +27,14 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   ...restProps
 }, ref) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
-  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   useImperativeHandle(ref, () => internalVideoRef.current as HTMLVideoElement);
 
   const targetSource = hlsSrc || (src.includes(".m3u8") ? src : null);
   const fallbackSource = src.includes(".m3u8") ? undefined : src;
 
-  // Sync muted property directly on DOM element when muted prop changes
+  // Sync muted property directly on DOM element
   useEffect(() => {
     if (internalVideoRef.current) {
       internalVideoRef.current.muted = !!muted;
@@ -41,7 +42,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     }
   }, [muted]);
 
-  // Reactive autoPlay effect when autoPlay prop changes
+  // Handle play/pause state changes without destroying HLS instance
   useEffect(() => {
     const video = internalVideoRef.current;
     if (!video) return;
@@ -52,73 +53,54 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       if (p !== undefined) {
         p.catch(() => {});
       }
+    } else {
+      video.pause();
     }
   }, [autoPlay, muted]);
 
+  // HLS stream setup — runs ONLY when media targetSource/fallbackSource changes
   useEffect(() => {
     const video = internalVideoRef.current;
     if (!video) return;
 
-    // Cleanup previous Hls instance if it exists
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
     if (targetSource) {
-      // 1. Native HLS support (Safari iOS / macOS / Native WebViews)
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = targetSource;
         if (autoPlay) {
           video.muted = !!muted;
           video.play().catch(() => {});
         }
-      } else {
-        // 2. hls.js for Chrome, Firefox, Edge, Android Browsers
-        import("hls.js")
-          .then((HlsModule) => {
-            const Hls = HlsModule.default;
-            if (Hls.isSupported()) {
-              const hls = new Hls({
-                enableWorker: true,
-                lowLatencyMode: true,
-                backBufferLength: 90,
-              });
+      } else if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          maxBufferHole: 0.5,
+          backBufferLength: 90,
+        });
 
-              hlsRef.current = hls;
-              hls.loadSource(targetSource);
-              hls.attachMedia(video);
+        hlsRef.current = hls;
+        hls.loadSource(targetSource);
+        hls.attachMedia(video);
 
-              hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                if (autoPlay && internalVideoRef.current) {
-                  internalVideoRef.current.muted = !!muted;
-                  internalVideoRef.current.play().catch(() => {});
-                }
-              });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (autoPlay && internalVideoRef.current) {
+            internalVideoRef.current.muted = !!muted;
+            internalVideoRef.current.play().catch(() => {});
+          }
+        });
 
-              hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
-                if (data.fatal) {
-                  console.warn("⚠️ HLS playback error encountered, falling back to MP4:", data.type);
-                  hls.destroy();
-                  hlsRef.current = null;
-                  if (fallbackSource) {
-                    video.src = fallbackSource;
-                    if (autoPlay) {
-                      video.muted = !!muted;
-                      video.play().catch(() => {});
-                    }
-                  }
-                }
-              });
-            } else if (fallbackSource) {
-              video.src = fallbackSource;
-              if (autoPlay) {
-                video.muted = !!muted;
-                video.play().catch(() => {});
-              }
-            }
-          })
-          .catch(() => {
+        hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
+          if (data.fatal) {
+            console.warn("⚠️ HLS playback error encountered, falling back to MP4:", data.type);
+            hls.destroy();
+            hlsRef.current = null;
             if (fallbackSource) {
               video.src = fallbackSource;
               if (autoPlay) {
@@ -126,7 +108,14 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
                 video.play().catch(() => {});
               }
             }
-          });
+          }
+        });
+      } else if (fallbackSource) {
+        video.src = fallbackSource;
+        if (autoPlay) {
+          video.muted = !!muted;
+          video.play().catch(() => {});
+        }
       }
     } else if (fallbackSource) {
       video.src = fallbackSource;
@@ -142,7 +131,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hlsRef.current = null;
       }
     };
-  }, [targetSource, fallbackSource, autoPlay, muted]);
+  }, [targetSource, fallbackSource]);
 
   return (
     <video
@@ -152,6 +141,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       muted={muted}
       controls={controls}
       playsInline
+      preload="auto"
       className={className}
       poster={poster}
       {...restProps}

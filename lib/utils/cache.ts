@@ -5,10 +5,10 @@ import redisConnection from "../redis";
 // ----------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getCachedProfile(email: string): Promise<any | null> {
+export async function getCachedProfile<T = any>(email: string): Promise<T | null> {
   try {
     const data = await redisConnection.get(`user:profile:${email.toLowerCase()}`);
-    return data ? JSON.parse(data) : null;
+    return data ? (JSON.parse(data) as T) : null;
   } catch (err) {
     console.error("❌ Redis getCachedProfile error:", err);
     return null;
@@ -16,7 +16,7 @@ export async function getCachedProfile(email: string): Promise<any | null> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function setCachedProfile(email: string, profile: any): Promise<void> {
+export async function setCachedProfile<T = any>(email: string, profile: T): Promise<void> {
   try {
     await redisConnection.set(
       `user:profile:${email.toLowerCase()}`,
@@ -47,21 +47,28 @@ export async function invalidateCachedProfile(email: string): Promise<void> {
 // DAILY HIGHLIGHTS NATURAL 30-SECOND REDIS CACHING
 // ----------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getCachedHighlights(interests: string[], country?: string | null, state?: string | null): Promise<any[] | null> {
+export async function getCachedHighlights<T = Record<string, unknown>>(
+  interests: string[],
+  country?: string | null,
+  state?: string | null
+): Promise<T[] | null> {
   try {
     const sortedInterests = [...interests].sort();
     const key = `highlights:v2:${country || "all"}:${state || "all"}:${sortedInterests.join(",")}`;
     const data = await redisConnection.get(key);
-    return data ? JSON.parse(data) : null;
+    return data ? (JSON.parse(data) as T[]) : null;
   } catch (err) {
     console.error("❌ Redis getCachedHighlights error:", err);
     return null;
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function setCachedHighlights(interests: string[], highlights: any[], country?: string | null, state?: string | null): Promise<void> {
+export async function setCachedHighlights<T = Record<string, unknown>>(
+  interests: string[],
+  highlights: T[],
+  country?: string | null,
+  state?: string | null
+): Promise<void> {
   try {
     const sortedInterests = [...interests].sort();
     const key = `highlights:v2:${country || "all"}:${state || "all"}:${sortedInterests.join(",")}`;
@@ -84,3 +91,4 @@ export async function invalidateTargetedHighlightCache(_interest?: string, _coun
 export async function invalidateAllHighlights(): Promise<void> {
   // No-op: relying on natural 30-second TTL expiry to eliminate write-path Redis churn
 }
+

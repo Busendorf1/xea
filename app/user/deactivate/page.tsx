@@ -1,20 +1,8 @@
-
-
-import { auth0 } from "@/lib/auth0";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import DeactivateAccount from '@/components/Deactivate/page';
 
-export default async function AdPage() {
-  const session = await auth0.getSession();
-
-  if (!session || !session.user?.email) {
-    redirect("/");
-  }
-
-  return (
-    <div>
-      <DeactivateAccount session={session} />
-    </div>
-  );
+export default async function DeactivatePage() {
+  const cookieStore = await cookies();
+  cookieStore.set("paayh_active_tab", "deactivate", { path: "/" });
+  redirect("/user/logged-in");
 }
-

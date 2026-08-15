@@ -1,38 +1,8 @@
-
-// import styles from "../adPage/page.module.css";
-// import AdForm from "../component/Ad/page";
-// // import FrontTextAds from "../component/FrontTextAds/page";
-
-// export default function Home() {
-//   return (
-//     <div className={styles.page}>
-//         <AdForm />
-//     </div>
-//   );
-// }
-
-
-import { auth0 } from "@/lib/auth0";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import MultiStepAdForm from '@/components/Ad/page';
-import HeaderJoin from '@/components/HeaderJoin/page';
-import Footer from '@/components/Footer/page';
 
 export default async function AdPage() {
-  const session = await auth0.getSession();
-
-  if (!session || !session.user?.email) {
-    redirect("/");
-  }
-
-  return (
-    <>
-      <HeaderJoin />
-      <div>
-        <MultiStepAdForm session={session} />
-      </div>
-      <Footer />
-    </>
-  );
+  const cookieStore = await cookies();
+  cookieStore.set("paayh_active_tab", "adPage", { path: "/" });
+  redirect("/user/logged-in");
 }
-
