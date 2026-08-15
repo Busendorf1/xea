@@ -469,18 +469,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
   };
 
-  const getDeletionCountdown = (completedAt: string): string => {
+  const getDeletionCountdown = (completedAt: string): string | null => {
     const completedTime = new Date(completedAt).getTime();
-    const expiryTime = completedTime + 7 * 24 * 60 * 60 * 1000; // 7 Days Archive Grace Window
+    const expiryTime = completedTime + 48 * 60 * 60 * 1000; // 48 Hours Archive Grace Window
     const timeLeft = expiryTime - timeNow;
     
-    if (timeLeft <= 0) return "Archived";
+    if (timeLeft <= 0) return null;
     
-    const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    if (days > 0) return `${days}d ${hours}h`;
+    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
     const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
   };
 
   const handleShare = (adId: string) => {
@@ -617,6 +616,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
     
     const isCompleted = !!ad.completed_at || seenCount >= targetImpressions;
+    const deletionCountdown = ad.completed_at ? getDeletionCountdown(ad.completed_at) : null;
+    if (isCompleted && ad.completed_at && deletionCountdown === null) {
+      // 48 hours grace window has passed -> automatically omit from UI
+      return null;
+    }
 
     const hasValidMedia = ad.ad_media && ad.ad_media.trim() !== "" && ad.ad_media.toLowerCase() !== "text";
 
@@ -745,7 +749,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <span className={styles.badgePaused}>PAUSED</span>
             ) : isCompleted ? (
               <span className={styles.badgeCompleted} title="100% of paid impressions have been delivered and archived">
-                COMPLETED {ad.completed_at ? `(${getDeletionCountdown(ad.completed_at)})` : "(100% Delivered)"}
+                COMPLETED {deletionCountdown ? `(Archiving in ${deletionCountdown})` : "(100% Delivered)"}
               </span>
             ) : daysInfo.isRollover ? (
               <span
