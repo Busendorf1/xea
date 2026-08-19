@@ -217,10 +217,12 @@ export default function AdDisplay({
     <div className={styles.adList}>
       {ads.map((ad) => (
         <div key={ad.id} className={styles.adCard}>
-          {/\.(mp4|webm)/i.test(ad.image_url || "") ? (
+          {/\.(mp4|webm|mov|m3u8)/i.test(ad.image_url || "") ? (
             <video
               src={ad.image_url}
               controls
+              playsInline
+              preload="metadata"
               className={styles.adImage}
               style={{ width: "100%", height: "auto", maxHeight: "400px", objectFit: "contain", background: "#000", borderRadius: "8px" }}
             />

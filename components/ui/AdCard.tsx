@@ -179,7 +179,7 @@ function AdCard({
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // IntersectionObserver with stable hysteresis for smooth playback without flickering
+  // IntersectionObserver with responsive margin for seamless autoplay on desktop & mobile
   useEffect(() => {
     if (!cardRef.current) return;
     const observer = new IntersectionObserver(
@@ -188,7 +188,7 @@ function AdCard({
           setIsCardVisible(entry.isIntersecting);
         });
       },
-      { rootMargin: "150px 0px 150px 0px", threshold: 0.1 }
+      { rootMargin: "200px 0px 200px 0px", threshold: [0, 0.15, 0.5] }
     );
     observer.observe(cardRef.current);
     return () => observer.disconnect();

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Play } from "lucide-react";
 import styles from "./AdCard.module.css";
 import HlsVideoPlayer from "./HlsVideoPlayer";
@@ -11,6 +11,16 @@ interface MediaCarouselProps {
   isMuted: boolean;
   onToggleMute: () => void;
 }
+
+export const isVideoUrl = (url?: string | null): boolean => {
+  if (!url) return false;
+  const cleanUrl = url.split("?")[0].split("#")[0].toLowerCase();
+  return (
+    /\.(mp4|webm|mov|avi|m3u8|m4v|ogv)$/i.test(cleanUrl) ||
+    url.includes("/video/upload/") ||
+    url.includes(".m3u8")
+  );
+};
 
 const MediaCarousel: React.FC<MediaCarouselProps> = ({
   adMedia,
@@ -34,19 +44,21 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const isScrollLocked = useRef<boolean>(false);
   const isDragging = useRef<boolean>(false);
 
-  const rawMediaUrls = adMedia
-    ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
-    : [];
+  const rawMediaUrls = useMemo(() => {
+    return adMedia
+      ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
+      : [];
+  }, [adMedia]);
 
   const mediaUrls = React.useMemo(() => {
     return [...rawMediaUrls].sort((a, b) => {
-      const aIsVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(a);
-      const bIsVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(b);
+      const aIsVideo = isVideoUrl(a);
+      const bIsVideo = isVideoUrl(b);
       if (aIsVideo && !bIsVideo) return -1; // Videos come FIRST so they autoplay immediately in feed!
       if (!aIsVideo && bIsVideo) return 1;
       return 0;
     });
-  }, [adMedia]);
+  }, [rawMediaUrls]);
 
   useEffect(() => {
     setMediaError(false);
@@ -60,23 +72,39 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     video.muted = isMuted;
     video.defaultMuted = isMuted;
     
-    const playPromise = video.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => {
-          if (idx === currentMediaIndex) {
-            setIsPlaying(true);
-            if (video.duration && !isNaN(video.duration)) {
-              setVideoDuration(video.duration);
+    const tryPlay = () => {
+      video.muted = isMuted;
+      video.defaultMuted = isMuted;
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            if (idx === currentMediaIndex) {
+              setIsPlaying(true);
+              if (video.duration && !isNaN(video.duration)) {
+                setVideoDuration(video.duration);
+              }
             }
-          }
-        })
-        .catch((err) => {
-          console.warn("⚠️ Autoplay attempt notice:", err);
-          if (idx === currentMediaIndex) {
-            setIsPlaying(false);
-          }
-        });
+          })
+          .catch((err) => {
+            console.warn("⚠️ Autoplay attempt notice:", err);
+            if (idx === currentMediaIndex) {
+              setIsPlaying(false);
+            }
+          });
+      }
+    };
+
+    if (video.readyState >= 2) {
+      tryPlay();
+    } else {
+      const handleReady = () => {
+        video.removeEventListener("canplay", handleReady);
+        video.removeEventListener("loadeddata", handleReady);
+        tryPlay();
+      };
+      video.addEventListener("canplay", handleReady);
+      video.addEventListener("loadeddata", handleReady);
     }
   }, [currentMediaIndex, isMuted]);
 
@@ -302,7 +330,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         }}
       >
         {mediaUrls.map((url, index) => {
-          const isVideo = /\.(mp4|webm|mov|avi|m3u8)$/i.test(url);
+          const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
           return (
             <div key={index} className={styles.mediaWrapper}>
               {isVideo ? (

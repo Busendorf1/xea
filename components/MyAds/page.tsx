@@ -152,7 +152,7 @@ function MultimediaCarousel({ rawMedia }: { rawMedia: string }) {
   return (
     <div className={styles.carouselWrapper}>
       {isVideo ? (
-        <video src={currentUrl} controls className={styles.mediaVideo} />
+        <video src={currentUrl} controls playsInline preload="metadata" className={styles.mediaVideo} />
       ) : (
         <img src={currentUrl} alt={`Slide ${currentIndex + 1}`} className={styles.adImgElement} />
       )}

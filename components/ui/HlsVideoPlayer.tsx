@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from "react";
 import Hls from "hls.js";
 
 export interface HlsVideoPlayerProps
@@ -20,7 +20,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   hlsSrc,
   autoPlay = false,
   loop = false,
-  muted = false,
+  muted = true,
   controls = true,
   className = "",
   poster,
@@ -31,32 +31,79 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
 
   useImperativeHandle(ref, () => internalVideoRef.current as HTMLVideoElement);
 
-  const targetSource = hlsSrc || (src.includes(".m3u8") ? src : null);
-  const fallbackSource = src.includes(".m3u8") ? undefined : src;
+  const targetSource = hlsSrc || (src && src.includes(".m3u8") ? src : null);
+  const fallbackSource = src && src.includes(".m3u8") ? undefined : src;
 
-  // Sync muted property directly on DOM element
-  useEffect(() => {
-    if (internalVideoRef.current) {
-      internalVideoRef.current.muted = !!muted;
-      internalVideoRef.current.defaultMuted = !!muted;
+  // Safe play helper adhering to Google Web Video Autoplay Policy
+  const safePlay = useCallback(() => {
+    const video = internalVideoRef.current;
+    if (!video) return;
+
+    // Enforce muted property for autoplay compliance across iOS & Android
+    video.muted = !!muted;
+    video.defaultMuted = !!muted;
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        // If blocked by browser user gesture policy, unlock on first touch/scroll
+        if (err.name === "NotAllowedError" || err.name === "AbortError") {
+          const unlockGesture = () => {
+            if (internalVideoRef.current && autoPlay) {
+              internalVideoRef.current.muted = true;
+              internalVideoRef.current.play().catch(() => {});
+            }
+            window.removeEventListener("touchstart", unlockGesture);
+            window.removeEventListener("click", unlockGesture);
+            window.removeEventListener("scroll", unlockGesture);
+          };
+
+          window.addEventListener("touchstart", unlockGesture, { once: true, passive: true });
+          window.addEventListener("click", unlockGesture, { once: true, passive: true });
+          window.addEventListener("scroll", unlockGesture, { once: true, passive: true });
+        }
+      });
     }
+  }, [muted, autoPlay]);
+
+  // Sync muted and playsinline property directly on DOM element
+  useEffect(() => {
+    const video = internalVideoRef.current;
+    if (!video) return;
+
+    video.muted = !!muted;
+    video.defaultMuted = !!muted;
+    video.playsInline = true;
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("webkit-playsinline", "true");
+    video.setAttribute("x5-playsinline", "true");
   }, [muted]);
 
-  // Handle play/pause state changes without destroying HLS instance
+  // Handle play/pause state changes when in/out of view
   useEffect(() => {
     const video = internalVideoRef.current;
     if (!video) return;
 
     if (autoPlay) {
-      video.muted = !!muted;
-      const p = video.play();
-      if (p !== undefined) {
-        p.catch(() => {});
+      if (video.readyState >= 2) {
+        safePlay();
+      } else {
+        const handleReady = () => {
+          video.removeEventListener("canplay", handleReady);
+          video.removeEventListener("loadeddata", handleReady);
+          safePlay();
+        };
+        video.addEventListener("canplay", handleReady);
+        video.addEventListener("loadeddata", handleReady);
+        return () => {
+          video.removeEventListener("canplay", handleReady);
+          video.removeEventListener("loadeddata", handleReady);
+        };
       }
     } else {
       video.pause();
     }
-  }, [autoPlay, muted]);
+  }, [autoPlay, safePlay]);
 
   // HLS stream setup — runs ONLY when media targetSource/fallbackSource changes
   useEffect(() => {
@@ -72,8 +119,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = targetSource;
         if (autoPlay) {
-          video.muted = !!muted;
-          video.play().catch(() => {});
+          safePlay();
         }
       } else if (Hls.isSupported()) {
         const hls = new Hls({
@@ -90,9 +136,8 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (autoPlay && internalVideoRef.current) {
-            internalVideoRef.current.muted = !!muted;
-            internalVideoRef.current.play().catch(() => {});
+          if (autoPlay) {
+            safePlay();
           }
         });
 
@@ -104,8 +149,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
             if (fallbackSource) {
               video.src = fallbackSource;
               if (autoPlay) {
-                video.muted = !!muted;
-                video.play().catch(() => {});
+                safePlay();
               }
             }
           }
@@ -113,15 +157,13 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       } else if (fallbackSource) {
         video.src = fallbackSource;
         if (autoPlay) {
-          video.muted = !!muted;
-          video.play().catch(() => {});
+          safePlay();
         }
       }
     } else if (fallbackSource) {
       video.src = fallbackSource;
       if (autoPlay) {
-        video.muted = !!muted;
-        video.play().catch(() => {});
+        safePlay();
       }
     }
 
@@ -131,7 +173,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hlsRef.current = null;
       }
     };
-  }, [targetSource, fallbackSource]);
+  }, [targetSource, fallbackSource, autoPlay, safePlay]);
 
   return (
     <video
