@@ -418,7 +418,8 @@
     font-weight: 600;
     border-radius: 8px;
     background: var(--card-bg);
-    border: 1px solid var(--card-border);
+    border: none !important;
+    box-shadow: none !important;
     display: flex;
     align-items: center;
     justify-content: center;
