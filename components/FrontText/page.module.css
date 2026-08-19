@@ -333,7 +333,7 @@
   }
 
   .leftSection {
-    margin-top: calc(56px + 10vh);
+    margin-top: calc(56px + 6vh);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -342,11 +342,12 @@
   }
 
   .title {
-    font-size: clamp(2rem, 7.5vw, 2.5rem);
-    line-height: 1.15;
-    letter-spacing: -0.025em;
+    font-size: clamp(2.35rem, 8.8vw, 3.1rem);
+    font-weight: 850;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
     text-align: left;
-    margin-bottom: 0.85rem;
+    margin-bottom: 0.95rem;
     width: 100%;
   }
 
@@ -357,10 +358,10 @@
   }
 
   .subtitle {
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     line-height: 1.55;
     text-align: left;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.35rem;
     padding: 0;
     max-width: 100%;
     color: var(--text-muted);
@@ -372,15 +373,15 @@
   }
 
   .howItWorksBtn {
-    padding: 0.55rem 1.1rem;
-    font-size: 0.85rem;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
     border-radius: 99px;
   }
 
   .rightSection {
     width: 100%;
     margin-top: auto;
-    margin-bottom: 10vh;
+    margin-bottom: 5vh;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -411,9 +412,9 @@
 
   .googleLoginBtn {
     width: 100%;
-    height: 50px;
+    height: 52px;
     padding: 0.85rem 1.25rem;
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 600;
     border-radius: 8px;
     background: var(--card-bg);
@@ -426,13 +427,13 @@
 
   .cardFooter {
     border-top: none !important;
-    padding-top: 0.25rem;
+    padding-top: 0.35rem;
     text-align: center;
     width: 100%;
   }
 
   .cardFooter p {
-    font-size: 0.76rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
   }
 }
@@ -443,15 +444,20 @@
   }
 
   .leftSection {
-    margin-top: calc(56px + 8vh);
+    margin-top: calc(56px + 6vh);
   }
 
   .title {
-    font-size: 2.15rem;
+    font-size: clamp(2.25rem, 9.2vw, 2.75rem);
+    line-height: 1.1;
+  }
+
+  .subtitle {
+    font-size: 1rem;
   }
 
   .rightSection {
-    margin-bottom: 8vh;
+    margin-bottom: 5vh;
   }
 }
 
