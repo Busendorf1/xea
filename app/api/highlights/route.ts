@@ -218,10 +218,14 @@ export async function GET(req: NextRequest) {
     });
 
 
-    // Cache the response in Redis for 30 Seconds
+    // Cache the response in Redis for 5 Minutes
     await setCachedHighlights(interests, highlights, countryParam, stateParam);
 
-    return NextResponse.json(highlights);
+    return NextResponse.json(highlights, {
+      headers: {
+        "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+      },
+    });
   } catch (err: any) {
     console.error("❌ Error in GET /api/highlights:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });

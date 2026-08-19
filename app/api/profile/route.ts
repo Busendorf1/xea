@@ -12,27 +12,44 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { touchUserActivity } = await import("@/lib/utils/activityTracker");
+
     // Attempt to fetch from Redis cache first
     let user = await getCachedProfile(email);
     if (user) {
+      // Background 24h activity touch
+      touchUserActivity(email, user).catch(() => {});
       console.log(`🚀 Profile cache hit in /api/profile for: ${email}`);
       return NextResponse.json(user);
     }
 
     console.log(`🔄 Profile cache miss in /api/profile for: ${email}. Fetching from Supabase...`);
 
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at`;
+    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier`;
 
     // Fetch user profile from Supabase with retries (resilience to flaky hotspot networks)
     let error = null;
     const attempts = 3;
     for (let i = 0; i < attempts; i++) {
       try {
-        const { data, error: dbErr } = await supabaseReadOnly
+        let { data, error: dbErr } = await supabaseAdmin
           .from("users")
           .select(PROFILE_COLUMNS)
           .eq("email", email.toLowerCase().trim())
           .maybeSingle();
+
+        if (dbErr) {
+          // Fallback to baseline columns if new columns are missing in DB
+          const fallback = await supabaseAdmin
+            .from("users")
+            .select(BASELINE_COLUMNS)
+            .eq("email", email.toLowerCase().trim())
+            .maybeSingle();
+
+          data = fallback.data as any;
+          dbErr = fallback.error;
+        }
 
         if (dbErr) {
           error = dbErr;
@@ -52,8 +69,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (error) {
-      console.error("❌ Error fetching user profile after all attempts:", error);
-      return NextResponse.json({ error: error.message || "Database connection failure" }, { status: 500 });
+      console.error("❌ Error fetching user profile after all attempts:", error?.message || error);
+      return NextResponse.json({ error: error?.message || "Database connection failure" }, { status: 500 });
     }
 
     // Auto-provision if user does not exist in DB (secure signup flow)

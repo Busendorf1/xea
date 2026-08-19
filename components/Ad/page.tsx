@@ -4,7 +4,7 @@
 import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Edit3, Rocket, ShieldAlert, Sparkles } from "lucide-react";
+import { Edit3, Rocket, ShieldAlert, Sparkles, Crown, AlertCircle } from "lucide-react";
 import styles from "../Ad/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
@@ -58,6 +58,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [adType, setAdType] = useState("politics");
   const [isBiddingEnabled, setIsBiddingEnabled] = useState(false);
@@ -372,9 +373,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       return false;
     }
 
-    const maxButtons = adType === "product_sales" ? 2 : 3;
+    const hasPrimaryCta = Boolean(formSelections.productCtaLink?.trim()) || adType === "product_sales";
+    const maxButtons = hasPrimaryCta ? 2 : 3;
     if (formSelections.adActionButtons.length > maxButtons) {
-      setStepError(`For ${adType.replace("_", " ")} ads, you can select at most ${maxButtons} contact buttons.`);
+      setStepError(
+        hasPrimaryCta
+          ? `When a primary CTA ("${formSelections.productCtaType || "Comment"}") is active, you can select at most ${maxButtons} contact buttons to ensure clean mobile spacing.`
+          : `For ${adType.replace("_", " ")} ads, you can select at most ${maxButtons} contact buttons.`
+      );
       return false;
     }
 
@@ -503,11 +509,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               isAdminPost: isAdmin,
               customSponsorName: formSelections.customSponsorName || null,
               customSponsorHandle: formSelections.customSponsorHandle || null,
-              customSponsorLogo: formSelections.customSponsorLogo || null,
               productName: adType === "product_sales" ? formSelections.productName : null,
               productPrice: adType === "product_sales" ? parseFloat(formSelections.productPrice) : null,
-              productCtaType: adType === "product_sales" ? formSelections.productCtaType : null,
-              productCtaLink: adType === "product_sales" ? formSelections.productCtaLink : null,
+              productCtaType: formSelections.productCtaLink ? formSelections.productCtaType : null,
+              productCtaLink: formSelections.productCtaLink || null,
             }
           },
           callbackUrl: `${window.location.origin}/user/statement`
@@ -917,8 +922,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               <div className={styles.adCreativeSection}>
                 {isAdmin && (
                   <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", padding: "16px", borderRadius: "12px", marginBottom: "20px" }}>
-                    <h4 style={{ color: "var(--primary)", fontSize: "0.92rem", fontWeight: 700, marginBottom: "12px" }}>
-                      👑 Admin Privilege: Custom Branding & Free Campaign Publishing
+                    <h4 style={{ color: "var(--primary)", fontSize: "0.92rem", fontWeight: 700, marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding & Free Campaign Publishing
                     </h4>
                     <div className={styles.formGroup} style={{ marginBottom: "12px" }}>
                       <label>Custom Sponsor Name (Optional)</label>
@@ -985,7 +990,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     </div>
 
                     <div className={styles.formGroup}>
-                      <label>Primary CTA Button Text</label>
+                      <label>Primary CTA Button Text (Select 1 CTA)</label>
                       <select
                         value={formSelections.productCtaType}
                         onChange={(e) =>
@@ -999,6 +1004,12 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         <option value="Buy">Buy</option>
                         <option value="Shop">Shop</option>
                         <option value="Order">Order</option>
+                        <option value="Book">Book</option>
+                        <option value="Reserve">Reserve</option>
+                        <option value="Apply">Apply</option>
+                        <option value="Comment">Comment</option>
+                        <option value="Join">Join</option>
+                        <option value="Learn More">Learn More</option>
                         <option value="Visit Website">Visit Website</option>
                       </select>
                     </div>
@@ -1039,6 +1050,95 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       )}
                     </div>
                   </>
+                )}
+
+                {adType !== "product_sales" && (
+                  <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "16px", borderRadius: "12px", marginBottom: "18px" }}>
+                    <div className={styles.formGroup} style={{ marginBottom: "12px" }}>
+                      <label>Action &amp; Engagement CTA (Select 1 CTA)</label>
+                      <select
+                        value={formSelections.productCtaType}
+                        onChange={(e) =>
+                          setFormSelections({
+                            ...formSelections,
+                            productCtaType: e.target.value,
+                          })
+                        }
+                        className={styles.inputBox}
+                      >
+                        <option value="Comment">Comment</option>
+                        <option value="Vote">Vote</option>
+                        <option value="Donate">Donate</option>
+                        <option value="Volunteer">Volunteer</option>
+                        <option value="Book">Book</option>
+                        <option value="Reserve">Reserve</option>
+                        <option value="Apply">Apply</option>
+                        <option value="Order">Order</option>
+                        <option value="Buy">Buy</option>
+                        <option value="Shop">Shop</option>
+                        <option value="Join">Join</option>
+                        <option value="Learn More">Learn More</option>
+                        <option value="Visit Website">Visit Website</option>
+                      </select>
+                    </div>
+
+                    <div className={styles.formGroup} style={{ marginBottom: "0" }}>
+                      <label>CTA Target Link (WhatsApp, Chat App, Email or Website)</label>
+                      <input
+                        type="text"
+                        value={formSelections.productCtaLink}
+                        placeholder="e.g. https://wa.me/234... or https://chat.whatsapp.com/... or https://yourlink.com"
+                        onChange={(e) =>
+                          setFormSelections({
+                            ...formSelections,
+                            productCtaLink: e.target.value,
+                          })
+                        }
+                        className={`${styles.inputBox} ${
+                          formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && !formSelections.productCtaLink.startsWith("http://") && !formSelections.productCtaLink.startsWith("mailto:")
+                            ? styles.inputError
+                            : ""
+                        }`}
+                      />
+                      <span style={{ fontSize: "0.76rem", opacity: 0.75, marginTop: "6px", display: "block" }}>
+                        {(() => {
+                          const cta = formSelections.productCtaType || "Comment";
+                          switch (cta) {
+                            case "Comment":
+                              return "Directs viewers to drop opinions, comments, or leave feedback outside the app.";
+                            case "Vote":
+                              return "Directs viewers to voter registration, polling info, or campaign voting portals.";
+                            case "Donate":
+                              return "Directs viewers to contribute securely to your campaign or cause.";
+                            case "Volunteer":
+                              return "Directs viewers to sign up as a campaign volunteer, grassroots agent, or supporter.";
+                            case "Book":
+                              return "Directs viewers to book an appointment, session, ticket, or consultation outside the app.";
+                            case "Reserve":
+                              return "Directs viewers to make a reservation for a table, seat, or event outside the app.";
+                            case "Apply":
+                              return "Directs viewers to submit an application for a job, program, or offer outside the app.";
+                            case "Order":
+                              return "Directs viewers to place an order directly on your linked store, menu, or chat.";
+                            case "Buy":
+                            case "Shop":
+                              return "Directs viewers to purchase your product or service on your linked store.";
+                            case "Join":
+                              return "Directs viewers to join your community, channel, group, or membership.";
+                            case "Learn More":
+                            case "Visit Website":
+                            default:
+                              return "Directs viewers to your external link to explore, learn more, or connect.";
+                          }
+                        })()}
+                      </span>
+                      {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && !formSelections.productCtaLink.startsWith("http://") && !formSelections.productCtaLink.startsWith("mailto:") && (
+                        <p className={styles.error}>
+                          Please enter a valid link starting with https:// or mailto:
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 <div className={styles.formGroup}>
@@ -1223,88 +1323,94 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label>Action Buttons (Max {adType === "product_sales" ? 2 : 3})</label>
                   {(() => {
-                    const baseButtons: string[] = ["phone", "whatsapp", "website", "email"];
-                    if (adType === "business") {
-                      baseButtons.push("ios", "android");
-                    }
-                    if (adType === "business" || formSelections.adMediaType === "video") {
-                      baseButtons.push("watch_now");
-                    }
-                    if (formSelections.adMediaType === "text") {
-                      baseButtons.push("read_more");
-                    }
-                    return baseButtons.map(
-                      (type) => {
-                        const isSelected =
-                          formSelections.adActionButtons.includes(type as any);
-                        const placeholderMap: Record<string, string> = {
-                          phone: "e.g. 234904567890",
-                          whatsapp: "e.g. 234904567890",
-                          email: "e.g. someone@example.com",
-                          website: "e.g. https://yourwebsite.com",
-                          ios: "e.g. https://apps.apple.com/us/app/your-app",
-                          android: "e.g. https://play.google.com/store/apps/details?id=your.app",
-                          watch_now: "e.g. https://youtube.com/watch?v=...",
-                          read_more: "",
-                        };
+                    const hasPrimaryCta = Boolean(formSelections.productCtaLink?.trim()) || adType === "product_sales";
+                    const maxButtons = hasPrimaryCta ? 2 : 3;
 
-                        const isEmail = type === "email";
-                        const value = type !== "read_more" ? formSelections.actionDetails[type as keyof typeof formSelections.actionDetails] || "" : "";
-                        const isEmailInvalid =
-                          isEmail &&
-                          value &&
-                          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+                    return (
+                      <>
+                        <label>
+                          Action Buttons (Max {maxButtons})
+                          {hasPrimaryCta && (
+                            <span style={{ fontSize: "0.76rem", color: "var(--primary, #eab308)", marginLeft: "8px", fontWeight: "normal" }}>
+                              (Reduced to {maxButtons} to ensure clean mobile card spacing alongside &quot;{formSelections.productCtaType || "Comment"}&quot;)
+                            </span>
+                          )}
+                        </label>
+                        {(() => {
+                          const baseButtons: string[] = ["phone", "whatsapp", "website", "email"];
+                          if (adType === "business" || adType === "government") {
+                            baseButtons.push("ios", "android");
+                          }
+                          if (adType === "business" || adType === "government" || formSelections.adMediaType === "video") {
+                            baseButtons.push("watch_now");
+                          }
+                          if (formSelections.adMediaType === "text") {
+                            baseButtons.push("read_more");
+                          }
+                          return baseButtons.map((type) => {
+                            const isSelected = formSelections.adActionButtons.includes(type as any);
+                            const placeholderMap: Record<string, string> = {
+                              phone: "e.g. 234904567890",
+                              whatsapp: "e.g. 234904567890",
+                              email: "e.g. someone@example.com",
+                              website: "e.g. https://yourwebsite.com",
+                              ios: "e.g. https://apps.apple.com/us/app/your-app",
+                              android: "e.g. https://play.google.com/store/apps/details?id=your.app",
+                              watch_now: "e.g. https://youtube.com/watch?v=...",
+                              read_more: "",
+                            };
 
-                        return (
-                          <div key={type}>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const updated = [
-                                    ...formSelections.adActionButtons,
-                                  ];
-                                  const maxButtons = adType === "product_sales" ? 2 : 3;
-                                  if (e.target.checked && updated.length < maxButtons)
-                                    updated.push(type as any);
-                                  else if (!e.target.checked)
-                                    updated.splice(updated.indexOf(type as any), 1);
-                                  setFormSelections({
-                                    ...formSelections,
-                                    adActionButtons: updated,
-                                  });
-                                }}
-                              />
-                              {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type === "watch_now" ? "WATCH NOW" : type.toUpperCase().replace("_", " ")}
-                            </label>
-                            {isSelected && type !== "read_more" && (
-                              <input
-                                type={isEmail ? "email" : "text"}
-                                placeholder={placeholderMap[type]}
-                                value={value}
-                                onChange={(e) =>
-                                  setFormSelections({
-                                    ...formSelections,
-                                    actionDetails: {
-                                      ...formSelections.actionDetails,
-                                      [type]: e.target.value,
-                                    },
-                                  })
-                                }
-                                className={`${styles.inputBox} ${
-                                  isEmailInvalid ? styles.inputError : ""
-                                }`}
-                              />
-                            )}
-                            {isSelected && isEmailInvalid && (
-                              <p className={styles.error}>Invalid email format</p>
-                            )}
-                          </div>
-                        );
-                      }
+                            const isEmail = type === "email";
+                            const value = type !== "read_more" ? formSelections.actionDetails[type as keyof typeof formSelections.actionDetails] || "" : "";
+                            const isEmailInvalid = isEmail && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+                            return (
+                              <div key={type}>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const updated = [...formSelections.adActionButtons];
+                                      if (e.target.checked && updated.length < maxButtons) {
+                                        updated.push(type as any);
+                                      } else if (!e.target.checked) {
+                                        updated.splice(updated.indexOf(type as any), 1);
+                                      }
+                                      setFormSelections({
+                                        ...formSelections,
+                                        adActionButtons: updated,
+                                      });
+                                    }}
+                                  />
+                                  {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type === "watch_now" ? "WATCH NOW" : type.toUpperCase().replace("_", " ")}
+                                </label>
+                                {isSelected && type !== "read_more" && (
+                                  <input
+                                    type={isEmail ? "email" : "text"}
+                                    placeholder={placeholderMap[type]}
+                                    value={value}
+                                    onChange={(e) =>
+                                      setFormSelections({
+                                        ...formSelections,
+                                        actionDetails: {
+                                          ...formSelections.actionDetails,
+                                          [type]: e.target.value,
+                                        },
+                                      })
+                                    }
+                                    className={`${styles.inputBox} ${isEmailInvalid ? styles.inputError : ""}`}
+                                  />
+                                )}
+                                {isSelected && isEmailInvalid && (
+                                  <p className={styles.error}>Please enter a valid email address.</p>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
+                      </>
                     );
                   })()}
                 </div>
@@ -1417,7 +1523,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       </div>
                     </div>
 
-                    {adType === "product_sales" && (
+                    {adType === "product_sales" ? (
                       <>
                         <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Product details</h3>
                         <div className={styles.detailsList}>
@@ -1429,14 +1535,34 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                             <span className={styles.detailsKey}>Product price</span>
                             <span className={styles.detailsVal}>{formatCurrency(formSelections.productPrice)}</span>
                           </div>
-                          <div className={styles.detailsRow}>
-                            <span className={styles.detailsKey}>CTA action</span>
-                            <span className={styles.detailsVal}>
-                              {formSelections.productCtaType} &rarr; <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
-                            </span>
-                          </div>
+                          {formSelections.productCtaLink && (
+                            <div className={styles.detailsRow}>
+                              <span className={styles.detailsKey}>CTA action</span>
+                              <span className={styles.detailsVal}>
+                                {formSelections.productCtaType} &rarr; <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </>
+                    ) : (
+                      formSelections.productCtaLink && (
+                        <>
+                          <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Action &amp; Feedback CTA</h3>
+                          <div className={styles.detailsList}>
+                            <div className={styles.detailsRow}>
+                              <span className={styles.detailsKey}>CTA button</span>
+                              <span className={styles.detailsVal}>{formSelections.productCtaType || "Comment"}</span>
+                            </div>
+                            <div className={styles.detailsRow}>
+                              <span className={styles.detailsKey}>Target link</span>
+                              <span className={styles.detailsVal}>
+                                <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      )
                     )}
                   </div>
                   
@@ -1518,8 +1644,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                 {isAdmin ? (
                   <div style={{ background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.35)", padding: "16px", borderRadius: "12px", margin: "20px 0", textAlign: "center" }}>
-                    <p style={{ color: "var(--primary)", fontSize: "1rem", fontWeight: 700, margin: 0 }}>
-                      👑 Admin Privilege: 100% Free Campaign Publishing (₦0.00 Total)
+                    <p style={{ color: "var(--primary)", fontSize: "1rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                      <Crown size={18} color="var(--primary)" /> Admin Privilege: 100% Free Campaign Publishing (₦0.00 Total)
                     </p>
                     <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
                       No payment gateway or wallet balance deduction required.
@@ -1547,12 +1673,41 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   </div>
                 )}
 
+                <div style={{ marginTop: "20px", marginBottom: "16px", display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px 14px", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
+                  <input
+                    type="checkbox"
+                    id="adTermsPolicyCheckbox"
+                    checked={agreedToPolicy}
+                    onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                    style={{ marginTop: "3px", width: "16px", height: "16px", cursor: "pointer", flexShrink: 0 }}
+                  />
+                  <label htmlFor="adTermsPolicyCheckbox" style={{ fontSize: "0.85rem", color: "var(--foreground)", cursor: "pointer", lineHeight: 1.4 }}>
+                    I have reviewed my ad details and agree to Paayh&apos;s{" "}
+                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Terms of Service
+                    </Link>{" "}
+                    and{" "}
+                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Advertisement Policy
+                    </Link>.
+                  </label>
+                </div>
+
                 <button
                   className={styles.submitButton}
                   onClick={submitAd}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !agreedToPolicy}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
                 >
-                  {isSubmitting ? "Publishing Free Ad..." : isAdmin ? "🚀 Publish Campaign Free (Admin)" : "Submit Ad For Review"}
+                  {isSubmitting ? (
+                    "Publishing Free Ad..."
+                  ) : isAdmin ? (
+                    <>
+                      <Rocket size={16} /> Publish Campaign Free (Admin)
+                    </>
+                  ) : (
+                    "Submit Ad For Review"
+                  )}
                 </button>
               </>
             )}
@@ -1562,7 +1717,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 <button onClick={() => { setStepError(""); setStep(step - 1); }}>Back</button>
               )}
               {stepError && (
-                <span className={styles.stepValidationError}>⚠ {stepError}</span>
+                <span className={styles.stepValidationError} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <AlertCircle size={14} color="#ef4444" /> {stepError}
+                </span>
               )}
               {step < 5 && (
                 <button

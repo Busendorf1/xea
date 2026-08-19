@@ -71,17 +71,24 @@ export default function FrontText() {
           {/* <div className={styles.tagline}>
             <span>Attention Monetization Platform</span>
           </div> */}
-          <h1 className={styles.title}>
-            <span className={styles.titleLine}>Advertise your business.</span>
-            <span className={`${styles.titleLine} ${styles.gradientText}`}>Reward your audience.</span>
+           <h1 className={styles.title}>
+            <span className={styles.titleLine}>Pay for my attention,</span>
+            <span className={`${styles.titleLine} ${styles.gradientText}`}>I will offer it willingly!</span>
           </h1>
+          {/* <h1 className={styles.title}>
+            <span className={styles.titleLine}>.</span>
+            <span className={`${styles.titleLine} ${styles.gradientText}`}>.</span>
+          </h1> */}
            {/* <h1 className={styles.title}>
             Your Attention Is Valuable.<br />
             <span className={styles.gradientText}>Get Rewarded For It.</span>
           </h1> */}
           <p className={styles.subtitle}>
-          99.99% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
+          99.99% Ads deliverability. Advertise your business, reward your audience.
           </p>
+          {/* <p className={styles.subtitle}>
+          99.99% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
+          </p> */}
 
           <div className={styles.howItWorksWrapper}>
             <button 

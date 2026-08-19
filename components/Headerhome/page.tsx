@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useUser } from "@auth0/nextjs-auth0";
 import styles from "../Headerhome/page.module.css";
 import { useTheme } from "../ThemeProvider";
-import { Sun, Moon, Contrast, Bell } from "lucide-react";
+import { Sun, Moon, Contrast, Bell, Trash2 } from "lucide-react";
 import SidebarMenu from "@/components/SidebarToggle/page";
 
 export default function Header() {
@@ -150,6 +150,71 @@ export default function Header() {
     }
   };
 
+  const [selectedNotifs, setSelectedNotifs] = useState<string[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isDeletingNotifs, setIsDeletingNotifs] = useState(false);
+
+  const handleToggleSelectNotif = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedNotifs((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllNotifs = () => {
+    if (selectedNotifs.length === notifications.length) {
+      setSelectedNotifs([]);
+    } else {
+      setSelectedNotifs(notifications.map((n) => n.id));
+    }
+  };
+
+  const handleDeleteSelectedNotifs = async () => {
+    if (selectedNotifs.length === 0) return;
+    setIsDeletingNotifs(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationIds: selectedNotifs }),
+      });
+      if (res.ok) {
+        setNotifications((prev) => {
+          const remaining = prev.filter((n) => !selectedNotifs.includes(n.id));
+          if (remaining.length === 0) setIsSelectionMode(false);
+          return remaining;
+        });
+        setSelectedNotifs([]);
+      }
+    } catch (err) {
+      console.error("Failed to delete notifications:", err);
+    } finally {
+      setIsDeletingNotifs(false);
+    }
+  };
+
+  const handleDeleteAllNotifs = async () => {
+    if (notifications.length === 0) return;
+    if (!confirm("Are you sure you want to delete ALL notifications?")) return;
+    setIsDeletingNotifs(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (res.ok) {
+        setNotifications([]);
+        setSelectedNotifs([]);
+        setIsSelectionMode(false);
+      }
+    } catch (err) {
+      console.error("Failed to delete all notifications:", err);
+    } finally {
+      setIsDeletingNotifs(false);
+    }
+  };
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const renderNotificationBell = () => (
@@ -165,16 +230,105 @@ export default function Header() {
       </button>
       
       {showNotifications && (
-        <div className={styles.notificationDropdown}>
-          <div className={styles.notificationHeader}>
-            <h4>Notifications</h4>
-            {unreadCount > 0 && (
-              <button onClick={handleMarkAllAsRead} className={styles.markAllBtn}>
-                Mark all as read
-              </button>
+        <div className={styles.notificationDropdown} style={{ width: "380px", maxWidth: "92vw" }}>
+          <div className={styles.notificationHeader} style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+              <h4 style={{ margin: 0 }}>Notifications</h4>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {unreadCount > 0 && !isSelectionMode && (
+                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn} style={{ fontSize: "0.75rem", padding: "3px 8px" }}>
+                    Mark all as read
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsSelectionMode((prev) => {
+                        if (prev) setSelectedNotifs([]);
+                        return !prev;
+                      });
+                    }}
+                    title={isSelectionMode ? "Cancel selection" : "Delete notifications"}
+                    style={{
+                      background: isSelectionMode ? "rgba(239, 68, 68, 0.12)" : "transparent",
+                      border: isSelectionMode ? "1px solid rgba(239, 68, 68, 0.3)" : "none",
+                      color: isSelectionMode ? "#ef4444" : "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "4px 6px",
+                      borderRadius: "6px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    {isSelectionMode && <span>Cancel</span>}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Selection and Deletion Controls - Only visible when in Selection Mode */}
+            {isSelectionMode && notifications.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.76rem", paddingTop: "6px", borderTop: "1px solid var(--card-border, rgba(255,255,255,0.1))" }}>
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await handleDeleteSelectedNotifs();
+                    if (notifications.length <= selectedNotifs.length) {
+                      setIsSelectionMode(false);
+                    }
+                  }}
+                  disabled={selectedNotifs.length === 0 || isDeletingNotifs}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "5px",
+                    backgroundColor: selectedNotifs.length > 0 ? "rgba(239, 68, 68, 0.15)" : "transparent",
+                    border: selectedNotifs.length > 0 ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid transparent",
+                    color: selectedNotifs.length > 0 ? "#ef4444" : "var(--text-muted, #94a3b8)",
+                    fontSize: "0.74rem",
+                    fontWeight: 700,
+                    cursor: selectedNotifs.length > 0 ? "pointer" : "default",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    opacity: selectedNotifs.length > 0 ? 1 : 0.5,
+                  }}
+                >
+                  <Trash2 size={12} /> Delete ({selectedNotifs.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await handleDeleteAllNotifs();
+                    setIsSelectionMode(false);
+                  }}
+                  disabled={isDeletingNotifs}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "5px",
+                    backgroundColor: "transparent",
+                    border: "none",
+                    color: "var(--text-muted, #94a3b8)",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete All
+                </button>
+              </div>
             )}
           </div>
-          <div className={styles.notificationList}>
+
+          <div className={styles.notificationList} style={{ maxHeight: "360px", overflowY: "auto" }}>
             {notifications.length === 0 ? (
               <div className={styles.emptyNotifications}>No notifications yet</div>
             ) : (
@@ -183,8 +337,18 @@ export default function Header() {
                   key={n.id}
                   onClick={() => handleMarkAsRead(n.id)}
                   className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
+                  style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
                 >
-                  <div className={styles.notificationContent}>
+                  {isSelectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedNotifs.includes(n.id)}
+                      onClick={(e) => handleToggleSelectNotif(n.id, e)}
+                      onChange={() => {}}
+                      style={{ marginTop: "3px", cursor: "pointer", width: "14px", height: "14px", flexShrink: 0 }}
+                    />
+                  )}
+                  <div className={styles.notificationContent} style={{ flexGrow: 1 }}>
                     <div className={styles.notificationTitle}>{n.title}</div>
                     <div className={styles.notificationMsg}>{n.message}</div>
                     <span className={styles.notificationTime}>

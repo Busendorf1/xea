@@ -8,7 +8,7 @@ interface UseFeedActionsProps {
   updateBalance: (delta: number) => void;
   addMutual: (targetEmail: string) => void;
   suspendAccount: (hours?: number) => void;
-  onEarnSuccess?: () => void;
+  onEarnSuccess?: (earnedAmount?: number) => void;
   onMutualSuccess?: () => void;
 }
 
@@ -69,6 +69,13 @@ export function useFeedActions({
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
 
+      const expectedRate = ad.cost_per_impression && ad.cost_per_impression > 0 ? ad.cost_per_impression : 25;
+
+      // 1. INSTANT OPTIMISTIC UI: Trigger balance & counter update immediately (0ms delay)
+      updateBalance(expectedRate);
+      onEarnSuccess?.(expectedRate);
+      setSeenAds((prev) => [...prev, ad.id]);
+
       try {
         const response = await fetch("/api/earn", {
           method: "POST",
@@ -84,6 +91,9 @@ export function useFeedActions({
 
         if (!response.ok) {
           const errData = await response.json();
+          // Rollback on server error
+          updateBalance(-expectedRate);
+          onEarnSuccess?.(-expectedRate);
           throw new Error(errData.error || "Failed to claim earnings");
         }
 
@@ -91,26 +101,24 @@ export function useFeedActions({
         const rate =
           resData.result !== undefined
             ? parseFloat(String(resData.result ?? 0))
-            : (ad.cost_per_impression ?? 0.5);
+            : expectedRate;
 
         // Suspension: do NOT dismiss the ad
         if (rate === -1 || rate === -2) {
+          updateBalance(-expectedRate);
+          onEarnSuccess?.(-expectedRate);
           alert("Clicking suspended: You are clicking too fast! Clicking is suspended for 2 hours.");
           suspendAccount(2);
           return false;
         }
 
-        setSeenAds((prev) => [...prev, ad.id]);
-
-        if (rate > 0) {
-          updateBalance(rate);
+        // If returned rate differed from optimistic rate, reconcile difference
+        if (rate !== expectedRate && rate > 0) {
+          const diff = rate - expectedRate;
+          updateBalance(diff);
+          onEarnSuccess?.(diff);
         }
 
-        if (viewerProfile && !viewerProfile.monetized) {
-          alert("Monetize to start earning.");
-        }
-
-        onEarnSuccess?.();
         return true;
       } catch (e: unknown) {
         console.error("❌ Unexpected error in handleAdEarn:", e);
@@ -121,7 +129,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, viewerProfile, updateBalance, suspendAccount, onEarnSuccess]
+    [userEmail, updateBalance, suspendAccount, onEarnSuccess]
   );
 
   // Add Mutual

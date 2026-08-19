@@ -13,6 +13,9 @@ export const dynamic = "force-dynamic";
 const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
 const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 
+// Essential Column Projection for Ultra-Fast DB Performance
+const AD_SELECT_FIELDS = "id, user_email, title, ad_media, ad_content, cta_text, cta_link, cost_per_impression, interest, country, state, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at";
+
 export async function GET(req: NextRequest) {
   try {
     const email = await getAuthenticatedEmail(req);
@@ -25,11 +28,12 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const servedAt = Date.now();
 
-    // Parse pagination and refresh parameters
+    // Parse pagination, refresh, and optional sharedAdId parameters
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get("limit") || "15", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
     const refresh = searchParams.get("refresh") === "true";
+    const sharedAdId = searchParams.get("sharedAdId");
 
     const emailKey = email.toLowerCase().trim();
     const adIdsCacheKey = `feed:ad_ids:${emailKey}`;
@@ -42,7 +46,6 @@ export async function GET(req: NextRequest) {
 
     let pageAds: Ad[] = [];
     let profilesMap: Record<string, AdvertiserProfile> = {};
-
     let cacheHit = false;
 
     const todayDate = now.toISOString().slice(0, 10);
@@ -58,7 +61,7 @@ export async function GET(req: NextRequest) {
 
     const seenAdIdsSet = new Set<string>(seenAdIdsList);
     const blockedAdIdsSet = new Set<string>(blockedAdIdsList);
-    const blockedAdvertisersSet = new Set<string>(blockedAdvertisersList.map(e => e.toLowerCase()));
+    const blockedAdvertisersSet = new Set<string>(blockedAdvertisersList.map((e) => e.toLowerCase()));
 
     // Try to retrieve cached candidate ad IDs and profiles unless refresh is requested
     if (!refresh) {
@@ -73,7 +76,9 @@ export async function GET(req: NextRequest) {
           profilesMap = JSON.parse(cachedProfilesStr);
 
           // Filter out ads already seen or blocked by the user in this session & preserve single-fetch uniqueness
-          const eligibleIds = Array.from(new Set(cachedAdIds)).filter((id) => !seenAdIdsSet.has(id) && !blockedAdIdsSet.has(id));
+          const eligibleIds = Array.from(new Set(cachedAdIds)).filter(
+            (id) => !seenAdIdsSet.has(id) && !blockedAdIdsSet.has(id)
+          );
 
           // Extract slice of IDs for the requested page
           const slicedIds = eligibleIds.slice(offset, offset + limit);
@@ -103,30 +108,23 @@ export async function GET(req: NextRequest) {
               }
             });
 
-            // Backfill missing ad details from Supabase if evicted from Redis
+            // Backfill missing ad details from Supabase using pruned columns if evicted from Redis
             if (missingIds.length > 0) {
               const { data: dbMissing, error: dbErr } = await supabaseReadOnly
                 .from("addsactive")
-                .select("*")
+                .select(AD_SELECT_FIELDS)
                 .in("id", missingIds);
 
               if (!dbErr && dbMissing) {
-                const setPromises = dbMissing.map((ad: any) => {
+                const pipeline = redisConnection.pipeline();
+                dbMissing.forEach((ad: any) => {
                   if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) {
-                    return Promise.resolve();
+                    return;
                   }
                   fetchedDetailsMap[ad.id] = ad;
-                  return redisConnection.set(
-                    `ad:detail:${ad.id}`,
-                    JSON.stringify(ad),
-                    "EX",
-                    AD_DETAIL_TTL_SECONDS
-                  );
+                  pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
                 });
-                // Non-blocking background Redis write
-                Promise.all(setPromises).catch((err) =>
-                  console.error("❌ Redis write error backfilling ad details:", err)
-                );
+                pipeline.exec().catch((err) => console.error("❌ Redis backfill error:", err));
               }
             }
 
@@ -148,17 +146,17 @@ export async function GET(req: NextRequest) {
       const { data: initialFeedAds, error } = await supabaseReadOnly.rpc("get_user_feed", {
         p_user_email: email,
         p_limit: 100,
-        p_offset: 0
+        p_offset: 0,
       });
 
       let ads = initialFeedAds;
 
-      // Fallback: If RPC fails or is missing, query addsactive directly so feed NEVER breaks!
+      // Fallback: If RPC fails or is missing, query addsactive with pruned columns
       if (error) {
-        console.warn("⚠️ RPC get_user_feed error/fallback:", error.message || error);
+        console.warn("⚠️ RPC get_user_feed fallback to addsactive:", error.message || error);
         const { data: fallbackAds, error: fallbackErr } = await supabaseReadOnly
           .from("addsactive")
-          .select("*")
+          .select(AD_SELECT_FIELDS)
           .is("completed_at", null)
           .neq("user_email", email)
           .limit(100);
@@ -174,14 +172,11 @@ export async function GET(req: NextRequest) {
       const candidateAdsMap = new Map<string, Ad>();
       (ads || []).forEach((ad: any) => {
         if (ad.completed_at) return;
-        if (blockedAdIdsSet.has(ad.id)) return; // Exclude explicitly blocked ads
+        if (blockedAdIdsSet.has(ad.id)) return;
 
-        // Exclude seen ads UNLESS user_frequency_cap > 1 allows retargeting
         const userCap = Number(ad.user_frequency_cap || 1);
         if (seenAdIdsSet.has(ad.id) && userCap <= 1) return;
 
-        // Ultra-Scale Redis RAM Pacing Filter (<0.1ms):
-        // Enforce daily user pacing cap = CEIL(user_frequency_cap / campaign_days)
         const campaignDays = Number(ad.campaign_days || 1);
         const dailyUserCap = Math.max(1, Math.ceil(userCap / Math.max(campaignDays, 1)));
         const viewsToday = Number((todayPacingMap as Record<string, string>)[ad.id] || 0);
@@ -190,11 +185,8 @@ export async function GET(req: NextRequest) {
           return;
         }
 
-        if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) return; // Exclude blocked advertisers
+        if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) return;
 
-        // Rollover Evaluation:
-        // If an ad passed its scheduled campaign days but impressions remain unexhausted,
-        // it enters Rollover mode and continues delivering until 100% of impressions are fulfilled.
         const createdAt = ad.created_at ? new Date(ad.created_at).getTime() : now.getTime();
         const diffDays = (now.getTime() - createdAt) / (1000 * 60 * 60 * 24);
         const impressionsTarget = Number(ad.impressions || 0);
@@ -203,12 +195,10 @@ export async function GET(req: NextRequest) {
         const isRollover = diffDays > campaignDays && impressionsTarget > 0 && impressionCount < impressionsTarget;
         ad.is_rollover = isRollover;
 
-        // Only exclude if total impression budget is 100% exhausted
         if (impressionsTarget > 0 && impressionCount >= impressionsTarget) {
           return;
         }
 
-        // Free platform announcements without impression budget expire after campaign_days
         const isPlatformFreeAd = (!ad.cost_per_impression || Number(ad.cost_per_impression) === 0) && impressionsTarget === 0;
         if (isPlatformFreeAd && diffDays > campaignDays) {
           return;
@@ -221,7 +211,7 @@ export async function GET(req: NextRequest) {
 
       const candidateAds = Array.from(candidateAdsMap.values());
 
-      // Shuffle candidate ads in memory using performant O(N) Fisher-Yates shuffle
+      // Shuffle candidate ads in memory using performant Fisher-Yates shuffle
       const shuffledCandidateAds = [...candidateAds];
       for (let i = shuffledCandidateAds.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -246,39 +236,61 @@ export async function GET(req: NextRequest) {
               profilesMap[p.email.toLowerCase()] = {
                 business_name: p.business_name || "",
                 firstName: p.firstName || "",
-                profileImage: p.profileImage || ""
+                profileImage: p.profileImage || "",
               };
             }
           });
         }
       }
 
-      // Store shared ad details, candidate ID array, and profiles map in Redis
+      // Store in Redis via a Single Atomic Pipeline (O(1) Network Roundtrip)
       try {
-        const cacheOps: Promise<any>[] = [
-          redisConnection.set(adIdsCacheKey, JSON.stringify(candidateAdIds), "EX", USER_FEED_IDS_TTL_SECONDS),
-          redisConnection.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", USER_FEED_IDS_TTL_SECONDS),
-          redisConnection.del(legacyAdsCacheKey) // clear legacy heavy cache key if present
-        ];
+        const pipeline = redisConnection.pipeline();
+        pipeline.set(adIdsCacheKey, JSON.stringify(candidateAdIds), "EX", USER_FEED_IDS_TTL_SECONDS);
+        pipeline.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", USER_FEED_IDS_TTL_SECONDS);
+        pipeline.del(legacyAdsCacheKey);
 
-        // Cache individual ad objects in shared keys `ad:detail:${ad.id}`
         shuffledCandidateAds.forEach((ad: Ad) => {
-          cacheOps.push(
-            redisConnection.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS)
-          );
+          pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
         });
 
-        await Promise.all(cacheOps);
-        console.log(`✅ Cached ${candidateAdIds.length} candidate ad IDs for user: ${emailKey}`);
+        await pipeline.exec();
+        console.log(`✅ Cached ${candidateAdIds.length} candidate ads in single Redis Pipeline for: ${emailKey}`);
       } catch (err: any) {
-        console.error("❌ Redis write error in feed route:", err.message || err);
+        console.error("❌ Redis pipeline write error:", err.message || err);
       }
 
-      // Slice requested page from candidate list
       pageAds = shuffledCandidateAds.slice(offset, offset + limit);
     }
 
-    // Sign each ad in the page slice using env.AUTH0_SECRET (no hardcoded fallback)
+    // Server-side Shared Ad Resolution (Zero Client Waterfall)
+    if (sharedAdId && offset === 0) {
+      try {
+        const cachedRaw = await redisConnection.get(`ad:detail:${sharedAdId}`);
+        let sharedAd: Ad | null = cachedRaw ? JSON.parse(cachedRaw) : null;
+
+        if (!sharedAd) {
+          const { data: sharedDb } = await supabaseReadOnly
+            .from("addsactive")
+            .select(AD_SELECT_FIELDS)
+            .eq("id", sharedAdId)
+            .maybeSingle();
+
+          if (sharedDb && !sharedDb.completed_at) {
+            sharedAd = sharedDb as Ad;
+            redisConnection.set(`ad:detail:${sharedAd.id}`, JSON.stringify(sharedAd), "EX", AD_DETAIL_TTL_SECONDS).catch(() => {});
+          }
+        }
+
+        if (sharedAd && !pageAds.some((a) => a.id === sharedAd!.id)) {
+          pageAds.unshift(sharedAd);
+        }
+      } catch (sErr) {
+        console.error("❌ Error resolving shared ad on server:", sErr);
+      }
+    }
+
+    // Sign each ad in the page slice using env.AUTH0_SECRET
     const secretKey = env.AUTH0_SECRET;
     const signedAds = pageAds.map((ad: Ad) => {
       const payload = `${ad.id}:${userId}:${servedAt}`;
@@ -290,7 +302,14 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ ads: signedAds, profiles: profilesMap });
+    return NextResponse.json(
+      { ads: signedAds, profiles: profilesMap },
+      {
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+        },
+      }
+    );
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/feed:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

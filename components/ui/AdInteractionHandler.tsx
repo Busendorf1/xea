@@ -116,6 +116,12 @@ export default function AdInteractionHandler({
 
   const handleChallengeSuccess = () => {
     setStage("unlocked");
+    // Automatically record as seen in background so reloading treats it as seen
+    fetch("/api/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adId: ad.id }),
+    }).catch((err) => console.error("❌ Auto background seen recording error:", err));
   };
 
   // 4. Challenge A: Swipe Handlers
@@ -244,7 +250,7 @@ export default function AdInteractionHandler({
             </div>
           </div>
           <span className={styles.countdownText}>
-            {inView && tabVisible ? `Verify in ${secondsLeft}s` : "65% in view required"}
+            {`Verify in ${secondsLeft}s`}
           </span>
         </div>
       )}

@@ -26,8 +26,8 @@ export default async function UserDashboard() {
     console.log(`🚀 Profile cache hit in Server Component for: ${email}`);
   } else {
     console.log(`🔄 Profile cache miss in Server Component for: ${email}. Fetching from Supabase...`);
-    // Fetch user profile from Supabase using admin client
-    const { data: dbData, error: dbError } = await supabaseReadOnly
+    // Fetch user profile from Supabase using admin client with resilient column fallback
+    let { data: dbData, error: dbError } = await supabaseAdmin
       .from("users")
       .select(`
         id,
@@ -59,10 +59,57 @@ export default async function UserDashboard() {
         withdrawal,
         bvn_hash,
         monetization_clicks,
-        last_active_at
+        last_active_at,
+        referral_code,
+        referral_downloads_count,
+        atw_tier
       `)
       .ilike("email", email)
       .maybeSingle();
+
+    // If new columns are not yet in DB, fallback to baseline columns
+    if (dbError) {
+      console.warn("⚠️ Attempting baseline column fallback for user query:", dbError.message || dbError);
+      const fallback = await supabaseAdmin
+        .from("users")
+        .select(`
+          id,
+          "profileImage",
+          username,
+          "firstName",
+          "lastName",
+          "lastUpdated",
+          bio,
+          interest,
+          email,
+          industry,
+          behavior,
+          lifestyle,
+          personality,
+          monetized,
+          monetized_at,
+          created_at,
+          monetized_until,
+          monetization_type,
+          country,
+          state,
+          location,
+          phone,
+          business_name,
+          passphrase,
+          mutual_count,
+          balance,
+          withdrawal,
+          bvn_hash,
+          monetization_clicks,
+          last_active_at
+        `)
+        .ilike("email", email)
+        .maybeSingle();
+
+      dbData = fallback.data as any;
+      dbError = fallback.error;
+    }
 
     if (dbError) {
       error = dbError;
@@ -76,8 +123,8 @@ export default async function UserDashboard() {
   }
 
   if (error) {
-    console.error("❌ Error fetching user profile from database:", error);
-    return <div>Error loading account profile: {error.message}. Please refresh or contact support.</div>;
+    console.error("❌ Error fetching user profile from database:", error?.message || error);
+    return <div>Error loading account profile: {error?.message || "Please check connection"}. Please refresh or run migrations.</div>;
   }
 
   // If user does not exist, auto-provision their account

@@ -38,14 +38,15 @@ import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
 import Footer from "../Footers/page";
 import { resolveAtwTier } from "@/lib/attentionTierEngine";
+import RollingCounter from "@/components/ui/RollingCounter";
 
 export interface UserProfile {
   id: string;
   profileImage: string | null;
   username: string;
-  firstName: string;
-  lastName: string;
-  lastUpdated: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  lastUpdated: string;
   bio: string | null;
   interest: string[] | string;
   email: string;
@@ -69,6 +70,9 @@ export interface UserProfile {
   withdrawal: number;
   bvn_hash?: string | null;
   monetization_clicks?: number;
+  referral_code?: string | null;
+  referral_downloads_count?: number;
+  atw_tier?: string | null;
   last_active_at?: string | null;
   attention_worth_score?: number | null;
   daysInactive?: number;
@@ -80,7 +84,7 @@ interface DashboardClientProps {
   email: string;
 }
 
-import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+import { formatCurrency as globalFormatCurrency, getCurrencyConfig } from "@/lib/utils/currency";
 
 export default function DashboardClient({ user: initialUser, parsedInterest, email }: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
@@ -118,7 +122,11 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
       if (res.ok) {
         const data = await res.json();
         if (data && !data.error && data.email) {
-          setUser(data);
+          setUser((prev) => ({
+            ...data,
+            // Protect against stale server balance overwriting fresh optimistic balance
+            balance: Math.max(prev.balance || 0, Number(data.balance) || 0),
+          }));
         }
       }
     } catch (e) {
@@ -195,7 +203,10 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
 
   // Notification states
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [selectedNotifs, setSelectedNotifs] = useState<string[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isDeletingNotifs, setIsDeletingNotifs] = useState(false);
 
   // Custom header feedback states
   const [showEarnFeedback, setShowEarnFeedback] = useState(false);
@@ -209,6 +220,27 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
   const triggerMutualFeedback = () => {
     setShowMutualFeedback(true);
     setTimeout(() => setShowMutualFeedback(false), 2500);
+  };
+
+  const handleEarnSuccess = (earnedAmount?: number) => {
+    const delta = typeof earnedAmount === "number" ? earnedAmount : 25;
+    if (delta !== 0) {
+      setUser((prev) => ({
+        ...prev,
+        balance: Math.max(0, Math.round(((prev.balance || 0) + delta) * 100) / 100),
+      }));
+      if (delta > 0) {
+        triggerEarnFeedback();
+      }
+    }
+  };
+
+  const handleMutualSuccess = () => {
+    setUser((prev) => ({
+      ...prev,
+      mutual_count: Math.min(50, (prev.mutual_count || 0) + 1),
+    }));
+    triggerMutualFeedback();
   };
 
   const fetchNotifications = async () => {
@@ -289,6 +321,63 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
     }
   };
 
+  const handleToggleSelectNotif = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedNotifs((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllNotifs = () => {
+    if (selectedNotifs.length === notifications.length) {
+      setSelectedNotifs([]);
+    } else {
+      setSelectedNotifs(notifications.map((n) => n.id));
+    }
+  };
+
+  const handleDeleteSelectedNotifs = async () => {
+    if (selectedNotifs.length === 0) return;
+    if (!confirm(`Delete ${selectedNotifs.length} selected notification(s)?`)) return;
+    setIsDeletingNotifs(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationIds: selectedNotifs }),
+      });
+      if (res.ok) {
+        setNotifications((prev) => prev.filter((n) => !selectedNotifs.includes(n.id)));
+        setSelectedNotifs([]);
+      }
+    } catch (err) {
+      console.error("Failed to delete notifications:", err);
+    } finally {
+      setIsDeletingNotifs(false);
+    }
+  };
+
+  const handleDeleteAllNotifs = async () => {
+    if (notifications.length === 0) return;
+    if (!confirm("Are you sure you want to delete ALL notifications?")) return;
+    setIsDeletingNotifs(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (res.ok) {
+        setNotifications([]);
+        setSelectedNotifs([]);
+      }
+    } catch (err) {
+      console.error("Failed to delete all notifications:", err);
+    } finally {
+      setIsDeletingNotifs(false);
+    }
+  };
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const stripEmoji = (str: string) => {
@@ -339,16 +428,105 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
       </button>
       
       {showNotifications && (
-        <div className={styles.notificationDropdown}>
-          <div className={styles.notificationHeader}>
-            <h4>Notifications</h4>
-            {unreadCount > 0 && (
-              <button onClick={handleMarkAllAsRead} className={styles.markAllBtn}>
-                Mark all as read
-              </button>
+        <div className={styles.notificationDropdown} style={{ width: "380px", maxWidth: "92vw" }}>
+          <div className={styles.notificationHeader} style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+              <h4 style={{ margin: 0 }}>Notifications</h4>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {unreadCount > 0 && !isSelectionMode && (
+                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn} style={{ fontSize: "0.75rem", padding: "3px 8px" }}>
+                    Mark all as read
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsSelectionMode((prev) => {
+                        if (prev) setSelectedNotifs([]);
+                        return !prev;
+                      });
+                    }}
+                    title={isSelectionMode ? "Cancel selection" : "Delete notifications"}
+                    style={{
+                      background: isSelectionMode ? "rgba(239, 68, 68, 0.12)" : "transparent",
+                      border: isSelectionMode ? "1px solid rgba(239, 68, 68, 0.3)" : "none",
+                      color: isSelectionMode ? "#ef4444" : "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "4px 6px",
+                      borderRadius: "6px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    {isSelectionMode && <span>Cancel</span>}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Selection and Deletion Controls - Only visible when in Selection Mode */}
+            {isSelectionMode && notifications.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.76rem", paddingTop: "6px", borderTop: "1px solid var(--card-border)" }}>
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await handleDeleteSelectedNotifs();
+                    if (notifications.length <= selectedNotifs.length) {
+                      setIsSelectionMode(false);
+                    }
+                  }}
+                  disabled={selectedNotifs.length === 0 || isDeletingNotifs}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "5px",
+                    backgroundColor: selectedNotifs.length > 0 ? "rgba(239, 68, 68, 0.15)" : "transparent",
+                    border: selectedNotifs.length > 0 ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid transparent",
+                    color: selectedNotifs.length > 0 ? "#ef4444" : "var(--text-muted)",
+                    fontSize: "0.74rem",
+                    fontWeight: 700,
+                    cursor: selectedNotifs.length > 0 ? "pointer" : "default",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    opacity: selectedNotifs.length > 0 ? 1 : 0.5,
+                  }}
+                >
+                  <Trash2 size={12} /> Delete ({selectedNotifs.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await handleDeleteAllNotifs();
+                    setIsSelectionMode(false);
+                  }}
+                  disabled={isDeletingNotifs}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "5px",
+                    backgroundColor: "transparent",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete All
+                </button>
+              </div>
             )}
           </div>
-          <div className={styles.notificationList}>
+
+          <div className={styles.notificationList} style={{ maxHeight: "360px", overflowY: "auto" }}>
             {notifications.length === 0 ? (
               <div className={styles.emptyNotifications}>No notifications yet</div>
             ) : (
@@ -357,11 +535,21 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
                   key={n.id}
                   onClick={() => handleMarkAsRead(n.id)}
                   className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
+                  style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
                 >
-                  <div className={styles.notificationIconWrapper}>
+                  {isSelectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedNotifs.includes(n.id)}
+                      onClick={(e) => handleToggleSelectNotif(n.id, e)}
+                      onChange={() => {}}
+                      style={{ marginTop: "3px", cursor: "pointer", width: "14px", height: "14px", flexShrink: 0 }}
+                    />
+                  )}
+                  <div className={styles.notificationIconWrapper} style={{ flexShrink: 0 }}>
                     {getNotificationIcon(n.title || "", n.message || "")}
                   </div>
-                  <div className={styles.notificationContent}>
+                  <div className={styles.notificationContent} style={{ flexGrow: 1 }}>
                     <div className={styles.notificationTitle}>{stripEmoji(n.title)}</div>
                     <div className={styles.notificationMsg}>{stripEmoji(n.message)}</div>
                     <span className={styles.notificationTime}>
@@ -917,8 +1105,8 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
           <Feed 
             userEmail={email} 
             initialProfile={user} 
-            onEarnSuccess={triggerEarnFeedback} 
-            onMutualSuccess={triggerMutualFeedback} 
+            onEarnSuccess={handleEarnSuccess} 
+            onMutualSuccess={handleMutualSuccess} 
           />
           <Footer />
         </main>
@@ -1070,7 +1258,9 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
 
             <div className={styles.walletCard}>
               <h4 className={styles.walletHeader}>Wallet Balance</h4>
-              <p className={styles.walletBalance}>{formatCurrency(user.balance ?? 0)}</p>
+              <div className={styles.walletBalance}>
+                <RollingCounter value={user.balance ?? 0} currencyPrefix="₦" />
+              </div>
               {user.withdrawal > 0 && (
                 <p className={styles.pendingWithdrawal}>
                   Pending Withdrawal: {formatCurrency(user.withdrawal)}
@@ -1188,19 +1378,19 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
                 )}
 
                    <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Withdrawal Amount (₦)</label>
+                  <label className={styles.formLabel}>Withdrawal Amount ({getCurrencyConfig(user?.country).symbol})</label>
                   <input
                     type="number"
                     min={10000}
                     max={user.balance}
-                    placeholder={`Enter amount (min ₦10,000 up to ₦${user.balance.toLocaleString("en-NG")})`}
+                    placeholder={`Enter amount (min ${formatCurrency(10000)} up to ${formatCurrency(user.balance)})`}
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                     required
                     className={styles.formInput}
                   />
                   <span className={styles.formHintSmall}>
-                    Note: Minimum balance to withdraw is ₦10,000. You can withdraw any amount up to your full available balance (₦{user.balance.toLocaleString("en-NG")}).
+                    Note: Minimum balance to withdraw is {formatCurrency(10000)}. You can withdraw any amount up to your full available balance ({formatCurrency(user.balance)}).
                   </span>
                 </div>
 

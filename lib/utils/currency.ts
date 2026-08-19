@@ -13,13 +13,28 @@ export interface CurrencyConfig {
   locale: string;
 }
 
+const NIGERIAN_REGIONS = [
+  "nigeria", "ng", "nga", "ngn", "lagos", "abuja", "fct", "fct-abuja",
+  "abia", "adamawa", "akwa ibom", "anambra", "bauchi", "bayelsa", "benue", "borno",
+  "cross river", "delta", "ebonyi", "edo", "ekiti", "enugu", "gombe", "imo",
+  "jigawa", "kaduna", "kano", "katsina", "kebbi", "kogi", "kwara", "nasarawa",
+  "niger", "ogun", "ondo", "osun", "oyo", "plateau", "rivers", "sokoto",
+  "taraba", "yobe", "zamfara", "port harcourt", "portharcourt", "ibadan", "calabar",
+  "asaba", "warri", "benin city", "onitsha", "aba", "uyo", "nnewi", "enugu"
+];
+
 /**
  * Resolves currency code from user country
  */
 export function getUserCurrency(country?: string | null): PlatformCurrency {
-  if (!country) return "NGN"; // Default fallback
+  if (!country || !country.trim()) return "NGN"; // Default fallback
   const clean = country.trim().toLowerCase();
-  if (clean === "nigeria" || clean === "ng" || clean === "nga") {
+  if (
+    clean === "null" ||
+    clean === "undefined" ||
+    clean === "placeholder" ||
+    NIGERIAN_REGIONS.some((r) => clean === r || clean.includes(r))
+  ) {
     return "NGN";
   }
   return "USD";

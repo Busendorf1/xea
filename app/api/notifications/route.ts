@@ -192,3 +192,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const email = await getAuthenticatedEmail(req);
+    if (!email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { notificationIds, all } = body;
+
+    const emailLower = email.toLowerCase().trim();
+
+    if (all) {
+      // 1. Delete all private notifications for user
+      const { error: delErr } = await supabaseAdmin
+        .from("notifications")
+        .delete()
+        .ilike("user_email", emailLower);
+
+      if (delErr) {
+        console.error("❌ Error deleting all notifications:", delErr);
+        return NextResponse.json({ error: delErr.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, message: "All notifications deleted successfully." });
+    } else if (Array.isArray(notificationIds) && notificationIds.length > 0) {
+      // 2. Delete selected notifications
+      const { error: delErr } = await supabaseAdmin
+        .from("notifications")
+        .delete()
+        .ilike("user_email", emailLower)
+        .in("id", notificationIds);
+
+      if (delErr) {
+        console.error("❌ Error deleting selected notifications:", delErr);
+        return NextResponse.json({ error: delErr.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `${notificationIds.length} notification(s) deleted successfully.`,
+      });
+    } else {
+      return NextResponse.json({ error: "Missing notificationIds or all flag." }, { status: 400 });
+    }
+  } catch (err: any) {
+    console.error("❌ Unexpected error in DELETE /api/notifications:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+

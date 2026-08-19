@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     // 2. High-Scale Direct Query Path (Fast Index Read, ~10ms)
     const { data: uData, error: uErr } = await supabaseReadOnly
       .from("users")
-      .select("monetized, monetization_clicks, last_active_at, created_at")
+      .select("monetized, monetization_clicks, referral_downloads_count, referral_code, atw_tier, last_active_at, created_at")
       .eq("email", emailLower)
       .maybeSingle();
 
@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
 
       const row = statusData?.[0];
       const clicksCount = Number(row?.monetization_clicks || 0);
+      const invitesCount = Number(row?.referral_downloads_count || 0);
       const isMonetized = !!row?.monetized;
 
       payload = {
@@ -57,16 +58,22 @@ export async function GET(req: NextRequest) {
         clicksCount,
         clicksRemaining: Number(row?.clicks_remaining || Math.max(0, 300 - clicksCount)),
         targetClicks: 300,
+        invitesCount,
+        invitesRemaining: Number(row?.invites_remaining || Math.max(0, 12 - invitesCount)),
+        targetInvites: 12,
+        atwTier: row?.atw_tier || "ATW1",
         daysInactive: Number(row?.days_inactive || 0),
         statusMessage: row?.status_message || null,
       };
     } else {
       const clicks = uData.monetization_clicks ?? 0;
+      const invites = uData.referral_downloads_count ?? 0;
       const isMonetized = !!(
         uData.monetized === "true" ||
         uData.monetized === "yes" ||
         uData.monetized === true ||
-        clicks >= 300
+        clicks >= 300 ||
+        invites >= 12
       );
 
       // Fast in-memory calculation of inactive days
@@ -77,12 +84,20 @@ export async function GET(req: NextRequest) {
         daysInactive = Math.max(0, Math.floor((now - lastActive) / (1000 * 60 * 60 * 24)));
       }
 
+      const { calculateAtwTier } = await import("@/lib/referralEngine");
+      const { tier: computedTier } = calculateAtwTier(clicks, invites);
+
       payload = {
         success: true,
         isMonetized,
         clicksCount: clicks,
         clicksRemaining: Math.max(0, 300 - clicks),
         targetClicks: 300,
+        invitesCount: invites,
+        invitesRemaining: Math.max(0, 12 - invites),
+        targetInvites: 12,
+        atwTier: uData.atw_tier || computedTier,
+        referralCode: uData.referral_code || null,
         daysInactive,
         lastActiveAt: uData.last_active_at || null,
       };

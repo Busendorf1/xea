@@ -219,16 +219,10 @@ function AdCard({
     }
   }, [activeAction]);
 
-  const ADMIN_EMAILS = useMemo(() => {
-    return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-  }, []);
-
   const isPlatformPost = useMemo(() => {
-    return ad.user_email ? ADMIN_EMAILS.includes(ad.user_email.toLowerCase()) : false;
-  }, [ad.user_email, ADMIN_EMAILS]);
+    // An ad is only a platform broadcast if it is explicitly an admin post with no pay-per-impression reward
+    return !!(ad.is_admin_post && (!ad.cost_per_impression || ad.cost_per_impression === 0));
+  }, [ad.is_admin_post, ad.cost_per_impression]);
 
   const advertiserProfile = useMemo(() => {
     return ad.user_email ? advertiserProfiles[ad.user_email.toLowerCase()] : null;
@@ -356,6 +350,7 @@ function AdCard({
           <div className={styles.headerRightContainer}>
             <span className={styles.sponsorLabel}>
               {(() => {
+                if (isMutualTarget) return "Mutual Ad";
                 const category = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "").toLowerCase();
                 if (category === "politics") return "Politics Ad";
                 if (category === "religion") return "Religious Ad";
@@ -538,6 +533,25 @@ function AdCard({
         ) : (
           <div className={styles.actionButtons}>
             <div className={styles.ctaButtonsGroup}>
+              {ad.product_cta_link && (
+                <a
+                  href={ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.productCtaButton}
+                  style={{ marginRight: "4px", fontSize: "0.75rem", padding: "4px 10px", height: "28px" }}
+                  onClick={() => {
+                    const clickType = (ad.product_cta_type || "Comment").toLowerCase().replace(/\s+/g, "_");
+                    fetch("/api/campaigns/click", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ adId: ad.id, clickType }),
+                    }).catch((err) => console.error("Failed to log CTA click:", err));
+                  }}
+                >
+                  {ad.product_cta_type || "Comment"}
+                </a>
+              )}
               {actionButtons.map((type) => {
                 const isReadMore = type === "action_read_more";
                 if (!isReadMore && !isVerified) return null;
@@ -596,7 +610,7 @@ function AdCard({
             </div>
 
             <div className={styles.interactionButtonGroup}>
-              {ad.user_email?.toLowerCase() === userEmail.toLowerCase() || ad.is_admin_post || ad.cost_per_impression === 0 ? null : (
+              {ad.user_email?.toLowerCase() === userEmail.toLowerCase() || (ad.is_admin_post && (!ad.cost_per_impression || ad.cost_per_impression === 0)) ? null : (
                 !seenAds.includes(ad.id) && (
                   <AdInteractionHandler
                     ad={ad}

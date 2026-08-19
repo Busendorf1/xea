@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
-import { Zap, Calendar, ShieldAlert } from "lucide-react";
+import { Zap, Calendar, ShieldAlert, Crown, Rocket } from "lucide-react";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 import { newsSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/authHelper";
@@ -46,6 +47,7 @@ export default function News({ session }: NewsProps) {
   const [highestBid, setHighestBid] = useState<number>(1000);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [balance, setBalance] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
 
@@ -373,8 +375,8 @@ export default function News({ session }: NewsProps) {
               <div className={styles.formGroup} style={{ gap: "1.5rem" }}>
                 {isAdmin && (
                   <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "rgba(234, 179, 8, 0.1)", borderRadius: "14px", border: "1px solid rgba(234, 179, 8, 0.3)", marginBottom: "1.25rem" }}>
-                    <h4 style={{ color: "var(--primary)", fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem" }}>
-                      👑 Admin Privilege: Custom Branding & Free Publishing
+                    <h4 style={{ color: "var(--primary)", fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding & Free Publishing
                     </h4>
                     <div style={{ marginBottom: "0.75rem" }}>
                       <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Sponsor Name (Optional)</label>
@@ -491,7 +493,7 @@ export default function News({ session }: NewsProps) {
                         className={styles.inputBox}
                       />
                       <p style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "6px", fontWeight: 600 }}>
-                        Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} days. Higher bids overtake lower bids at top position.
+                        Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} {campaignDays === 1 ? "day" : "days"}. Higher bids overtake lower bids at top position.
                       </p>
                     </div>
                   )}
@@ -514,7 +516,7 @@ export default function News({ session }: NewsProps) {
                     <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginTop: "0.5rem", color: "var(--foreground)" }}>{capitalizeFirst(title)}</h3>
                     <p style={{ fontSize: "0.9rem", color: "var(--foreground)", lineHeight: 1.5, marginTop: "0.5rem" }}>{content}</p>
                     <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                      Targeting: {country} {state ? `· ${state}` : ""} · {campaignDays} Days {isBiddingEnabled ? `· Bidded (₦${bidPrice}/day)` : ""}
+                      Targeting: {country} {state ? `· ${state}` : ""} · {campaignDays} {campaignDays === 1 ? "Day" : "Days"} {isBiddingEnabled ? `· Bidded (₦${bidPrice}/day)` : ""}
                     </div>
                   </div>
                 </div>
@@ -522,7 +524,9 @@ export default function News({ session }: NewsProps) {
                 {/* Payment selector */}
                 {isAdmin ? (
                   <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "rgba(234, 179, 8, 0.12)", borderRadius: "12px", border: "1px solid rgba(234, 179, 8, 0.35)", textAlign: "center" }}>
-                    <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--primary)" }}>👑 Admin Privilege: 100% Free Highlight Publishing (₦0.00 Total)</h4>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                      <Crown size={18} color="var(--primary)" /> Admin Privilege: 100% Free Highlight Publishing (₦0.00 Total)
+                    </h4>
                     <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "4px", margin: 0 }}>
                       No payment gateway or wallet balance deduction required.
                     </p>
@@ -544,10 +548,38 @@ export default function News({ session }: NewsProps) {
                   </div>
                 )}
 
+                <div style={{ marginTop: "1.25rem", display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px 14px", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
+                  <input
+                    type="checkbox"
+                    id="newsTermsPolicyCheckbox"
+                    checked={agreedToPolicy}
+                    onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                    style={{ marginTop: "3px", width: "16px", height: "16px", cursor: "pointer", flexShrink: 0 }}
+                  />
+                  <label htmlFor="newsTermsPolicyCheckbox" style={{ fontSize: "0.85rem", color: "var(--foreground)", cursor: "pointer", lineHeight: 1.4 }}>
+                    I have reviewed my highlight details and agree to Paayh&apos;s{" "}
+                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Terms of Service
+                    </Link>{" "}
+                    and{" "}
+                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Advertisement Policy
+                    </Link>.
+                  </label>
+                </div>
+
                 <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(3)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={isSubmitting} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-                    {isSubmitting ? "Processing Submission..." : isAdmin ? "🚀 Publish Highlight Free (Admin)" : `Pay ${formatCurrency(totalCost)} & Submit`}
+                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer", opacity: (!agreedToPolicy || isSubmitting) ? 0.6 : 1, display: "flex", alignItems: "center", gap: "6px" }}>
+                    {isSubmitting ? (
+                      "Processing Submission..."
+                    ) : isAdmin ? (
+                      <>
+                        <Rocket size={16} /> Publish Highlight Free (Admin)
+                      </>
+                    ) : (
+                      `Pay ${formatCurrency(totalCost)} & Submit`
+                    )}
                   </button>
                 </div>
               </div>

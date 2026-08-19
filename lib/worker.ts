@@ -104,6 +104,10 @@ export const flushBatch = async (): Promise<void> => {
             p_ad_id: s.job.data?.adId,
             p_user_email: s.job.data?.email,
           });
+          // Check referral qualification on interaction
+          await supabaseAdmin.rpc("qualify_referral_on_interaction", {
+            p_referee_email: s.job.data?.email,
+          });
         } catch (err: unknown) {
           console.error(`❌ Error recording ad seen for ${s.job.data?.adId}:`, (err as Error)?.message || err);
           if (s.job.id) failedJobIds.add(s.job.id);
@@ -112,21 +116,36 @@ export const flushBatch = async (): Promise<void> => {
     );
   }
 
-  // 2. Process Earn clicks
+  // 2. Process Earn clicks in batch
   if (earns.length > 0) {
-    await Promise.all(
-      earns.map(async (e) => {
-        try {
-          await supabaseAdmin.rpc("handle_earn_click", {
-            p_ad_id: e.job.data?.adId,
-            p_user_email: e.job.data?.email,
-          });
-        } catch (err: unknown) {
-          console.error(`❌ Error handling earn click for ${e.job.data?.adId}:`, (err as Error)?.message || err);
-          if (e.job.id) failedJobIds.add(e.job.id);
-        }
-      })
-    );
+    const adIds = earns.map((e) => e.job.data.adId);
+    const emails = earns.map((e) => e.job.data.email);
+
+    try {
+      // Bulk RPC execution for 100M+ scale throughput
+      await supabaseAdmin.rpc("bulk_handle_earn_clicks", {
+        p_ad_ids: adIds,
+        p_user_emails: emails,
+      });
+    } catch (bulkErr: unknown) {
+      console.warn("⚠️ bulk_handle_earn_clicks fallback to individual processing:", (bulkErr as Error)?.message || bulkErr);
+      await Promise.all(
+        earns.map(async (e) => {
+          try {
+            await supabaseAdmin.rpc("handle_earn_click", {
+              p_ad_id: e.job.data?.adId,
+              p_user_email: e.job.data?.email,
+            });
+            await supabaseAdmin.rpc("qualify_referral_on_interaction", {
+              p_referee_email: e.job.data?.email,
+            });
+          } catch (err: unknown) {
+            console.error(`❌ Error handling earn click for ${e.job.data?.adId}:`, (err as Error)?.message || err);
+            if (e.job.id) failedJobIds.add(e.job.id);
+          }
+        })
+      );
+    }
   }
 
   // 3. Process Mutual clicks
@@ -137,6 +156,9 @@ export const flushBatch = async (): Promise<void> => {
           await supabaseAdmin.rpc("handle_mutual_click", {
             p_ad_id: m.job.data?.adId,
             p_user_email: m.job.data?.email,
+          });
+          await supabaseAdmin.rpc("qualify_referral_on_interaction", {
+            p_referee_email: m.job.data?.email,
           });
         } catch (err: unknown) {
           console.error(`❌ Error handling mutual click for ${m.job.data?.adId}:`, (err as Error)?.message || err);
@@ -154,6 +176,9 @@ export const flushBatch = async (): Promise<void> => {
           await supabaseAdmin.rpc("increment_ad_click", {
             p_ad_id: act.job.data?.adId,
             p_click_type: act.job.data?.clickType,
+          });
+          await supabaseAdmin.rpc("qualify_referral_on_interaction", {
+            p_referee_email: act.job.data?.email,
           });
         } catch (err: unknown) {
           console.error(`❌ Error incrementing ad click for ${act.job.data?.adId}:`, (err as Error)?.message || err);
@@ -221,6 +246,30 @@ export const flushBatch = async (): Promise<void> => {
       }
     })
   );
+
+  // Save failed jobs to Redis DLQ for admin escalation & retry so NO Naira is missed
+  if (failedJobIds.size > 0) {
+    const { default: redisConn } = await import("./redis");
+    await Promise.all(
+      currentBatch
+        .filter((j) => j.job.id && failedJobIds.has(j.job.id))
+        .map(async (failedItem) => {
+          try {
+            await redisConn.hset(
+              "queue:dlq:dead_letter_events",
+              failedItem.job.id!,
+              JSON.stringify({
+                name: failedItem.job.name,
+                data: failedItem.job.data,
+                failedAt: new Date().toISOString(),
+              })
+            );
+          } catch (dlqErr) {
+            console.error("❌ Failed to buffer to DLQ:", dlqErr);
+          }
+        })
+    );
+  }
 
   // Resolve successful jobs and reject failed ones
   currentBatch.forEach((j) => {

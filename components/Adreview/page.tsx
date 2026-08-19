@@ -200,6 +200,17 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
       ) : (
         <>
           <div className={styles.actionButtons}>
+            {productCtaLink && (
+              <a
+                href={productCtaLink.startsWith("http") ? productCtaLink : `https://${productCtaLink}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.productCtaButton}
+                style={{ marginRight: "8px" }}
+              >
+                {productCtaType || "Comment"}
+              </a>
+            )}
             {actionButtons.map((type) => (
               <a
                 key={`${type}-${actionDetails?.[type] || ""}`}

@@ -18,7 +18,7 @@ const AdCard = dynamic(() => import("../ui/AdCard"), {
 interface FeedProps {
   userEmail: string;
   initialProfile?: InitialProfileInput;
-  onEarnSuccess?: () => void;
+  onEarnSuccess?: (earnedAmount?: number) => void;
   onMutualSuccess?: () => void;
 }
 
@@ -106,30 +106,19 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
       setError(false);
 
       try {
-        let sharedAdPrepend: Ad | null = null;
+        let sharedAdParam = "";
         if (!isLoadMore && typeof window !== "undefined") {
           const sharedAdId = localStorage.getItem("sharedAdId");
           if (sharedAdId) {
-            try {
-              const { data, error: fetchErr } = await supabase
-                .from("addsactive")
-                .select("*")
-                .eq("id", sharedAdId)
-                .single();
-              if (!fetchErr && data && !data.completed_at) {
-                sharedAdPrepend = data as Ad;
-              }
-              localStorage.removeItem("sharedAdId");
-            } catch (e) {
-              console.error("❌ Error fetching shared ad:", e);
-            }
+            sharedAdParam = `&sharedAdId=${encodeURIComponent(sharedAdId)}`;
+            localStorage.removeItem("sharedAdId");
           }
         }
 
         const LIMIT = 10;
         const offset = pageNum * LIMIT;
         const refreshParam = pageNum === 0 ? "&refresh=true" : "";
-        const response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}`);
+        const response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`);
         if (!response.ok) {
           throw new Error("Failed to fetch ad feed");
         }
@@ -141,13 +130,8 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
           setAdvertiserProfiles((prev) => ({ ...prev, ...profilesMap }));
         }
 
-        let finalAds = feedAds;
-        if (sharedAdPrepend) {
-          finalAds = [sharedAdPrepend, ...feedAds.filter((a: Ad) => a.id !== sharedAdPrepend!.id)];
-        }
-
         setHasMore(feedAds.length >= LIMIT);
-        setAds((prev) => (isLoadMore ? [...prev, ...finalAds] : finalAds));
+        setAds((prev) => (isLoadMore ? [...prev, ...feedAds] : feedAds));
       } catch (err) {
         console.error("❌ Error loading feed:", err);
         setError(true);

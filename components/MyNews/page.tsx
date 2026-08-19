@@ -183,7 +183,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
             <MapPin size={11} /> {item.country || "Global"} {item.state ? `(${item.state}${item.province ? `, ${item.province}` : ""})` : ""}
           </span>
           <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--sidebar-bg)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "3px" }}>
-            <Calendar size={11} /> {item.campaign_days || 1} Days
+            <Calendar size={11} /> {item.campaign_days || 1} {(item.campaign_days || 1) === 1 ? "Day" : "Days"}
           </span>
         </div>
 

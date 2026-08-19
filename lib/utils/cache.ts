@@ -29,6 +29,46 @@ export async function setCachedProfile<T = any>(email: string, profile: T): Prom
   }
 }
 
+export async function incrementCachedProfileBalance(email: string, delta: number): Promise<void> {
+  if (!email || !delta) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    const raw = await redisConnection.get(`user:profile:${emailLower}`);
+    if (raw) {
+      const profile = JSON.parse(raw);
+      profile.balance = Math.max(0, Math.round(((profile.balance || 0) + delta) * 100) / 100);
+      await redisConnection.set(
+        `user:profile:${emailLower}`,
+        JSON.stringify(profile),
+        "EX",
+        60
+      );
+    }
+  } catch (err) {
+    console.error("❌ Redis incrementCachedProfileBalance error:", err);
+  }
+}
+
+export async function incrementCachedMutualCount(email: string): Promise<void> {
+  if (!email) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    const raw = await redisConnection.get(`user:profile:${emailLower}`);
+    if (raw) {
+      const profile = JSON.parse(raw);
+      profile.mutual_count = Math.min(50, (profile.mutual_count || 0) + 1);
+      await redisConnection.set(
+        `user:profile:${emailLower}`,
+        JSON.stringify(profile),
+        "EX",
+        60
+      );
+    }
+  } catch (err) {
+    console.error("❌ Redis incrementCachedMutualCount error:", err);
+  }
+}
+
 export async function invalidateCachedProfile(email: string): Promise<void> {
   if (!email) return;
   const emailLower = email.toLowerCase().trim();
@@ -76,7 +116,7 @@ export async function setCachedHighlights<T = Record<string, unknown>>(
       key,
       JSON.stringify(highlights),
       "EX",
-      30 // Natural 30-Second TTL for 100M+ Scale Optimization
+      300 // 5-Minute TTL for 100M+ Scale High-Performance Edge Offloading
     );
   } catch (err) {
     console.error("❌ Redis setCachedHighlights error:", err);
