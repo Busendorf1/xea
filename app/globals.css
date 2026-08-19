@@ -6,9 +6,46 @@
   --white-color: #ffffff;
 }
 
-/* Default Theme / Dark theme */
-[data-theme='dark'],
-:root:not([data-theme]) {
+/* Light Theme Variables (System Default when device is in Light Mode) */
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --primary: var(--blue-primary);
+  --primary-hover: var(--blue-hover);
+  --primary-glow: rgba(37, 99, 235, 0.1);
+  --secondary: #000000;
+  --secondary-glow: rgba(0, 0, 0, 0.05);
+  --card-bg: #f8fafc;
+  --card-border: #cbd5e1;
+  --card-border-hover: #94a3b8;
+  --text-muted: #475569;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --sidebar-bg: #f1f5f9;
+}
+
+/* Dark Theme Variables when device is in Dark Mode (no explicit light override) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='white']):not([data-theme='light']) {
+    --background: #000000;
+    --foreground: #ffffff;
+    --primary: var(--blue-primary);
+    --primary-hover: #3b82f6;
+    --primary-glow: rgba(37, 99, 235, 0.15);
+    --secondary: #ffffff;
+    --secondary-glow: rgba(255, 255, 255, 0.15);
+    --card-bg: #0c0c0e;
+    --card-border: #222222;
+    --card-border-hover: #333333;
+    --text-muted: #a0aec0;
+    --input-bg: #111111;
+    --input-border: #222222;
+    --sidebar-bg: #090909;
+  }
+}
+
+/* Explicit Dark Theme */
+[data-theme='dark'] {
   --background: #000000;
   --foreground: #ffffff;
   --primary: var(--blue-primary);
@@ -25,8 +62,9 @@
   --sidebar-bg: #090909;
 }
 
-/* White Theme */
-[data-theme='white'] {
+/* Explicit White / Light Theme */
+[data-theme='white'],
+[data-theme='light'] {
   --background: #ffffff;
   --foreground: #000000;
   --primary: var(--blue-primary);

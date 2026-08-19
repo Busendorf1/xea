@@ -67,12 +67,8 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  var saved = localStorage.getItem('theme');
-                  if (saved === 'white' || saved === 'dark' || saved === 'semi-dark') {
-                    document.documentElement.setAttribute('data-theme', saved);
-                  } else {
-                    document.documentElement.setAttribute('data-theme', 'dark');
-                  }
+                  var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'white');
                 } catch (e) {}
               })()
             `,

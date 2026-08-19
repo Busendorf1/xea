@@ -15,19 +15,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") as Theme;
-    if (savedTheme && ["white", "dark"].includes(savedTheme)) {
-      setThemeState(savedTheme);
-      document.documentElement.setAttribute("data-theme", savedTheme);
-    } else {
-      setThemeState("dark");
-      document.documentElement.setAttribute("data-theme", "dark");
-    }
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const syncTheme = (e?: MediaQueryListEvent | MediaQueryList) => {
+      const isDark = e ? e.matches : mediaQuery.matches;
+      const currentTheme: Theme = isDark ? "dark" : "white";
+      setThemeState(currentTheme);
+      document.documentElement.setAttribute("data-theme", currentTheme);
+    };
+
+    // Immediately synchronize with device color mode
+    syncTheme();
+
+    mediaQuery.addEventListener("change", syncTheme);
+    return () => mediaQuery.removeEventListener("change", syncTheme);
   }, []);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem("theme", newTheme);
     document.documentElement.setAttribute("data-theme", newTheme);
   };
 

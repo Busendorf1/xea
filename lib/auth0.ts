@@ -1,7 +1,14 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
 
+const rawDomain =
+  process.env.AUTH0_DOMAIN ||
+  process.env.AUTH0_ISSUER_BASE_URL ||
+  "dev-43c1fflhle3lv7jj.us.auth0.com";
+
+const cleanDomain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
 export const auth0 = new Auth0Client({
-  domain: process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER_BASE_URL || "placeholder.auth0.com",
+  domain: cleanDomain,
   clientId: process.env.AUTH0_CLIENT_ID || "placeholder-client-id",
   clientSecret: process.env.AUTH0_CLIENT_SECRET || "placeholder-client-secret",
   secret: process.env.AUTH0_SECRET || "placeholder-secret-must-be-32-characters-long",
