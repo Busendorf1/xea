@@ -369,7 +369,10 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     }}
                     onTimeUpdate={(e) => {
                       if (index === currentMediaIndex) {
-                        setVideoCurrentTime(e.currentTarget.currentTime || 0);
+                        const cur = e.currentTarget.currentTime || 0;
+                        if (Math.abs(cur - videoCurrentTime) >= 0.5) {
+                          setVideoCurrentTime(cur);
+                        }
                       }
                     }}
                     onLoadedMetadata={(e) => {

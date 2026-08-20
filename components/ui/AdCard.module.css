@@ -115,8 +115,8 @@
 
 .mediaBox {
   width: 100%;
-  min-height: 280px;
-  max-height: 550px;
+  aspect-ratio: 16 / 10;
+  max-height: 520px;
   border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--card-border);
@@ -129,6 +129,7 @@
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
+  contain: paint layout;
 }
 
 .mediaTrack {

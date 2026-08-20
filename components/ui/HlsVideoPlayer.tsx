@@ -33,6 +33,16 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
 
   const targetSource = hlsSrc || (src && src.includes(".m3u8") ? src : null);
   const fallbackSource = src && src.includes(".m3u8") ? undefined : src;
+  const autoPlayRef = useRef(autoPlay);
+  const mutedRef = useRef(muted);
+
+  useEffect(() => {
+    autoPlayRef.current = autoPlay;
+  }, [autoPlay]);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
 
   // Safe play helper adhering to Google Web Video Autoplay Policy
   const safePlay = useCallback(() => {
@@ -40,8 +50,8 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     if (!video) return;
 
     // Enforce muted property for autoplay compliance across iOS & Android
-    video.muted = !!muted;
-    video.defaultMuted = !!muted;
+    video.muted = !!mutedRef.current;
+    video.defaultMuted = !!mutedRef.current;
 
     const playPromise = video.play();
     if (playPromise !== undefined) {
@@ -49,7 +59,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         // If blocked by browser user gesture policy, unlock on first touch/scroll
         if (err.name === "NotAllowedError" || err.name === "AbortError") {
           const unlockGesture = () => {
-            if (internalVideoRef.current && autoPlay) {
+            if (internalVideoRef.current && autoPlayRef.current) {
               internalVideoRef.current.muted = true;
               internalVideoRef.current.play().catch(() => {});
             }
@@ -64,7 +74,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         }
       });
     }
-  }, [muted, autoPlay]);
+  }, []);
 
   // Sync muted and playsinline property directly on DOM element
   useEffect(() => {
@@ -79,7 +89,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     video.setAttribute("x5-playsinline", "true");
   }, [muted]);
 
-  // Handle play/pause state changes when in/out of view
+  // Handle play/pause state transitions strictly when autoPlay changes
   useEffect(() => {
     const video = internalVideoRef.current;
     if (!video) return;
@@ -101,7 +111,9 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         };
       }
     } else {
-      video.pause();
+      if (!video.paused) {
+        video.pause();
+      }
     }
   }, [autoPlay, safePlay]);
 
