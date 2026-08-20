@@ -50,9 +50,6 @@ export function useFeedActions({
           body: JSON.stringify({ adId: ad.id }),
         });
         if (!response.ok) throw new Error("Failed to record ad seen via API");
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-        }
         return true;
       } catch (e) {
         console.error("❌ Error recording ad seen via queue API:", e);
@@ -84,9 +81,6 @@ export function useFeedActions({
       incrementClicks?.(1);
       onEarnSuccess?.(expectedRate);
       setSeenAds((prev) => [...prev, ad.id]);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-      }
 
       try {
         const response = await fetch("/api/earn", {
@@ -158,7 +152,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, updateBalance, suspendAccount, onEarnSuccess, setViewerProfile]
+    [userEmail, updateBalance, incrementClicks, suspendAccount, onEarnSuccess, setViewerProfile]
   );
 
   // Add Mutual
@@ -210,9 +204,6 @@ export function useFeedActions({
 
         if (mutualResult === 1) {
           addMutual(publisherEmail);
-        }
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
         }
         onMutualSuccess?.();
         return true;

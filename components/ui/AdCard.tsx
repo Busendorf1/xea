@@ -16,6 +16,7 @@ import UserAvatar from "./UserAvatar";
 import HighlightCard from "./HighlightCard";
 import AdOptionsMenu from "./AdOptionsMenu";
 import MediaCarousel from "./MediaCarousel";
+import AdvertiserHoverCard from "./AdvertiserHoverCard";
 
 export interface Ad {
   id: string;
@@ -80,7 +81,18 @@ interface AdCardProps {
   userEmail: string;
   advertiserProfiles: Record<
     string,
-    { business_name?: string; firstName?: string; profileImage?: string; username?: string }
+    {
+      business_name?: string;
+      firstName?: string;
+      lastName?: string;
+      profileImage?: string;
+      username?: string;
+      bio?: string;
+      location?: string;
+      country?: string;
+      monetized?: boolean;
+      created_at?: string;
+    }
   >;
   viewerProfile: {
     balance: number;
@@ -332,15 +344,23 @@ function AdCard({
     >
       {/* Left Column: Avatar */}
       <div className={styles.avatarCol}>
-        <div className={styles.avatar}>
-          <UserAvatar
-            src={ad.custom_sponsor_logo || advertiserProfile?.profileImage}
-            fallbackText={brandName}
-            size={40}
-            alt={brandName}
-            className={styles.avatarImg}
-          />
-        </div>
+        <AdvertiserHoverCard
+          profile={advertiserProfile}
+          customName={ad.custom_sponsor_name}
+          customHandle={ad.custom_sponsor_handle}
+          customLogo={ad.custom_sponsor_logo}
+          isPlatformPost={isPlatformPost}
+        >
+          <div className={styles.avatar} style={{ cursor: "pointer" }}>
+            <UserAvatar
+              src={ad.custom_sponsor_logo || advertiserProfile?.profileImage}
+              fallbackText={brandName}
+              size={40}
+              alt={brandName}
+              className={styles.avatarImg}
+            />
+          </div>
+        </AdvertiserHoverCard>
       </div>
 
       {/* Right Column: Tweet Content */}
@@ -348,22 +368,32 @@ function AdCard({
         {/* Header Information */}
         <div className={styles.tweetHeader}>
           <div className={styles.headerLeft}>
-            <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
-            <span className={styles.sponsorHandle}>
-              {(() => {
-                if (ad.custom_sponsor_handle && ad.custom_sponsor_handle.trim() !== "") {
-                  const cleanHandle = ad.custom_sponsor_handle.trim().replace(/^@/, "");
-                  return `@${cleanHandle}`.slice(0, 25);
-                }
-                if (advertiserProfile?.username && advertiserProfile.username.trim() !== "") {
-                  return `@${advertiserProfile.username.toLowerCase().replace(/\s+/g, "")}`.slice(0, 25);
-                }
-                if (advertiserProfile?.firstName && advertiserProfile.firstName.trim() !== "") {
-                  return `@${advertiserProfile.firstName.toLowerCase().replace(/\s+/g, "")}`.slice(0, 25);
-                }
-                return "@Sponsored";
-              })()}
-            </span>
+            <AdvertiserHoverCard
+              profile={advertiserProfile}
+              customName={ad.custom_sponsor_name}
+              customHandle={ad.custom_sponsor_handle}
+              customLogo={ad.custom_sponsor_logo}
+              isPlatformPost={isPlatformPost}
+            >
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
+                <span className={styles.sponsorHandle}>
+                  {(() => {
+                    if (ad.custom_sponsor_handle && ad.custom_sponsor_handle.trim() !== "") {
+                      const cleanHandle = ad.custom_sponsor_handle.trim().replace(/^@/, "");
+                      return `@${cleanHandle}`.slice(0, 25);
+                    }
+                    if (advertiserProfile?.username && advertiserProfile.username.trim() !== "") {
+                      return `@${advertiserProfile.username.toLowerCase().replace(/\s+/g, "")}`.slice(0, 25);
+                    }
+                    if (advertiserProfile?.firstName && advertiserProfile.firstName.trim() !== "") {
+                      return `@${advertiserProfile.firstName.toLowerCase().replace(/\s+/g, "")}`.slice(0, 25);
+                    }
+                    return "@Sponsored";
+                  })()}
+                </span>
+              </div>
+            </AdvertiserHoverCard>
             <span className={styles.dot}></span>
             <span className={styles.adTime}>{formatTimestamp(ad.created_at)}</span>
           </div>

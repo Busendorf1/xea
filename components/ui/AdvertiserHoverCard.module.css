@@ -1,0 +1,115 @@
+.hoverCardWrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.hoverCardPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 290px;
+  max-width: 90vw;
+  background-color: var(--card-bg, #0f172a);
+  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.15);
+  z-index: 999999;
+  cursor: default;
+  animation: popoverFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(12px);
+  color: var(--foreground, #f8fafc);
+  text-align: left;
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.popoverHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.popoverAvatar {
+  flex-shrink: 0;
+}
+
+.popoverNames {
+  flex: 1;
+  min-width: 0;
+}
+
+.popoverDisplayNameRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.popoverDisplayName {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground, #f8fafc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1d9bf0;
+  flex-shrink: 0;
+}
+
+.popoverHandle {
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.popoverBio {
+  font-size: 0.825rem;
+  line-height: 1.45;
+  color: var(--foreground, #e2e8f0);
+  margin-bottom: 12px;
+  word-break: break-word;
+  white-space: pre-line;
+}
+
+.emptyBio {
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+  font-size: 0.78rem;
+}
+
+.popoverMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+  border-top: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
+  padding-top: 8px;
+}
+
+.metaItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

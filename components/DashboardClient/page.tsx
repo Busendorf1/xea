@@ -137,6 +137,7 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
           setUser((prev) => ({
             ...data,
             monetization_clicks: Math.max(prev.monetization_clicks || 0, liveClicks),
+            mutual_count: Math.max(prev.mutual_count || 0, Number(data.mutual_count) || 0),
             monetized: isMonetized ?? prev.monetized,
             balance: Math.max(prev.balance || 0, Number(data.balance) || 0),
           }));
@@ -238,15 +239,10 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
   const handleEarnSuccess = (earnedAmount?: number) => {
     const delta = typeof earnedAmount === "number" ? earnedAmount : 25;
     if (delta !== 0) {
-      setUser((prev) => {
-        const nextClicks = (prev.monetization_clicks || 0) + 1;
-        return {
-          ...prev,
-          balance: Math.max(0, Math.round(((prev.balance || 0) + delta) * 100) / 100),
-          monetization_clicks: nextClicks,
-          monetized: nextClicks >= 300 ? true : prev.monetized,
-        };
-      });
+      setUser((prev) => ({
+        ...prev,
+        balance: Math.max(0, Math.round(((prev.balance || 0) + delta) * 100) / 100),
+      }));
       if (delta > 0) {
         triggerEarnFeedback();
       }
@@ -254,15 +250,10 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
   };
 
   const handleMutualSuccess = () => {
-    setUser((prev) => {
-      const nextClicks = (prev.monetization_clicks || 0) + 1;
-      return {
-        ...prev,
-        mutual_count: Math.min(50, (prev.mutual_count || 0) + 1),
-        monetization_clicks: nextClicks,
-        monetized: nextClicks >= 300 ? true : prev.monetized,
-      };
-    });
+    setUser((prev) => ({
+      ...prev,
+      mutual_count: Math.min(50, (prev.mutual_count || 0) + 1),
+    }));
     triggerMutualFeedback();
   };
 

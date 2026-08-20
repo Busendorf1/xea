@@ -17,11 +17,16 @@ export const isVideoUrl = (url?: string | null): boolean => {
   if (!url) return false;
   const cleanUrl = url.split("?")[0].split("#")[0].toLowerCase();
   return (
-    /\.(mp4|webm|mov|avi|m3u8|m4v|ogv)$/i.test(cleanUrl) ||
+    /\.(mp4|webm|mov|avi|m3u8|m4v|ogv|mkv)$/i.test(cleanUrl) ||
     url.includes("/video/upload/") ||
+    url.includes("/ads_videos/") ||
+    url.includes("/storage/v1/object/public/ads/video") ||
     url.includes(".m3u8")
   );
 };
+
+// Global in-memory aspect ratio cache to preserve exact media dimensions across virtual scroll recycling
+const mediaAspectRatioCache = new Map<string, number>();
 
 const MediaCarousel: React.FC<MediaCarouselProps> = ({
   adMedia,
@@ -48,8 +53,6 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const isScrollLocked = useRef<boolean>(false);
   const isDragging = useRef<boolean>(false);
 
-  const [aspectRatios, setAspectRatios] = useState<Record<number, number>>({});
-
   const rawMediaUrls = useMemo(() => {
     return adMedia
       ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
@@ -65,6 +68,18 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       return 0;
     });
   }, [rawMediaUrls]);
+
+  const initialAspectRatios = useMemo(() => {
+    const map: Record<number, number> = {};
+    mediaUrls.forEach((url, i) => {
+      if (mediaAspectRatioCache.has(url)) {
+        map[i] = mediaAspectRatioCache.get(url)!;
+      }
+    });
+    return map;
+  }, [mediaUrls]);
+
+  const [aspectRatios, setAspectRatios] = useState<Record<number, number>>(initialAspectRatios);
 
   useEffect(() => {
     setMediaError(false);
@@ -347,7 +362,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   // Active aspect ratio clamped to X/Twitter feed standards (min 0.8 / 4:5 to max 1.777 / 16:9)
   const isCurrentVideo = isVideoUrl(mediaUrls[currentMediaIndex]) || (currentMediaIndex === 0 && !!hlsUrl);
-  const fallbackRatio = isCurrentVideo ? 16 / 9 : 1.777;
+  const fallbackRatio = isCurrentVideo ? 16 / 9 : 1.0;
   const rawRatio = aspectRatios[currentMediaIndex] || aspectRatios[0] || fallbackRatio;
   const clampedRatio = Math.min(Math.max(rawRatio, 0.8), 1.777);
 
@@ -379,6 +394,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       >
         {mediaUrls.map((url, index) => {
           const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
+          const itemHlsSrc = url.includes(".m3u8") ? url : (index === 0 && hlsUrl ? hlsUrl : undefined);
           return (
             <div key={index} className={styles.mediaWrapper}>
               {isVideo ? (
@@ -400,7 +416,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     }}
                     key={url}
                     src={url}
-                    hlsSrc={hlsUrl || (url.endsWith(".m3u8") ? url : undefined)}
+                    hlsSrc={itemHlsSrc}
                     loop
                     autoPlay={index === currentMediaIndex && isCardVisible}
                     preload={isPreloadWarm ? "auto" : "metadata"}
@@ -439,6 +455,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                       if (v.videoWidth && v.videoHeight) {
                         const rawRatio = v.videoWidth / v.videoHeight;
                         const clamped = Math.min(Math.max(rawRatio, 0.8), 2.39);
+                        mediaAspectRatioCache.set(url, clamped);
                         setAspectRatios((prev) => (prev[index] === clamped ? prev : { ...prev, [index]: clamped }));
                       }
                     }}
@@ -475,6 +492,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     if (img.naturalWidth && img.naturalHeight) {
                       const rawRatio = img.naturalWidth / img.naturalHeight;
                       const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
+                      mediaAspectRatioCache.set(url, clamped);
                       setAspectRatios((prev) => (prev[index] === clamped ? prev : { ...prev, [index]: clamped }));
                     }
                   }}

@@ -3,7 +3,7 @@ import { auth0 } from "@/lib/auth0";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import crypto from "crypto";
 import { feedQueue } from "@/lib/queue";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 import { env } from "@/lib/env";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { incrementCachedProfileBalance, incrementCachedMutualCount } from "@/lib/utils/cache";
@@ -31,11 +31,15 @@ export async function POST(request: NextRequest) {
 
     const emailKey = email.toLowerCase().trim();
 
-    // Server-side double click check (NX lock in Redis)
-    const lockKey = `lock:click:${emailKey}:${adId}:${type}`;
-    const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
-    if (!lockAcquired) {
-      return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
+    // Server-side double click check (NX lock in Redis if available)
+    if (isRedisReady()) {
+      try {
+        const lockKey = `lock:click:${emailKey}:${adId}:${type}`;
+        const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
+        if (!lockAcquired) {
+          return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
+        }
+      } catch {}
     }
 
     const userId = session?.user?.sub || email;
@@ -63,13 +67,71 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Check active earning cooldown
-    const cooldownKey = `user:cooldown:${emailKey}`;
-    const cachedCooldownRaw = await redisConnection.get(cooldownKey).catch(() => null);
-    if (cachedCooldownRaw) {
+    if (isRedisReady()) {
       try {
-        const { cooldownUntil, cooldownType } = JSON.parse(cachedCooldownRaw);
-        if (new Date(cooldownUntil).getTime() > now) {
-          // Record ad impression for advertiser delivery with 0 balance payout
+        const cooldownKey = `user:cooldown:${emailKey}`;
+        const cachedCooldownRaw = await redisConnection.get(cooldownKey).catch(() => null);
+        if (cachedCooldownRaw) {
+          const { cooldownUntil, cooldownType } = JSON.parse(cachedCooldownRaw);
+          if (new Date(cooldownUntil).getTime() > now) {
+            // Record ad impression for advertiser delivery with 0 balance payout
+            await supabaseAdmin
+              .from("ad_impressions")
+              .upsert({
+                ad_id: adId,
+                user_email: emailKey,
+                view_count: 1,
+                last_viewed_at: new Date().toISOString(),
+              }, { onConflict: "ad_id,user_email" });
+
+            return NextResponse.json({
+              success: false,
+              code: "COOLDOWN_ACTIVE",
+              cooldownUntil,
+              cooldownType: cooldownType || "pacing_15m",
+              message: "Earning is currently in cooldown.",
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Cooldown parse error:", e);
+      }
+    }
+
+    // 5. Evaluate sliding window velocity & entropy (Anti-Bot Engine)
+    if (type === "earn" && isRedisReady()) {
+      try {
+        const historyKey = `user:earn_history:${emailKey}`;
+        const violationsKey = `user:violations:${emailKey}`;
+
+        const [historyListRaw, violationsCountRaw] = await Promise.all([
+          redisConnection.lrange(historyKey, 0, 19).catch(() => []),
+          redisConnection.get(violationsKey).catch(() => "0"),
+        ]);
+
+        const lastEarnTimestamps = (historyListRaw || []).map((t) => parseInt(t, 10)).filter((n) => !isNaN(n)).reverse();
+        const consecutivePacingViolations = parseInt(violationsCountRaw || "0", 10) || 0;
+
+        const { evaluateEarningVelocity } = await import("@/lib/botDetection");
+        const velocityResult = evaluateEarningVelocity(now, {
+          lastEarnTimestamps,
+          consecutivePacingViolations,
+        });
+
+        if (velocityResult.isBotSuspect && velocityResult.cooldownDurationMinutes) {
+          const cooldownMinutes = velocityResult.cooldownDurationMinutes;
+          const cooldownUntil = new Date(now + cooldownMinutes * 60 * 1000).toISOString();
+          const cooldownType = velocityResult.cooldownType || "pacing_15m";
+          const cooldownKey = `user:cooldown:${emailKey}`;
+
+          // Set Redis cooldown key with TTL
+          await Promise.all([
+            redisConnection.set(cooldownKey, JSON.stringify({ cooldownUntil, cooldownType }), "EX", cooldownMinutes * 60).catch(() => {}),
+            redisConnection.incr(violationsKey).catch(() => {}),
+            redisConnection.expire(violationsKey, 7 * 24 * 3600).catch(() => {}),
+          ]);
+
+          // Record ad impression for advertiser delivery
           await supabaseAdmin
             .from("ad_impressions")
             .upsert({
@@ -83,69 +145,18 @@ export async function POST(request: NextRequest) {
             success: false,
             code: "COOLDOWN_ACTIVE",
             cooldownUntil,
-            cooldownType: cooldownType || "pacing_15m",
-            message: "Earning is currently in cooldown.",
+            cooldownType,
+            message: "Pacing limit reached.",
           });
         }
-      } catch (e) {
-        console.warn("Cooldown parse error:", e);
+
+        // Record this timestamp in rolling history (keep last 20)
+        await redisConnection.lpush(historyKey, String(now)).catch(() => {});
+        await redisConnection.ltrim(historyKey, 0, 19).catch(() => {});
+        await redisConnection.expire(historyKey, 24 * 3600).catch(() => {});
+      } catch (botErr) {
+        console.warn("⚠️ Bot detection Redis error:", botErr);
       }
-    }
-
-    // 5. Evaluate sliding window velocity & entropy (Anti-Bot Engine)
-    if (type === "earn") {
-      const historyKey = `user:earn_history:${emailKey}`;
-      const violationsKey = `user:violations:${emailKey}`;
-
-      const [historyListRaw, violationsCountRaw] = await Promise.all([
-        redisConnection.lrange(historyKey, 0, 19).catch(() => []),
-        redisConnection.get(violationsKey).catch(() => "0"),
-      ]);
-
-      const lastEarnTimestamps = historyListRaw.map((t) => parseInt(t, 10)).filter((n) => !isNaN(n)).reverse();
-      const consecutivePacingViolations = parseInt(violationsCountRaw || "0", 10) || 0;
-
-      const { evaluateEarningVelocity } = await import("@/lib/botDetection");
-      const velocityResult = evaluateEarningVelocity(now, {
-        lastEarnTimestamps,
-        consecutivePacingViolations,
-      });
-
-      if (velocityResult.isBotSuspect && velocityResult.cooldownDurationMinutes) {
-        const cooldownMinutes = velocityResult.cooldownDurationMinutes;
-        const cooldownUntil = new Date(now + cooldownMinutes * 60 * 1000).toISOString();
-        const cooldownType = velocityResult.cooldownType || "pacing_15m";
-
-        // Set Redis cooldown key with TTL
-        await Promise.all([
-          redisConnection.set(cooldownKey, JSON.stringify({ cooldownUntil, cooldownType }), "EX", cooldownMinutes * 60),
-          redisConnection.incr(violationsKey),
-          redisConnection.expire(violationsKey, 7 * 24 * 3600), // 7 days decay for violations counter
-        ]);
-
-        // Record ad impression for advertiser delivery
-        await supabaseAdmin
-          .from("ad_impressions")
-          .upsert({
-            ad_id: adId,
-            user_email: emailKey,
-            view_count: 1,
-            last_viewed_at: new Date().toISOString(),
-          }, { onConflict: "ad_id,user_email" });
-
-        return NextResponse.json({
-          success: false,
-          code: "COOLDOWN_ACTIVE",
-          cooldownUntil,
-          cooldownType,
-          message: "Pacing limit reached.",
-        });
-      }
-
-      // Record this timestamp in rolling history (keep last 20)
-      await redisConnection.lpush(historyKey, String(now)).catch(() => {});
-      await redisConnection.ltrim(historyKey, 0, 19).catch(() => {});
-      await redisConnection.expire(historyKey, 24 * 3600).catch(() => {});
     }
 
     let rpcResult: number | null = null;
@@ -288,39 +299,51 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Zero-Loss Guard: If direct DB write had any issue, record in Dead-Letter Queue (DLQ) for Admin recovery
-    if (!dbSuccess) {
-      const dlqJobId = `earn_fail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      await redisConnection.hset(
-        "queue:dlq:dead_letter_events",
-        dlqJobId,
-        JSON.stringify({
-          name: `${type}-click-retry`,
-          data: { adId, email: emailKey, type, amount: rpcResult ?? 25 },
-          failedAt: new Date().toISOString(),
-          error: "Direct DB write timeout/failure. Ready for automatic/admin retry.",
-        })
-      ).catch(() => {});
+    if (!dbSuccess && isRedisReady()) {
+      try {
+        const dlqJobId = `earn_fail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await redisConnection.hset(
+          "queue:dlq:dead_letter_events",
+          dlqJobId,
+          JSON.stringify({
+            name: `${type}-click-retry`,
+            data: { adId, email: emailKey, type, amount: rpcResult ?? 25 },
+            failedAt: new Date().toISOString(),
+            error: "Direct DB write timeout/failure. Ready for automatic/admin retry.",
+          })
+        );
+      } catch {}
     }
 
-    // 6. Enqueue the task to BullMQ for batch stream tracking
-    await feedQueue.add(`${type}-click`, {
-      adId,
-      email: emailKey,
-      type
-    }).catch(() => {});
+    // 6. Enqueue the task to BullMQ for batch stream tracking if Redis is available
+    if (isRedisReady()) {
+      try {
+        await feedQueue.add(`${type}-click`, {
+          adId,
+          email: emailKey,
+          type
+        });
+      } catch {}
+    }
 
     // Add adId to active seen set and increment daily RAM pacing hash
-    const todayDate = new Date().toISOString().slice(0, 10);
-    const seenSetKey = `seen:ads:${emailKey}`;
-    const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
+    if (isRedisReady()) {
+      try {
+        const todayDate = new Date().toISOString().slice(0, 10);
+        const seenSetKey = `seen:ads:${emailKey}`;
+        const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
 
-    await Promise.all([
-      redisConnection.sadd(seenSetKey, adId),
-      redisConnection.expire(seenSetKey, 86400), // 24 Hours TTL
-      redisConnection.hincrby(pacingHashKey, adId, 1),
-      redisConnection.expire(pacingHashKey, 86400), // 24 Hours TTL
-      import("@/lib/utils/cache").then((m) => m.incrementCachedMonetizationClicks(emailKey, 1)),
-    ]).catch((err) => console.error("❌ Redis seen set / RAM pacing update error:", err));
+        await Promise.all([
+          redisConnection.sadd(seenSetKey, adId).catch(() => null),
+          redisConnection.expire(seenSetKey, 86400).catch(() => null),
+          redisConnection.hincrby(pacingHashKey, adId, 1).catch(() => null),
+          redisConnection.expire(pacingHashKey, 86400).catch(() => null),
+        ]);
+      } catch {}
+    }
+
+    const { incrementCachedMonetizationClicks } = await import("@/lib/utils/cache");
+    await incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0);
 
     return NextResponse.json({ success: true, result: rpcResult ?? 25 });
   } catch (err: any) {

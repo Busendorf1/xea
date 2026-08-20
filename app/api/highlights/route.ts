@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, getCachedHighlights, setCachedHighlights } from "@/lib/utils/cache";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 import { safeParseArray } from "@/lib/utils/parsers";
 
 export const dynamic = "force-dynamic";
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch user's daily render count hash from Redis for per-highlight tracking
     const userViewsMap: Record<string, number> = {};
-    if (email) {
+    if (email && isRedisReady()) {
       try {
         const dateStr = new Date().toISOString().split("T")[0];
         const emailKey = email.toLowerCase().trim();
@@ -140,8 +140,10 @@ export async function GET(req: NextRequest) {
             userViewsMap[hlId] = parseInt(viewsHash[hlId] || "0", 10);
           });
         }
-      } catch (err) {
-        console.error("⚠️ Error fetching highlight views from Redis:", err);
+      } catch (err: any) {
+        if (err?.message !== "Connection is closed.") {
+          console.warn("⚠️ Error fetching highlight views from Redis:", err.message || err);
+        }
       }
     }
 

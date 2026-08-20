@@ -12,19 +12,25 @@ const redisUrl = process.env.REDIS_URL || (redisHost && redisPassword
 const globalForRedis = global as unknown as { redis: Redis | undefined };
 
 export const redisConnection = globalForRedis.redis ?? new Redis(redisUrl, {
-  maxRetriesPerRequest: 2,
-  connectTimeout: 5000,
-  commandTimeout: 3000,
+  maxRetriesPerRequest: 1,
+  connectTimeout: 2000,
+  commandTimeout: 1500,
   retryStrategy(times) {
-    const delay = Math.min(times * 200, 2000);
-    return delay;
+    if (times > 3) return null; // stop retrying and fail fast
+    return Math.min(times * 500, 2000);
   },
-  enableOfflineQueue: true,
+  enableOfflineQueue: false, // Fail fast instead of queuing and hanging API requests
+  lazyConnect: true,
+  autoResubscribe: false,
 });
 
 redisConnection.on("error", (err) => {
   console.warn("⚠️ Upstash Redis Connection Alert:", err.message || err);
 });
+
+export const isRedisReady = (): boolean => {
+  return !!redisConnection && redisConnection.status === "ready";
+};
 
 if (process.env.NODE_ENV !== "production") {
   globalForRedis.redis = redisConnection;

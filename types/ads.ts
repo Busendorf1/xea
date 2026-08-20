@@ -57,9 +57,17 @@ export interface Ad {
 }
 
 export interface AdvertiserProfile {
+  email?: string;
   business_name?: string;
   firstName?: string;
+  lastName?: string;
+  username?: string;
   profileImage?: string;
+  bio?: string;
+  location?: string;
+  country?: string;
+  created_at?: string;
+  monetized?: boolean;
 }
 
 export interface ViewerProfile {

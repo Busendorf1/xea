@@ -30,7 +30,21 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [advertiserProfiles, setAdvertiserProfiles] = useState<
-    Record<string, { business_name?: string; firstName?: string; profileImage?: string }>
+    Record<
+      string,
+      {
+        business_name?: string;
+        firstName?: string;
+        lastName?: string;
+        profileImage?: string;
+        username?: string;
+        bio?: string;
+        location?: string;
+        country?: string;
+        monetized?: boolean;
+        created_at?: string;
+      }
+    >
   >({});
   const [isMobile, setIsMobile] = useState(false);
 
@@ -135,7 +149,12 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         }
 
         setHasMore(feedAds.length >= LIMIT);
-        setAds((prev) => (isLoadMore ? [...prev, ...feedAds] : feedAds));
+        setAds((prev) => {
+          if (!isLoadMore) return feedAds;
+          const existingIds = new Set(prev.map((a) => a.id));
+          const newUnique = feedAds.filter((a) => !existingIds.has(a.id));
+          return [...prev, ...newUnique];
+        });
       } catch (err) {
         console.error("❌ Error loading feed:", err);
         setError(true);
@@ -163,14 +182,22 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   }, []);
 
   const parentRef = useRef<HTMLDivElement>(null);
-  const displayFeed = useMemo(() => buildDisplayFeed(ads), [ads, buildDisplayFeed]);
+  const displayFeed = useMemo(() => {
+    const rawFeed = buildDisplayFeed(ads);
+    const seen = new Set<string>();
+    return rawFeed.filter((item) => {
+      if (!item?.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [ads, buildDisplayFeed]);
 
   const virtualizer = useVirtualizer({
     count: displayFeed.length,
     getScrollElement: () => parentRef.current?.parentElement || null,
-    estimateSize: () => 480,
-    getItemKey: useCallback((index: number) => displayFeed[index]?.id || index, [displayFeed]),
-    overscan: 10,
+    estimateSize: () => 500,
+    getItemKey: useCallback((index: number) => displayFeed[index]?.id || `feed-item-${index}`, [displayFeed]),
+    overscan: 8,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -217,9 +244,10 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const ad = displayFeed[virtualRow.index];
+            if (!ad) return null;
             return (
               <div
-                key={ad.id}
+                key={virtualRow.key || ad.id || virtualRow.index}
                 ref={virtualizer.measureElement}
                 data-index={virtualRow.index}
                 style={{

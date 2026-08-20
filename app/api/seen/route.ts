@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { feedQueue } from "@/lib/queue";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
+import supabaseAdmin from "@/lib/utils/dbAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -22,31 +23,53 @@ export async function POST(request: NextRequest) {
     const emailKey = email.toLowerCase().trim();
 
     // Server-side double click check (NX lock in Redis)
-    const lockKey = `lock:click:${emailKey}:${adId}:seen`;
-    const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
-    if (!lockAcquired) {
-      return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
+    if (isRedisReady()) {
+      try {
+        const lockKey = `lock:click:${emailKey}:${adId}:seen`;
+        const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
+        if (!lockAcquired) {
+          return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
+        }
+      } catch {}
     }
 
-    // Enqueue Seen click
-    await feedQueue.add("seen-click", {
-      adId,
-      email: emailKey,
-      type: "seen"
-    });
+    // Direct DB record impression
+    try {
+      await supabaseAdmin
+        .from("ad_impressions")
+        .upsert({
+          ad_id: adId,
+          user_email: emailKey,
+          view_count: 1,
+          last_viewed_at: new Date().toISOString(),
+        }, { onConflict: "ad_id,user_email" });
+    } catch {}
 
-    // Add adId to active seen set and increment daily RAM pacing hash for <0.1ms ultra-scale filtering
-    const todayDate = new Date().toISOString().slice(0, 10);
-    const seenSetKey = `seen:ads:${emailKey}`;
-    const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
+    // Enqueue Seen click if Redis/Queue is available
+    if (isRedisReady()) {
+      try {
+        await feedQueue.add("seen-click", {
+          adId,
+          email: emailKey,
+          type: "seen"
+        });
 
-    await Promise.all([
-      redisConnection.sadd(seenSetKey, adId),
-      redisConnection.expire(seenSetKey, 86400), // 24 Hours TTL
-      redisConnection.hincrby(pacingHashKey, adId, 1),
-      redisConnection.expire(pacingHashKey, 86400), // 24 Hours TTL
-      import("@/lib/utils/cache").then((m) => m.incrementCachedMonetizationClicks(emailKey, 1)),
-    ]).catch((err) => console.error("❌ Redis seen set / RAM pacing update error:", err));
+        // Add adId to active seen set and increment daily RAM pacing hash for <0.1ms ultra-scale filtering
+        const todayDate = new Date().toISOString().slice(0, 10);
+        const seenSetKey = `seen:ads:${emailKey}`;
+        const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
+
+        await Promise.all([
+          redisConnection.sadd(seenSetKey, adId).catch(() => null),
+          redisConnection.expire(seenSetKey, 86400).catch(() => null),
+          redisConnection.hincrby(pacingHashKey, adId, 1).catch(() => null),
+          redisConnection.expire(pacingHashKey, 86400).catch(() => null),
+        ]);
+      } catch {}
+    }
+
+    const { incrementCachedMonetizationClicks } = await import("@/lib/utils/cache");
+    await incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0);
 
     return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {

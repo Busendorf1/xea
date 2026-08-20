@@ -28,11 +28,12 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
 }, ref) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const fallbackTriedRef = useRef<boolean>(false);
 
   useImperativeHandle(ref, () => internalVideoRef.current as HTMLVideoElement);
 
   const targetSource = hlsSrc || (src && src.includes(".m3u8") ? src : null);
-  const fallbackSource = src && src.includes(".m3u8") ? undefined : src;
+  const fallbackSource = src && !src.includes(".m3u8") ? src : undefined;
   const autoPlayRef = useRef(autoPlay);
   const mutedRef = useRef(muted);
 
@@ -117,10 +118,40 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     }
   }, [autoPlay, safePlay]);
 
+  // Fallback to direct MP4 source if HLS fails
+  const triggerFallback = useCallback(() => {
+    const video = internalVideoRef.current;
+    if (!video || fallbackTriedRef.current) return;
+    fallbackTriedRef.current = true;
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    if (fallbackSource && video.src !== fallbackSource) {
+      video.src = fallbackSource;
+      video.load();
+      if (autoPlayRef.current) {
+        safePlay();
+      }
+    }
+  }, [fallbackSource, safePlay]);
+
+  // Video error handler on the DOM element
+  const handleVideoError = useCallback(() => {
+    const video = internalVideoRef.current;
+    if (!video) return;
+    console.warn("⚠️ Native video error on source:", video.src, "- attempting fallback...");
+    triggerFallback();
+  }, [triggerFallback]);
+
   // HLS stream setup — runs ONLY when media targetSource/fallbackSource changes
   useEffect(() => {
     const video = internalVideoRef.current;
     if (!video) return;
+
+    fallbackTriedRef.current = false;
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -158,15 +189,8 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
 
         hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
           if (data.fatal) {
-            console.warn("⚠️ HLS playback error encountered, falling back to MP4:", data.type);
-            hls.destroy();
-            hlsRef.current = null;
-            if (fallbackSource) {
-              video.src = fallbackSource;
-              if (autoPlay) {
-                safePlay();
-              }
-            }
+            console.warn("⚠️ HLS playback fatal error encountered, falling back to MP4:", data.type);
+            triggerFallback();
           }
         });
       } else if (fallbackSource) {
@@ -175,8 +199,11 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
           safePlay();
         }
       }
-    } else if (fallbackSource) {
-      video.src = fallbackSource;
+    } else if (fallbackSource || src) {
+      const directSrc = fallbackSource || src;
+      if (video.src !== directSrc) {
+        video.src = directSrc;
+      }
       if (autoPlay) {
         safePlay();
       }
@@ -188,7 +215,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hlsRef.current = null;
       }
     };
-  }, [targetSource, fallbackSource, autoPlay, safePlay]);
+  }, [targetSource, fallbackSource, src, autoPlay, safePlay, triggerFallback]);
 
   return (
     <video
@@ -201,8 +228,16 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       preload="auto"
       className={className}
       poster={poster}
+      onError={handleVideoError}
       disablePictureInPicture
       controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        display: "block",
+        backgroundColor: "#000000",
+      }}
       {...restProps}
     />
   );

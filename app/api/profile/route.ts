@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,18 @@ export async function GET(req: NextRequest) {
       // Background 24h activity touch
       touchUserActivity(email, user).catch(() => {});
       console.log(`🚀 Profile cache hit in /api/profile for: ${email}`);
+
+      if (isRedisReady()) {
+        try {
+          const liveVal = await redisConnection.get(`user:live_clicks:${email.toLowerCase().trim()}`);
+          if (liveVal) {
+            const liveClicks = Number(liveVal) || 0;
+            user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
+            if (user.monetization_clicks >= 300) user.monetized = "true";
+          }
+        } catch {}
+      }
+
       return NextResponse.json(user);
     }
 
@@ -107,8 +120,18 @@ export async function GET(req: NextRequest) {
       user = newUser;
     }
 
+    // Merge live Redis atomic clicks (sub-millisecond accuracy)
     if (user) {
-      await setCachedProfile(email, user);
+      try {
+        const liveVal = await redisConnection.get(`user:live_clicks:${email.toLowerCase().trim()}`);
+        if (liveVal) {
+          const liveClicks = Number(liveVal) || 0;
+          user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
+          if (user.monetization_clicks >= 300) {
+            user.monetized = "true";
+          }
+        }
+      } catch {}
     }
 
     return NextResponse.json(user);

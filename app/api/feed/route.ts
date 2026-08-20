@@ -14,7 +14,7 @@ const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
 const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 
 // Essential Column Projection for Ultra-Fast DB Performance
-const AD_SELECT_FIELDS = "id, user_email, title, ad_media, ad_content, cta_text, cta_link, cost_per_impression, interest, country, state, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at";
+const AD_SELECT_FIELDS = "id, user_email, title, ad_media, hls_url, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cta_text, cta_link, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, custom_sponsor_name, custom_sponsor_handle, custom_sponsor_logo, interest, industry, behavior, lifestyle, personality, country, state, gender, employment_status, age_range, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at";
 
 export async function GET(req: NextRequest) {
   try {
@@ -227,16 +227,24 @@ export async function GET(req: NextRequest) {
       if (publisherEmails.length > 0) {
         const { data: profiles, error: profilesError } = await supabaseReadOnly
           .from("users")
-          .select('email, business_name, "firstName", "profileImage"')
+          .select('email, username, business_name, "firstName", "lastName", "profileImage", bio, location, country, created_at, monetized')
           .in("email", publisherEmails);
 
         if (!profilesError && profiles) {
           profiles.forEach((p: any) => {
             if (p.email) {
               profilesMap[p.email.toLowerCase()] = {
+                email: p.email,
+                username: p.username || "",
                 business_name: p.business_name || "",
                 firstName: p.firstName || "",
+                lastName: p.lastName || "",
                 profileImage: p.profileImage || "",
+                bio: p.bio || "",
+                location: p.location || "",
+                country: p.country || "",
+                created_at: p.created_at || "",
+                monetized: p.monetized === true || p.monetized === "true" || p.monetized === "yes",
               };
             }
           });

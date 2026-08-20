@@ -55,19 +55,28 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
       const res = await fetch("/api/profile");
       if (res.ok) {
         const data = await res.json();
-        const clicks = data.monetization_clicks ?? 0;
-        setViewerProfile({
-          balance: parseFloat(String(data.balance ?? 0)),
-          monetization_clicks: clicks,
-          mutual_count: data.mutual_count ?? 0,
-          mutuals: Array.isArray(data.mutuals) ? data.mutuals : [],
-          monetized:
+        setViewerProfile((prev) => {
+          const currentClicks = prev?.monetization_clicks ?? 0;
+          const currentBalance = prev?.balance ?? 0;
+          const currentMutualCount = prev?.mutual_count ?? 0;
+          const clicks = Math.max(currentClicks, Number(data.monetization_clicks) || 0);
+          const balance = Math.max(currentBalance, Number(data.balance) || 0);
+          const mutualCount = Math.max(currentMutualCount, Number(data.mutual_count) || 0);
+          const isMonetized =
             ((data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 300)) &&
-            (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now()),
-          suspended_until: data.suspended_until || null,
-          cooldown_until: data.cooldown_until || null,
-          cooldown_type: data.cooldown_type || null,
-          interest: data.interest || null,
+            (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now());
+
+          return {
+            balance,
+            monetization_clicks: clicks,
+            mutual_count: mutualCount,
+            mutuals: Array.isArray(data.mutuals) ? data.mutuals : (prev?.mutuals || []),
+            monetized: isMonetized,
+            suspended_until: data.suspended_until || null,
+            cooldown_until: data.cooldown_until || null,
+            cooldown_type: data.cooldown_type || null,
+            interest: data.interest || null,
+          };
         });
       }
     } catch (e) {

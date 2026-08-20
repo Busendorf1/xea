@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
@@ -19,17 +19,21 @@ export async function GET(req: NextRequest) {
     const cacheKey = `monetize:status:${emailLower}`;
 
     // 1. Edge Redis Cache Read Path for Ultra-Low Latency (<5ms response time)
-    try {
-      const cached = await redisConnection.get(cacheKey);
-      if (cached) {
-        return NextResponse.json(JSON.parse(cached), {
-          headers: {
-            "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
-          },
-        });
+    if (isRedisReady()) {
+      try {
+        const cached = await redisConnection.get(cacheKey);
+        if (cached) {
+          return NextResponse.json(JSON.parse(cached), {
+            headers: {
+              "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
+            },
+          });
+        }
+      } catch (e: any) {
+        if (e?.message !== "Connection is closed.") {
+          console.warn("⚠️ Redis get notice in /api/monetize:", e.message || e);
+        }
       }
-    } catch (e) {
-      console.warn("⚠️ Redis get error in /api/monetize:", e);
     }
 
     // 2. High-Scale Direct Query Path (Fast Index Read, ~10ms)
