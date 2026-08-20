@@ -127,6 +127,7 @@
 
 .mediaBox {
   width: 100%;
+  min-height: 280px;
   max-height: 540px;
   border-radius: 16px;
   overflow: hidden;

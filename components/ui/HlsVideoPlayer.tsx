@@ -21,7 +21,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   autoPlay = false,
   loop = false,
   muted = true,
-  controls = true,
+  controls = false,
   className = "",
   poster,
   ...restProps
@@ -137,10 +137,13 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
+          startFragPrefetch: true,
+          maxBufferLength: 8,
+          maxMaxBufferLength: 15,
           maxBufferHole: 0.5,
-          backBufferLength: 90,
+          backBufferLength: 0,
+          capLevelToPlayerSize: true,
+          autoStartLoad: true,
         });
 
         hlsRef.current = hls;
@@ -193,11 +196,13 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       autoPlay={autoPlay}
       loop={loop}
       muted={muted}
-      controls={controls}
+      controls={false}
       playsInline
       preload="auto"
       className={className}
       poster={poster}
+      disablePictureInPicture
+      controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
       {...restProps}
     />
   );

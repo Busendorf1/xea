@@ -173,6 +173,7 @@ function AdCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isCardVisible, setIsCardVisible] = useState(false);
+  const [isPreloadWarm, setIsPreloadWarm] = useState(false);
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
@@ -181,19 +182,37 @@ function AdCard({
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // IntersectionObserver with responsive margin for seamless autoplay on desktop & mobile
+  // Two-tiered IntersectionObserver:
+  // Tier 1: 800px rootMargin pre-warms video buffer/first-frame in background
+  // Tier 2: Active viewport threshold triggers autoplay with zero latency
   useEffect(() => {
     if (!cardRef.current) return;
-    const observer = new IntersectionObserver(
+
+    const preloadObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          setIsPreloadWarm(entry.isIntersecting);
+        });
+      },
+      { rootMargin: "800px 0px 800px 0px", threshold: 0 }
+    );
+
+    const playObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           setIsCardVisible(entry.isIntersecting);
         });
       },
-      { rootMargin: "200px 0px 200px 0px", threshold: [0, 0.15, 0.5] }
+      { rootMargin: "0px 0px 0px 0px", threshold: 0.35 }
     );
-    observer.observe(cardRef.current);
-    return () => observer.disconnect();
+
+    preloadObserver.observe(cardRef.current);
+    playObserver.observe(cardRef.current);
+
+    return () => {
+      preloadObserver.disconnect();
+      playObserver.disconnect();
+    };
   }, []);
 
   const handleToggleMute = useCallback(() => {
@@ -408,6 +427,7 @@ function AdCard({
           adMedia={ad.ad_media}
           hlsUrl={ad.hls_url}
           isCardVisible={isCardVisible}
+          isPreloadWarm={isPreloadWarm}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
         />

@@ -7,6 +7,7 @@ interface VideoControlBarProps {
   isPlaying: boolean;
   isMuted: boolean;
   isFullscreen: boolean;
+  showControls?: boolean;
   videoDuration: number;
   videoCurrentTime: number;
   onTogglePlay: () => void;
@@ -20,6 +21,7 @@ const VideoControlBar: React.FC<VideoControlBarProps> = ({
   isPlaying,
   isMuted,
   isFullscreen,
+  showControls = true,
   videoDuration,
   videoCurrentTime,
   onTogglePlay,
@@ -36,8 +38,12 @@ const VideoControlBar: React.FC<VideoControlBarProps> = ({
           : formatVideoTime(videoCurrentTime)}
       </div>
 
-      {/* Right: Controls (Horizontal on desktop, Vertical column with 50% border radius on mobile) */}
-      <div className={styles.videoControlsResponsiveGroup}>
+      {/* Right: Controls (Auto-hides after some seconds, reappears on touch/interaction) */}
+      <div
+        className={`${styles.videoControlsResponsiveGroup} ${
+          showControls ? styles.controlsVisible : styles.controlsHidden
+        }`}
+      >
         {/* Play/Pause Button */}
         <button
           type="button"

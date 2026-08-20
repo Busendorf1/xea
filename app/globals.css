@@ -131,5 +131,21 @@ input[type="text"], input[type="email"], input[type="password"], input[type="num
   box-shadow: none !important;
 }
 
-
-
+/* Universal video controls suppression: hide native browser center play buttons and default overlay controls */
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-play-button,
+video::-webkit-media-controls-overlay-play-button,
+video::-webkit-media-controls-overlay-enclosure,
+video::-webkit-media-controls-enclosure,
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+}

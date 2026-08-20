@@ -8,6 +8,7 @@ interface MediaCarouselProps {
   adMedia: string | null;
   hlsUrl?: string | null;
   isCardVisible: boolean;
+  isPreloadWarm?: boolean;
   isMuted: boolean;
   onToggleMute: () => void;
 }
@@ -26,6 +27,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   adMedia,
   hlsUrl,
   isCardVisible,
+  isPreloadWarm = true,
   isMuted,
   onToggleMute,
 }) => {
@@ -35,6 +37,8 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -65,6 +69,33 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   useEffect(() => {
     setMediaError(false);
   }, [currentMediaIndex]);
+
+  const resetControlsTimeout = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+    }
+    if (isPlaying) {
+      hideControlsTimerRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 2800);
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (isPlaying) {
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+      hideControlsTimerRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 2800);
+    } else {
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+      setShowControls(true);
+    }
+    return () => {
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+    };
+  }, [isPlaying]);
 
   // Helper to attempt playing a video safely when ready
   const attemptPlay = useCallback((idx: number) => {
@@ -157,6 +188,11 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       }
     }
   }, [currentMediaIndex, isMuted]);
+
+  const handleVideoClick = useCallback((e: React.MouseEvent) => {
+    resetControlsTimeout();
+    togglePlay();
+  }, [resetControlsTimeout, togglePlay]);
 
   const toggleFullscreen = useCallback((index: number) => {
     const video = videoRefs.current[index];
@@ -309,16 +345,19 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   if (mediaUrls.length === 0 || mediaError) return null;
 
-  // Active aspect ratio clamped to X/Twitter feed standards (min 0.8 / 4:5 to max 2.39 widescreen)
+  // Active aspect ratio clamped to X/Twitter feed standards (min 0.8 / 4:5 to max 1.777 / 16:9)
   const isCurrentVideo = isVideoUrl(mediaUrls[currentMediaIndex]) || (currentMediaIndex === 0 && !!hlsUrl);
   const fallbackRatio = isCurrentVideo ? 16 / 9 : 1.777;
-  const currentRatio = aspectRatios[currentMediaIndex] || aspectRatios[0] || fallbackRatio;
+  const rawRatio = aspectRatios[currentMediaIndex] || aspectRatios[0] || fallbackRatio;
+  const clampedRatio = Math.min(Math.max(rawRatio, 0.8), 1.777);
 
   return (
     <div
       className={styles.mediaBox}
       style={{
-        aspectRatio: `${currentRatio}`,
+        aspectRatio: `${clampedRatio}`,
+        minHeight: "280px",
+        maxHeight: "540px",
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -344,7 +383,14 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
           return (
             <div key={index} className={styles.mediaWrapper}>
               {isVideo ? (
-                <div className={styles.webVideoContainer} onClick={togglePlay} style={{ cursor: "pointer", position: "relative" }}>
+                <div
+                  className={styles.webVideoContainer}
+                  onClick={handleVideoClick}
+                  onPointerMove={resetControlsTimeout}
+                  onTouchStart={resetControlsTimeout}
+                  onMouseEnter={resetControlsTimeout}
+                  style={{ cursor: "pointer", position: "relative" }}
+                >
                   <HlsVideoPlayer
                     ref={(el) => {
                       if (el) {
@@ -358,6 +404,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     hlsSrc={hlsUrl || (url.endsWith(".m3u8") ? url : undefined)}
                     loop
                     autoPlay={index === currentMediaIndex && isCardVisible}
+                    preload={isPreloadWarm ? "auto" : "metadata"}
                     muted={isMuted}
                     controls={false}
                     className={styles.mediaVideo}
@@ -409,6 +456,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     isPlaying={isPlaying}
                     isMuted={isMuted}
                     isFullscreen={isFullscreen}
+                    showControls={showControls}
                     videoDuration={videoDuration}
                     videoCurrentTime={videoCurrentTime}
                     onTogglePlay={togglePlay}
