@@ -39,6 +39,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     viewerProfile,
     setViewerProfile,
     updateBalance,
+    incrementClicks,
     addMutual,
     suspendAccount,
   } = useViewerProfile(userEmail, initialProfile);
@@ -64,6 +65,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     viewerProfile,
     setViewerProfile,
     updateBalance,
+    incrementClicks,
     addMutual,
     suspendAccount,
     onEarnSuccess,

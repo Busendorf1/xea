@@ -118,13 +118,26 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
 
   const refreshProfileQuietly = async () => {
     try {
-      const res = await fetch("/api/profile");
-      if (res.ok) {
-        const data = await res.json();
+      const [pRes, mRes] = await Promise.all([
+        fetch("/api/profile"),
+        fetch("/api/monetize"),
+      ]);
+      if (pRes.ok) {
+        const data = await pRes.json();
+        let liveClicks = data.monetization_clicks ?? 0;
+        let isMonetized = data.monetized;
+        if (mRes.ok) {
+          const mData = await mRes.json();
+          if (mData && mData.success) {
+            liveClicks = Math.max(liveClicks, mData.clicksCount || 0);
+            if (mData.isMonetized) isMonetized = true;
+          }
+        }
         if (data && !data.error && data.email) {
           setUser((prev) => ({
             ...data,
-            // Protect against stale server balance overwriting fresh optimistic balance
+            monetization_clicks: Math.max(prev.monetization_clicks || 0, liveClicks),
+            monetized: isMonetized ?? prev.monetized,
             balance: Math.max(prev.balance || 0, Number(data.balance) || 0),
           }));
         }
@@ -225,10 +238,15 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
   const handleEarnSuccess = (earnedAmount?: number) => {
     const delta = typeof earnedAmount === "number" ? earnedAmount : 25;
     if (delta !== 0) {
-      setUser((prev) => ({
-        ...prev,
-        balance: Math.max(0, Math.round(((prev.balance || 0) + delta) * 100) / 100),
-      }));
+      setUser((prev) => {
+        const nextClicks = (prev.monetization_clicks || 0) + 1;
+        return {
+          ...prev,
+          balance: Math.max(0, Math.round(((prev.balance || 0) + delta) * 100) / 100),
+          monetization_clicks: nextClicks,
+          monetized: nextClicks >= 300 ? true : prev.monetized,
+        };
+      });
       if (delta > 0) {
         triggerEarnFeedback();
       }
@@ -236,10 +254,15 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
   };
 
   const handleMutualSuccess = () => {
-    setUser((prev) => ({
-      ...prev,
-      mutual_count: Math.min(50, (prev.mutual_count || 0) + 1),
-    }));
+    setUser((prev) => {
+      const nextClicks = (prev.monetization_clicks || 0) + 1;
+      return {
+        ...prev,
+        mutual_count: Math.min(50, (prev.mutual_count || 0) + 1),
+        monetization_clicks: nextClicks,
+        monetized: nextClicks >= 300 ? true : prev.monetized,
+      };
+    });
     triggerMutualFeedback();
   };
 
@@ -270,11 +293,28 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
       fetchNotifications();
     };
 
+    const handleClickIncrement = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const delta = customEvent.detail?.delta || 1;
+      setUser((prev) => {
+        const current = prev.monetization_clicks || 0;
+        const nextClicks = current + delta;
+        const nextMonetized = nextClicks >= 300 ? true : prev.monetized;
+        return {
+          ...prev,
+          monetization_clicks: nextClicks,
+          monetized: nextMonetized,
+        };
+      });
+    };
+
     window.addEventListener("focus", onFocus);
+    window.addEventListener("xea:click-increment", handleClickIncrement);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("xea:click-increment", handleClickIncrement);
     };
   }, [email]);
 

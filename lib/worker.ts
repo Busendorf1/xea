@@ -213,6 +213,13 @@ export const flushBatch = async (): Promise<void> => {
         const balanceCap = getAtwBalanceLimit(userData?.atw_tier, isAdmin);
         const formattedCap = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(balanceCap);
 
+        // 1. Always increment user 300-clicks monetization progress
+        await supabaseAdmin.rpc("increment_user_click_progress", {
+          p_email: userEmail,
+          p_count: clickCount,
+        });
+
+        // 2. Check ATW Balance Cap
         if (currentBal >= balanceCap) {
           console.log(`ℹ️ ATW tier balance cap of ${formattedCap} reached for ${userEmail}. Diverting click earnings to platform revenue.`);
           await supabaseAdmin.from("notifications").insert({
@@ -221,11 +228,6 @@ export const flushBatch = async (): Promise<void> => {
             message: `Your wallet balance has reached the ${formattedCap} maximum holding limit for your ATW level (${userData?.atw_tier || "ATW1"}). Click earnings during this period are permanently missed and will not be paid back later. Please initiate a withdrawal or upgrade your ATW level to resume earning.`,
           });
         } else {
-          await supabaseAdmin.rpc("increment_user_click_progress", {
-            p_email: userEmail,
-            p_count: clickCount,
-          });
-
           const alertThreshold = balanceCap * 0.5;
           if (currentBal >= alertThreshold && currentBal < balanceCap) {
             await supabaseAdmin.from("notifications").insert({

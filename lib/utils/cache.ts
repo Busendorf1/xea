@@ -69,12 +69,34 @@ export async function incrementCachedMutualCount(email: string): Promise<void> {
   }
 }
 
+export async function incrementCachedMonetizationClicks(email: string, count: number = 1): Promise<number> {
+  if (!email) return 0;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    const liveKey = `user:live_clicks:${emailLower}`;
+    const liveClicks = await redisConnection.incrby(liveKey, count);
+    await redisConnection.expire(liveKey, 86400 * 30); // 30-day retention
+
+    // Invalidate profile & monetize status cache to force fresh real-time calculation
+    await Promise.all([
+      redisConnection.del(`monetize:status:${emailLower}`),
+      redisConnection.del(`user:profile:${emailLower}`),
+    ]);
+
+    return liveClicks;
+  } catch (err) {
+    console.error("❌ Redis incrementCachedMonetizationClicks error:", err);
+    return 0;
+  }
+}
+
 export async function invalidateCachedProfile(email: string): Promise<void> {
   if (!email) return;
   const emailLower = email.toLowerCase().trim();
   try {
     await Promise.all([
       redisConnection.del(`user:profile:${emailLower}`),
+      redisConnection.del(`monetize:status:${emailLower}`),
       redisConnection.del(`statement:payments:${emailLower}`),
       redisConnection.del(`statement:withdrawals:${emailLower}`),
     ]);

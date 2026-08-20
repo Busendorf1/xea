@@ -29,13 +29,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Duplicate click detected." }, { status: 429 });
     }
 
+    const emailLower = email.toLowerCase().trim();
+
     // Enqueue Action click to Upstash Redis queue
-    await feedQueue.add("action-click", {
-      adId,
-      clickType,
-      email: email.toLowerCase().trim(),
-      type: "action-click"
-    });
+    await Promise.all([
+      feedQueue.add("action-click", {
+        adId,
+        clickType,
+        email: emailLower,
+        type: "action-click"
+      }),
+      import("@/lib/utils/cache").then((m) => m.incrementCachedMonetizationClicks(emailLower, 1)),
+    ]).catch((err) => console.error("❌ Action click enqueue / click increment error:", err));
 
     return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {

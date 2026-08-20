@@ -7,6 +7,7 @@ interface UseFeedActionsProps {
   viewerProfile: ViewerProfileState | null;
   setViewerProfile?: React.Dispatch<React.SetStateAction<ViewerProfileState | null>>;
   updateBalance: (delta: number) => void;
+  incrementClicks?: (delta?: number) => void;
   addMutual: (targetEmail: string) => void;
   suspendAccount: (hours?: number) => void;
   onEarnSuccess?: (earnedAmount?: number) => void;
@@ -18,6 +19,7 @@ export function useFeedActions({
   viewerProfile,
   setViewerProfile,
   updateBalance,
+  incrementClicks,
   addMutual,
   suspendAccount,
   onEarnSuccess,
@@ -39,6 +41,7 @@ export function useFeedActions({
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
       setSeenAds((prev) => [...prev, ad.id]);
+      incrementClicks?.(1);
 
       try {
         const response = await fetch("/api/seen", {
@@ -47,6 +50,9 @@ export function useFeedActions({
           body: JSON.stringify({ adId: ad.id }),
         });
         if (!response.ok) throw new Error("Failed to record ad seen via API");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+        }
         return true;
       } catch (e) {
         console.error("❌ Error recording ad seen via queue API:", e);
@@ -56,7 +62,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail]
+    [userEmail, incrementClicks]
   );
 
   // Claim Earn reward
@@ -73,10 +79,14 @@ export function useFeedActions({
 
       const expectedRate = ad.cost_per_impression && ad.cost_per_impression > 0 ? ad.cost_per_impression : 25;
 
-      // 1. INSTANT OPTIMISTIC UI: Trigger balance & counter update immediately (0ms delay)
+      // 1. INSTANT OPTIMISTIC UI: Trigger balance & click progress update immediately (0ms delay)
       updateBalance(expectedRate);
+      incrementClicks?.(1);
       onEarnSuccess?.(expectedRate);
       setSeenAds((prev) => [...prev, ad.id]);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+      }
 
       try {
         const response = await fetch("/api/earn", {
@@ -168,6 +178,8 @@ export function useFeedActions({
       if (processingRef.current.has(ad.id)) return false;
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
+      incrementClicks?.(1);
+      setSeenAds((prev) => [...prev, ad.id]);
 
       try {
         const response = await fetch("/api/earn", {
@@ -196,10 +208,11 @@ export function useFeedActions({
           return false;
         }
 
-        setSeenAds((prev) => [...prev, ad.id]);
-
         if (mutualResult === 1) {
           addMutual(publisherEmail);
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
         }
         onMutualSuccess?.();
         return true;
@@ -212,7 +225,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, viewerProfile, addMutual, suspendAccount, onMutualSuccess]
+    [userEmail, viewerProfile, addMutual, incrementClicks, suspendAccount, onMutualSuccess]
   );
 
   // Ad Sharing

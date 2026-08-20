@@ -41,6 +41,13 @@ export async function GET(req: NextRequest) {
 
     let payload: any;
 
+    // Check live real-time clicks from Redis counter (instant real-time updates)
+    let liveClicksDelta = 0;
+    try {
+      const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
+      if (liveVal) liveClicksDelta = Number(liveVal) || 0;
+    } catch {}
+
     if (uErr || !uData) {
       // Fallback to RPC if single-read fails or user row not found
       const { data: statusData } = await supabaseAdmin.rpc("check_and_update_monetization_status", {
@@ -48,15 +55,15 @@ export async function GET(req: NextRequest) {
       });
 
       const row = statusData?.[0];
-      const clicksCount = Number(row?.monetization_clicks || 0);
+      const clicksCount = Math.max(Number(row?.monetization_clicks || 0), liveClicksDelta);
       const invitesCount = Number(row?.referral_downloads_count || 0);
-      const isMonetized = !!row?.monetized;
+      const isMonetized = !!row?.monetized || clicksCount >= 300;
 
       payload = {
         success: true,
         isMonetized,
         clicksCount,
-        clicksRemaining: Number(row?.clicks_remaining || Math.max(0, 300 - clicksCount)),
+        clicksRemaining: Math.max(0, 300 - clicksCount),
         targetClicks: 300,
         invitesCount,
         invitesRemaining: Number(row?.invites_remaining || Math.max(0, 12 - invitesCount)),
@@ -66,7 +73,8 @@ export async function GET(req: NextRequest) {
         statusMessage: row?.status_message || null,
       };
     } else {
-      const clicks = uData.monetization_clicks ?? 0;
+      const dbClicks = uData.monetization_clicks ?? 0;
+      const clicks = Math.max(dbClicks, liveClicksDelta);
       const invites = uData.referral_downloads_count ?? 0;
       const isMonetized = !!(
         uData.monetized === "true" ||

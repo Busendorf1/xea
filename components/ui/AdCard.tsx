@@ -451,6 +451,9 @@ function AdCard({
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ adId: ad.id, clickType }),
                       }).catch((err) => console.error("Failed to log CTA click:", err));
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                      }
                     }}
                   >
                     {ad.product_cta_type || "Buy"}
@@ -473,6 +476,9 @@ function AdCard({
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ adId: ad.id, clickType }),
                         }).catch((err) => console.error("Failed to log click:", err));
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                        }
                       }}
                     >
                       {getIcon(type)}
@@ -496,6 +502,9 @@ function AdCard({
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ adId: ad.id, clickType }),
                       }).catch((err) => console.error("Failed to log CTA click:", err));
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                      }
                     }}
                   >
                     {ad.product_cta_type || "Buy"}
@@ -518,6 +527,9 @@ function AdCard({
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ adId: ad.id, clickType }),
                         }).catch((err) => console.error("Failed to log click:", err));
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                        }
                       }}
                     >
                       {getIcon(type)}
@@ -569,6 +581,9 @@ function AdCard({
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ adId: ad.id, clickType }),
                     }).catch((err) => console.error("Failed to log CTA click:", err));
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                    }
                   }}
                 >
                   {ad.product_cta_type || "Comment"}
@@ -592,6 +607,9 @@ function AdCard({
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ adId: ad.id, clickType: "read_more" }),
                         }).catch((err) => console.error("Failed to log click:", err));
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                        }
                       }}
                     >
                       {getIcon(type)}
@@ -614,6 +632,9 @@ function AdCard({
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ adId: ad.id, clickType }),
                       }).catch((err) => console.error("Failed to log click:", err));
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+                      }
                     }}
                   >
                     {getIcon(type)}

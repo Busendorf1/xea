@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       redisConnection.expire(seenSetKey, 86400), // 24 Hours TTL
       redisConnection.hincrby(pacingHashKey, adId, 1),
       redisConnection.expire(pacingHashKey, 86400), // 24 Hours TTL
+      import("@/lib/utils/cache").then((m) => m.incrementCachedMonetizationClicks(emailKey, 1)),
     ]).catch((err) => console.error("❌ Redis seen set / RAM pacing update error:", err));
 
     return NextResponse.json({ success: true, queued: true });

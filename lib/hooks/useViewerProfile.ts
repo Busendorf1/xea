@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 
 export interface ViewerProfileState {
   balance: number;
+  monetization_clicks: number;
   mutual_count: number;
   mutuals: string[];
   monetized: boolean;
@@ -13,6 +14,7 @@ export interface ViewerProfileState {
 
 export interface InitialProfileInput {
   balance?: number | string | null;
+  monetization_clicks?: number | null;
   mutual_count?: number | null;
   mutuals?: string[] | null;
   monetized?: boolean | string | null;
@@ -26,14 +28,17 @@ export interface InitialProfileInput {
 export function useViewerProfile(userEmail: string, initialProfile?: InitialProfileInput) {
   const [viewerProfile, setViewerProfile] = useState<ViewerProfileState | null>(() => {
     if (initialProfile) {
+      const clicks = initialProfile.monetization_clicks ?? 0;
       return {
         balance: parseFloat(String(initialProfile.balance ?? 0)),
+        monetization_clicks: clicks,
         mutual_count: initialProfile.mutual_count ?? 0,
         mutuals: Array.isArray(initialProfile.mutuals) ? initialProfile.mutuals : [],
         monetized:
-          (initialProfile.monetized === "yes" ||
+          ((initialProfile.monetized === "yes" ||
             initialProfile.monetized === "true" ||
-            initialProfile.monetized === true) &&
+            initialProfile.monetized === true ||
+            clicks >= 300)) &&
           (!initialProfile.monetized_until ||
             new Date(initialProfile.monetized_until).getTime() > Date.now()),
         suspended_until: initialProfile.suspended_until || null,
@@ -50,12 +55,14 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
       const res = await fetch("/api/profile");
       if (res.ok) {
         const data = await res.json();
+        const clicks = data.monetization_clicks ?? 0;
         setViewerProfile({
           balance: parseFloat(String(data.balance ?? 0)),
+          monetization_clicks: clicks,
           mutual_count: data.mutual_count ?? 0,
           mutuals: Array.isArray(data.mutuals) ? data.mutuals : [],
           monetized:
-            (data.monetized === "yes" || data.monetized === "true" || data.monetized === true) &&
+            ((data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 300)) &&
             (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now()),
           suspended_until: data.suspended_until || null,
           cooldown_until: data.cooldown_until || null,
@@ -76,6 +83,22 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
 
   const updateBalance = useCallback((amountDelta: number) => {
     setViewerProfile((prev) => (prev ? { ...prev, balance: prev.balance + amountDelta } : null));
+  }, []);
+
+  const incrementClicks = useCallback((delta = 1) => {
+    setViewerProfile((prev) => {
+      if (!prev) return null;
+      const nextClicks = (prev.monetization_clicks || 0) + delta;
+      const isNowMonetized = nextClicks >= 300 ? true : prev.monetized;
+      return {
+        ...prev,
+        monetization_clicks: nextClicks,
+        monetized: isNowMonetized,
+      };
+    });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta } }));
+    }
   }, []);
 
   const addMutual = useCallback((targetEmail: string) => {
@@ -106,6 +129,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
     setViewerProfile,
     fetchViewerProfile,
     updateBalance,
+    incrementClicks,
     addMutual,
     suspendAccount,
   };

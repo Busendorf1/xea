@@ -32,7 +32,10 @@ BEGIN
   v_email_lower := lower(p_email);
 
   SELECT 
-    COALESCE(u.monetized::boolean, false),
+    CASE 
+      WHEN u.monetized::text = 'true' OR u.monetized::text = 'yes' OR u.monetized::text = '1' THEN true 
+      ELSE false 
+    END,
     COALESCE(u.monetization_clicks, 0),
     COALESCE(u.last_active_at, timezone('utc'::text, now()))
   INTO v_monetized, v_clicks, v_last_active
@@ -106,7 +109,10 @@ BEGIN
 
   SELECT 
     COALESCE(monetization_clicks, 0),
-    COALESCE(monetized::boolean, false),
+    CASE 
+      WHEN monetized::text = 'true' OR monetized::text = 'yes' OR monetized::text = '1' THEN true 
+      ELSE false 
+    END,
     COALESCE(last_active_at, timezone('utc'::text, now()))
   INTO v_current_clicks, v_is_monetized, v_last_active
   FROM public.users
@@ -141,6 +147,15 @@ BEGIN
   RETURN QUERY SELECT v_current_clicks, v_is_monetized;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execution permissions on RPC functions
+GRANT EXECUTE ON FUNCTION public.check_and_update_monetization_status(TEXT) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.increment_user_click_progress(TEXT, INT) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.reset_inactive_monetized_users() TO authenticated, service_role, anon;
+
+-- Add performance indexes for 100M+ scale lookups
+CREATE INDEX IF NOT EXISTS idx_users_monetized_clicks ON public.users (monetized, monetization_clicks);
+CREATE INDEX IF NOT EXISTS idx_users_last_active_at ON public.users (last_active_at);
 
 -- 4. Scheduled cleanup function for 7-day inactive users (suitable for pg_cron or Vercel Cron)
 CREATE OR REPLACE FUNCTION public.reset_inactive_monetized_users()

@@ -159,6 +159,32 @@ export default function Monetize({ session }: MonetizeProps) {
 
   useEffect(() => {
     fetchStatus();
+
+    const onFocus = () => {
+      fetchStatus();
+    };
+
+    const handleClickIncrement = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const delta = customEvent.detail?.delta || 1;
+      setClicksCount((prev: number) => {
+        const next = prev + delta;
+        setClicksRemaining(Math.max(0, 300 - next));
+        if (next >= 300) setIsMonetized(true);
+        return next;
+      });
+    };
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("xea:click-increment", handleClickIncrement);
+
+    const interval = setInterval(fetchStatus, 15000);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("xea:click-increment", handleClickIncrement);
+      clearInterval(interval);
+    };
   }, [email]);
 
   const clicksPercent = Math.min(100, Math.round((clicksCount / 300) * 100));
