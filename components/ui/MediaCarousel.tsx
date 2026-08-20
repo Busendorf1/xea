@@ -356,7 +356,6 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       className={styles.mediaBox}
       style={{
         aspectRatio: `${clampedRatio}`,
-        minHeight: "280px",
         maxHeight: "540px",
       }}
       onPointerDown={handlePointerDown}
