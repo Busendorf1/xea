@@ -127,28 +127,34 @@
 
 .mediaBox {
   width: 100%;
+  max-height: 540px;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--card-border);
   margin-bottom: 0.75rem;
   background-color: var(--sidebar-bg);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .adImgElement {
   width: 100%;
-  height: auto;
-  max-height: 450px;
-  object-fit: contain;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
   display: block;
+  background-color: transparent;
 }
 
 .mediaVideo {
   width: 100%;
-  height: auto;
-  max-height: 450px;
-  object-fit: contain;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
   display: block;
-  background-color: var(--background);
+  background-color: transparent;
 }
 
 .actionButtons {

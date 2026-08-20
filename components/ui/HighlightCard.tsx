@@ -23,6 +23,8 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
     }
   }, [ad.is_highlight, ad.id]);
 
+  const [aspectRatio, setAspectRatio] = React.useState<number>(1.777);
+
   return (
     <div key={`hl-${ad.id}`} className={styles.card} style={style}>
       {/* Left Column: Avatar Icon */}
@@ -60,11 +62,19 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
         <p className={styles.adText}>{ad.ad_content}</p>
 
         {ad.ad_media && (
-          <div className={styles.mediaBox}>
+          <div className={styles.mediaBox} style={{ aspectRatio: `${aspectRatio}` }}>
             <img
               src={ad.ad_media}
               alt="Highlight Cover"
               className={styles.adImgElement}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth && img.naturalHeight) {
+                  const rawRatio = img.naturalWidth / img.naturalHeight;
+                  const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
+                  setAspectRatio(clamped);
+                }
+              }}
             />
           </div>
         )}

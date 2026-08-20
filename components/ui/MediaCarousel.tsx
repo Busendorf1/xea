@@ -44,6 +44,8 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const isScrollLocked = useRef<boolean>(false);
   const isDragging = useRef<boolean>(false);
 
+  const [aspectRatios, setAspectRatios] = useState<Record<number, number>>({});
+
   const rawMediaUrls = useMemo(() => {
     return adMedia
       ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
@@ -200,10 +202,10 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   }, []);
 
   const formatVideoTime = useCallback((seconds: number) => {
-    if (isNaN(seconds) || seconds <= 0) return "00:00";
+    if (isNaN(seconds) || seconds <= 0) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -307,9 +309,17 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   if (mediaUrls.length === 0 || mediaError) return null;
 
+  // Active aspect ratio clamped to X/Twitter feed standards (min 0.8 / 4:5 to max 2.39 widescreen)
+  const isCurrentVideo = isVideoUrl(mediaUrls[currentMediaIndex]) || (currentMediaIndex === 0 && !!hlsUrl);
+  const fallbackRatio = isCurrentVideo ? 16 / 9 : 1.777;
+  const currentRatio = aspectRatios[currentMediaIndex] || aspectRatios[0] || fallbackRatio;
+
   return (
     <div
       className={styles.mediaBox}
+      style={{
+        aspectRatio: `${currentRatio}`,
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
@@ -376,8 +386,14 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                       }
                     }}
                     onLoadedMetadata={(e) => {
-                      if (e.currentTarget.duration && !isNaN(e.currentTarget.duration)) {
-                        setVideoDuration(e.currentTarget.duration);
+                      const v = e.currentTarget;
+                      if (v.duration && !isNaN(v.duration)) {
+                        setVideoDuration(v.duration);
+                      }
+                      if (v.videoWidth && v.videoHeight) {
+                        const rawRatio = v.videoWidth / v.videoHeight;
+                        const clamped = Math.min(Math.max(rawRatio, 0.8), 2.39);
+                        setAspectRatios((prev) => (prev[index] === clamped ? prev : { ...prev, [index]: clamped }));
                       }
                     }}
                     onDurationChange={(e) => {
@@ -387,30 +403,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     }}
                   />
 
-                  {/* Play Button Center Overlay when paused */}
-                  {!isPlaying && index === currentMediaIndex && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "50%",
-                        left: "50%",
-                        transform: "translate(-50%, -50%)",
-                        backgroundColor: "rgba(0, 0, 0, 0.55)",
-                        borderRadius: "50%",
-                        padding: "14px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        pointerEvents: "none",
-                        zIndex: 10,
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <Play size={28} color="#ffffff" fill="#ffffff" style={{ marginLeft: "3px" }} />
-                    </div>
-                  )}
-
-                  {/* Sleek Bottom Control Bar */}
+                  {/* Sleek Bottom Control Bar (Play/Pause, Mute, Fullscreen, Timer) */}
                   <VideoControlBar
                     index={index}
                     isPlaying={isPlaying}
@@ -430,6 +423,14 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                   alt="Ad Media"
                   className={styles.adImgElement}
                   draggable={false}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    if (img.naturalWidth && img.naturalHeight) {
+                      const rawRatio = img.naturalWidth / img.naturalHeight;
+                      const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
+                      setAspectRatios((prev) => (prev[index] === clamped ? prev : { ...prev, [index]: clamped }));
+                    }
+                  }}
                   onError={() => setMediaError(true)}
                 />
               )}
