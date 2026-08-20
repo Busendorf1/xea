@@ -37,6 +37,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   // 1. Hook: Viewer Profile state & balance management
   const {
     viewerProfile,
+    setViewerProfile,
     updateBalance,
     addMutual,
     suspendAccount,
@@ -61,6 +62,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   } = useFeedActions({
     userEmail,
     viewerProfile,
+    setViewerProfile,
     updateBalance,
     addMutual,
     suspendAccount,

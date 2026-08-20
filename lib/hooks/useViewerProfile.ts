@@ -6,6 +6,8 @@ export interface ViewerProfileState {
   mutuals: string[];
   monetized: boolean;
   suspended_until?: string | null;
+  cooldown_until?: string | null;
+  cooldown_type?: "pacing_15m" | "review_hours" | null;
   interest?: string[] | string | null;
 }
 
@@ -16,6 +18,8 @@ export interface InitialProfileInput {
   monetized?: boolean | string | null;
   monetized_until?: string | null;
   suspended_until?: string | null;
+  cooldown_until?: string | null;
+  cooldown_type?: "pacing_15m" | "review_hours" | null;
   interest?: string[] | string | null;
 }
 
@@ -33,6 +37,8 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
           (!initialProfile.monetized_until ||
             new Date(initialProfile.monetized_until).getTime() > Date.now()),
         suspended_until: initialProfile.suspended_until || null,
+        cooldown_until: initialProfile.cooldown_until || null,
+        cooldown_type: initialProfile.cooldown_type || null,
         interest: initialProfile.interest || null,
       };
     }
@@ -52,6 +58,8 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
             (data.monetized === "yes" || data.monetized === "true" || data.monetized === true) &&
             (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now()),
           suspended_until: data.suspended_until || null,
+          cooldown_until: data.cooldown_until || null,
+          cooldown_type: data.cooldown_type || null,
           interest: data.interest || null,
         });
       }

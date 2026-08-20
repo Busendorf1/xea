@@ -5,6 +5,7 @@ import { ViewerProfileState } from "./useViewerProfile";
 interface UseFeedActionsProps {
   userEmail: string;
   viewerProfile: ViewerProfileState | null;
+  setViewerProfile?: React.Dispatch<React.SetStateAction<ViewerProfileState | null>>;
   updateBalance: (delta: number) => void;
   addMutual: (targetEmail: string) => void;
   suspendAccount: (hours?: number) => void;
@@ -15,6 +16,7 @@ interface UseFeedActionsProps {
 export function useFeedActions({
   userEmail,
   viewerProfile,
+  setViewerProfile,
   updateBalance,
   addMutual,
   suspendAccount,
@@ -98,16 +100,34 @@ export function useFeedActions({
         }
 
         const resData = await response.json();
+
+        // Handle Active Earning Cooldown (Pacing 15m or Review 48h)
+        if (resData.code === "COOLDOWN_ACTIVE") {
+          updateBalance(-expectedRate);
+          onEarnSuccess?.(-expectedRate);
+          if (setViewerProfile) {
+            setViewerProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    cooldown_until: resData.cooldownUntil,
+                    cooldown_type: resData.cooldownType || "pacing_15m",
+                  }
+                : null
+            );
+          }
+          return false;
+        }
+
         const rate =
           resData.result !== undefined
             ? parseFloat(String(resData.result ?? 0))
             : expectedRate;
 
-        // Suspension: do NOT dismiss the ad
+        // Legacy suspension handling
         if (rate === -1 || rate === -2) {
           updateBalance(-expectedRate);
           onEarnSuccess?.(-expectedRate);
-          alert("Clicking suspended: You are clicking too fast! Clicking is suspended for 2 hours.");
           suspendAccount(2);
           return false;
         }
@@ -122,14 +142,13 @@ export function useFeedActions({
         return true;
       } catch (e: unknown) {
         console.error("❌ Unexpected error in handleAdEarn:", e);
-        alert((e as Error).message || "An unexpected error occurred. Please try again.");
         return false;
       } finally {
         processingRef.current.delete(ad.id);
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, updateBalance, suspendAccount, onEarnSuccess]
+    [userEmail, updateBalance, suspendAccount, onEarnSuccess, setViewerProfile]
   );
 
   // Add Mutual

@@ -62,6 +62,92 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Please refresh" }, { status: 400 });
     }
 
+    // 4. Check active earning cooldown
+    const cooldownKey = `user:cooldown:${emailKey}`;
+    const cachedCooldownRaw = await redisConnection.get(cooldownKey).catch(() => null);
+    if (cachedCooldownRaw) {
+      try {
+        const { cooldownUntil, cooldownType } = JSON.parse(cachedCooldownRaw);
+        if (new Date(cooldownUntil).getTime() > now) {
+          // Record ad impression for advertiser delivery with 0 balance payout
+          await supabaseAdmin
+            .from("ad_impressions")
+            .upsert({
+              ad_id: adId,
+              user_email: emailKey,
+              view_count: 1,
+              last_viewed_at: new Date().toISOString(),
+            }, { onConflict: "ad_id,user_email" });
+
+          return NextResponse.json({
+            success: false,
+            code: "COOLDOWN_ACTIVE",
+            cooldownUntil,
+            cooldownType: cooldownType || "pacing_15m",
+            message: "Earning is currently in cooldown.",
+          });
+        }
+      } catch (e) {
+        console.warn("Cooldown parse error:", e);
+      }
+    }
+
+    // 5. Evaluate sliding window velocity & entropy (Anti-Bot Engine)
+    if (type === "earn") {
+      const historyKey = `user:earn_history:${emailKey}`;
+      const violationsKey = `user:violations:${emailKey}`;
+
+      const [historyListRaw, violationsCountRaw] = await Promise.all([
+        redisConnection.lrange(historyKey, 0, 19).catch(() => []),
+        redisConnection.get(violationsKey).catch(() => "0"),
+      ]);
+
+      const lastEarnTimestamps = historyListRaw.map((t) => parseInt(t, 10)).filter((n) => !isNaN(n)).reverse();
+      const consecutivePacingViolations = parseInt(violationsCountRaw || "0", 10) || 0;
+
+      const { evaluateEarningVelocity } = await import("@/lib/botDetection");
+      const velocityResult = evaluateEarningVelocity(now, {
+        lastEarnTimestamps,
+        consecutivePacingViolations,
+      });
+
+      if (velocityResult.isBotSuspect && velocityResult.cooldownDurationMinutes) {
+        const cooldownMinutes = velocityResult.cooldownDurationMinutes;
+        const cooldownUntil = new Date(now + cooldownMinutes * 60 * 1000).toISOString();
+        const cooldownType = velocityResult.cooldownType || "pacing_15m";
+
+        // Set Redis cooldown key with TTL
+        await Promise.all([
+          redisConnection.set(cooldownKey, JSON.stringify({ cooldownUntil, cooldownType }), "EX", cooldownMinutes * 60),
+          redisConnection.incr(violationsKey),
+          redisConnection.expire(violationsKey, 7 * 24 * 3600), // 7 days decay for violations counter
+        ]);
+
+        // Record ad impression for advertiser delivery
+        await supabaseAdmin
+          .from("ad_impressions")
+          .upsert({
+            ad_id: adId,
+            user_email: emailKey,
+            view_count: 1,
+            last_viewed_at: new Date().toISOString(),
+          }, { onConflict: "ad_id,user_email" });
+
+        return NextResponse.json({
+          success: false,
+          code: "COOLDOWN_ACTIVE",
+          cooldownUntil,
+          cooldownType,
+          message: "Pacing limit reached.",
+        });
+      }
+
+      // Record this timestamp in rolling history (keep last 20)
+      await redisConnection.lpush(historyKey, String(now)).catch(() => {});
+      await redisConnection.ltrim(historyKey, 0, 19).catch(() => {});
+      await redisConnection.expire(historyKey, 24 * 3600).catch(() => {});
+    }
+
     let rpcResult: number | null = null;
     let dbSuccess = false;
 

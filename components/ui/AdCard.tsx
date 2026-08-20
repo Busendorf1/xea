@@ -88,6 +88,8 @@ interface AdCardProps {
     mutuals: string[];
     monetized: boolean;
     suspended_until?: string | null;
+    cooldown_until?: string | null;
+    cooldown_type?: "pacing_15m" | "review_hours" | null;
   } | null;
   seenAds: string[];
   processingAds: string[];

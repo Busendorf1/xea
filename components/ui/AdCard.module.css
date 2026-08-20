@@ -1225,3 +1225,35 @@
   flex-shrink: 0;
 }
 
+/* Earning Cooldown Notice (No icons/emojis, compact, elegant) */
+.cooldownNoticeBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid var(--card-border);
+  min-height: 28px;
+  max-width: 100%;
+}
+
+.cooldownNoticeText {
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media screen and (max-width: 480px) {
+  .cooldownNoticeText {
+    font-size: 0.72rem;
+    white-space: normal;
+    text-align: right;
+    line-height: 1.25;
+  }
+}
+

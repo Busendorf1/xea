@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2 } from "lucide-react";
 import styles from "./AdCard.module.css";
+import EarningCooldownNotice from "./EarningCooldownNotice";
 
 import { Ad } from "./AdCard";
 
@@ -17,6 +18,9 @@ interface AdInteractionHandlerProps {
     mutual_count: number;
     mutuals: string[];
     monetized: boolean;
+    suspended_until?: string | null;
+    cooldown_until?: string | null;
+    cooldown_type?: "pacing_15m" | "review_hours" | null;
   } | null;
   isProcessing: boolean;
   isSuspended: boolean;
@@ -40,7 +44,7 @@ export default function AdInteractionHandler({
   isAlreadyMutual,
   viewerProfile,
   isProcessing,
-  isSuspended: _isSuspended,
+  isSuspended,
   successAction,
   activeAction,
   handleAction,
@@ -55,6 +59,16 @@ export default function AdInteractionHandler({
   const [inView, setInView] = useState(false);
   const [tabVisible, setTabVisible] = useState(true);
   const [stage, setStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
+
+  const isCooldownActive = useMemo(() => {
+    if (viewerProfile?.cooldown_until) {
+      return new Date(viewerProfile.cooldown_until).getTime() > Date.now();
+    }
+    return isSuspended;
+  }, [viewerProfile?.cooldown_until, isSuspended]);
+
+  const activeCooldownUntil = viewerProfile?.cooldown_until || viewerProfile?.suspended_until || null;
+  const activeCooldownType = viewerProfile?.cooldown_type || (isSuspended ? "review_hours" : "pacing_15m");
   
   // Challenge State
   const [challengeType, setChallengeType] = useState<ChallengeType>("swipe");
@@ -338,6 +352,11 @@ export default function AdInteractionHandler({
                 Visit {brandName}
               </a>
             )
+          ) : isCooldownActive ? (
+            <EarningCooldownNotice
+              cooldownUntil={activeCooldownUntil}
+              cooldownType={activeCooldownType}
+            />
           ) : (
             <>
               {/* Seen / Dismiss Button */}
