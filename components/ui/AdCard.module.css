@@ -115,13 +115,13 @@
 
 .mediaBox {
   width: 100%;
-  aspect-ratio: 16 / 10;
-  max-height: 520px;
-  border-radius: 20px;
+  min-height: 260px;
+  max-height: 580px;
+  border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--card-border);
   margin-bottom: 0.75rem;
-  background-color: var(--sidebar-bg);
+  background-color: #000000;
   position: relative;
   display: flex;
   align-items: center;
@@ -129,13 +129,13 @@
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
-  contain: paint layout;
 }
 
 .mediaTrack {
   display: flex;
   width: 100%;
   height: 100%;
+  max-height: 580px;
   will-change: transform;
   transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1);
   backface-visibility: hidden;
@@ -150,11 +150,12 @@
 .mediaWrapper {
   width: 100%;
   height: 100%;
+  max-height: 580px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--sidebar-bg);
+  background-color: #000000;
   user-select: none;
   -webkit-user-drag: none;
   backface-visibility: hidden;
@@ -165,21 +166,22 @@
 .adImgElement {
   width: 100%;
   height: 100%;
-  max-height: 550px;
-  object-fit: cover;
+  max-height: 580px;
+  object-fit: contain;
   display: block;
   user-select: none;
   -webkit-user-drag: none;
   pointer-events: none;
+  background-color: #000000;
 }
 
 .mediaVideo {
   width: 100%;
   height: 100%;
-  max-height: 550px;
-  object-fit: cover;
+  max-height: 580px;
+  object-fit: contain;
   display: block;
-  background-color: var(--background);
+  background-color: #000000;
 }
 
 .webVideoContainer {

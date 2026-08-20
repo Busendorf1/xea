@@ -436,12 +436,23 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
           const file = formSelections.adMediaFiles[i];
           const sanitizedFileName = file.name.replace(/[^\w.-]/g, "_");
           const uniqueFileName = `${adId}_${i}_${sanitizedFileName}`;
+          const isVid = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
+
+          // Force WebKit / iOS to resolve full iCloud asset download into memory buffer
+          let fileData: Blob | File = file;
+          try {
+            const buffer = await file.arrayBuffer();
+            fileData = new Blob([buffer], { type: file.type || (isVid ? "video/mp4" : "image/jpeg") });
+          } catch (e) {
+            console.warn("ArrayBuffer fallback, using raw file:", e);
+          }
 
           const { error: uploadError } = await supabase.storage
             .from("ad-media")
-            .upload(uniqueFileName, file, {
+            .upload(uniqueFileName, fileData, {
               cacheControl: "3600",
               upsert: false,
+              contentType: file.type || (isVid ? "video/mp4" : "image/jpeg"),
             });
 
           if (uploadError) throw uploadError;
@@ -1257,16 +1268,32 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               e.target.value = "";
                               return;
                             }
-                            // check duration using promise
-                            const durationOk = await new Promise<boolean>((resolve) => {
-                              const videoEl = document.createElement("video");
-                              videoEl.preload = "metadata";
-                              videoEl.onloadedmetadata = () => {
-                                resolve(videoEl.duration <= 300);
-                              };
-                              videoEl.onerror = () => resolve(false);
-                              videoEl.src = URL.createObjectURL(file);
-                            });
+                            // Gracefully check duration with iCloud streaming fallback
+                            let durationOk = true;
+                            try {
+                              durationOk = await new Promise<boolean>((resolve) => {
+                                const videoEl = document.createElement("video");
+                                videoEl.preload = "metadata";
+                                const timer = setTimeout(() => {
+                                  // If iCloud is still streaming/downloading, allow if file size is valid
+                                  resolve(file.size <= 60 * 1024 * 1024);
+                                }, 3500);
+
+                                videoEl.onloadedmetadata = () => {
+                                  clearTimeout(timer);
+                                  resolve(videoEl.duration <= 300);
+                                };
+                                videoEl.onerror = () => {
+                                  clearTimeout(timer);
+                                  // On iOS iCloud offloaded assets, allow file by size
+                                  resolve(file.size <= 60 * 1024 * 1024);
+                                };
+                                videoEl.src = URL.createObjectURL(file);
+                              });
+                            } catch {
+                              durationOk = file.size <= 60 * 1024 * 1024;
+                            }
+
                             if (!durationOk) {
                               alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
                               e.target.value = "";

@@ -113,9 +113,10 @@ export default function News({ session }: NewsProps) {
   const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.type.startsWith("image/")) {
-        if (file.size > 5 * 1024 * 1024) {
-          alert("Cover image must be smaller than 5MB.");
+      const isImage = file.type.startsWith("image/") || /\.(heic|heif|jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+      if (isImage) {
+        if (file.size > 8 * 1024 * 1024) {
+          alert("Cover image must be smaller than 8MB.");
           return;
         }
       } else {
@@ -123,7 +124,13 @@ export default function News({ session }: NewsProps) {
         return;
       }
       setMediaFile(file);
-      setMediaPreview(URL.createObjectURL(file));
+      try {
+        setMediaPreview(URL.createObjectURL(file));
+      } catch {
+        const reader = new FileReader();
+        reader.onload = () => setMediaPreview(reader.result as string);
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -174,7 +181,6 @@ export default function News({ session }: NewsProps) {
     }
 
     setIsSubmitting(true);
-
     let uploadedFilename: string | null = null;
 
     try {
@@ -183,9 +189,22 @@ export default function News({ session }: NewsProps) {
         "_"
       )}`;
       
+      // Force WebKit / iOS to resolve full iCloud asset download into memory buffer
+      let fileData: Blob | File = mediaFile!;
+      try {
+        const buffer = await mediaFile!.arrayBuffer();
+        fileData = new Blob([buffer], { type: mediaFile!.type || "image/jpeg" });
+      } catch (e) {
+        console.warn("ArrayBuffer fallback for news image:", e);
+      }
+
       const { error: uploadError } = await supabase.storage
         .from("news")
-        .upload(filename, mediaFile!);
+        .upload(filename, fileData, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: mediaFile!.type || "image/jpeg",
+        });
 
       if (uploadError) throw uploadError;
       uploadedFilename = filename;
