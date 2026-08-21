@@ -82,11 +82,12 @@
 //
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import styles from "../Newsdisplay/page.module.css";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Skeleton from "../ui/Skeleton";
+import supabase from "@/lib/supabaseClient";
 
 interface Ad {
   id: string;
@@ -180,6 +181,56 @@ export default function AdDisplay({
 
     return () => clearInterval(interval); // Cleanup
   }, [userInterest, fetchAll]);
+
+  // Real-Time Highlights Auto-Drop (Live Ticker & Spotlight Motion)
+  useEffect(() => {
+    if (!userInterest || userInterest.length === 0) return;
+
+    const normalizedInterests = userInterest.map((i) => i.toLowerCase().trim());
+    const channelName = "realtime-newsdisplay-highlights";
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "newsactive",
+        },
+        (payload) => {
+          if (payload.new) {
+            const row = payload.new as any;
+            const rowInterest = row.interest
+              ? Array.isArray(row.interest)
+                ? row.interest.map((i: string) => String(i).toLowerCase().trim())
+                : [String(row.interest).toLowerCase().trim()]
+              : [];
+
+            const isMatch = rowInterest.length === 0 || rowInterest.some((ri: string) => normalizedInterests.includes(ri));
+
+            if (isMatch) {
+              const newHighlight: Ad = {
+                id: row.id,
+                title: row.title || "Business Highlight",
+                content: row.content || "",
+                image_url: row.image_url || "",
+                interest: Array.isArray(row.interest) ? row.interest : [row.interest],
+                user_email: row.user_email || "",
+                created_at: row.created_at || new Date().toISOString(),
+              };
+
+              setAds((prev) => [newHighlight, ...prev.filter((a) => a.id !== newHighlight.id)]);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userInterest]);
 
   if (loading && page === 0) {
     return (

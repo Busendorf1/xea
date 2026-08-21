@@ -279,6 +279,62 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
       refreshProfileQuietly();
     }, 20000);
 
+    return () => clearInterval(interval);
+  }, []);
+
+  // Supabase Real-Time Cross-Device Synchronization (Laptop, TV, Live Screen, Mobile)
+  useEffect(() => {
+    if (!email) return;
+
+    const emailLower = email.toLowerCase().trim();
+    const channelName = `realtime-dashboard-balance-${emailLower}`;
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "users",
+          filter: `email=eq.${emailLower}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            const newRow = payload.new as any;
+            const newBalance = Number(newRow.balance);
+            const newClicks = Number(newRow.monetization_clicks);
+            const newMutualCount = Number(newRow.mutual_count);
+
+            setUser((prev) => {
+              const prevBal = prev?.balance ?? 0;
+              const updatedBalance = !isNaN(newBalance) ? newBalance : prevBal;
+              const updatedClicks = !isNaN(newClicks) ? Math.max(prev.monetization_clicks || 0, newClicks) : (prev.monetization_clicks || 0);
+              const updatedMutualCount = !isNaN(newMutualCount) ? Math.max(prev.mutual_count || 0, newMutualCount) : (prev.mutual_count || 0);
+
+              if (updatedBalance > prevBal) {
+                triggerEarnFeedback();
+              }
+
+              return {
+                ...prev,
+                balance: updatedBalance,
+                monetization_clicks: updatedClicks,
+                mutual_count: updatedMutualCount,
+                monetized: newRow.monetized === "yes" || newRow.monetized === "true" || newRow.monetized === true || updatedClicks >= 300,
+              };
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [email]);
+
+  useEffect(() => {
     const onFocus = () => {
       refreshProfileQuietly();
       fetchNotifications();
@@ -303,7 +359,6 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
     window.addEventListener("xea:click-increment", handleClickIncrement);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("xea:click-increment", handleClickIncrement);
     };

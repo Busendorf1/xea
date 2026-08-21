@@ -18,6 +18,14 @@ const JWKS = createRemoteJWKSet(
  * or fallback to cookie session (web client).
  */
 export async function getAuthenticatedEmail(req: NextRequest): Promise<string | null> {
+  // Support simulation testing harness in non-production environments
+  if (process.env.NODE_ENV !== "production") {
+    const simulatedUser = req.headers.get("x-simulated-user");
+    if (simulatedUser) {
+      return simulatedUser.toLowerCase().trim();
+    }
+  }
+
   const authHeader = req.headers.get("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.substring(7);

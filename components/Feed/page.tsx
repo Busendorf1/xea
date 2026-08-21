@@ -7,9 +7,11 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import dynamic from "next/dynamic";
 import { type Ad } from "../ui/AdCard";
 import Skeleton from "../ui/Skeleton";
+import NewPostsPill from "../ui/NewPostsPill";
 import { useViewerProfile, InitialProfileInput } from "@/lib/hooks/useViewerProfile";
 import { useFeedHighlights } from "@/lib/hooks/useFeedHighlights";
 import { useFeedActions } from "@/lib/hooks/useFeedActions";
+import { useLiveFeedUpdates } from "@/lib/hooks/useLiveFeedUpdates";
 
 const AdCard = dynamic(() => import("../ui/AdCard"), {
   loading: () => <Skeleton />,
@@ -84,6 +86,11 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     suspendAccount,
     onEarnSuccess,
     onMutualSuccess,
+  });
+
+  // 4. Hook: Real-Time Live Feed Updates (Tier-1 Signal PubSub)
+  const { pendingCount, clearPending } = useLiveFeedUpdates({
+    userInterests: viewerProfile?.interest || initialProfile?.interest,
   });
 
   // Sync window size state
@@ -211,8 +218,53 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     }
   }, [virtualItems, hasMore, loadingMore, loading, displayFeed.length, loadMore]);
 
+  const handlePillClick = useCallback(() => {
+    clearPending();
+    const scrollEl = parentRef.current?.parentElement || (typeof window !== "undefined" ? window : null);
+    if (scrollEl && "scrollTo" in scrollEl) {
+      scrollEl.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    fetchRelevantAds(0, false);
+  }, [clearPending, fetchRelevantAds]);
+
+  // Jump-Free Scroll-to-Top Auto-Reveal:
+  // If the user scrolls naturally back to the very top (scrollTop === 0) and rests there,
+  // automatically flush pending oncoming ads without any layout shift or UI jump.
+  useEffect(() => {
+    if (pendingCount <= 0) return;
+
+    let settleTimeout: NodeJS.Timeout | null = null;
+    const scrollEl = parentRef.current?.parentElement || (typeof window !== "undefined" ? window : null);
+    if (!scrollEl) return;
+
+    const handleScrollCheck = () => {
+      const currentScrollTop =
+        scrollEl instanceof Window ? window.scrollY : (scrollEl as HTMLElement).scrollTop;
+
+      // Strictly ensure user has fully arrived at the top (0px)
+      if (currentScrollTop <= 0) {
+        if (settleTimeout) clearTimeout(settleTimeout);
+        settleTimeout = setTimeout(() => {
+          const finalCheck =
+            scrollEl instanceof Window ? window.scrollY : (scrollEl as HTMLElement).scrollTop;
+          if (finalCheck <= 0) {
+            clearPending();
+            fetchRelevantAds(0, false);
+          }
+        }, 180); // 180ms settling threshold to guarantee zero scroll momentum jump
+      }
+    };
+
+    scrollEl.addEventListener("scroll", handleScrollCheck as EventListener, { passive: true });
+    return () => {
+      if (settleTimeout) clearTimeout(settleTimeout);
+      scrollEl.removeEventListener("scroll", handleScrollCheck as EventListener);
+    };
+  }, [pendingCount, clearPending, fetchRelevantAds]);
+
   return (
     <div ref={parentRef} className={styles.feedContainer}>
+      <NewPostsPill count={pendingCount} onClick={handlePillClick} />
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.25rem 1rem" }}>
           {[1, 2, 3].map((n) => (

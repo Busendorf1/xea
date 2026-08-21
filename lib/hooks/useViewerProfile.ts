@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import supabase from "@/lib/supabaseClient";
 
 export interface ViewerProfileState {
   balance: number;
@@ -89,6 +90,74 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
       fetchViewerProfile();
     }
   }, [userEmail, viewerProfile, fetchViewerProfile]);
+
+  // Real-Time Cross-Device Synchronization (Laptop, TV, Live Screen, Phone)
+  useEffect(() => {
+    if (!userEmail) return;
+
+    const emailLower = userEmail.toLowerCase().trim();
+    const channelName = `realtime-viewer-balance-${emailLower}`;
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "users",
+          filter: `email=eq.${emailLower}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            const newRow = payload.new as any;
+            const newBalance = Number(newRow.balance);
+            const newClicks = Number(newRow.monetization_clicks);
+            const newMutualCount = Number(newRow.mutual_count);
+
+            setViewerProfile((prev) => {
+              if (!prev) return prev;
+              const prevBalance = prev.balance;
+              const updatedBalance = !isNaN(newBalance) ? newBalance : prevBalance;
+              const updatedClicks = !isNaN(newClicks) ? Math.max(prev.monetization_clicks, newClicks) : prev.monetization_clicks;
+              const updatedMutualCount = !isNaN(newMutualCount) ? Math.max(prev.mutual_count, newMutualCount) : prev.mutual_count;
+              const isMonetized =
+                newRow.monetized === "yes" ||
+                newRow.monetized === "true" ||
+                newRow.monetized === true ||
+                updatedClicks >= 300;
+
+              // If balance increased from an external device, dispatch a visual live event
+              if (typeof window !== "undefined" && updatedBalance > prevBalance) {
+                window.dispatchEvent(
+                  new CustomEvent("xea:live-balance-earned", {
+                    detail: {
+                      previousBalance: prevBalance,
+                      newBalance: updatedBalance,
+                      delta: Math.round((updatedBalance - prevBalance) * 100) / 100,
+                    },
+                  })
+                );
+              }
+
+              return {
+                ...prev,
+                balance: updatedBalance,
+                monetization_clicks: updatedClicks,
+                mutual_count: updatedMutualCount,
+                monetized: isMonetized,
+                suspended_until: newRow.suspended_until || prev.suspended_until,
+              };
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userEmail]);
 
   const updateBalance = useCallback((amountDelta: number) => {
     setViewerProfile((prev) => (prev ? { ...prev, balance: prev.balance + amountDelta } : null));
