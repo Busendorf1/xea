@@ -69,6 +69,29 @@ export default function AdInteractionHandler({
 
   const activeCooldownUntil = viewerProfile?.cooldown_until || viewerProfile?.suspended_until || null;
   const activeCooldownType = viewerProfile?.cooldown_type || (isSuspended ? "review_hours" : "pacing_15m");
+
+  // For unpaid platform ads or ads without budget, do not show countdown or earn buttons
+  if (isPlatformPost || !ad.cost_per_impression || Number(ad.cost_per_impression) <= 0) {
+    return (
+      <div className={styles.fromBrandContainer}>
+        {targetLink && targetLink !== "#" ? (
+          <a
+            href={targetLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.fromBrandBtn}
+            title={`Visit ${brandName}`}
+          >
+            Visit &apos;{brandName}&apos;
+          </a>
+        ) : (
+          <span className={styles.fromBrandText}>
+            Visit &apos;{brandName}&apos;
+          </span>
+        )}
+      </div>
+    );
+  }
   
   // Challenge State
   const [challengeType, setChallengeType] = useState<ChallengeType>("swipe");

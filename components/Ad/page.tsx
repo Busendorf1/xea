@@ -412,8 +412,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   const submitAd = async () => {
     if (isSubmitting) return;
+    setStepError("");
     if (!session || !session.user?.email) {
-      alert("❌ User not authenticated. Please log in.");
+      setStepError("User not authenticated. Please log in.");
       return;
     }
 
@@ -422,7 +423,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     const totalCost = calculateTotalCost();
 
     if (!isAdmin && paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
-      alert(`❌ Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`);
+      setStepError(`Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`);
       return;
     }
 
@@ -504,6 +505,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 ? formSelections.employmentStatus.join(", ")
                 : formSelections.employmentStatus || null,
               adMediaType: formSelections.adMediaType,
+              adMedia: mediaUrlString,
+              ad_media: mediaUrlString,
               adContent: formSelections.adContent,
               adActionButtons: formSelections.adActionButtons,
               actionPhone: formSelections.actionDetails.phone || null,
@@ -513,6 +516,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               actionIos: formSelections.actionDetails.ios || null,
               actionAndroid: formSelections.actionDetails.android || null,
               actionWatchNow: formSelections.actionDetails.watch_now || null,
+              displayMutualButton: formSelections.displayMutualButton ?? true,
               costPerImpression,
               totalCost,
               isBidded: isBiddingEnabled,
@@ -536,10 +540,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       }
 
       if (paymentMethod === "wallet") {
-        alert("Success! Your Ad Campaign has been paid using your wallet balance and submitted for review.");
         window.location.href = "/user/statement";
       } else {
-        alert("Redirecting to Paystack to complete payment for your Ad Campaign...");
         window.location.href = paymentData.authorization_url;
       }
       setIsSubmitting(false);

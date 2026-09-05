@@ -50,6 +50,8 @@ export default function News({ session }: NewsProps) {
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [balance, setBalance] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
+  const [stepError, setStepError] = useState<string | null>(null);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
   const [adAccountRestriction, setAdAccountRestriction] = useState<{
     restricted: boolean;
@@ -111,16 +113,17 @@ export default function News({ session }: NewsProps) {
   }, [interest]);
 
   const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setStepError(null);
     const file = e.target.files?.[0];
     if (file) {
       const isImage = file.type.startsWith("image/") || /\.(heic|heif|jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
       if (isImage) {
         if (file.size > 8 * 1024 * 1024) {
-          alert("Cover image must be smaller than 8MB.");
+          setStepError("Cover image must be smaller than 8MB.");
           return;
         }
       } else {
-        alert("Only image files are allowed for highlights (videos are not permitted).");
+        setStepError("Only image files are allowed for highlights (videos are not permitted).");
         return;
       }
       setMediaFile(file);
@@ -153,8 +156,10 @@ export default function News({ session }: NewsProps) {
   };
 
   const handleSubmit = async () => {
+    setStepError(null);
+    setStatusNotice(null);
     if (!session || !session.user?.email) {
-      alert("User not authenticated. Please log in.");
+      setStepError("User not authenticated. Please log in.");
       return;
     }
 
@@ -171,12 +176,12 @@ export default function News({ session }: NewsProps) {
       const errorMsg = !mediaFile
         ? "Please select a cover image for your highlight."
         : validationResult.error?.issues[0]?.message || "Please check your highlight form fields.";
-      alert(errorMsg);
+      setStepError(errorMsg);
       return;
     }
 
     if (!isAdmin && paymentMethod === "wallet" && balance < totalCost) {
-      alert(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
+      setStepError(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
       return;
     }
 
@@ -251,10 +256,12 @@ export default function News({ session }: NewsProps) {
       }
 
       if (paymentMethod === "wallet") {
-        alert("Success! Your Daily Highlight has been paid using your wallet balance and submitted for review.");
-        window.location.href = "/user/statement";
+        setStatusNotice("Your Daily Highlight has been paid using your wallet balance and submitted for review. Redirecting to your statement...");
+        setTimeout(() => {
+          window.location.href = "/user/statement";
+        }, 800);
       } else {
-        alert("Redirecting to Paystack to complete payment for your Highlight...");
+        setStatusNotice("Redirecting to Paystack to complete payment for your Highlight...");
         window.location.href = paymentData.authorization_url;
       }
       
@@ -269,7 +276,7 @@ export default function News({ session }: NewsProps) {
       if (uploadedFilename) {
         await supabase.storage.from("news").remove([uploadedFilename]);
       }
-      alert(err.message || "An error occurred while submitting highlight.");
+      setStepError(err.message || "An error occurred while submitting highlight.");
     } finally {
       setIsSubmitting(false);
     }
@@ -339,6 +346,36 @@ export default function News({ session }: NewsProps) {
           </div>
 
           <h1>Post Daily Highlight</h1>
+
+          {stepError && (
+            <div style={{
+              padding: "10px 14px",
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid #ef4444",
+              borderRadius: "8px",
+              color: "#ef4444",
+              fontSize: "0.88rem",
+              fontWeight: 600,
+              marginBottom: "1rem",
+            }}>
+              {stepError}
+            </div>
+          )}
+
+          {statusNotice && (
+            <div style={{
+              padding: "10px 14px",
+              backgroundColor: "rgba(16, 185, 129, 0.15)",
+              border: "1px solid #10b981",
+              borderRadius: "8px",
+              color: "#10b981",
+              fontSize: "0.88rem",
+              fontWeight: 600,
+              marginBottom: "1rem",
+            }}>
+              {statusNotice}
+            </div>
+          )}
 
           <div className={styles.adFormContainer}>
             {/* STEP 0: MEDIA */}

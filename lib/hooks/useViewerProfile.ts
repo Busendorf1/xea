@@ -159,8 +159,34 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
     };
   }, [userEmail]);
 
+  // Local event listener for cross-component and optimistic sync
+  useEffect(() => {
+    const handleLocalSync = (e: any) => {
+      const { newBalance, clicks } = e.detail || {};
+      if (typeof newBalance === "number" && !isNaN(newBalance)) {
+        setViewerProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                balance: newBalance,
+                monetization_clicks: typeof clicks === "number" ? Math.max(prev.monetization_clicks, clicks) : prev.monetization_clicks,
+                monetized: (typeof clicks === "number" && clicks >= 300) || prev.monetized,
+              }
+            : null
+        );
+      }
+    };
+
+    window.addEventListener("xea:live-balance-sync", handleLocalSync);
+    return () => {
+      window.removeEventListener("xea:live-balance-sync", handleLocalSync);
+    };
+  }, []);
+
   const updateBalance = useCallback((amountDelta: number) => {
-    setViewerProfile((prev) => (prev ? { ...prev, balance: prev.balance + amountDelta } : null));
+    setViewerProfile((prev) =>
+      prev ? { ...prev, balance: Math.max(0, Math.round(((prev.balance || 0) + amountDelta) * 100) / 100) } : null
+    );
   }, []);
 
   const incrementClicks = useCallback((delta = 1) => {

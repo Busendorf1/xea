@@ -183,12 +183,20 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
 
     setSubmittingSend(true);
     try {
+      const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID 
+        ? `trf_web_${crypto.randomUUID()}` 
+        : `trf_web_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
       const res = await fetch("/api/payments/transfer", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempotencyKey,
+        },
         body: JSON.stringify({
           recipientEmail: cleanEmail,
           amount: amountNum,
+          idempotencyKey,
         }),
       });
 
@@ -236,8 +244,18 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
     setTimeout(() => setShowMutualFeedback(false), 2500);
   };
 
-  const handleEarnSuccess = (earnedAmount?: number) => {
-    const delta = typeof earnedAmount === "number" ? earnedAmount : 25;
+  const handleEarnSuccess = (earnedAmount?: number, newBalance?: number, newClicks?: number) => {
+    if (typeof newBalance === "number" && !isNaN(newBalance)) {
+      setUser((prev) => ({
+        ...prev,
+        balance: newBalance,
+        monetization_clicks: typeof newClicks === "number" ? Math.max(prev.monetization_clicks || 0, newClicks) : prev.monetization_clicks,
+        monetized: (typeof newClicks === "number" && newClicks >= 300) || prev.monetized,
+      }));
+      return;
+    }
+
+    const delta = typeof earnedAmount === "number" ? earnedAmount : 15;
     if (delta !== 0) {
       setUser((prev) => ({
         ...prev,

@@ -116,7 +116,7 @@ export async function processSuccessfulPayment(
       p_cost_per_impression: adData.costPerImpression,
       p_total_cost: adData.totalCost,
       p_user_email: user_email,
-      p_ad_media: adData.adMedia || null,
+      p_ad_media: (adData.adMedia as string) || (adData.ad_media as string) || null,
       p_display_mutual_button: adData.displayMutualButton ?? true,
       p_product_price: adData.productPrice || null,
       p_product_name: adData.productName || null,
@@ -130,6 +130,23 @@ export async function processSuccessfulPayment(
     if (rpcError) {
       console.error("❌ RPC submit_ad_campaign failed:", rpcError);
       throw rpcError;
+    }
+
+    // If ad is bidded, record in bidded_ads table for instant priority auction inclusion
+    const isBidded = !!adData.isBidded;
+    const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice as string) : null;
+    if (isBidded && bidPrice) {
+      const adIndustry = ((adData.adType as string) || "business").toLowerCase();
+      const { error: bidInsertErr } = await supabaseAdmin.from("bidded_ads").insert({
+        ad_id: adData.id,
+        user_email,
+        industry: adIndustry,
+        bid_price: bidPrice,
+        is_active: true,
+      });
+      if (bidInsertErr) {
+        console.error("❌ Failed to insert bidded ad in processPayment:", bidInsertErr);
+      }
     }
 
     // Insert user notification
@@ -151,6 +168,14 @@ export async function processSuccessfulPayment(
     throw updateError;
   }
 
-  console.log(`✅ Successfully processed payment reference ${reference}`);
+  // 4. Invalidate cached profile, statement payments, and monetize status in Redis
+  try {
+    const { invalidateCachedProfile } = await import("@/lib/utils/cache");
+    await invalidateCachedProfile(String(user_email));
+  } catch (cacheErr) {
+    console.warn("⚠️ Cache invalidation notice in processPayment:", cacheErr);
+  }
+
+  console.log(`✅ Payment successfully recorded and business actions completed for: ${reference}`);
   return { success: true };
 }

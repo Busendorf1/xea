@@ -14,7 +14,7 @@ const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
 const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 
 // Essential Column Projection for Ultra-Fast DB Performance
-const AD_SELECT_FIELDS = "id, user_email, title, ad_media, hls_url, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cta_text, cta_link, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, custom_sponsor_name, custom_sponsor_handle, custom_sponsor_logo, interest, industry, behavior, lifestyle, personality, country, state, gender, employment_status, age_range, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at";
+const AD_SELECT_FIELDS = "id, user_email, email, ad_media, ad_media_url, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, gender, employment_status, age_range, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at";
 
 export async function GET(req: NextRequest) {
   try {
@@ -51,13 +51,30 @@ export async function GET(req: NextRequest) {
     const todayDate = now.toISOString().slice(0, 10);
     const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
 
-    // Fetch user's active seen set, blocked sets, and daily pacing hash in Redis (<0.1ms RAM)
-    const [seenAdIdsList, blockedAdIdsList, blockedAdvertisersList, todayPacingMap] = await Promise.all([
+    // Fetch user's active seen set, blocked sets, daily pacing hash in Redis, and past impressions from DB
+    const [seenAdIdsList, blockedAdIdsList, blockedAdvertisersList, todayPacingMap, dbImpressionsRes] = await Promise.all([
       redisConnection.smembers(seenAdsSetKey).catch(() => []),
       redisConnection.smembers(blockedAdsSetKey).catch(() => []),
       redisConnection.smembers(blockedAdvertisersSetKey).catch(() => []),
       redisConnection.hgetall(pacingHashKey).catch(() => ({}) as Record<string, string>),
+      supabaseReadOnly
+        .from("ad_impressions")
+        .select("ad_id, view_count, today_view_count, last_viewed_at")
+        .ilike("user_email", emailKey),
     ]);
+
+    const userImpressionMap = new Map<string, { view_count: number; today_view_count: number; last_viewed_at: string | null }>();
+    const completedOrCappedAdIds: string[] = [];
+
+    (dbImpressionsRes?.data || []).forEach((imp: any) => {
+      if (imp.ad_id) {
+        userImpressionMap.set(imp.ad_id, {
+          view_count: Number(imp.view_count || 0),
+          today_view_count: Number(imp.today_view_count || 0),
+          last_viewed_at: imp.last_viewed_at,
+        });
+      }
+    });
 
     const seenAdIdsSet = new Set<string>(seenAdIdsList);
     const blockedAdIdsSet = new Set<string>(blockedAdIdsList);
@@ -128,7 +145,15 @@ export async function GET(req: NextRequest) {
               }
             }
 
-            pageAds = slicedIds.map((id) => fetchedDetailsMap[id]).filter(Boolean);
+            pageAds = slicedIds
+              .map((id) => fetchedDetailsMap[id])
+              .filter(Boolean)
+              .filter((ad: Ad) => {
+                const userCap = Number(ad.user_frequency_cap || 1);
+                const imp = userImpressionMap.get(ad.id);
+                const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? 1 : 0);
+                return totalViews < userCap;
+              });
           }
 
           cacheHit = true;
@@ -151,21 +176,67 @@ export async function GET(req: NextRequest) {
 
       let ads = initialFeedAds;
 
-      // Fallback: If RPC fails or is missing, query addsactive with pruned columns
+      // Fallback: If RPC fails or is missing, query addsactive with pruned columns and enforce hard guardrails
       if (error) {
         console.warn("⚠️ RPC get_user_feed fallback to addsactive:", error.message || error);
-        const { data: fallbackAds, error: fallbackErr } = await supabaseReadOnly
+        
+        // Fetch viewer profile to enforce hard targeting guardrails in fallback
+        let viewerProfile: any = null;
+        try {
+          const cachedProfile = await redisConnection.get(`user:profile:${emailKey}`);
+          if (cachedProfile) {
+            viewerProfile = JSON.parse(cachedProfile);
+          }
+        } catch {}
+        if (!viewerProfile) {
+          const { data: dbUser } = await supabaseReadOnly
+            .from("users")
+            .select("dob, country, state, location, gender, employment, interest, lifestyle, behavior, personality, industry")
+            .eq("email", emailKey)
+            .maybeSingle();
+          viewerProfile = dbUser;
+        }
+
+        let fallbackQuery = supabaseReadOnly
           .from("addsactive")
           .select(AD_SELECT_FIELDS)
           .is("completed_at", null)
           .neq("user_email", email)
+          .order("cost_per_impression", { ascending: false })
+          .order("created_at", { ascending: false })
           .limit(100);
+
+        if (viewerProfile?.country && viewerProfile.country !== "PLACEHOLDER") {
+          fallbackQuery = fallbackQuery.or(`country.is.null,country.eq.,country.ilike.all,country.ilike.${viewerProfile.country}`);
+        }
+
+        const { data: fallbackAds, error: fallbackErr } = await fallbackQuery;
 
         if (fallbackErr) {
           console.error("❌ Fallback query on addsactive failed:", fallbackErr);
           return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
         }
-        ads = fallbackAds;
+
+        // Apply strict in-memory hard guardrails (Gender, Age, Location)
+        const userGender = (viewerProfile?.gender || "").toLowerCase().trim();
+        const userDob = viewerProfile?.dob && viewerProfile.dob !== "PLACEHOLDER" ? new Date(viewerProfile.dob) : null;
+        const userAge = userDob ? Math.floor((now.getTime() - userDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 25;
+
+        ads = (fallbackAds || []).filter((ad: any) => {
+          // Hard Guardrail 1: Gender (STRICT)
+          const adGender = (ad.gender || "").toLowerCase().trim();
+          if (adGender && adGender !== "both" && userGender && adGender !== userGender) {
+            return false;
+          }
+          // Hard Guardrail 2: Age (STRICT)
+          if (Array.isArray(ad.age_range) && ad.age_range.length >= 2) {
+            const [minAge, maxAge] = ad.age_range;
+            if (userAge < minAge || userAge > maxAge) {
+              return false;
+            }
+          }
+          return true;
+        });
       }
 
       // Filter active ads and enforce single-fetch uniqueness
@@ -175,11 +246,22 @@ export async function GET(req: NextRequest) {
         if (blockedAdIdsSet.has(ad.id)) return;
 
         const userCap = Number(ad.user_frequency_cap || 1);
-        if (seenAdIdsSet.has(ad.id) && userCap <= 1) return;
+        const imp = userImpressionMap.get(ad.id);
+        const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? 1 : 0);
+
+        // Exclude ads where user already hit the frequency cap
+        if (totalViews >= userCap) {
+          completedOrCappedAdIds.push(ad.id);
+          return;
+        }
 
         const campaignDays = Number(ad.campaign_days || 1);
         const dailyUserCap = Math.max(1, Math.ceil(userCap / Math.max(campaignDays, 1)));
-        const viewsToday = Number((todayPacingMap as Record<string, string>)[ad.id] || 0);
+        const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
+        const viewsToday = Math.max(
+          Number((todayPacingMap as Record<string, string>)[ad.id] || 0),
+          isToday ? (imp?.today_view_count || 0) : 0
+        );
 
         if (userCap > 1 && viewsToday >= dailyUserCap) {
           return;
@@ -211,17 +293,65 @@ export async function GET(req: NextRequest) {
 
       const candidateAds = Array.from(candidateAdsMap.values());
 
-      // Shuffle candidate ads in memory using performant Fisher-Yates shuffle
-      const shuffledCandidateAds = [...candidateAds];
-      for (let i = shuffledCandidateAds.length - 1; i > 0; i--) {
+      // Google Enterprise Tiered Priority Interleaver:
+      // Separate candidate ads into Bidded Tier and Standard Floor Tier
+      const biddedTier: Ad[] = [];
+      const standardTier: Ad[] = [];
+
+      candidateAds.forEach((ad: Ad) => {
+        const isBiddedAd = (ad as any).is_bidded || ((ad as any).bid_price && Number((ad as any).bid_price) > Number(ad.cost_per_impression || 0));
+        if (isBiddedAd) {
+          biddedTier.push(ad);
+        } else {
+          standardTier.push(ad);
+        }
+      });
+
+      // Sort bidded tier by highest bid price (highest priority auction first)
+      biddedTier.sort((a: any, b: any) => {
+        const priceA = Number(a.bid_price || a.cost_per_impression || 0);
+        const priceB = Number(b.bid_price || b.cost_per_impression || 0);
+        return priceB - priceA;
+      });
+
+      // Shuffle standard tier with Fisher-Yates so lower-tier ads rotate fairly
+      for (let i = standardTier.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [shuffledCandidateAds[i], shuffledCandidateAds[j]] = [shuffledCandidateAds[j], shuffledCandidateAds[i]];
+        [standardTier[i], standardTier[j]] = [standardTier[j], standardTier[i]];
       }
-      const candidateAdIds = shuffledCandidateAds.map((a: Ad) => a.id);
+
+      // Interleave candidates using 75% bidded priority / 25% floor distribution
+      // with Anti-Fatigue / Advertiser Diversity (no 2 identical user_emails consecutively)
+      const interleavedAds: Ad[] = [];
+      let bIdx = 0;
+      let sIdx = 0;
+
+      while (bIdx < biddedTier.length || sIdx < standardTier.length) {
+        // Feed pattern: 3 bidded ads (if available), then 1 standard ad (75% / 25%)
+        for (let k = 0; k < 3 && bIdx < biddedTier.length; k++) {
+          const candidate = biddedTier[bIdx++];
+          // Advertiser Diversity check: avoid identical publisher consecutively if possible
+          if (interleavedAds.length > 0 && interleavedAds[interleavedAds.length - 1].user_email === candidate.user_email && bIdx < biddedTier.length) {
+            const nextCandidate = biddedTier[bIdx];
+            biddedTier[bIdx] = candidate;
+            interleavedAds.push(nextCandidate);
+            bIdx++;
+          } else {
+            interleavedAds.push(candidate);
+          }
+        }
+
+        if (sIdx < standardTier.length) {
+          interleavedAds.push(standardTier[sIdx++]);
+        }
+      }
+
+      const orderedCandidateAds = interleavedAds;
+      const candidateAdIds = orderedCandidateAds.map((a: Ad) => a.id);
 
       // Extract publisher emails to fetch basic profile info server-side
       const publisherEmails = Array.from(
-        new Set(shuffledCandidateAds.map((ad: Ad) => ad.user_email).filter(Boolean))
+        new Set(orderedCandidateAds.map((ad: Ad) => ad.user_email).filter(Boolean))
       ) as string[];
 
       if (publisherEmails.length > 0) {
@@ -258,7 +388,12 @@ export async function GET(req: NextRequest) {
         pipeline.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", USER_FEED_IDS_TTL_SECONDS);
         pipeline.del(legacyAdsCacheKey);
 
-        shuffledCandidateAds.forEach((ad: Ad) => {
+        if (completedOrCappedAdIds.length > 0) {
+          pipeline.sadd(seenAdsSetKey, ...completedOrCappedAdIds);
+          pipeline.expire(seenAdsSetKey, 86400 * 30);
+        }
+
+        orderedCandidateAds.forEach((ad: Ad) => {
           pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
         });
 
@@ -268,7 +403,7 @@ export async function GET(req: NextRequest) {
         console.error("❌ Redis pipeline write error:", err.message || err);
       }
 
-      pageAds = shuffledCandidateAds.slice(offset, offset + limit);
+      pageAds = orderedCandidateAds.slice(offset, offset + limit);
     }
 
     // Server-side Shared Ad Resolution (Zero Client Waterfall)
@@ -298,10 +433,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Sign each ad in the page slice using env.AUTH0_SECRET
+    // Sign each ad in the page slice using env.AUTH0_SECRET and emailKey for deterministic verification
     const secretKey = env.AUTH0_SECRET;
     const signedAds = pageAds.map((ad: Ad) => {
-      const payload = `${ad.id}:${userId}:${servedAt}`;
+      const payload = `${ad.id}:${emailKey}:${servedAt}`;
       const token = crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
       return {
         ...ad,

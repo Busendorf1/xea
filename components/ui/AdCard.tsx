@@ -253,8 +253,8 @@ function AdCard({
   }, [activeAction]);
 
   const isPlatformPost = useMemo(() => {
-    // An ad is only a platform broadcast if it is explicitly an admin post with no pay-per-impression reward
-    return !!(ad.is_admin_post && (!ad.cost_per_impression || ad.cost_per_impression === 0));
+    // An ad is an unpaid platform post if it is an admin post or has no pay-per-impression reward
+    return Boolean(ad.is_admin_post || !ad.cost_per_impression || Number(ad.cost_per_impression) <= 0);
   }, [ad.is_admin_post, ad.cost_per_impression]);
 
   const advertiserProfile = useMemo(() => {
@@ -568,7 +568,25 @@ function AdCard({
                 </div>
 
                 <div className={styles.productRightGroup}>
-                  {ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
+                  {isPlatformPost ? (
+                    <div className={styles.fromBrandContainer}>
+                      {targetLink && targetLink !== "#" ? (
+                        <a
+                          href={targetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.fromBrandBtn}
+                          title={`Visit ${brandName}`}
+                        >
+                          Visit &apos;{brandName}&apos;
+                        </a>
+                      ) : (
+                        <span className={styles.fromBrandText}>
+                          Visit &apos;{brandName}&apos;
+                        </span>
+                      )}
+                    </div>
+                  ) : ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
                     !seenAds.includes(ad.id) && (
                       <AdInteractionHandler
                         ad={ad}
@@ -683,7 +701,25 @@ function AdCard({
             </div>
 
             <div className={styles.interactionButtonGroup}>
-              {ad.user_email?.toLowerCase() === userEmail.toLowerCase() || (ad.is_admin_post && (!ad.cost_per_impression || ad.cost_per_impression === 0)) ? null : (
+              {isPlatformPost ? (
+                <div className={styles.fromBrandContainer}>
+                  {targetLink && targetLink !== "#" ? (
+                    <a
+                      href={targetLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.fromBrandBtn}
+                      title={`Visit ${brandName}`}
+                    >
+                      Visit &apos;{brandName}&apos;
+                    </a>
+                  ) : (
+                    <span className={styles.fromBrandText}>
+                      Visit &apos;{brandName}&apos;
+                    </span>
+                  )}
+                </div>
+              ) : ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
                 !seenAds.includes(ad.id) && (
                   <AdInteractionHandler
                     ad={ad}

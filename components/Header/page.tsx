@@ -447,7 +447,7 @@ export default function Header() {
                       Sign Out
                     </a>
                   ) : (
-                    <a href="/auth/login?connection=google-oauth2" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
+                    <a href="/auth/login" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
                       Sign In
                     </a>
                   )}
@@ -479,7 +479,7 @@ export default function Header() {
                 Sign Out
               </a>
             ) : (
-              <a href="/auth/login?connection=google-oauth2" className={styles.ctaBtn}>
+              <a href="/auth/login" className={styles.ctaBtn}>
                 Sign In
               </a>
             )}

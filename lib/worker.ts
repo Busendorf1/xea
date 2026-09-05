@@ -73,7 +73,8 @@ export const flushBatch = async (): Promise<void> => {
     flushTimeout = null;
   }
 
-  console.log(`📦 Queue Worker: Bulk flushing ${currentBatch.length} feed interactions to Supabase...`);
+  try {
+    console.log(`📦 Queue Worker: Bulk flushing ${currentBatch.length} feed interactions to Supabase...`);
 
   const earns = currentBatch.filter((j) => j.job.data.type === "earn");
   const mutuals = currentBatch.filter((j) => j.job.data.type === "mutual");
@@ -281,8 +282,12 @@ export const flushBatch = async (): Promise<void> => {
       j.resolve();
     }
   });
-
-  isFlushing = false;
+  } catch (batchErr) {
+    console.error("❌ Critical error during flushBatch execution:", batchErr);
+    currentBatch.forEach((j) => j.reject(batchErr as Error));
+  } finally {
+    isFlushing = false;
+  }
 };
 
 const queueJob = (job: Job<FeedJobData>): Promise<void> => {
@@ -291,9 +296,10 @@ const queueJob = (job: Job<FeedJobData>): Promise<void> => {
     if (pendingJobs.length >= 50) {
       flushBatch().catch((err) => console.error("❌ Error during flushBatch:", err));
     } else if (!flushTimeout) {
+      // 200ms debounce ensures micro-batching without latency stalls
       flushTimeout = setTimeout(() => {
         flushBatch().catch((err) => console.error("❌ Error during timeout flushBatch:", err));
-      }, 1000);
+      }, 200);
     }
   });
 };
@@ -305,7 +311,7 @@ export const feedWorker = new Worker<FeedJobData>(
   },
   {
     connection: connectionOptions,
-    concurrency: 5,
+    concurrency: 50, // High throughput: allows up to 50 jobs to be batched simultaneously
   }
 );
 

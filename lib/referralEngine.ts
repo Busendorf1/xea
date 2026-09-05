@@ -6,19 +6,18 @@ const IP_REFERRAL_DAILY_LIMIT = 30; // Max 30 referral registrations per IP subn
 const IP_RATE_LIMIT_TTL_SECONDS = 86400; // 24 Hours
 
 /**
- * Calculates ATW Tier Level from Clicks OR Invites (Dual Progression)
- * Level 1: 12 Invites / 300 Clicks
- * Each level increment: +15 Invites OR +300 Clicks
+ * Calculates ATW Tier Level from Clicks
+ * Level 1: 300 Clicks
+ * Each level increment: +300 Clicks
  * Max: ATW14 (₦1.4M Cap)
  */
-export function calculateAtwTier(clicks = 0, invites = 0): {
+export function calculateAtwTier(clicks = 0): {
   tier: string;
   level: number;
   holdingLimit: number;
 } {
-  const levelFromInvites = invites >= 12 ? 1 + Math.floor((invites - 12) / 15) : 1;
   const levelFromClicks = clicks >= 300 ? 1 + Math.floor((clicks - 300) / 300) : 1;
-  const finalLevel = Math.min(14, Math.max(1, Math.max(levelFromInvites, levelFromClicks)));
+  const finalLevel = Math.min(14, Math.max(1, levelFromClicks));
 
   return {
     tier: `ATW${finalLevel}`,

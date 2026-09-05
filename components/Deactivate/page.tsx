@@ -52,16 +52,20 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
     setError("");
 
     try {
-      // Call server-side deactivate endpoint
+      // Call server-side deactivate endpoint with confirmation body
       const res = await fetch("/api/profile/deactivate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confirmEmail: confirmEmailInput.trim().toLowerCase(),
+          forfeitConfirmed: true,
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to deactivate account.");
+        throw new Error(data.message || data.error || "Failed to deactivate account.");
       }
 
       setStep("done");

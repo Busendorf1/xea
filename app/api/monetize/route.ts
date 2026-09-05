@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     // 2. High-Scale Direct Query Path (Fast Index Read, ~10ms)
     const { data: uData, error: uErr } = await supabaseReadOnly
       .from("users")
-      .select("monetized, monetization_clicks, referral_downloads_count, referral_code, atw_tier, last_active_at, created_at")
+      .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at")
       .eq("email", emailLower)
       .maybeSingle();
 
@@ -47,10 +47,12 @@ export async function GET(req: NextRequest) {
 
     // Check live real-time clicks from Redis counter (instant real-time updates)
     let liveClicksDelta = 0;
-    try {
-      const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
-      if (liveVal) liveClicksDelta = Number(liveVal) || 0;
-    } catch {}
+    if (isRedisReady()) {
+      try {
+        const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
+        if (liveVal) liveClicksDelta = Number(liveVal) || 0;
+      } catch {}
+    }
 
     if (uErr || !uData) {
       // Fallback to RPC if single-read fails or user row not found
@@ -60,7 +62,6 @@ export async function GET(req: NextRequest) {
 
       const row = statusData?.[0];
       const clicksCount = Math.max(Number(row?.monetization_clicks || 0), liveClicksDelta);
-      const invitesCount = Number(row?.referral_downloads_count || 0);
       const isMonetized = !!row?.monetized || clicksCount >= 300;
 
       payload = {
@@ -69,9 +70,6 @@ export async function GET(req: NextRequest) {
         clicksCount,
         clicksRemaining: Math.max(0, 300 - clicksCount),
         targetClicks: 300,
-        invitesCount,
-        invitesRemaining: Number(row?.invites_remaining || Math.max(0, 12 - invitesCount)),
-        targetInvites: 12,
         atwTier: row?.atw_tier || "ATW1",
         daysInactive: Number(row?.days_inactive || 0),
         statusMessage: row?.status_message || null,
@@ -79,13 +77,11 @@ export async function GET(req: NextRequest) {
     } else {
       const dbClicks = uData.monetization_clicks ?? 0;
       const clicks = Math.max(dbClicks, liveClicksDelta);
-      const invites = uData.referral_downloads_count ?? 0;
       const isMonetized = !!(
         uData.monetized === "true" ||
         uData.monetized === "yes" ||
         uData.monetized === true ||
-        clicks >= 300 ||
-        invites >= 12
+        clicks >= 300
       );
 
       // Fast in-memory calculation of inactive days
@@ -97,7 +93,7 @@ export async function GET(req: NextRequest) {
       }
 
       const { calculateAtwTier } = await import("@/lib/referralEngine");
-      const { tier: computedTier } = calculateAtwTier(clicks, invites);
+      const { tier: computedTier } = calculateAtwTier(clicks);
 
       payload = {
         success: true,
@@ -105,9 +101,6 @@ export async function GET(req: NextRequest) {
         clicksCount: clicks,
         clicksRemaining: Math.max(0, 300 - clicks),
         targetClicks: 300,
-        invitesCount: invites,
-        invitesRemaining: Math.max(0, 12 - invites),
-        targetInvites: 12,
         atwTier: uData.atw_tier || computedTier,
         referralCode: uData.referral_code || null,
         daysInactive,

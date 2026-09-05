@@ -41,20 +41,17 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const fetchNews = async () => {
     const email = session?.user?.email;
     if (!email) return;
     try {
-      const [reviewRes, activeRes] = await Promise.all([
-        supabase.from("news").select("*").eq("user_email", email).order("created_at", { ascending: false }),
-        supabase.from("newsactive").select("*").eq("user_email", email).order("created_at", { ascending: false }),
-      ]);
-
-      if (reviewRes.error || activeRes.error) throw new Error();
-
-      setReviewNews(reviewRes.data || []);
-      setActiveNews(activeRes.data || []);
+      const res = await fetch("/api/campaigns");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setReviewNews(data.highlightsQueue || []);
+      setActiveNews(data.highlightsActive || []);
     } catch (err) {
       setError(true);
     } finally {
@@ -68,12 +65,16 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
   const handleTogglePause = async (item: HighlightItem) => {
     if (item.admin_statement && item.is_paused) {
-      alert("Highlight Paused, follow instruction provided");
+      setNoticeMessage(`Highlight paused by admin: "${item.admin_statement}". Follow instructions provided.`);
+      setTimeout(() => setNoticeMessage(null), 5000);
       return;
     }
 
     const nextState = !item.is_paused;
     setActionLoading(item.id);
+
+    // Optimistic UI update
+    setActiveNews((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_paused: nextState } : n)));
 
     try {
       const res = await fetch("/api/highlights/pause", {
@@ -87,12 +88,16 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Limit reached, try again later.");
-      } else {
-        fetchNews();
+        // Rollback optimistic update
+        setActiveNews((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_paused: !nextState } : n)));
+        setNoticeMessage(data.error || "Could not update status.");
+        setTimeout(() => setNoticeMessage(null), 4000);
       }
     } catch (err: any) {
-      alert("Failed to toggle pause: " + (err.message || "Network error"));
+      // Rollback optimistic update
+      setActiveNews((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_paused: !nextState } : n)));
+      setNoticeMessage("Network error updating status.");
+      setTimeout(() => setNoticeMessage(null), 4000);
     } finally {
       setActionLoading(null);
     }
@@ -201,6 +206,20 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
   return (
     <div className={styles.feedContainer}>
+      {noticeMessage && (
+        <div style={{
+          backgroundColor: "rgba(245, 158, 11, 0.15)",
+          border: "1px solid #f59e0b",
+          color: "#f59e0b",
+          padding: "10px 14px",
+          borderRadius: "8px",
+          marginBottom: "1rem",
+          fontSize: "0.85rem",
+          fontWeight: 600,
+        }}>
+          {noticeMessage}
+        </div>
+      )}
       {loading && <p className={styles.loading}>Loading Highlights...</p>}
       {!loading && error && <p className={styles.error}>Error loading Highlights.</p>}
       

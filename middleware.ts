@@ -32,6 +32,13 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
+    if (pathname.startsWith("/auth/callback")) {
+      return new NextResponse(
+        `Authentication callback error: ${error?.message || error}. Please start a fresh login from /auth/login.`,
+        { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      );
+    }
+
     return NextResponse.next();
   }
 }

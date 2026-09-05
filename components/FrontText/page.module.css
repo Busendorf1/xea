@@ -232,6 +232,39 @@
   flex-shrink: 0;
 }
 
+.appleLoginBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  background: var(--foreground);
+  color: var(--background);
+  padding: 0.9rem 1.5rem;
+  border: 1px solid var(--foreground);
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  text-decoration: none;
+}
+
+.appleLoginBtn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.appleLoginBtn:active {
+  transform: scale(0.985);
+}
+
+.appleIcon {
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
 .trustBadge {
   display: flex;
   align-items: center;

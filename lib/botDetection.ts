@@ -70,15 +70,15 @@ export function evaluateEarningVelocity(
   }
   timestamps.push(currentTimestampMs);
 
-  // 1. Minimum Inter-Ad Safety Guard
+  // 1. Minimum Inter-Ad Rapid Burst Guard (<500ms robotic burst)
   if (timestamps.length >= 2) {
     const lastDeltaSec = (currentTimestampMs - timestamps[timestamps.length - 2]) / 1000;
-    if (lastDeltaSec < 15.5) {
+    if (lastDeltaSec < 0.5) {
       return {
         isBotSuspect: true,
-        reason: "Sub-minimum dwell time detected between ad claims.",
+        reason: "Robotic sub-second click burst detected.",
         cooldownType: "pacing_15m",
-        cooldownDurationMinutes: 15,
+        cooldownDurationMinutes: 1,
       };
     }
   }

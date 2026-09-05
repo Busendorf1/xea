@@ -117,7 +117,6 @@ export default function StatementComponent() {
   const handleDownloadCSV = () => {
     const dataToExport = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
     if (!dataToExport || dataToExport.length === 0) {
-      alert("No statement records available to download.");
       return;
     }
 

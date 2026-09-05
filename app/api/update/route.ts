@@ -120,8 +120,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Invalidate cached profile in Redis
-    await invalidateCachedProfile(email);
+    // Invalidate cached profile and feed targeting caches in Redis
+    const emailLower = email.toLowerCase().trim();
+    await invalidateCachedProfile(emailLower);
+
+    try {
+      const redis = (await import("@/lib/redis")).default;
+      const { isRedisReady } = await import("@/lib/redis");
+      if (isRedisReady()) {
+        await Promise.all([
+          redis.del(`feed:ad_ids:${emailLower}`),
+          redis.del(`feed:ads:${emailLower}`),
+          redis.del(`feed:profiles:${emailLower}`),
+        ]).catch(() => {});
+      }
+    } catch {}
 
     return NextResponse.json({ success: true, message: "Profile updated successfully" }, { status: 200 });
   } catch (err: any) {

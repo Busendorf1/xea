@@ -8,6 +8,10 @@ export default function LogoutPage() {
   useEffect(() => {
     const logout = async () => {
       try {
+        if (typeof window !== "undefined") {
+          sessionStorage.clear();
+          document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        }
         await supabase.auth.signOut(); // Clear Supabase session
       } catch (err) {
         console.error("Supabase signOut error:", err);

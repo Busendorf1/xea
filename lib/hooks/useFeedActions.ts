@@ -10,7 +10,7 @@ interface UseFeedActionsProps {
   incrementClicks?: (delta?: number) => void;
   addMutual: (targetEmail: string) => void;
   suspendAccount: (hours?: number) => void;
-  onEarnSuccess?: (earnedAmount?: number) => void;
+  onEarnSuccess?: (earnedAmount?: number, newBalance?: number, newClicks?: number) => void;
   onMutualSuccess?: () => void;
 }
 
@@ -49,7 +49,13 @@ export function useFeedActions({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ adId: ad.id }),
         });
-        if (!response.ok) throw new Error("Failed to record ad seen via API");
+        if (!response.ok) {
+          if (response.status === 401) {
+            console.warn("⚠️ Session expired or unauthorized in handleAdSeen");
+            return true;
+          }
+          throw new Error("Failed to record ad seen via API");
+        }
         return true;
       } catch (e) {
         console.error("❌ Error recording ad seen via queue API:", e);
@@ -74,12 +80,29 @@ export function useFeedActions({
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
 
-      const expectedRate = ad.cost_per_impression && ad.cost_per_impression > 0 ? ad.cost_per_impression : 25;
+      const rawCpi = ad.cost_per_impression && Number(ad.cost_per_impression) > 0 ? Number(ad.cost_per_impression) : 25;
+      const expectedRate = Math.round(rawCpi * 0.60 * 100) / 100;
+
+      console.log(`🟢 [EARN CLICKED] Ad: ${ad.id}, Base CPI: ₦${rawCpi}, crediting 60% (₦${expectedRate}) immediately to balance...`);
 
       // 1. INSTANT OPTIMISTIC UI: Trigger balance & click progress update immediately (0ms delay)
-      updateBalance(expectedRate);
+      if (expectedRate > 0) {
+        updateBalance(expectedRate);
+        onEarnSuccess?.(expectedRate);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("xea:live-balance-sync", {
+              detail: { delta: expectedRate, earnedAmount: expectedRate },
+            })
+          );
+          window.dispatchEvent(
+            new CustomEvent("xea:live-balance-earned", {
+              detail: { delta: expectedRate, earnedAmount: expectedRate },
+            })
+          );
+        }
+      }
       incrementClicks?.(1);
-      onEarnSuccess?.(expectedRate);
       setSeenAds((prev) => [...prev, ad.id]);
 
       try {
@@ -96,19 +119,28 @@ export function useFeedActions({
         });
 
         if (!response.ok) {
-          const errData = await response.json();
+          const errData = await response.json().catch(() => ({}));
+          console.error("❌ Earn API rejected claim:", response.status, errData);
           // Rollback on server error
-          updateBalance(-expectedRate);
-          onEarnSuccess?.(-expectedRate);
-          throw new Error(errData.error || "Failed to claim earnings");
+          if (expectedRate > 0) {
+            updateBalance(-expectedRate);
+            onEarnSuccess?.(-expectedRate);
+          }
+          if (errData?.code === "ALREADY_EARNED" || (errData?.error && String(errData.error).includes("already been claimed"))) {
+            setSeenAds((prev) => (prev.includes(ad.id) ? prev : [...prev, ad.id]));
+            return false;
+          }
+          return false;
         }
 
         const resData = await response.json();
 
         // Handle Active Earning Cooldown (Pacing 15m or Review 48h)
         if (resData.code === "COOLDOWN_ACTIVE") {
-          updateBalance(-expectedRate);
-          onEarnSuccess?.(-expectedRate);
+          if (expectedRate > 0) {
+            updateBalance(-expectedRate);
+            onEarnSuccess?.(-expectedRate);
+          }
           if (setViewerProfile) {
             setViewerProfile((prev) =>
               prev
@@ -130,21 +162,56 @@ export function useFeedActions({
 
         // Legacy suspension handling
         if (rate === -1 || rate === -2) {
-          updateBalance(-expectedRate);
-          onEarnSuccess?.(-expectedRate);
+          if (expectedRate > 0) {
+            updateBalance(-expectedRate);
+            onEarnSuccess?.(-expectedRate);
+          }
           suspendAccount(2);
           return false;
         }
 
         // If returned rate differed from optimistic rate, reconcile difference
-        if (rate !== expectedRate && rate > 0) {
+        if (rate !== expectedRate) {
           const diff = rate - expectedRate;
           updateBalance(diff);
           onEarnSuccess?.(diff);
         }
 
+        // Sync with authoritative balance and clicks from server response
+        if (typeof resData.balance === "number" && !isNaN(resData.balance)) {
+          const authBal = resData.balance;
+          const authClicks = typeof resData.clicks === "number" ? resData.clicks : undefined;
+
+          if (setViewerProfile) {
+            setViewerProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    balance: authBal,
+                    monetization_clicks: typeof authClicks === "number" ? Math.max(prev.monetization_clicks, authClicks) : prev.monetization_clicks,
+                    monetized: (typeof authClicks === "number" && authClicks >= 300) || prev.monetized,
+                  }
+                : null
+            );
+          }
+
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("xea:live-balance-sync", {
+                detail: { newBalance: authBal, clicks: authClicks, earnedAmount: rate },
+              })
+            );
+          }
+
+          onEarnSuccess?.(rate, authBal, authClicks);
+        }
+
         return true;
       } catch (e: unknown) {
+        if (expectedRate > 0) {
+          updateBalance(-expectedRate);
+          onEarnSuccess?.(-expectedRate);
+        }
         console.error("❌ Unexpected error in handleAdEarn:", e);
         return false;
       } finally {
@@ -152,7 +219,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, updateBalance, incrementClicks, suspendAccount, onEarnSuccess, setViewerProfile]
+    [userEmail, viewerProfile, updateBalance, incrementClicks, suspendAccount, onEarnSuccess, setViewerProfile]
   );
 
   // Add Mutual
@@ -189,8 +256,12 @@ export function useFeedActions({
         });
 
         if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || "Failed to add mutual");
+          const errData = await response.json().catch(() => ({}));
+          if (response.status === 401) {
+            console.warn("⚠️ Session expired or unauthorized in handleAdMutual");
+            return false;
+          }
+          throw new Error(errData?.error || "Failed to add mutual");
         }
 
         const resData = await response.json();

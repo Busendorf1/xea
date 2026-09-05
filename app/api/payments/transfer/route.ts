@@ -9,10 +9,13 @@ import {
   checkSenderRateLimit,
   checkRecipientRateLimit,
   reserveSenderBalance,
+  acquireWalletLock,
+  releaseWalletLock,
 } from "@/lib/security/rateLimiter";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
+  let walletLockAcquired = false;
   try {
     senderEmail = (await getAuthenticatedEmail(req)) || "";
     if (!senderEmail) {
@@ -48,9 +51,17 @@ export async function POST(req: NextRequest) {
     // Convert to Fixed-Point Integer Kobo (Prevents IEEE 754 precision rounding bugs)
     const amountKobo = Math.round(amountNum * 100);
 
-    // 3. Strict Idempotency Lock Check (Prevents Replay Attacks & Network Retries)
+    // 3. Strict Mandatory Client Idempotency Lock Check
     const reqHeaderKey = req.headers.get("x-idempotency-key");
-    const rawIdempotency = idempotencyKey || reqHeaderKey || `trf_${cleanSender}_${cleanRecipient}_${amountKobo}_${Date.now()}`;
+    const clientKey = idempotencyKey || reqHeaderKey;
+    if (!clientKey || typeof clientKey !== "string" || clientKey.trim().length < 8) {
+      return NextResponse.json(
+        { error: "Missing or invalid 'x-idempotency-key' header. Financial transactions require a unique client idempotency key." },
+        { status: 400 }
+      );
+    }
+
+    const rawIdempotency = clientKey.trim();
     const idempotencyRedisKey = `idempotency:transfer:${rawIdempotency}`;
 
     try {
@@ -63,6 +74,15 @@ export async function POST(req: NextRequest) {
       }
     } catch (redisErr) {
       console.warn("⚠️ Idempotency key Redis check warning:", redisErr);
+    }
+
+    // 4. Acquire Distributed Wallet Mutex Lock (Prevents Concurrency Double-Spending)
+    walletLockAcquired = await acquireWalletLock(cleanSender);
+    if (!walletLockAcquired) {
+      return NextResponse.json(
+        { error: "Another transaction on your wallet is currently processing. Please wait a moment." },
+        { status: 429 }
+      );
     }
 
     // 4. Rate Limits (Sender Velocity, Recipient Velocity, Daily Recipient Limit)
@@ -170,5 +190,9 @@ export async function POST(req: NextRequest) {
       { error: "A network error occurred. Your transfer was safely aborted and balance remains intact." },
       { status: 500 }
     );
+  } finally {
+    if (walletLockAcquired && senderEmail) {
+      await releaseWalletLock(senderEmail).catch(() => {});
+    }
   }
 }

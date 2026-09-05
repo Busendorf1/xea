@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
         p_cost_per_impression: effectiveRate,
         p_total_cost: amountNum,
         p_user_email: email,
-        p_ad_media: adData.adMedia || null,
+        p_ad_media: adData.adMedia || adData.ad_media || null,
         p_display_mutual_button: adData.displayMutualButton ?? true,
         p_product_price: adData.productPrice || null,
         p_product_name: adData.productName || null,

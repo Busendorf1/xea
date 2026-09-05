@@ -1,6 +1,95 @@
 import redisConnection, { isRedisReady } from "../redis";
 
 // ----------------------------------------------------
+// ATOMIC REDIS LUA EARNING MULTI-DEVICE DEDUPLICATION
+// ----------------------------------------------------
+
+export async function atomicCheckAndAcquireEarnLock(
+  email: string,
+  adId: string,
+  lockTtlSeconds = 15
+): Promise<{ allowed: boolean; code: "OK" | "ALREADY_EARNED" | "CONCURRENT_CLAIM" }> {
+  if (!isRedisReady()) return { allowed: true, code: "OK" };
+
+  const emailLower = email.toLowerCase().trim();
+  const earnLockKey = `lock:earn:${emailLower}:${adId}`;
+
+  try {
+    const acquired = await redisConnection.set(earnLockKey, "1", "EX", lockTtlSeconds, "NX");
+    if (!acquired) {
+      return { allowed: false, code: "CONCURRENT_CLAIM" };
+    }
+    return { allowed: true, code: "OK" };
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis atomicCheckAndAcquireEarnLock warning:", err.message || err);
+    }
+    return { allowed: true, code: "OK" };
+  }
+}
+
+export async function releaseEarnLock(email: string, adId: string): Promise<void> {
+  if (!isRedisReady()) return;
+  const emailLower = email.toLowerCase().trim();
+  const earnLockKey = `lock:earn:${emailLower}:${adId}`;
+  try {
+    await redisConnection.del(earnLockKey);
+  } catch {}
+}
+
+export async function publishLiveBalanceUpdate(
+  email: string,
+  event: { delta: number; newBalance: number; clicks?: number; earnedAdId?: string }
+): Promise<void> {
+  if (!email) return;
+  const emailLower = email.toLowerCase().trim();
+
+  // 1. Redis Pub/Sub for Server-Sent Events (SSE) Stream
+  if (isRedisReady()) {
+    try {
+      await redisConnection.publish(
+        `live:balance:${emailLower}`,
+        JSON.stringify({
+          type: "LIVE_BALANCE_UPDATE",
+          email: emailLower,
+          delta: event.delta,
+          newBalance: event.newBalance,
+          clicks: event.clicks,
+          earnedAdId: event.earnedAdId,
+          timestamp: Date.now(),
+        })
+      );
+    } catch (err: any) {
+      if (err?.message !== "Connection is closed.") {
+        console.warn("⚠️ Redis publishLiveBalanceUpdate notice:", err.message || err);
+      }
+    }
+  }
+
+  // 2. Supabase Realtime WebSocket Broadcast (0ms cross-device delivery to mobile & web)
+  try {
+    const supabaseAdmin = (await import("./dbAdmin")).default;
+    const channelName = `realtime:user:${emailLower.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    const channel = supabaseAdmin.channel(channelName);
+    await channel.send({
+      type: "broadcast",
+      event: "balance_update",
+      payload: {
+        balance: event.newBalance,
+        delta: event.delta,
+        monetization_clicks: event.clicks,
+        monetized: event.clicks !== undefined ? event.clicks >= 300 : undefined,
+        earnedAdId: event.earnedAdId,
+        email: emailLower,
+        timestamp: Date.now(),
+      },
+    });
+  } catch (sbErr) {
+    console.warn("⚠️ Supabase Realtime WebSocket broadcast notice:", sbErr);
+  }
+}
+
+// ----------------------------------------------------
 // USER PROFILE NATURAL 60-SECOND REDIS CACHING
 // ----------------------------------------------------
 

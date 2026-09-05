@@ -102,7 +102,33 @@ export async function checkRecipientRateLimit(recipientEmail: string): Promise<R
 }
 
 /**
- * Atomic Sender Balance Reservation using Redis & Supabase verification
+ * Distributed Mutex Lock for Wallet Operations.
+ * Prevents concurrent double-spending race conditions.
+ */
+export async function acquireWalletLock(senderEmail: string, ttlSeconds = 15): Promise<boolean> {
+  const cleanSender = senderEmail.toLowerCase().trim();
+  const lockKey = `lock:wallet:${cleanSender}`;
+  try {
+    const acquired = await redisConnection.set(lockKey, "LOCKED", "EX", ttlSeconds, "NX");
+    return !!acquired;
+  } catch (err) {
+    console.warn("⚠️ Wallet lock acquisition error:", err);
+    return true; // Gracefully degrade if Redis is unavailable
+  }
+}
+
+export async function releaseWalletLock(senderEmail: string): Promise<void> {
+  const cleanSender = senderEmail.toLowerCase().trim();
+  const lockKey = `lock:wallet:${cleanSender}`;
+  try {
+    await redisConnection.del(lockKey);
+  } catch (err) {
+    console.warn("⚠️ Wallet lock release error:", err);
+  }
+}
+
+/**
+ * Atomic Sender Balance Verification using Supabase verification
  */
 export async function reserveSenderBalance(senderEmail: string, amountNaira: number): Promise<{ success: boolean; currentBalance: number; error?: string }> {
   const cleanSender = senderEmail.toLowerCase().trim();

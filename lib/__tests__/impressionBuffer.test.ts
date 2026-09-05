@@ -8,6 +8,7 @@ vi.mock("../redis", () => ({
   default: {
     status: "ready",
     hincrby: vi.fn().mockResolvedValue(1),
+    del: vi.fn().mockResolvedValue(1),
     eval: vi.fn(),
   },
 }));

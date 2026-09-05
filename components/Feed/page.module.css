@@ -12,11 +12,27 @@
   flex-direction: column;
   justify-content: space-between;
   overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.feedContainer::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .adGrid {
   display: flex;
   flex-direction: column;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.adGrid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Twitter style Tweet container */

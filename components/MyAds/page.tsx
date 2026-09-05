@@ -251,20 +251,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
 
     try {
-      const [reviewRes, activeRes, analyticsRes] = await Promise.all([
-        supabase.from("adds").select("*").ilike("user_email", email).order("created_at", { ascending: false }),
-        supabase.from("addsactive").select("*").ilike("user_email", email).order("created_at", { ascending: false }),
+      const [campaignsRes, analyticsRes] = await Promise.all([
+        fetch("/api/campaigns").then((r) => (r.ok ? r.json() : null)).catch(() => null),
         fetch("/api/campaigns/analytics").then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
 
-      if (reviewRes.error || activeRes.error) {
-        console.error("adds table select error:", reviewRes.error);
-        console.error("addsactive table select error:", activeRes.error);
-        throw new Error("Query failed");
+      if (!campaignsRes) {
+        throw new Error("Failed to fetch campaigns");
       }
 
-      const reviewData = reviewRes.data || [];
-      const activeData = activeRes.data || [];
+      const reviewData = campaignsRes.adsQueue || [];
+      const activeData = campaignsRes.adsActive || [];
       let reports = {};
       let dismissals = {};
       let blockCount = 0;
@@ -312,12 +309,23 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
   const handleTogglePause = async (adId: string, currentPausedState: boolean, adminStatement?: string | null) => {
     if (currentPausedState && adminStatement) {
-      alert("Ad Paused, follow instruction provided");
+      setNoticeModal({
+        title: "Campaign Notice",
+        message: `This ad is paused by administration: "${adminStatement}". Please follow the instruction provided.`,
+      });
       return;
     }
 
     try {
       const nextPausedState = !currentPausedState;
+      // Update local state optimistically
+      setActiveAds((prev) =>
+        prev.map((item) => (item.id === adId ? { ...item, is_paused: nextPausedState } : item))
+      );
+      setReviewAds((prev) =>
+        prev.map((item) => (item.id === adId ? { ...item, is_paused: nextPausedState } : item))
+      );
+
       const res = await fetch("/api/campaigns/pause", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -326,18 +334,30 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || "Failed to update campaign state");
+        // Rollback optimistic update
+        setActiveAds((prev) =>
+          prev.map((item) => (item.id === adId ? { ...item, is_paused: currentPausedState } : item))
+        );
+        setReviewAds((prev) =>
+          prev.map((item) => (item.id === adId ? { ...item, is_paused: currentPausedState } : item))
+        );
+        setNoticeModal({
+          title: "Status Update",
+          message: errData.error || "Failed to update campaign state.",
+        });
       }
-
-      // Update local state instantly
+    } catch (e: any) {
+      // Rollback optimistic update
       setActiveAds((prev) =>
-        prev.map((item) => (item.id === adId ? { ...item, is_paused: nextPausedState } : item))
+        prev.map((item) => (item.id === adId ? { ...item, is_paused: currentPausedState } : item))
       );
       setReviewAds((prev) =>
-        prev.map((item) => (item.id === adId ? { ...item, is_paused: nextPausedState } : item))
+        prev.map((item) => (item.id === adId ? { ...item, is_paused: currentPausedState } : item))
       );
-    } catch (e: any) {
-      alert(e.message || "Could not update campaign status.");
+      setNoticeModal({
+        title: "Connection Notice",
+        message: e.message || "Could not update campaign status.",
+      });
     }
   };
 
@@ -370,7 +390,10 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     });
 
     if (!validation.success) {
-      alert(validation.error.issues[0]?.message || "Invalid boost parameters.");
+      setNoticeModal({
+        title: "Validation Notice",
+        message: validation.error.issues[0]?.message || "Invalid boost parameters.",
+      });
       return;
     }
 
@@ -403,11 +426,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         return;
       }
 
-      alert(data.message || "Campaign boosted successfully!");
+      setNoticeModal({
+        title: "Campaign Boosted",
+        message: data.message || "Your campaign has been boosted successfully!",
+      });
       setBoosterAd(null);
       fetchAds(true);
     } catch (e: any) {
-      alert(e.message || "An error occurred while boosting your campaign.");
+      setNoticeModal({
+        title: "Boost Notice",
+        message: e.message || "An error occurred while boosting your campaign.",
+      });
     } finally {
       setBoosting(false);
     }
@@ -487,14 +516,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       const encodedId = btoa(adId.toString());
       const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
       navigator.clipboard.writeText(shareUrl)
-        .then(() => alert("Ad share link copied to clipboard."))
-        .catch((err) => console.error("Failed to copy link:"));
+        .then(() => setNoticeModal({ title: "Link Copied", message: "Ad share link copied to clipboard." }))
+        .catch(() => setNoticeModal({ title: "Share Notice", message: "Failed to copy link to clipboard." }));
     }
   };
 
   const handleCancelAd = async (adId: string) => {
     const confirmCancel = window.confirm(
-      "⚠️ WARNING: Are you sure you want to stop this campaign immediately?\n\nNo refunds will be issued for any unused budget/impressions under our standard cancellation policy."
+      "Are you sure you want to stop this campaign immediately? Delivery will cease immediately."
     );
     if (!confirmCancel) return;
 
@@ -510,10 +539,16 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         throw new Error(errData.error || "Failed to cancel campaign");
       }
 
-      alert("Campaign successfully cancelled. It will stop delivering immediately.");
-      window.location.reload();
+      setNoticeModal({
+        title: "Campaign Cancelled",
+        message: "Campaign successfully cancelled. Delivery has ceased immediately.",
+      });
+      fetchAds(true);
     } catch (e: any) {
-      alert(e.message || "An error occurred while cancelling your campaign.");
+      setNoticeModal({
+        title: "Cancel Notice",
+        message: e.message || "An error occurred while cancelling your campaign.",
+      });
     }
   };
 

@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     const qualifiedCount = user.referral_downloads_count ?? 0;
     const clicksCount = user.monetization_clicks ?? 0;
-    const { tier, holdingLimit, level } = calculateAtwTier(clicksCount, qualifiedCount);
+    const { tier, holdingLimit, level } = calculateAtwTier(clicksCount);
 
     return NextResponse.json({
       success: true,

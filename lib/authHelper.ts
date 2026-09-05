@@ -5,8 +5,18 @@ import { jwtVerify, createRemoteJWKSet } from "jose";
 const auth0Domain = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER_BASE_URL || "dev-43c1fflhle3lv7jj.us.auth0.com";
 const cleanDomain = auth0Domain.replace(/^https?:\/\//, "");
 
-// Local cache for validated access tokens to prevent redundant userinfo HTTP calls
+// Local bounded cache for validated access tokens to prevent redundant userinfo HTTP calls
+const MAX_CACHE_SIZE = 5000;
 const tokenCache = new Map<string, { email: string; expiresAt: number }>();
+
+function cleanExpiredTokens() {
+  const now = Date.now();
+  for (const [key, val] of tokenCache.entries()) {
+    if (val.expiresAt <= now) {
+      tokenCache.delete(key);
+    }
+  }
+}
 
 // Auth0 JWKS endpoint provider
 const JWKS = createRemoteJWKSet(
@@ -18,14 +28,6 @@ const JWKS = createRemoteJWKSet(
  * or fallback to cookie session (web client).
  */
 export async function getAuthenticatedEmail(req: NextRequest): Promise<string | null> {
-  // Support simulation testing harness in non-production environments
-  if (process.env.NODE_ENV !== "production") {
-    const simulatedUser = req.headers.get("x-simulated-user");
-    if (simulatedUser) {
-      return simulatedUser.toLowerCase().trim();
-    }
-  }
-
   const authHeader = req.headers.get("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
@@ -33,7 +35,6 @@ export async function getAuthenticatedEmail(req: NextRequest): Promise<string | 
     // 1. Check in-memory cache to resolve instantly
     const cached = tokenCache.get(token);
     if (cached && cached.expiresAt > Date.now()) {
-      console.log("⚡ Next.js Server: Resolved email from local token cache:", cached.email);
       return cached.email;
     }
 
@@ -91,18 +92,35 @@ export async function getAuthenticatedEmail(req: NextRequest): Promise<string | 
 
     if (email) {
       const normalizedEmail = email.toLowerCase();
-      // Cache token email to prevent future network roundtrips
+      // Bound cache to prevent memory leaks in serverless/Node instances
+      if (tokenCache.size >= MAX_CACHE_SIZE) {
+        cleanExpiredTokens();
+        if (tokenCache.size >= MAX_CACHE_SIZE) {
+          const firstKey = tokenCache.keys().next().value;
+          if (firstKey) tokenCache.delete(firstKey);
+        }
+      }
       tokenCache.set(token, { email: normalizedEmail, expiresAt });
-      console.log("✅ Next.js Server: Token validated and cached. Email:", normalizedEmail);
       return normalizedEmail;
     }
   }
 
-  const session = await auth0.getSession();
-  if (session?.user?.email) {
-    console.log("✅ Next.js Server: Verified web session cookie email:", session.user.email);
-  }
-  return session?.user?.email?.toLowerCase() || null;
+  // 4. Resolve Web Cookie Session (passing req first for Route Handlers, then fallback)
+  try {
+    const sessionWithReq = await (auth0 as any).getSession(req);
+    if (sessionWithReq?.user?.email) {
+      return sessionWithReq.user.email.toLowerCase().trim();
+    }
+  } catch {}
+
+  try {
+    const session = await auth0.getSession();
+    if (session?.user?.email) {
+      return session.user.email.toLowerCase().trim();
+    }
+  } catch {}
+
+  return null;
 }
 
 /**
