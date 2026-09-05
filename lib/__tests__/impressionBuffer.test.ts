@@ -80,4 +80,28 @@ describe("Impression Buffer Engine", () => {
       });
     });
   });
+
+  describe("Platform Post Detection & Zero-Budget Guard", () => {
+    it("should correctly identify platform posts without budget", () => {
+      const isPlatformPost = (ad: any) => Boolean(
+        ad.is_admin_post ||
+        !ad.cost_per_impression ||
+        Number(ad.cost_per_impression) <= 0 ||
+        !ad.impressions ||
+        Number(ad.impressions) <= 0
+      );
+
+      // Unpaid platform post
+      expect(isPlatformPost({ is_admin_post: true, cost_per_impression: 0, impressions: 0 })).toBe(true);
+
+      // Post with 0 CPI
+      expect(isPlatformPost({ cost_per_impression: 0, impressions: 500 })).toBe(true);
+
+      // Post with 0 impressions budget
+      expect(isPlatformPost({ cost_per_impression: 25, impressions: 0 })).toBe(true);
+
+      // Normal monetized ad with budget
+      expect(isPlatformPost({ is_admin_post: false, cost_per_impression: 25, impressions: 500 })).toBe(false);
+    });
+  });
 });

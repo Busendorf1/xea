@@ -31,6 +31,17 @@ export async function POST(request: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
 
+    // Stream action click directly to ClickHouse Cloud (high-throughput non-blocking)
+    const { streamImpressionsToClickHouse } = await import("@/lib/clickhouse");
+    streamImpressionsToClickHouse([
+      {
+        ad_id: adId,
+        user_email: emailLower,
+        cost_per_impression: 0,
+        interaction_type: clickType,
+      },
+    ]).catch(() => {});
+
     // Enqueue Action click to Upstash Redis queue
     await Promise.all([
       feedQueue.add("action-click", {

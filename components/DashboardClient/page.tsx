@@ -13,7 +13,6 @@ import {
   User, 
   Settings, 
   Compass, 
-  ArrowLeft,
   LogOut,
   UserCheck,
   TrendingUp,
@@ -82,11 +81,21 @@ interface DashboardClientProps {
   user: UserProfile;
   parsedInterest: string[];
   email: string;
+  initialAds?: any[];
+  initialProfiles?: Record<string, any>;
+  initialHighlights?: any[];
 }
 
 import { formatCurrency as globalFormatCurrency, getCurrencyConfig } from "@/lib/utils/currency";
 
-export default function DashboardClient({ user: initialUser, parsedInterest, email }: DashboardClientProps) {
+export default function DashboardClient({
+  user: initialUser,
+  parsedInterest,
+  email,
+  initialAds,
+  initialProfiles,
+  initialHighlights,
+}: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<UserProfile>(initialUser);
   const [monetizing, setMonetizing] = useState(false);
@@ -290,14 +299,21 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
 
   useEffect(() => {
     fetchNotifications();
-    refreshProfileQuietly();
+
+    // Delay background profile/monetize quiet refresh by 3s so the critical feed pipeline has 100% bandwidth
+    const initialQuietTimeout = setTimeout(() => {
+      refreshProfileQuietly();
+    }, 3000);
 
     const interval = setInterval(() => {
       fetchNotifications();
       refreshProfileQuietly();
     }, 20000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialQuietTimeout);
+      clearInterval(interval);
+    };
   }, []);
 
   // Supabase Real-Time Cross-Device Synchronization (Laptop, TV, Live Screen, Mobile)
@@ -1163,16 +1179,6 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
         } ${
           isMobile ? (showHighlightsMobile ? styles.showMobileFull : styles.hideMobileFull) : ""
         }`}>
-          {isMobile && (
-            <div className={styles.sidebarMobileHeader}>
-              <button onClick={closeAllToggles} className={styles.backBtn}>
-                <ArrowLeft size={20} />
-                <span>Back to Feed</span>
-              </button>
-              <h3 className={styles.mobilePanelTitle}>Daily Highlights</h3>
-            </div>
-          )}
-          
           <div className={styles.sidebarContent}>
             <div 
               className={styles.desktopLeftHeader}
@@ -1195,7 +1201,7 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
               className={styles.highlightsWrap}
             >
               <p className={styles.offerArea}>Daily Business Highlights:</p>
-              <Newsdisplay userInterest={parsedInterest} />
+              <Newsdisplay userInterest={parsedInterest} initialHighlights={initialHighlights} />
             </div>
           </div>
         </aside>
@@ -1209,6 +1215,8 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
           <Feed 
             userEmail={email} 
             initialProfile={user} 
+            initialAds={initialAds}
+            initialProfiles={initialProfiles}
             onEarnSuccess={handleEarnSuccess} 
             onMutualSuccess={handleMutualSuccess} 
           />
@@ -1222,16 +1230,6 @@ export default function DashboardClient({ user: initialUser, parsedInterest, ema
         } ${
           isMobile ? (showProfileMobile ? styles.showMobileFull : styles.hideMobileFull) : ""
         }`}>
-          {isMobile && (
-            <div className={styles.sidebarMobileHeader}>
-              <button onClick={closeAllToggles} className={styles.backBtn}>
-                <ArrowLeft size={20} />
-                <span>Back to Feed</span>
-              </button>
-              <h3 className={styles.mobilePanelTitle}>My Profile</h3>
-            </div>
-          )}
-
           <div className={styles.sidebarContent}>
             {/* Profile Card */}
             <div className={styles.profileCard}>

@@ -253,9 +253,47 @@ function AdCard({
   }, [activeAction]);
 
   const isPlatformPost = useMemo(() => {
-    // An ad is an unpaid platform post if it is an admin post or has no pay-per-impression reward
-    return Boolean(ad.is_admin_post || !ad.cost_per_impression || Number(ad.cost_per_impression) <= 0);
-  }, [ad.is_admin_post, ad.cost_per_impression]);
+    // An ad is an unpaid platform post if it is an admin post or has no pay-per-impression reward / budget
+    return Boolean(
+      ad.is_admin_post ||
+      !ad.cost_per_impression ||
+      Number(ad.cost_per_impression) <= 0 ||
+      !ad.impressions ||
+      Number(ad.impressions) <= 0
+    );
+  }, [ad.is_admin_post, ad.cost_per_impression, ad.impressions]);
+
+  // Automatic viewability tracking for platform / zero-budget posts:
+  // When viewed continuously in the active viewport for 1.5 seconds, automatically register as seen
+  // so the post records impression in ClickHouse / DB and is filtered on feed refresh.
+  useEffect(() => {
+    if (!isPlatformPost || !isCardVisible || seenAds.includes(ad.id)) return;
+
+    const timer = setTimeout(() => {
+      onMarkSeen(ad).catch((err) => console.error("Auto seen tracking error:", err));
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [isPlatformPost, isCardVisible, seenAds, ad, onMarkSeen]);
+
+  const handleCtaClick = useCallback(
+    (clickType: string) => {
+      fetch("/api/campaigns/click", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adId: ad.id, clickType }),
+      }).catch((err) => console.error("Failed to log CTA click:", err));
+
+      if (isPlatformPost && !seenAds.includes(ad.id)) {
+        onMarkSeen(ad).catch(() => {});
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
+      }
+    },
+    [ad, isPlatformPost, seenAds, onMarkSeen]
+  );
 
   const advertiserProfile = useMemo(() => {
     return ad.user_email ? advertiserProfiles[ad.user_email.toLowerCase()] : null;
@@ -474,17 +512,7 @@ function AdCard({
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.productCtaButton}
-                    onClick={() => {
-                      const clickType = (ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_");
-                      fetch("/api/campaigns/click", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ adId: ad.id, clickType }),
-                      }).catch((err) => console.error("Failed to log CTA click:", err));
-                      if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                      }
-                    }}
+                    onClick={() => handleCtaClick((ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_"))}
                   >
                     {ad.product_cta_type || "Buy"}
                   </a>
@@ -499,17 +527,7 @@ function AdCard({
                       rel="noopener noreferrer"
                       className={styles.productActionButton}
                       title={type.replace("action_", "")}
-                      onClick={() => {
-                        const clickType = type.replace("action_", "");
-                        fetch("/api/campaigns/click", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ adId: ad.id, clickType }),
-                        }).catch((err) => console.error("Failed to log click:", err));
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                        }
-                      }}
+                      onClick={() => handleCtaClick(type.replace("action_", ""))}
                     >
                       {getIcon(type)}
                     </a>
@@ -525,17 +543,7 @@ function AdCard({
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.productCtaButton}
-                    onClick={() => {
-                      const clickType = (ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_");
-                      fetch("/api/campaigns/click", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ adId: ad.id, clickType }),
-                      }).catch((err) => console.error("Failed to log CTA click:", err));
-                      if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                      }
-                    }}
+                    onClick={() => handleCtaClick((ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_"))}
                   >
                     {ad.product_cta_type || "Buy"}
                   </a>
@@ -550,17 +558,7 @@ function AdCard({
                       rel="noopener noreferrer"
                       className={styles.productActionButton}
                       title={type.replace("action_", "")}
-                      onClick={() => {
-                        const clickType = type.replace("action_", "");
-                        fetch("/api/campaigns/click", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ adId: ad.id, clickType }),
-                        }).catch((err) => console.error("Failed to log click:", err));
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                        }
-                      }}
+                      onClick={() => handleCtaClick(type.replace("action_", ""))}
                     >
                       {getIcon(type)}
                     </a>
@@ -622,17 +620,7 @@ function AdCard({
                   rel="noopener noreferrer"
                   className={styles.productCtaButton}
                   style={{ marginRight: "4px", fontSize: "0.75rem", padding: "4px 10px", height: "28px" }}
-                  onClick={() => {
-                    const clickType = (ad.product_cta_type || "Comment").toLowerCase().replace(/\s+/g, "_");
-                    fetch("/api/campaigns/click", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ adId: ad.id, clickType }),
-                    }).catch((err) => console.error("Failed to log CTA click:", err));
-                    if (typeof window !== "undefined") {
-                      window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                    }
-                  }}
+                  onClick={() => handleCtaClick((ad.product_cta_type || "Comment").toLowerCase().replace(/\s+/g, "_"))}
                 >
                   {ad.product_cta_type || "Comment"}
                 </a>
@@ -650,14 +638,7 @@ function AdCard({
                       title="Read More"
                       onClick={() => {
                         setIsExpanded(!isExpanded);
-                        fetch("/api/campaigns/click", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ adId: ad.id, clickType: "read_more" }),
-                        }).catch((err) => console.error("Failed to log click:", err));
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                        }
+                        handleCtaClick("read_more");
                       }}
                     >
                       {getIcon(type)}
@@ -673,17 +654,7 @@ function AdCard({
                     rel="noopener noreferrer"
                     className={styles.iconButton}
                     title={type.replace("action_", "")}
-                    onClick={() => {
-                      const clickType = type.replace("action_", "");
-                      fetch("/api/campaigns/click", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ adId: ad.id, clickType }),
-                      }).catch((err) => console.error("Failed to log click:", err));
-                      if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("xea:click-increment", { detail: { delta: 1 } }));
-                      }
-                    }}
+                    onClick={() => handleCtaClick(type.replace("action_", ""))}
                   >
                     {getIcon(type)}
                   </a>
@@ -710,6 +681,7 @@ function AdCard({
                       rel="noopener noreferrer"
                       className={styles.fromBrandBtn}
                       title={`Visit ${brandName}`}
+                      onClick={() => handleCtaClick("brand_visit")}
                     >
                       Visit &apos;{brandName}&apos;
                     </a>

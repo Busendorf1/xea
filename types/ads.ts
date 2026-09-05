@@ -54,6 +54,10 @@ export interface Ad {
   created_at?: string | null;
   is_highlight?: boolean;
   title?: string;
+  is_admin_post?: boolean;
+  custom_sponsor_name?: string;
+  custom_sponsor_handle?: string;
+  custom_sponsor_logo?: string;
 }
 
 export interface AdvertiserProfile {

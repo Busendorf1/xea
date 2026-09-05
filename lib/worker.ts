@@ -2,6 +2,7 @@ import { Worker, Job } from "bullmq";
 import supabaseAdmin from "./utils/dbAdmin";
 import { invalidateCachedProfile, invalidateAllHighlights } from "./utils/cache";
 import { env } from "./env";
+import { streamImpressionsToClickHouse } from "./clickhouse";
 
 const connectionOptions = {
   host: env.REDIS_HOST,
@@ -115,6 +116,16 @@ export const flushBatch = async (): Promise<void> => {
         }
       })
     );
+
+    // Stream raw seen impression events to ClickHouse Cloud for 100M+ high-throughput analytics
+    streamImpressionsToClickHouse(
+      seens.map((s) => ({
+        ad_id: s.job.data.adId,
+        user_email: s.job.data.email,
+        cost_per_impression: 0,
+        interaction_type: "view",
+      }))
+    ).catch((err) => console.warn("⚠️ Worker ClickHouse stream (seen) warning:", err));
   }
 
   // 2. Process Earn clicks in batch
@@ -147,6 +158,16 @@ export const flushBatch = async (): Promise<void> => {
         })
       );
     }
+
+    // Stream earned impressions to ClickHouse Cloud
+    streamImpressionsToClickHouse(
+      earns.map((e) => ({
+        ad_id: e.job.data.adId,
+        user_email: e.job.data.email,
+        cost_per_impression: 0,
+        interaction_type: "view",
+      }))
+    ).catch((err) => console.warn("⚠️ Worker ClickHouse stream (earn) warning:", err));
   }
 
   // 3. Process Mutual clicks
@@ -187,6 +208,16 @@ export const flushBatch = async (): Promise<void> => {
         }
       })
     );
+
+    // Stream action clicks to ClickHouse Cloud
+    streamImpressionsToClickHouse(
+      actions.map((act) => ({
+        ad_id: act.job.data?.adId,
+        user_email: act.job.data?.email,
+        cost_per_impression: 0,
+        interaction_type: act.job.data?.clickType || "website",
+      }))
+    ).catch((err) => console.warn("⚠️ Worker ClickHouse stream (action) warning:", err));
   }
 
   // 5. Count clicks per email in this batch and increment click progress

@@ -2051,7 +2051,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               {theme === "white" ? <Sun size={15} /> : <Moon size={15} />}
             </button>
 
-            <Link href="/user/dashboard">
+            <Link href="/">
               <button className={styles.btnExit}>
                 <LogOut size={16} />
                 <span>Exit Admin</span>

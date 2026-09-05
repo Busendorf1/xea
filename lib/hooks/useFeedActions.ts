@@ -41,7 +41,16 @@ export function useFeedActions({
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
       setSeenAds((prev) => [...prev, ad.id]);
-      incrementClicks?.(1);
+      const isPlatform = Boolean(
+        ad.is_admin_post ||
+        !ad.cost_per_impression ||
+        Number(ad.cost_per_impression) <= 0 ||
+        !ad.impressions ||
+        Number(ad.impressions) <= 0
+      );
+      if (!isPlatform) {
+        incrementClicks?.(1);
+      }
 
       try {
         const response = await fetch("/api/seen", {

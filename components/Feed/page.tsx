@@ -20,13 +20,15 @@ const AdCard = dynamic(() => import("../ui/AdCard"), {
 interface FeedProps {
   userEmail: string;
   initialProfile?: InitialProfileInput;
+  initialAds?: Ad[];
+  initialProfiles?: Record<string, any>;
   onEarnSuccess?: (earnedAmount?: number) => void;
   onMutualSuccess?: () => void;
 }
 
-const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: FeedProps) => {
-  const [ads, setAds] = useState<Ad[]>([]);
-  const [loading, setLoading] = useState(true);
+const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSuccess, onMutualSuccess }: FeedProps) => {
+  const [ads, setAds] = useState<Ad[]>(initialAds || []);
+  const [loading, setLoading] = useState(!initialAds || initialAds.length === 0);
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -47,7 +49,7 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
         created_at?: string;
       }
     >
-  >({});
+  >(initialProfiles || {});
   const [isMobile, setIsMobile] = useState(false);
 
   // 1. Hook: Viewer Profile state & balance management
@@ -142,7 +144,11 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
 
         const LIMIT = 10;
         const offset = pageNum * LIMIT;
-        const refreshParam = pageNum === 0 ? "&refresh=true" : "";
+        const isExplicitRefresh = (window as any).__xea_force_refresh === true;
+        if (isExplicitRefresh && typeof window !== "undefined") {
+          delete (window as any).__xea_force_refresh;
+        }
+        const refreshParam = isExplicitRefresh ? "&refresh=true" : "";
         const response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`);
         if (!response.ok) {
           throw new Error("Failed to fetch ad feed");
@@ -174,8 +180,10 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
   );
 
   useEffect(() => {
-    fetchRelevantAds(0, false);
-  }, [fetchRelevantAds]);
+    if (!initialAds || initialAds.length === 0) {
+      fetchRelevantAds(0, false);
+    }
+  }, [fetchRelevantAds, initialAds]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore) return;
@@ -224,6 +232,9 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
     if (scrollEl && "scrollTo" in scrollEl) {
       scrollEl.scrollTo({ top: 0, behavior: "smooth" });
     }
+    if (typeof window !== "undefined") {
+      (window as any).__xea_force_refresh = true;
+    }
     fetchRelevantAds(0, false);
   }, [clearPending, fetchRelevantAds]);
 
@@ -249,6 +260,9 @@ const Feed = ({ userEmail, initialProfile, onEarnSuccess, onMutualSuccess }: Fee
             scrollEl instanceof Window ? window.scrollY : (scrollEl as HTMLElement).scrollTop;
           if (finalCheck <= 0) {
             clearPending();
+            if (typeof window !== "undefined") {
+              (window as any).__xea_force_refresh = true;
+            }
             fetchRelevantAds(0, false);
           }
         }, 180); // 180ms settling threshold to guarantee zero scroll momentum jump

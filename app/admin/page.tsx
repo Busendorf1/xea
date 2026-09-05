@@ -86,7 +86,7 @@ export default async function AdminDashboardPage() {
             gap: "1rem",
             justifyContent: "center"
           }}>
-            <Link href="/user/dashboard" style={{
+            <Link href="/" style={{
               padding: "0.6rem 1.2rem",
               borderRadius: "8px",
               backgroundColor: "#1e293b",
@@ -95,7 +95,7 @@ export default async function AdminDashboardPage() {
               border: "1px solid #334155",
               transition: "all 0.2s"
             }}>
-              User Dashboard
+              Go to Feed
             </Link>
             <Link href="/user/logout" style={{
               padding: "0.6rem 1.2rem",

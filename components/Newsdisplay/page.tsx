@@ -101,11 +101,13 @@ interface Ad {
 
 export default function AdDisplay({
   userInterest,
+  initialHighlights,
 }: {
   userInterest: string[];
+  initialHighlights?: Ad[];
 }) {
-  const [ads, setAds] = useState<Ad[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ads, setAds] = useState<Ad[]>(initialHighlights || []);
+  const [loading, setLoading] = useState(!initialHighlights || initialHighlights.length === 0);
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -129,19 +131,18 @@ export default function AdDisplay({
 
       try {
         const interestsQuery = userInterest.join(",");
-        const response = await fetch(`/api/highlights?interests=${encodeURIComponent(interestsQuery)}`);
+        const ITEMS_PER_PAGE = 20;
+        const offset = pageNum * ITEMS_PER_PAGE;
+        const response = await fetch(
+          `/api/highlights?interests=${encodeURIComponent(interestsQuery)}&limit=${ITEMS_PER_PAGE}&offset=${offset}`
+        );
         
         if (!response.ok) {
           throw new Error(`Failed to fetch highlights: ${response.status}`);
         }
 
-        const allMatchedHighlights = await response.json();
-        console.log("📣 Highlights fetched from API:", allMatchedHighlights.length);
-
-        const ITEMS_PER_PAGE = 20;
-        const fromOffset = pageNum * ITEMS_PER_PAGE;
-        const toOffset = fromOffset + ITEMS_PER_PAGE;
-        const pageItems = allMatchedHighlights.slice(fromOffset, toOffset);
+        const pageItems = await response.json();
+        console.log("📣 Highlights fetched from API:", pageItems.length);
 
         if (pageNum === 0 || !isLoadMore) {
           setAds(pageItems);
@@ -149,11 +150,7 @@ export default function AdDisplay({
           setAds((prev) => [...prev, ...pageItems]);
         }
 
-        if (toOffset >= allMatchedHighlights.length) {
-          setHasMore(false);
-        } else {
-          setHasMore(true);
-        }
+        setHasMore(pageItems.length >= ITEMS_PER_PAGE);
       } catch (err: unknown) {
         console.error("❌ Error fetching highlights:", err);
         setError(true);
@@ -171,7 +168,9 @@ export default function AdDisplay({
   };
 
   useEffect(() => {
-    fetchAll(0, false); // Initial fetch
+    if (!initialHighlights || initialHighlights.length === 0) {
+      fetchAll(0, false); // Initial fetch only if not pre-seeded
+    }
 
     // Refresh every 10 minutes.
     const interval = setInterval(() => {
@@ -180,7 +179,7 @@ export default function AdDisplay({
     }, 600000); // 10 minutes in milliseconds
 
     return () => clearInterval(interval); // Cleanup
-  }, [userInterest, fetchAll]);
+  }, [userInterest, fetchAll, initialHighlights]);
 
   // Real-Time Highlights Auto-Drop (Live Ticker & Spotlight Motion)
   useEffect(() => {

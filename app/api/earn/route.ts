@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import crypto from "crypto";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { env } from "@/lib/env";
@@ -177,17 +177,34 @@ export async function POST(request: NextRequest) {
 
     // Resolve expected rate (Viewer earns exactly 60% of the ad CPI budget)
     let rawCpi = 25.0;
+    let isPlatformPost = false;
     if (isRedisReady()) {
       try {
         const cachedAd = await redisConnection.get(`ad:detail:${adId}`);
         if (cachedAd) {
           const parsed = JSON.parse(cachedAd);
+          isPlatformPost = Boolean(
+            parsed.is_admin_post ||
+            isAdminEmail(parsed.user_email || parsed.email) ||
+            !parsed.cost_per_impression ||
+            Number(parsed.cost_per_impression) <= 0 ||
+            !parsed.impressions ||
+            Number(parsed.impressions) <= 0
+          );
           if (parsed.cost_per_impression && Number(parsed.cost_per_impression) > 0) {
             rawCpi = parseFloat(String(parsed.cost_per_impression));
           }
         }
       } catch {}
     }
+
+    if (type === "earn" && isPlatformPost) {
+      return NextResponse.json({
+        success: false,
+        error: "This is a platform post without an earning budget. Users cannot earn from platform posts.",
+      }, { status: 400 });
+    }
+
     let earnedRateNumber = Math.round(rawCpi * 0.60 * 100) / 100;
     if (earnedRateNumber <= 0) {
       earnedRateNumber = 15.00;
@@ -277,20 +294,36 @@ export async function POST(request: NextRequest) {
         try {
           let { data: adRow } = await supabaseAdmin
             .from("addsactive")
-            .select("cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at")
+            .select("cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at, is_admin_post, user_email")
             .eq("id", adId)
             .maybeSingle();
 
           if (!adRow) {
             const { data: addsRow } = await supabaseAdmin
               .from("adds")
-              .select("cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at")
+              .select("cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at, is_admin_post, user_email")
               .eq("id", adId)
               .maybeSingle();
             adRow = addsRow;
           }
 
           if (adRow) {
+            const isPlatformDb = Boolean(
+              adRow.is_admin_post ||
+              isAdminEmail(adRow.user_email) ||
+              !adRow.cost_per_impression ||
+              Number(adRow.cost_per_impression) <= 0 ||
+              !adRow.impressions ||
+              Number(adRow.impressions) <= 0
+            );
+
+            if (isPlatformDb) {
+              return NextResponse.json({
+                success: false,
+                error: "This is a platform post without an earning budget. Users cannot earn from platform posts.",
+              }, { status: 400 });
+            }
+
             if (adRow.cost_per_impression !== undefined && adRow.cost_per_impression !== null) {
               adCpi = Number(adRow.cost_per_impression) || 0;
             }
@@ -407,8 +440,18 @@ export async function POST(request: NextRequest) {
         liveClicks = Number(atomicResult.clicks);
         earnedRateNumber = Number(atomicResult.amount);
         atomicViews = Number(atomicResult.views || 1);
-        atomicCap = Number(atomicResult.cap || 1);
         logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Atomic RPC)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 60% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n   👁️ View Cap   : ${atomicViews}/${atomicCap}\n========================================================================\n`);
+
+        // Stream earned impression directly to ClickHouse Cloud (high-throughput non-blocking)
+        const { streamImpressionsToClickHouse } = await import("@/lib/clickhouse");
+        streamImpressionsToClickHouse([
+          {
+            ad_id: adId,
+            user_email: emailKey,
+            cost_per_impression: rawCpi,
+            interaction_type: "view",
+          },
+        ]).catch(() => {});
       }
 
       // 7. Sync to Redis RAM Cache & Evict from candidate sets ONLY if frequency cap reached

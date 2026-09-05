@@ -243,8 +243,8 @@ interface ProfileFormData {
         return;
       }
 
-      // Success - Redirect to dashboard
-      router.push("/user/dashboard");
+      // Success - Redirect to feed
+      router.push("/");
     } catch (err: any) {
       console.error("Unexpected error:", err);
       setErrorMessage("An unexpected error occurred. Please try again.");

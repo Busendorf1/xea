@@ -326,7 +326,7 @@ export default function Update({ email }: Props) {
 
     // Optional delay for user to see the message
     setTimeout(() => {
-      router.push("/user/dashboard");
+      router.push("/");
     }, 1500);
   };
 

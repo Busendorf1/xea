@@ -41,6 +41,23 @@ export async function GET(req: NextRequest) {
     const interestsParam = searchParams.get("interests");
     const countryParam = searchParams.get("country");
     const stateParam = searchParams.get("state");
+    const limitParam = searchParams.get("limit");
+    const offsetParam = searchParams.get("offset");
+
+    let limit: number | null = null;
+    let offset = 0;
+    if (limitParam) {
+      const parsedLimit = parseInt(limitParam, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        limit = parsedLimit;
+      }
+    }
+    if (offsetParam) {
+      const parsedOffset = parseInt(offsetParam, 10);
+      if (!isNaN(parsedOffset) && parsedOffset >= 0) {
+        offset = parsedOffset;
+      }
+    }
 
     let interests: string[] = [];
 
@@ -66,6 +83,9 @@ export async function GET(req: NextRequest) {
     // 1. Check 30-Second Redis Edge Cache for 100M+ Scale Optimization
     const cachedData = await getCachedHighlights(interests, countryParam, stateParam);
     if (cachedData) {
+      if (limit !== null) {
+        return NextResponse.json(cachedData.slice(offset, offset + limit));
+      }
       return NextResponse.json(cachedData);
     }
 
@@ -220,10 +240,12 @@ export async function GET(req: NextRequest) {
     });
 
 
-    // Cache the response in Redis for 5 Minutes
+    // Cache the complete ranked candidate list in Redis for 5 Minutes
     await setCachedHighlights(interests, highlights, countryParam, stateParam);
 
-    return NextResponse.json(highlights, {
+    const pagedHighlights = limit !== null ? highlights.slice(offset, offset + limit) : highlights;
+
+    return NextResponse.json(pagedHighlights, {
       headers: {
         "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
       },

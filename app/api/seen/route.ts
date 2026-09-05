@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { feedQueue } from "@/lib/queue";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { streamImpressionsToClickHouse } from "@/lib/clickhouse";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,34 @@ export async function POST(request: NextRequest) {
         }, { onConflict: "ad_id,user_email" });
     } catch {}
 
+    // Stream impression event directly to ClickHouse Cloud (high-throughput non-blocking)
+    streamImpressionsToClickHouse([
+      {
+        ad_id: adId,
+        user_email: emailKey,
+        cost_per_impression: 0,
+        interaction_type: "view",
+      },
+    ]).catch(() => {});
+
+    // Check if ad is a platform post or has no budget (in which case user shouldn't earn click progress)
+    let isPlatformPost = false;
+    if (isRedisReady()) {
+      try {
+        const cached = await redisConnection.get(`ad:detail:${adId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          isPlatformPost = Boolean(
+            parsed.is_admin_post ||
+            !parsed.cost_per_impression ||
+            Number(parsed.cost_per_impression) <= 0 ||
+            !parsed.impressions ||
+            Number(parsed.impressions) <= 0
+          );
+        }
+      } catch {}
+    }
+
     // Enqueue Seen click if Redis/Queue is available
     if (isRedisReady()) {
       try {
@@ -68,8 +97,11 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    const { incrementCachedMonetizationClicks } = await import("@/lib/utils/cache");
-    await incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0);
+    // Only increment monetization clicks if not an unpaid platform post
+    if (!isPlatformPost) {
+      const { incrementCachedMonetizationClicks } = await import("@/lib/utils/cache");
+      await incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0);
+    }
 
     return NextResponse.json({ success: true, queued: true });
   } catch (err: any) {

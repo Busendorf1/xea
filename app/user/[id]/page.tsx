@@ -1,175 +1,37 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
-import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
-import DashboardClient, { UserProfile } from "@/components/DashboardClient/page";
-import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
-import { safeParseArray } from "@/lib/utils/parsers";
+import DashboardClient from "@/components/DashboardClient/page";
+import { getUserProfileForDashboard } from "@/lib/getUserProfileForDashboard";
 
-export default async function UserDashboard() {
+export default async function UserPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const id = params?.id;
+
+  // Legacy /user/dashboard seamlessly redirects to the clean production root (https://paayh.com/)
+  if (!id || id === "dashboard") {
+    redirect("/");
+  }
+
   const session = await auth0.getSession();
-
   if (!session || !session.user) {
     redirect("/");
   }
 
-  const email = session.user.email;
+  const profileResult = await getUserProfileForDashboard(session);
 
-  if (!email) {
-    return <div>Access Denied: No account associated with session.</div>;
+  if (profileResult.redirectUrl) {
+    redirect(profileResult.redirectUrl);
   }
 
-  // Attempt to fetch from Redis cache first
-  let user = await getCachedProfile(email);
-  let error = null;
-
-  if (user) {
-    console.log(`🚀 Profile cache hit in Server Component for: ${email}`);
-  } else {
-    console.log(`🔄 Profile cache miss in Server Component for: ${email}. Fetching from Supabase...`);
-    // Fetch user profile from Supabase using admin client with resilient column fallback
-    let { data: dbData, error: dbError } = await supabaseAdmin
-      .from("users")
-      .select(`
-        id,
-        "profileImage",
-        username,
-        "firstName",
-        "lastName",
-        "lastUpdated",
-        bio,
-        interest,
-        email,
-        industry,
-        behavior,
-        lifestyle,
-        personality,
-        monetized,
-        monetized_at,
-        created_at,
-        monetized_until,
-        monetization_type,
-        country,
-        state,
-        location,
-        phone,
-        business_name,
-        passphrase,
-        mutual_count,
-        balance,
-        withdrawal,
-        bvn_hash,
-        monetization_clicks,
-        last_active_at,
-        referral_code,
-        referral_downloads_count,
-        atw_tier
-      `)
-      .ilike("email", email)
-      .maybeSingle();
-
-    // If new columns are not yet in DB, fallback to baseline columns
-    if (dbError) {
-      console.warn("⚠️ Attempting baseline column fallback for user query:", dbError.message || dbError);
-      const fallback = await supabaseAdmin
-        .from("users")
-        .select(`
-          id,
-          "profileImage",
-          username,
-          "firstName",
-          "lastName",
-          "lastUpdated",
-          bio,
-          interest,
-          email,
-          industry,
-          behavior,
-          lifestyle,
-          personality,
-          monetized,
-          monetized_at,
-          created_at,
-          monetized_until,
-          monetization_type,
-          country,
-          state,
-          location,
-          phone,
-          business_name,
-          passphrase,
-          mutual_count,
-          balance,
-          withdrawal,
-          bvn_hash,
-          monetization_clicks,
-          last_active_at
-        `)
-        .ilike("email", email)
-        .maybeSingle();
-
-      dbData = fallback.data as any;
-      dbError = fallback.error;
-    }
-
-    if (dbError) {
-      error = dbError;
-    } else {
-      user = dbData;
-      if (user) {
-        // Cache the loaded profile in Redis
-        await setCachedProfile(email, user);
-      }
-    }
+  if (!profileResult.user || !profileResult.parsedInterest || !profileResult.email) {
+    redirect("/");
   }
-
-  if (error) {
-    console.error("❌ Error fetching user profile from database:", error?.message || error);
-    return <div>Error loading account profile: {error?.message || "Please check connection"}. Please refresh or run migrations.</div>;
-  }
-
-  // If user does not exist, auto-provision their account
-  if (!user) {
-    console.log(`👤 User not found in database. Auto-provisioning profile for: ${email}`);
-
-    const givenName = session.user.given_name || session.user.name || "User";
-    const familyName = session.user.family_name || "";
-    const profileImage = session.user.picture || "";
-    const business_name = session.user.business_name || "";
-
-    // Generate unique placeholders for required UNIQUE & NOT NULL fields
-    const dummyPhone = `PLACEHOLDER_PHONE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const dummyPassphrase = `PLACEHOLDER_PASS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-    const { error: insertError } = await supabaseAdmin.rpc("auto_provision_user", {
-      p_email: email,
-      p_first_name: givenName,
-      p_last_name: familyName,
-      p_profile_image: profileImage,
-      p_business_name: business_name,
-      p_phone: dummyPhone,
-      p_passphrase: dummyPassphrase
-    });
-
-    if (insertError) {
-      console.error("❌ Auto-provisioning failed:", insertError);
-      return <div>Failed to set up account. Please contact support.</div>;
-    }
-
-    redirect("/user/profile-setup");
-  }
-
-  // If user is provisioned but hasn't completed setup, redirect to profile-setup
-  if (user.country === "PLACEHOLDER" || user.state === "PLACEHOLDER" || user.location === "PLACEHOLDER") {
-    redirect("/user/profile-setup");
-  }
-
-  const parsedInterest = safeParseArray(user.interest);
 
   return (
     <DashboardClient 
-      user={user as UserProfile} 
-      parsedInterest={parsedInterest} 
-      email={email} 
+      user={profileResult.user} 
+      parsedInterest={profileResult.parsedInterest} 
+      email={profileResult.email} 
     />
   );
 }

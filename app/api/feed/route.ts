@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 import redisConnection from "@/lib/redis";
@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
 const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 
-// Essential Column Projection for Ultra-Fast DB Performance
 const AD_SELECT_FIELDS = "id, user_email, email, ad_media, ad_media_url, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, gender, employment_status, age_range, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at";
 
 export async function GET(req: NextRequest) {
@@ -436,10 +435,21 @@ export async function GET(req: NextRequest) {
     // Sign each ad in the page slice using env.AUTH0_SECRET and emailKey for deterministic verification
     const secretKey = env.AUTH0_SECRET;
     const signedAds = pageAds.map((ad: Ad) => {
+      const isPlatformPost = Boolean(
+        ad.is_admin_post ||
+        isAdminEmail(ad.user_email || (ad as any).email) ||
+        !ad.cost_per_impression ||
+        Number(ad.cost_per_impression) <= 0 ||
+        !ad.impressions ||
+        Number(ad.impressions) <= 0
+      );
       const payload = `${ad.id}:${emailKey}:${servedAt}`;
       const token = crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
       return {
         ...ad,
+        is_admin_post: isPlatformPost,
+        cost_per_impression: isPlatformPost ? 0 : Number(ad.cost_per_impression || 0),
+        impressions: isPlatformPost ? 0 : Number(ad.impressions || 0),
         verification_token: token,
         served_at: servedAt,
       };
