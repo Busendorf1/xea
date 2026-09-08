@@ -45,12 +45,12 @@ export default function SidebarMenu() {
       </button>
       {showMenu && (
         <div className={styles.menuButtonGroup}>
-          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("profile")}>Update Profile</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("profile")}>Profile</Link>
           <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("myads")}>My Ads</Link>
-          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("news")}>Post Highlights</Link>
-          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("adPage")}>Post Advert</Link>
-          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("monetize")}>Monetize Account</Link>
-          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("statement")}>Account Statement</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("news")}>Create Highlight</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("adPage")}>Create Ad</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("monetize")}>Monetization</Link>
+          <Link href="/user/logged-in" className={styles.menuButton} onClick={() => selectTab("statement")}>Statement</Link>
           <Link href="/user/logout" className={styles.menuButton} onClick={() => setShowMenu(false)}>Logout</Link>
           <Link href="/user/logged-in" className={styles.menuButtonDanger} onClick={() => selectTab("deactivate")}>Deactivate Account</Link>
         </div>

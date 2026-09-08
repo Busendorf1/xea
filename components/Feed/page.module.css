@@ -5,7 +5,7 @@
   padding: 0;
   border-left: 1px solid var(--card-border);
   border-right: 1px solid var(--card-border);
-  background-color: var(--card-bg);
+  background-color: var(--background);
   min-height: 100%;
   font-family: var(--font-geist-sans), "Inter", sans-serif;
   display: flex;
@@ -191,19 +191,19 @@
 }
 
 .seen {
-  color: #16a34a !important;
+  color: var(--success) !important;
 }
 
 .seen svg {
-  color: #16a34a !important;
+  color: var(--success) !important;
 }
 
 .seen:hover {
-  background-color: rgba(22, 163, 74, 0.1) !important;
+  background-color: var(--primary-glow) !important;
 }
 
 .seen:hover svg {
-  color: #15803d !important;
+  color: var(--success) !important;
 }
 
 .loading {
@@ -215,7 +215,7 @@
 }
 
 .error {
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.95rem;
   text-align: center;
   padding: 3rem 0;
@@ -283,7 +283,7 @@
 }
 
 .earnBtn {
-  background-color: #16a34a;
+  background-color: var(--success);
   color: #ffffff;
   border: none;
   border-radius: 9999px;
@@ -291,7 +291,7 @@
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -300,7 +300,7 @@
 }
 
 .earnBtn:hover {
-  background-color: #15803d;
+  opacity: 0.9;
 }
 
 .mutualBtn {
@@ -332,8 +332,8 @@
 }
 
 .mutualBtnDisabled {
-  background-color: #cbd5e1;
-  color: #64748b;
+  background-color: var(--card-border);
+  color: var(--text-muted);
   border: none;
   border-radius: 9999px;
   padding: 4px 12px;
@@ -395,7 +395,7 @@
   z-index: 999;
   background-color: var(--sidebar-bg);
   border-top: 1px solid var(--card-border);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: none !important;
   animation: footerSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -473,6 +473,25 @@
   .sponsorLabel {
     font-size: 0.85rem;
   }
+}
+
+.skeletonContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1rem;
+}
+
+.skeletonRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.skeletonContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
 

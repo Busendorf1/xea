@@ -41,7 +41,7 @@ export interface ClickHouseImpressionEvent {
 
 // In-memory micro-batch queue:
 // Merges rapid concurrent requests into unified bulk HTTP inserts (ClickHouse native design)
-let eventQueue: ClickHouseImpressionEvent[] = [];
+const eventQueue: ClickHouseImpressionEvent[] = [];
 let flushTimer: NodeJS.Timeout | null = null;
 let isFlushing = false;
 

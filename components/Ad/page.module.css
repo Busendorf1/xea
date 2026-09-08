@@ -621,13 +621,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background-color: rgba(16, 185, 129, 0.15);
-  border: 1px solid #10b981;
-  border-radius: 4px;
+  background-color: rgba(22, 163, 74, 0.12);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-inner);
   padding: 0.6rem 0.85rem;
   margin-top: 0.5rem;
   font-size: 0.82rem;
-  color: #34d399;
+  color: var(--success);
   font-weight: 600;
   line-height: 1.45;
 }

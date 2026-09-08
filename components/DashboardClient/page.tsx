@@ -506,19 +506,19 @@ export default function DashboardClient({
   const getNotificationIcon = (title: string, message: string) => {
     const t = (title + " " + message).toLowerCase();
     if (t.includes("sent") || t.includes("transfer_sent") || t.includes("money sent")) {
-      return <ArrowUpRight size={15} color="#10b981" />;
+      return <ArrowUpRight size={15} color="var(--success)" />;
     }
     if (t.includes("received") || t.includes("transfer_received") || t.includes("money received")) {
-      return <ArrowDownLeft size={15} color="#6366f1" />;
+      return <ArrowDownLeft size={15} color="var(--success)" />;
     }
     if (t.includes("withdrawal") || t.includes("payout") || t.includes("bank")) {
-      return <Wallet size={15} color="#3b82f6" />;
+      return <Wallet size={15} color="var(--primary)" />;
     }
     if (t.includes("limit") || t.includes("holding") || t.includes("suspended") || t.includes("alert")) {
-      return <ShieldAlert size={15} color="#f59e0b" />;
+      return <ShieldAlert size={15} color="var(--danger)" />;
     }
     if (t.includes("threshold") || t.includes("unlocked") || t.includes("completed") || t.includes("success")) {
-      return <CheckCircle2 size={15} color="#10b981" />;
+      return <CheckCircle2 size={15} color="var(--success)" />;
     }
     return <Bell size={15} color="var(--primary)" />;
   };
@@ -527,12 +527,12 @@ export default function DashboardClient({
     <div className={`${styles.notificationContainer} ${styles.notificationRow}`}>
       {showEarnFeedback && (
         <span className={styles.feedbackIconWrap} title="Earnings enqueued">
-          <Coins size={18} color="#f59e0b" className={styles.feedbackIcon} />
+          <Coins size={18} color="var(--success)" className={styles.feedbackIcon} />
         </span>
       )}
       {showMutualFeedback && (
         <span className={styles.feedbackIconWrap} title="Mutual connected">
-          <Plus size={18} color="#6366f1" className={styles.feedbackIcon} />
+          <Plus size={18} color="var(--primary)" className={styles.feedbackIcon} />
         </span>
       )}
       <button
@@ -546,13 +546,13 @@ export default function DashboardClient({
       </button>
       
       {showNotifications && (
-        <div className={styles.notificationDropdown} style={{ width: "380px", maxWidth: "92vw" }}>
-          <div className={styles.notificationHeader} style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-              <h4 style={{ margin: 0 }}>Notifications</h4>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className={styles.notificationDropdown}>
+          <div className={styles.notificationHeader}>
+            <div className={styles.notificationHeaderTop}>
+              <h4>Notifications</h4>
+              <div className={styles.notificationActionsGroup}>
                 {unreadCount > 0 && !isSelectionMode && (
-                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn} style={{ fontSize: "0.75rem", padding: "3px 8px" }}>
+                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn}>
                     Mark all as read
                   </button>
                 )}
@@ -567,19 +567,7 @@ export default function DashboardClient({
                       });
                     }}
                     title={isSelectionMode ? "Cancel selection" : "Delete notifications"}
-                    style={{
-                      background: isSelectionMode ? "rgba(239, 68, 68, 0.12)" : "transparent",
-                      border: isSelectionMode ? "1px solid rgba(239, 68, 68, 0.3)" : "none",
-                      color: isSelectionMode ? "#ef4444" : "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "4px 6px",
-                      borderRadius: "6px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
+                    className={`${styles.notifToggleSelectionBtn} ${isSelectionMode ? styles.notifToggleSelectionBtnActive : ""}`}
                   >
                     <Trash2 size={15} />
                     {isSelectionMode && <span>Cancel</span>}
@@ -590,23 +578,14 @@ export default function DashboardClient({
 
             {/* Selection and Deletion Controls - Only visible when in Selection Mode */}
             {isSelectionMode && notifications.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.76rem", paddingTop: "6px", borderTop: "1px solid var(--card-border)" }}>
+              <div className={styles.notifSelectionBar}>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleSelectAllNotifs();
                   }}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: "5px",
-                    backgroundColor: selectedNotifs.length === notifications.length ? "rgba(99, 102, 241, 0.15)" : "transparent",
-                    border: "1px solid var(--card-border)",
-                    color: "var(--text-muted)",
-                    fontSize: "0.74rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  className={`${styles.notifSelectAllBtn} ${selectedNotifs.length === notifications.length ? styles.notifSelectAllBtnActive : ""}`}
                 >
                   {selectedNotifs.length === notifications.length ? "Deselect All" : "Select All"}
                 </button>
@@ -621,20 +600,7 @@ export default function DashboardClient({
                     }
                   }}
                   disabled={selectedNotifs.length === 0 || isDeletingNotifs}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "5px",
-                    backgroundColor: selectedNotifs.length > 0 ? "rgba(239, 68, 68, 0.15)" : "transparent",
-                    border: selectedNotifs.length > 0 ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid transparent",
-                    color: selectedNotifs.length > 0 ? "#ef4444" : "var(--text-muted)",
-                    fontSize: "0.74rem",
-                    fontWeight: 700,
-                    cursor: selectedNotifs.length > 0 ? "pointer" : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    opacity: selectedNotifs.length > 0 ? 1 : 0.5,
-                  }}
+                  className={`${styles.notifDeleteSelectedBtn} ${selectedNotifs.length === 0 || isDeletingNotifs ? styles.notifDeleteSelectedBtnDisabled : ""}`}
                 >
                   <Trash2 size={12} /> Delete ({selectedNotifs.length})
                 </button>
@@ -647,16 +613,7 @@ export default function DashboardClient({
                     setIsSelectionMode(false);
                   }}
                   disabled={isDeletingNotifs}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "5px",
-                    backgroundColor: "transparent",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "0.74rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  className={styles.notifDeleteAllBtn}
                 >
                   Delete All
                 </button>
@@ -664,7 +621,7 @@ export default function DashboardClient({
             )}
           </div>
 
-          <div className={styles.notificationList} style={{ maxHeight: "360px", overflowY: "auto" }}>
+          <div className={styles.notificationList}>
             {notifications.length === 0 ? (
               <div className={styles.emptyNotifications}>No notifications yet</div>
             ) : (
@@ -673,7 +630,6 @@ export default function DashboardClient({
                   key={n.id}
                   onClick={() => handleMarkAsRead(n.id)}
                   className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
-                  style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
                 >
                   {isSelectionMode && (
                     <input
@@ -681,13 +637,13 @@ export default function DashboardClient({
                       checked={selectedNotifs.includes(n.id)}
                       onClick={(e) => handleToggleSelectNotif(n.id, e)}
                       onChange={() => {}}
-                      style={{ marginTop: "3px", cursor: "pointer", width: "14px", height: "14px", flexShrink: 0 }}
+                      className={styles.notifCheckbox}
                     />
                   )}
-                  <div className={styles.notificationIconWrapper} style={{ flexShrink: 0 }}>
+                  <div className={styles.notificationIconWrapper}>
                     {getNotificationIcon(n.title || "", n.message || "")}
                   </div>
-                  <div className={styles.notificationContent} style={{ flexGrow: 1 }}>
+                  <div className={styles.notificationContent}>
                     <div className={styles.notificationTitle}>{stripEmoji(n.title)}</div>
                     <div className={styles.notificationMsg}>{stripEmoji(n.message)}</div>
                     <span className={styles.notificationTime}>
@@ -989,7 +945,7 @@ export default function DashboardClient({
     <div className={styles.menuButtonGroup}>
       <Link href="/user/logged-in" onClick={() => selectTab("profile")} className={styles.menuButton}>
         <User size={16} />
-        <span>Update Profile</span>
+        <span>Profile</span>
       </Link>
       <Link href="/user/logged-in" onClick={() => selectTab("myads")} className={styles.menuButton}>
         <TrendingUp size={16} />
@@ -997,15 +953,15 @@ export default function DashboardClient({
       </Link>
       <Link href="/user/logged-in" onClick={() => selectTab("news")} className={styles.menuButton}>
         <Compass size={16} />
-        <span>Post Highlights</span>
+        <span>Create Highlight</span>
       </Link>
       <Link href="/user/logged-in" onClick={() => selectTab("adPage")} className={styles.menuButton}>
         <FileText size={16} />
-        <span>Post Advert</span>
+        <span>Create Ad</span>
       </Link>
       <Link href="/user/logged-in" onClick={() => selectTab("monetize")} className={styles.menuButton}>
         <UserCheck size={16} />
-        <span>Monetize Account</span>
+        <span>Monetization</span>
       </Link>
       <Link href="/user/logout" className={styles.menuButton}>
         <LogOut size={16} />
@@ -1103,22 +1059,22 @@ export default function DashboardClient({
             <div
               style={{
                 gridColumn: "1 / -1",
-                background: "rgba(245, 158, 11, 0.12)",
-                border: "1px solid #f59e0b",
-                borderRadius: "10px",
-                padding: "14px 18px",
+                background: "rgba(220, 38, 38, 0.08)",
+                border: "1px solid var(--danger)",
+                borderRadius: "var(--radius-card)",
+                padding: "12px 16px",
                 marginBottom: "16px",
-                color: "#f59e0b",
-                fontSize: "0.88rem",
+                color: "var(--danger)",
+                fontSize: "0.85rem",
                 display: "flex",
                 alignItems: "center",
                 gap: "12px",
                 lineHeight: "1.4",
               }}
             >
-              <AlertTriangle size={24} style={{ flexShrink: 0 }} />
+              <AlertTriangle size={20} style={{ flexShrink: 0 }} />
               <div>
-                <strong>Inactive Account Warning (30+ Days):</strong> Your account has been inactive for {daysInactive} days. Please initiate a wallet withdrawal or resume feed interactions to keep your balance active. Unclaimed balances on inactive accounts are forfeited after 60 days of zero activity.
+                <strong>Inactive Account ({daysInactive} Days):</strong> Withdraw balance or view feed ads to keep your wallet active. Unclaimed balances forfeit after 60 days of inactivity.
               </div>
             </div>
           );
@@ -1441,7 +1397,7 @@ export default function DashboardClient({
                     className={styles.formInput}
                   />
                   <span className={styles.formHintSmall}>
-                    Note: Minimum balance to withdraw is {formatCurrency(10000)}. You can withdraw any amount up to your full available balance ({formatCurrency(user.balance)}).
+                    Min: {formatCurrency(10000)} • Max: {formatCurrency(user.balance)}
                   </span>
                 </div>
 

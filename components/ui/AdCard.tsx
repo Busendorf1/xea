@@ -191,6 +191,31 @@ function AdCard({
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [isDismissing] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current));
+    }, 2400);
+  }, []);
+
+  useEffect(() => {
+    const handleGlobalToast = (e: Event) => {
+      const customEvt = e as CustomEvent<{ message?: string }>;
+      if (customEvt?.detail?.message) {
+        showToast(customEvt.detail.message);
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("xea:toast", handleGlobalToast);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("xea:toast", handleGlobalToast);
+      }
+    };
+  }, [showToast]);
 
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -252,6 +277,10 @@ function AdCard({
     }
   }, [activeAction]);
 
+  const isOwner = useMemo(() => {
+    return Boolean(userEmail && ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase());
+  }, [userEmail, ad.user_email]);
+
   const isPlatformPost = useMemo(() => {
     // An ad is an unpaid platform post if it is an admin post or has no pay-per-impression reward / budget
     return Boolean(
@@ -263,18 +292,18 @@ function AdCard({
     );
   }, [ad.is_admin_post, ad.cost_per_impression, ad.impressions]);
 
-  // Automatic viewability tracking for platform / zero-budget posts:
+  // Automatic viewability tracking for platform / zero-budget posts or own ads:
   // When viewed continuously in the active viewport for 1.5 seconds, automatically register as seen
   // so the post records impression in ClickHouse / DB and is filtered on feed refresh.
   useEffect(() => {
-    if (!isPlatformPost || !isCardVisible || seenAds.includes(ad.id)) return;
+    if ((!isPlatformPost && !isOwner) || !isCardVisible || seenAds.includes(ad.id)) return;
 
     const timer = setTimeout(() => {
       onMarkSeen(ad).catch((err) => console.error("Auto seen tracking error:", err));
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [isPlatformPost, isCardVisible, seenAds, ad, onMarkSeen]);
+  }, [isPlatformPost, isOwner, isCardVisible, seenAds, ad, onMarkSeen]);
 
   const handleCtaClick = useCallback(
     (clickType: string) => {
@@ -300,16 +329,40 @@ function AdCard({
   }, [ad.user_email, advertiserProfiles]);
 
   const brandName = useMemo(() => {
-    return advertiserProfile?.business_name || advertiserProfile?.firstName || "Paayh";
-  }, [advertiserProfile]);
+    if (ad.custom_sponsor_name && ad.custom_sponsor_name.trim() !== "") {
+      return ad.custom_sponsor_name.trim();
+    }
+    if (advertiserProfile?.business_name && advertiserProfile.business_name.trim() !== "") {
+      return advertiserProfile.business_name.trim();
+    }
+    if (advertiserProfile?.firstName && advertiserProfile.firstName.trim() !== "") {
+      return advertiserProfile.firstName.trim();
+    }
+    if (advertiserProfile?.username && advertiserProfile.username.trim() !== "") {
+      return advertiserProfile.username.trim();
+    }
+    if (ad.custom_sponsor_handle && ad.custom_sponsor_handle.trim() !== "") {
+      return ad.custom_sponsor_handle.trim().replace(/^@/, "");
+    }
+    if (ad.user_email) {
+      return ad.user_email.split("@")[0];
+    }
+    return "Paayh";
+  }, [ad.custom_sponsor_name, ad.custom_sponsor_handle, ad.user_email, advertiserProfile]);
 
   const targetLink = useMemo(() => {
     if (ad.action_website) return getHref("action_website", ad.action_website);
     if (ad.action_whatsapp) return getHref("action_whatsapp", ad.action_whatsapp);
     if (ad.action_phone) return getHref("action_phone", ad.action_phone);
     if (ad.action_email) return getHref("action_email", ad.action_email);
+    if (ad.product_cta_link) {
+      return ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`;
+    }
+    if (ad.action_ios) return getHref("action_ios", ad.action_ios);
+    if (ad.action_android) return getHref("action_android", ad.action_android);
+    if (ad.action_watch_now) return getHref("action_watch_now", ad.action_watch_now);
     return "#";
-  }, [ad.action_website, ad.action_whatsapp, ad.action_phone, ad.action_email]);
+  }, [ad.action_website, ad.action_whatsapp, ad.action_phone, ad.action_email, ad.product_cta_link, ad.action_ios, ad.action_android, ad.action_watch_now]);
 
   const getAdvertiserName = useCallback((adItem: Ad): string => {
     if (adItem.custom_sponsor_name && adItem.custom_sponsor_name.trim() !== "") {
@@ -415,21 +468,6 @@ function AdCard({
             >
               <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
                 <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
-                <span className={styles.sponsorHandle}>
-                  {(() => {
-                    if (ad.custom_sponsor_handle && ad.custom_sponsor_handle.trim() !== "") {
-                      const cleanHandle = ad.custom_sponsor_handle.trim().replace(/^@/, "");
-                      return `@${cleanHandle}`.slice(0, 25);
-                    }
-                    if (advertiserProfile?.username && advertiserProfile.username.trim() !== "") {
-                      return `@${advertiserProfile.username.toLowerCase().replace(/\s+/g, "")}`.slice(0, 25);
-                    }
-                    if (advertiserProfile?.firstName && advertiserProfile.firstName.trim() !== "") {
-                      return `@${advertiserProfile.firstName.toLowerCase().replace(/\s+/g, "")}`.slice(0, 25);
-                    }
-                    return "@Sponsored";
-                  })()}
-                </span>
               </div>
             </AdvertiserHoverCard>
             <span className={styles.dot}></span>
@@ -566,7 +604,7 @@ function AdCard({
                 </div>
 
                 <div className={styles.productRightGroup}>
-                  {isPlatformPost ? (
+                  {isPlatformPost || isOwner ? (
                     <div className={styles.fromBrandContainer}>
                       {targetLink && targetLink !== "#" ? (
                         <a
@@ -575,6 +613,7 @@ function AdCard({
                           rel="noopener noreferrer"
                           className={styles.fromBrandBtn}
                           title={`Visit ${brandName}`}
+                          onClick={() => handleCtaClick("brand_visit")}
                         >
                           Visit {brandName}
                         </a>
@@ -584,7 +623,7 @@ function AdCard({
                         </span>
                       )}
                     </div>
-                  ) : ad.user_email?.toLowerCase() !== userEmail.toLowerCase() && (
+                  ) : (
                     !seenAds.includes(ad.id) && (
                       <AdInteractionHandler
                         ad={ad}
@@ -665,14 +704,26 @@ function AdCard({
                 title="Share Ad"
                 className={styles.iconButton}
                 type="button"
-                onClick={() => onShare(ad.id)}
+                onClick={() => {
+                  try {
+                    const encodedId = btoa(ad.id.toString());
+                    const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
+                    navigator.clipboard.writeText(shareUrl).then(() => {
+                      showToast("Link copied to clipboard");
+                    }).catch(() => {
+                      onShare(ad.id);
+                    });
+                  } catch {
+                    onShare(ad.id);
+                  }
+                }}
               >
                 <Share2 size={14} strokeWidth={1.5} />
               </button>
             </div>
 
             <div className={styles.interactionButtonGroup}>
-              {isPlatformPost ? (
+              {isPlatformPost || isOwner ? (
                 <div className={styles.fromBrandContainer}>
                   {targetLink && targetLink !== "#" ? (
                     <a
@@ -691,7 +742,7 @@ function AdCard({
                     </span>
                   )}
                 </div>
-              ) : ad.user_email?.toLowerCase() === userEmail.toLowerCase() ? null : (
+              ) : (
                 !seenAds.includes(ad.id) && (
                   <AdInteractionHandler
                     ad={ad}
@@ -717,6 +768,12 @@ function AdCard({
           </div>
         )}
       </div>
+
+      {toastMessage && (
+        <div className={styles.toastHud} role="status" aria-live="polite">
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 }

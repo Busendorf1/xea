@@ -8,67 +8,52 @@
 
 .adCard {
   border: 1px solid var(--card-border);
-  border-radius: 4px;
-  padding: 0.3rem;
+  border-radius: var(--radius-inner, 8px);
+  padding: 0.4rem;
   background: var(--card-bg);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow-surface), var(--card-rim);
+  transition: transform 0.25s var(--ease-spring), background-color 0.25s ease, box-shadow 0.25s ease;
   width: 48%;
   height: fit-content;
-}
-
-.adCard:hover {
-  background-color: var(--sidebar-bg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.adImage,
-.adTitle,
-.adContent,
-.adTag {
-  transition: all 0.3s ease;
-}
-
-.adCard {
-  border: 1px solid var(--card-border);
-  border-radius: 4px;
-  background: var(--card-bg);
-  transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
   transform-origin: center;
 }
 
 .adCard:hover {
   background-color: var(--sidebar-bg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  transform: scale(1.11);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
   z-index: 2;
 }
 
 .adImage {
   width: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   margin-bottom: 0.5rem;
   max-height: 115px;
   object-fit: cover;
 }
 
 .adTitle {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   margin: 0.2rem 0;
   color: var(--foreground);
-  font-weight: 550;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .adContent {
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .adTag {
   background: var(--primary-glow);
   color: var(--primary);
   padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-  font-size: 0.6rem;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 0.62rem;
+  font-weight: 600;
 }
 
 .noAds {

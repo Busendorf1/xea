@@ -167,12 +167,12 @@ export default function AdDisplay({
 
   if (error) {
     return (
-      <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(255, 0, 0, 0.05)", borderRadius: "8px", border: "1px solid rgba(255, 0, 0, 0.1)", marginBottom: "1.5rem" }}>
-        <p style={{ color: "#ff4d4d", marginBottom: "10px", fontSize: "14px", fontWeight: "500" }}>Failed to load highlights.</p>
+      <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(220, 38, 38, 0.08)", borderRadius: "8px", border: "1px solid var(--danger)", marginBottom: "1.5rem" }}>
+        <p style={{ color: "var(--danger)", marginBottom: "10px", fontSize: "14px", fontWeight: "600" }}>Failed to load highlights.</p>
         <button 
           type="button" 
           onClick={() => fetchAll(0, false)} 
-          style={{ padding: "6px 12px", background: "#ff4d4d", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
+          style={{ padding: "6px 12px", background: "var(--danger)", color: "#fff", border: "none", borderRadius: "var(--radius-btn)", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
         >
           Try Again
         </button>

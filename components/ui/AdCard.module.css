@@ -5,10 +5,13 @@
   display: flex;
   flex-direction: row;
   padding: 1.25rem 1rem;
-  border-bottom: 1px solid var(--card-border);
+  border: 1px solid var(--card-border);
   background-color: var(--card-bg);
-  border-radius: 4px;
+  border-radius: var(--radius-card, 12px);
+  box-shadow: none !important;
   opacity: 1;
+  margin: 6px 8px;
+  transition: background-color 0.25s var(--ease-spring), border-color 0.25s var(--ease-spring);
 }
 
 .cardMenuOpen {
@@ -70,6 +73,7 @@
   font-size: 0.85rem;
   margin-bottom: 0.25rem;
   width: 100%;
+  letter-spacing: -0.03em;
 }
 
 .headerLeft {
@@ -88,6 +92,7 @@
 .sponsorName {
   font-weight: 700;
   color: var(--foreground);
+  letter-spacing: -0.03em;
 }
 
 .sponsorHandle {
@@ -110,12 +115,13 @@
   white-space: pre-wrap;
   word-break: break-word;
   text-align: left;
+  letter-spacing: -0.01em;
 }
 
 .mediaBox {
   width: 100%;
   max-height: 540px;
-  border-radius: 16px;
+  border-radius: var(--radius-inner, 8px);
   overflow: hidden;
   border: 1px solid var(--card-border);
   margin-bottom: 0.75rem;
@@ -181,7 +187,7 @@
   object-fit: cover;
   object-position: center;
   display: block;
-  background-color: #000000;
+  background-color: var(--background);
 }
 
 .webVideoContainer {
@@ -190,7 +196,7 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #000000;
+  background-color: var(--background);
 }
 
 .webVideoClickable {
@@ -218,7 +224,7 @@
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  box-shadow: none !important;
   transition: transform 0.2s ease, background-color 0.2s ease;
   z-index: 10;
 }
@@ -235,7 +241,7 @@
   width: 100%;
   max-width: 100%;
   margin-top: 0.5rem;
-  padding: 0.25rem 0;
+  padding: 0.5rem 0;
   background-color: transparent;
   gap: 0.75rem;
   flex-wrap: wrap;
@@ -296,7 +302,7 @@
 }
 
 .earnBtn {
-  background-color: #16a34a;
+  background-color: var(--success);
   color: #ffffff;
   border: none;
   border-radius: 9999px;
@@ -304,7 +310,7 @@
   font-size: clamp(0.70rem, 2.2vw, 0.78rem);
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -315,7 +321,48 @@
 }
 
 .earnBtn:hover {
-  background-color: #15803d;
+  opacity: 0.9;
+}
+
+.fromBrandContainer {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.fromBrandBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: var(--primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 4px clamp(10px, 2.5vw, 16px);
+  font-size: clamp(0.72rem, 2.2vw, 0.8rem);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+  height: clamp(26px, 6vw, 30px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.fromBrandBtn:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.fromBrandText {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--primary);
+  padding: 4px 10px;
 }
 
 .mutualBtn {
@@ -343,8 +390,8 @@
 }
 
 .mutualBtnDisabled {
-  background-color: #cbd5e1;
-  color: #64748b;
+  background-color: var(--card-border);
+  color: var(--text-muted);
   border: none;
   border-radius: 9999px;
   padding: 4px clamp(8px, 2.2vw, 14px);
@@ -400,7 +447,7 @@
 }
 
 .suspendedBadge {
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.75rem;
   font-weight: 600;
   display: flex;
@@ -440,7 +487,7 @@
 }
 
 .successBtn {
-  background-color: #10b981 !important; /* Emerald green */
+  background-color: var(--success) !important;
   color: #ffffff !important;
   border: none !important;
   cursor: default !important;
@@ -710,7 +757,7 @@
   font-size: 0.7rem;
   font-weight: 700;
   cursor: grab;
-  box-shadow: 0 0 8px var(--primary-glow);
+  box-shadow: none !important;
   transition: background-color 0.2s ease;
   z-index: 5;
 }
@@ -756,8 +803,8 @@
   top: 0;
   left: 0;
   height: 100%;
-  background-color: rgba(16, 185, 129, 0.25);
-  border-right: 2px solid #10b981;
+  background-color: var(--primary-glow);
+  border-right: 2px solid var(--success);
 }
 
 .holdBtnText {
@@ -811,9 +858,9 @@
 }
 
 .tapDotActive {
-  background-color: #6366f1;
+  background-color: var(--primary);
   transform: scale(1.2);
-  box-shadow: 0 0 6px rgba(99, 102, 241, 0.6);
+  box-shadow: none !important;
 }
 
 /* Unlocked Row - Spreads buttons evenly to utilize 100% full width of media card */
@@ -920,7 +967,7 @@
 .productPriceText {
   font-size: 0.90rem;
   font-weight: 700;
-  color: #10b981;
+  color: var(--success);
   white-space: nowrap;
 }
 
@@ -928,14 +975,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: #10b981;
+  background-color: var(--primary);
   color: #ffffff;
   padding: 0.4rem 1.2rem;
-  border-radius: 8px;
+  border-radius: var(--radius-btn);
   font-size: 0.82rem;
   font-weight: 700;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
   cursor: pointer;
   white-space: nowrap;
   max-width: 100%;
@@ -944,7 +991,7 @@
 }
 
 .productCtaButton:hover {
-  background-color: #059669;
+  opacity: 0.9;
 }
 
 .productMiddleGroup {
@@ -964,14 +1011,14 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .productActionButton:hover {
-  background-color: rgba(16, 185, 129, 0.15);
-  border-color: rgba(16, 185, 129, 0.3);
+  background-color: rgba(37, 99, 235, 0.15);
+  border-color: var(--primary);
 }
 
 .productActionButton svg {
@@ -980,7 +1027,7 @@
 }
 
 .productActionButton:hover svg {
-  color: #10b981;
+  color: var(--primary);
 }
 
 .productRightGroup {
@@ -1263,7 +1310,7 @@
 }
 
 .dropdownIconDanger {
-  color: #ef4444;
+  color: var(--danger);
   flex-shrink: 0;
 }
 
@@ -1301,6 +1348,42 @@
     white-space: normal;
     text-align: right;
     line-height: 1.25;
+  }
+}
+
+/* Floating Toast HUD (Non-blocking, sleek notification) */
+.toastHud {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  background: rgba(18, 21, 29, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill, 9999px);
+  box-shadow: none !important;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: slideUpFade 0.25s var(--ease-spring);
+  pointer-events: none;
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
   }
 }
 

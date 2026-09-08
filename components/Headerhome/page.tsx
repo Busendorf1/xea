@@ -347,7 +347,7 @@ export default function Header() {
             )}
           </div>
 
-          <div className={styles.notificationList} style={{ maxHeight: "360px", overflowY: "auto" }}>
+          <div className={styles.notificationList}>
             {notifications.length === 0 ? (
               <div className={styles.emptyNotifications}>No notifications yet</div>
             ) : (

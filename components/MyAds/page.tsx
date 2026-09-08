@@ -591,7 +591,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       const encodedId = btoa(adId.toString());
       const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
       navigator.clipboard.writeText(shareUrl)
-        .then(() => setNoticeModal({ title: "Link Copied", message: "Ad share link copied to clipboard." }))
+        .then(() => {
+          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Link copied to clipboard" } }));
+        })
         .catch(() => setNoticeModal({ title: "Share Notice", message: "Failed to copy link to clipboard." }));
     }
   };

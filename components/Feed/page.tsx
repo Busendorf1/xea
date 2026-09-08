@@ -148,7 +148,20 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
           delete (window as any).__xea_force_refresh;
         }
         const refreshParam = isExplicitRefresh ? "&refresh=true" : "";
-        const response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`);
+        const headers: Record<string, string> = {};
+        if (userEmail) {
+          headers["x-user-email"] = userEmail;
+        }
+        let response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`, {
+          headers,
+        });
+        if (!response.ok && pageNum === 0 && !isLoadMore) {
+          // Retry once on initial failure after a brief delay
+          await new Promise((r) => setTimeout(r, 600));
+          response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}&refresh=true${sharedAdParam}`, {
+            headers,
+          });
+        }
         if (!response.ok) {
           throw new Error("Failed to fetch ad feed");
         }
@@ -279,11 +292,11 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     <div ref={parentRef} className={styles.feedContainer}>
       <NewPostsPill count={pendingCount} onClick={handlePillClick} />
       {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.25rem 1rem" }}>
+        <div className={styles.skeletonContainer}>
           {[1, 2, 3].map((n) => (
-            <div key={n} style={{ display: "flex", gap: "0.75rem" }}>
+            <div key={n} className={styles.skeletonRow}>
               <Skeleton variant="avatar" width={40} height={40} />
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              <div className={styles.skeletonContent}>
                 <Skeleton variant="title" width="40%" height={16} />
                 <Skeleton variant="text" width="90%" height={12} />
                 <Skeleton variant="text" width="85%" height={12} />

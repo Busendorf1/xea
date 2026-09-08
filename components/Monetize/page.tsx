@@ -35,10 +35,20 @@ export default function Monetize({ session }: MonetizeProps) {
   const [, startTransition] = useTransition();
 
   // Instant SWR state initialization from client storage for 0ms load
+  const [hasResolved, setHasResolved] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
+        if (cached) return true;
+      } catch {}
+    }
+    return false;
+  });
+
   const [isMonetized, setIsMonetized] = useState(() => {
     if (typeof window !== "undefined") {
       try {
-        const cached = sessionStorage.getItem("paayh_monetize_cache");
+        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
         if (cached) return !!JSON.parse(cached).isMonetized;
       } catch {}
     }
@@ -48,7 +58,7 @@ export default function Monetize({ session }: MonetizeProps) {
   const [clicksCount, setClicksCount] = useState(() => {
     if (typeof window !== "undefined") {
       try {
-        const cached = sessionStorage.getItem("paayh_monetize_cache");
+        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
         if (cached) return JSON.parse(cached).clicksCount || 0;
       } catch {}
     }
@@ -58,7 +68,7 @@ export default function Monetize({ session }: MonetizeProps) {
   const [clicksRemaining, setClicksRemaining] = useState(() => {
     if (typeof window !== "undefined") {
       try {
-        const cached = sessionStorage.getItem("paayh_monetize_cache");
+        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
         if (cached) return JSON.parse(cached).clicksRemaining ?? 300;
       } catch {}
     }
@@ -68,7 +78,7 @@ export default function Monetize({ session }: MonetizeProps) {
   const [atwTier, setAtwTier] = useState(() => {
     if (typeof window !== "undefined") {
       try {
-        const cached = sessionStorage.getItem("paayh_monetize_cache");
+        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
         if (cached) return JSON.parse(cached).atwTier || "ATW1";
       } catch {}
     }
@@ -85,7 +95,10 @@ export default function Monetize({ session }: MonetizeProps) {
     if (!email) return;
     try {
       const res = await fetch("/api/monetize");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setHasResolved(true);
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         startTransition(() => {
@@ -94,23 +107,26 @@ export default function Monetize({ session }: MonetizeProps) {
           setClicksRemaining(data.clicksRemaining ?? Math.max(0, 300 - (data.clicksCount || 0)));
           setAtwTier(data.atwTier || "ATW1");
           setDaysInactive(data.daysInactive || 0);
+          setHasResolved(true);
         });
 
         try {
-          sessionStorage.setItem(
-            "paayh_monetize_cache",
-            JSON.stringify({
-              isMonetized: !!data.isMonetized,
-              clicksCount: data.clicksCount || 0,
-              clicksRemaining: data.clicksRemaining ?? Math.max(0, 300 - (data.clicksCount || 0)),
-              atwTier: data.atwTier || "ATW1",
-              daysInactive: data.daysInactive || 0,
-            })
-          );
+          const cachePayload = JSON.stringify({
+            isMonetized: !!data.isMonetized,
+            clicksCount: data.clicksCount || 0,
+            clicksRemaining: data.clicksRemaining ?? Math.max(0, 300 - (data.clicksCount || 0)),
+            atwTier: data.atwTier || "ATW1",
+            daysInactive: data.daysInactive || 0,
+          });
+          localStorage.setItem("paayh_monetize_cache", cachePayload);
+          sessionStorage.setItem("paayh_monetize_cache", cachePayload);
         } catch {}
+      } else {
+        setHasResolved(true);
       }
     } catch (e) {
       console.error("Error fetching monetization:", e);
+      setHasResolved(true);
     }
   };
 
@@ -147,16 +163,45 @@ export default function Monetize({ session }: MonetizeProps) {
   const clicksPercent = Math.min(100, Math.round((clicksCount / 300) * 100));
 
   const atwLevelNum = parseInt(atwTier.replace(/\D/g, ""), 10) || 1;
-  const holdingLimitNaira = (atwLevelNum * 100000).toLocaleString("en-NG");
+
+  if (!hasResolved) {
+    return (
+      <div className={styles.container}>
+        <main className={styles.main}>
+          <div className={styles.header}>
+            <h1 className={styles.title}>Account Monetization</h1>
+            <p className={styles.subtitle}>
+              Continued interactions increase your ATW Level and wallet holding cap!
+            </p>
+          </div>
+          <div className={styles.contentGrid}>
+            <div className={styles.statusCard} style={{ opacity: 0.7 }}>
+              <div className={styles.statusHeaderRow}>
+                <div className={styles.statusTitleGroup}>
+                  <div className={styles.iconBadgePending}>
+                    <Clock size={22} className={styles.pendingIcon} />
+                  </div>
+                  <div>
+                    <h2 className={styles.statusTitle}>Checking Monetization...</h2>
+                    <p className={styles.statusSub}>Retrieving your monetization progress...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
       <main className={styles.main}>
         {/* Page Header */}
         <div className={styles.header}>
-          <h1 className={styles.title}>Account Monetization &amp; ATW Levels</h1>
+          <h1 className={styles.title}>Monetization</h1>
           <p className={styles.subtitle}>
-            Continued interactions increase your ATW Level and wallet holding cap!
+            Higher ATW tiers increase your earnings and wallet holding cap.
           </p>
         </div>
 
@@ -174,25 +219,25 @@ export default function Monetize({ session }: MonetizeProps) {
                 </div>
                 <div>
                   <h2 className={styles.statusTitle}>
-                    {isMonetized ? `Monetized Account` : "Account Status: Unmonetized Account"}
+                    {isMonetized ? "Active • ATW Level " + atwLevelNum : "Not Monetized"}
                   </h2>
                   <p className={styles.statusSub}>
                     {isMonetized
-                      ? `Congratulations! Your account is an active Monetized Account at ATW Level ${atwLevelNum} (Max wallet holding limit: ₦${holdingLimitNaira}). You earn on every ad interaction!`
-                      : `Complete 300 ad interactions in the feed to qualify and activate account monetization.`}
+                      ? `Your account is monetized at ATW Tier ${atwTier}.`
+                      : "Complete 300 ad clicks in the feed to unlock monetization."}
                   </p>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span className={isMonetized ? styles.badgeActive : styles.badgeProgress}>
-                  {isMonetized ? `MONETIZED ACCOUNT • ${atwTier}` : `QUALIFICATION IN PROGRESS • ${clicksPercent}%`}
+                  {isMonetized ? "Monetized" : `${clicksPercent}% Complete`}
                 </span>
                 {isMonetized && (
                   <button
                     onClick={() => setShowCancelModal(true)}
                     className={styles.cancelBtn}
                   >
-                    <AlertTriangle size={14} /> Cancel Monetization
+                    <AlertTriangle size={14} /> Cancel
                   </button>
                 )}
               </div>
@@ -205,8 +250,8 @@ export default function Monetize({ session }: MonetizeProps) {
               <div className={styles.modalCard}>
                 <div className={styles.modalHeader}>
                   <h3 className={styles.modalTitle}>
-                    <AlertTriangle size={20} color="#ef4444" />
-                    Confirm Monetization Cancellation
+                    <AlertTriangle size={20} color="var(--danger)" />
+                    Confirm Cancellation
                   </h3>
                   <button
                     onClick={() => {
@@ -221,7 +266,7 @@ export default function Monetize({ session }: MonetizeProps) {
                   </button>
                 </div>
                 <p className={styles.modalText}>
-                  Are you sure you want to cancel your monetization? Your wallet balance is <strong>fully preserved and remains available for withdrawal in accordance with our policies</strong>.
+                  Are you sure you want to cancel your monetization? Your wallet balance is <strong>fully preserved and remains available for withdrawal</strong>.
                 </p>
                 
                 <div className={styles.modalFieldGroup}>
@@ -239,7 +284,7 @@ export default function Monetize({ session }: MonetizeProps) {
 
                 {cancelError && (
                   <div className={styles.modalError}>
-                    <AlertCircle size={16} color="#ef4444" />
+                    <AlertCircle size={16} color="var(--danger)" />
                     <span>{cancelError}</span>
                   </div>
                 )}
@@ -304,7 +349,7 @@ export default function Monetize({ session }: MonetizeProps) {
                   <div className={styles.titleIconBox}>
                     <Award size={18} color="var(--primary)" />
                   </div>
-                  <span>Qualification Target: 300 Ad Clicks</span>
+                  <span>Requirement: 300 Ad Clicks</span>
                 </h3>
                 <span className={styles.percentBadge}>
                   {clicksPercent}%
@@ -312,19 +357,19 @@ export default function Monetize({ session }: MonetizeProps) {
               </div>
 
               <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.5 }}>
-                Watch ads in your feed and click <strong>Seen</strong> or <strong>Mutual+</strong>. Each ad interaction increments your click count live.
+                Click <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> on ads to increment your progress.
               </p>
 
               <div className={styles.metricsGrid}>
                 <div className={styles.metricBox}>
                   <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <MousePointer size={13} color="var(--primary)" /> Clicks Done
+                    <MousePointer size={13} color="var(--primary)" /> Completed
                   </span>
                   <strong className={styles.metricValue}>{clicksCount} / 300</strong>
                 </div>
                 <div className={styles.metricBox}>
                   <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Clock size={13} color="#f59e0b" /> Remaining
+                    <Clock size={13} color="var(--success)" /> Remaining
                   </span>
                   <strong className={styles.metricValueRemaining}>{clicksRemaining} clicks</strong>
                 </div>
@@ -349,15 +394,15 @@ export default function Monetize({ session }: MonetizeProps) {
           <div className={styles.policyCard}>
             <div className={styles.policyHeader}>
               <div className={styles.policyIconBox}>
-                <Calendar size={18} color="#f59e0b" />
+                <Calendar size={18} color="var(--primary)" />
               </div>
-              <h4 style={{ color: "#f59e0b" }}>7-Day Activity Policy</h4>
+              <h4 style={{ color: "var(--foreground)" }}>7-Day Activity Policy</h4>
             </div>
             <p className={styles.policyDesc}>
-              To maintain monetization, you must remain an active community member. If you are inactive for 7 consecutive days without logging in or interacting, your monetization status will pause and clicks reset to 0. Logging in automatically keeps your activity active.
+              Log in at least once every 7 days. After 7 days of zero activity, monetization pauses and click progress resets.
             </p>
             {daysInactive > 0 && (
-              <p style={{ marginTop: "10px", fontSize: "0.85rem", color: "#f59e0b", fontWeight: 700 }}>
+              <p style={{ marginTop: "10px", fontSize: "0.85rem", color: "var(--danger)", fontWeight: 700 }}>
                 Current Inactivity: {daysInactive} day{daysInactive > 1 ? "s" : ""} / 7 days
               </p>
             )}

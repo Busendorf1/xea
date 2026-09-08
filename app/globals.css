@@ -1,87 +1,112 @@
-/* Color system variables mapping official white, blue, and black */
+/* Design System Tokens: Strict 6-Role Palette + Concentric Geometry */
 :root {
-  --blue-primary: #2563eb;       /* Official Blue */
+  --blue-primary: #2563eb;
   --blue-hover: #1d4ed8;
-  --black-color: #000000;
+  --black-color: #090a0f;
   --white-color: #ffffff;
+
+  /* Global Geometry & Animation Tokens */
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --radius-inner: 8px;
+  --radius-pill: 9999px;
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Light Theme Variables (System Default when device is in Light Mode) */
 :root {
   --background: #ffffff;
-  --foreground: #000000;
+  --foreground: #0f172a;
   --primary: var(--blue-primary);
   --primary-hover: var(--blue-hover);
   --primary-glow: rgba(37, 99, 235, 0.1);
-  --secondary: #000000;
-  --secondary-glow: rgba(0, 0, 0, 0.05);
+  --secondary: #0f172a;
+  --secondary-glow: rgba(15, 23, 42, 0.05);
   --card-bg: #f8fafc;
-  --card-border: #cbd5e1;
-  --card-border-hover: #94a3b8;
-  --text-muted: #475569;
+  --card-border: #e2e8f0;
+  --card-border-hover: #cbd5e1;
+  --card-rim: none;
+  --shadow-surface: none;
+  --text-muted: #64748b;
   --input-bg: #ffffff;
-  --input-border: #cbd5e1;
-  --sidebar-bg: #f1f5f9;
+  --input-border: #e2e8f0;
+  --sidebar-bg: #f8fafc;
+  --success: #16a34a;
+  --danger: #dc2626;
 }
 
-/* Dark Theme Variables when device is in Dark Mode (no explicit light override) */
+/* Dark Theme Variables when device is in Dark Mode */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='white']):not([data-theme='light']) {
-    --background: #000000;
-    --foreground: #ffffff;
-    --primary: var(--blue-primary);
-    --primary-hover: #3b82f6;
-    --primary-glow: rgba(37, 99, 235, 0.15);
-    --secondary: #ffffff;
-    --secondary-glow: rgba(255, 255, 255, 0.15);
-    --card-bg: #0c0c0e;
-    --card-border: #222222;
-    --card-border-hover: #333333;
-    --text-muted: #a0aec0;
-    --input-bg: #111111;
-    --input-border: #222222;
-    --sidebar-bg: #090909;
+    --background: #090a0f;
+    --foreground: #f8fafc;
+    --primary: #3b82f6;
+    --primary-hover: #60a5fa;
+    --primary-glow: rgba(59, 130, 246, 0.18);
+    --secondary: #f8fafc;
+    --secondary-glow: rgba(248, 250, 252, 0.1);
+    --card-bg: #12151d;
+    --card-border: rgba(255, 255, 255, 0.08);
+    --card-border-hover: rgba(255, 255, 255, 0.16);
+    --card-rim: none;
+    --shadow-surface: none;
+    --text-muted: #94a3b8;
+    --input-bg: #0f121a;
+    --input-border: rgba(255, 255, 255, 0.1);
+    --sidebar-bg: #0d0f15;
+    --success: #22c55e;
+    --danger: #ef4444;
   }
 }
 
 /* Explicit Dark Theme */
 [data-theme='dark'] {
-  --background: #000000;
-  --foreground: #ffffff;
-  --primary: var(--blue-primary);
-  --primary-hover: #3b82f6;
-  --primary-glow: rgba(37, 99, 235, 0.15);
-  --secondary: #ffffff;
-  --secondary-glow: rgba(255, 255, 255, 0.15);
-  --card-bg: #0c0c0e;
-  --card-border: #222222;
-  --card-border-hover: #333333;
-  --text-muted: #a0aec0;
-  --input-bg: #111111;
-  --input-border: #222222;
-  --sidebar-bg: #090909;
+  --background: #090a0f;
+  --foreground: #f8fafc;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-glow: rgba(59, 130, 246, 0.18);
+  --secondary: #f8fafc;
+  --secondary-glow: rgba(248, 250, 252, 0.1);
+  --card-bg: #12151d;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-hover: rgba(255, 255, 255, 0.16);
+  --card-rim: none;
+  --shadow-surface: none;
+  --text-muted: #94a3b8;
+  --input-bg: #0f121a;
+  --input-border: rgba(255, 255, 255, 0.1);
+  --sidebar-bg: #0d0f15;
+  --success: #22c55e;
+  --danger: #ef4444;
 }
 
 /* Explicit White / Light Theme */
 [data-theme='white'],
 [data-theme='light'] {
   --background: #ffffff;
-  --foreground: #000000;
+  --foreground: #0f172a;
   --primary: var(--blue-primary);
   --primary-hover: var(--blue-hover);
   --primary-glow: rgba(37, 99, 235, 0.1);
-  --secondary: #000000;
-  --secondary-glow: rgba(0, 0, 0, 0.05);
+  --secondary: #0f172a;
+  --secondary-glow: rgba(15, 23, 42, 0.05);
   --card-bg: #f8fafc;
-  --card-border: #cbd5e1;
-  --card-border-hover: #94a3b8;
-  --text-muted: #475569;
+  --card-border: #e2e8f0;
+  --card-border-hover: #cbd5e1;
+  --card-rim: none;
+  --shadow-surface: none;
+  --text-muted: #64748b;
   --input-bg: #ffffff;
-  --input-border: #cbd5e1;
-  --sidebar-bg: #f1f5f9;
+  --input-border: #e2e8f0;
+  --sidebar-bg: #f8fafc;
+  --success: #16a34a;
+  --danger: #dc2626;
 }
 
-
+h1, h2, h3 {
+  letter-spacing: -0.035em;
+}
 
 html,
 body {
@@ -115,6 +140,7 @@ body::-webkit-scrollbar,
   margin: 0;
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
+  box-shadow: none !important;
 }
 
 a {
@@ -122,21 +148,49 @@ a {
   text-decoration: none;
 }
 
-/* Clean Universal Button, Container, and Card System - 4px Border Radius */
+/* Clean Universal Button, Container, and Card System - Concentric Curve Law */
 button, input[type="button"], input[type="submit"], .btn {
-  border-radius: 4px !important;
+  border-radius: var(--radius-btn, 8px);
   font-family: inherit;
-  box-shadow: none !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s var(--ease-spring);
 }
 
 input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"], input[type="date"], select, textarea {
-  border-radius: 4px;
+  border-radius: var(--radius-btn, 8px);
 }
 
-/* Global shadow removal */
-*, ::before, ::after {
-  box-shadow: none !important;
+/* Universal Floating Toast HUD */
+.globalToastHud {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--foreground);
+  color: var(--background);
+  border: 1px solid var(--card-border);
+  padding: 8px 18px;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  z-index: 999999;
+  pointer-events: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  animation: globalToastSlideIn 0.25s var(--ease-spring) forwards;
+}
+
+@keyframes globalToastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
 }
 
 /* Universal video controls suppression: hide native browser center play buttons and default overlay controls */

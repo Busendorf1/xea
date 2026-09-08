@@ -72,24 +72,46 @@ interface Props {
   session: any;
 }
 
+const VALID_TABS: TabKey[] = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
+
+function getInitialTab(): TabKey {
+  if (typeof window === "undefined") return "monetize";
+
+  // 1. Check query param first (e.g. ?view=monetize)
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewParam = urlParams.get("view") as TabKey;
+  if (viewParam && VALID_TABS.includes(viewParam)) {
+    return viewParam;
+  }
+
+  // 2. Check for cookie set by server redirects
+  const cookies = document.cookie.split("; ");
+  const tabCookie = cookies.find((c) => c.startsWith("paayh_active_tab="));
+  if (tabCookie) {
+    const cookieTab = tabCookie.split("=")[1] as TabKey;
+    if (VALID_TABS.includes(cookieTab)) return cookieTab;
+  }
+
+  // 3. Check sessionStorage
+  const storedTab = sessionStorage.getItem("paayh_active_tab") as TabKey;
+  if (storedTab && VALID_TABS.includes(storedTab)) {
+    return storedTab;
+  }
+
+  return "adPage";
+}
+
 export default function LoggedInClientContainer({ session }: Props) {
-  const [activeTab, setActiveTab] = useState<TabKey>("adPage");
-  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(new Set(["adPage"]));
+  const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([getInitialTab()]));
 
   const checkAndSetTab = () => {
-    // 1. Check for cookie set by server redirects
-    const cookies = document.cookie.split("; ");
-    const tabCookie = cookies.find((c) => c.startsWith("paayh_active_tab="));
-    let targetTab: TabKey | null = null;
+    const finalTab = getInitialTab();
 
-    if (tabCookie) {
-      targetTab = tabCookie.split("=")[1] as TabKey;
-      document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    }
+    // Clean cookie if it was present
+    document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
-    // 2. Check query param fallback if any exists, then strip it instantly
     const urlParams = new URLSearchParams(window.location.search);
-    const viewParam = urlParams.get("view") as TabKey;
     const editIdParam = urlParams.get("id");
     if (editIdParam) {
       sessionStorage.setItem("paayh_edit_ad_id", editIdParam);
@@ -99,19 +121,6 @@ export default function LoggedInClientContainer({ session }: Props) {
         }, 50);
       }
     }
-
-    // 3. Check sessionStorage
-    const storedTab = sessionStorage.getItem("paayh_active_tab") as TabKey;
-
-    const validTabs: TabKey[] = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
-
-    const finalTab = (targetTab && validTabs.includes(targetTab))
-      ? targetTab
-      : (viewParam && validTabs.includes(viewParam))
-      ? viewParam
-      : (storedTab && validTabs.includes(storedTab))
-      ? storedTab
-      : "adPage";
 
     setActiveTab(finalTab);
     sessionStorage.setItem("paayh_active_tab", finalTab);

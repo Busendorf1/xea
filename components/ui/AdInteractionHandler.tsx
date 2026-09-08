@@ -70,33 +70,6 @@ export default function AdInteractionHandler({
   const activeCooldownUntil = viewerProfile?.cooldown_until || viewerProfile?.suspended_until || null;
   const activeCooldownType = viewerProfile?.cooldown_type || (isSuspended ? "review_hours" : "pacing_15m");
 
-  // For unpaid platform ads or ads without budget, do not show interactive buttons (earn, seen, mutual)
-  if (
-    isPlatformPost ||
-    ad.is_admin_post ||
-    !ad.cost_per_impression ||
-    Number(ad.cost_per_impression) <= 0 ||
-    !ad.impressions ||
-    Number(ad.impressions) <= 0
-  ) {
-    if (targetLink && targetLink !== "#") {
-      return (
-        <div className={styles.fromBrandContainer}>
-          <a
-            href={targetLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.fromBrandBtn}
-            title={`Visit ${brandName}`}
-          >
-            Visit {brandName}
-          </a>
-        </div>
-      );
-    }
-    return null;
-  }
-  
   // Challenge State
   const [challengeType, setChallengeType] = useState<ChallengeType>("swipe");
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -155,6 +128,43 @@ export default function AdInteractionHandler({
     return () => clearTimeout(timer);
   }, [inView, tabVisible, secondsLeft, stage]);
 
+  useEffect(() => {
+    const handleGlobalUp = () => handleSwipeEnd();
+    window.addEventListener("mouseup", handleGlobalUp);
+    window.addEventListener("touchend", handleGlobalUp);
+    return () => {
+      window.removeEventListener("mouseup", handleGlobalUp);
+      window.removeEventListener("touchend", handleGlobalUp);
+    };
+  }, []);
+
+  // For unpaid platform ads or ads without budget, do not show interactive buttons (earn, seen, mutual)
+  if (
+    isPlatformPost ||
+    ad.is_admin_post ||
+    !ad.cost_per_impression ||
+    Number(ad.cost_per_impression) <= 0 ||
+    !ad.impressions ||
+    Number(ad.impressions) <= 0
+  ) {
+    if (targetLink && targetLink !== "#") {
+      return (
+        <div className={styles.fromBrandContainer}>
+          <a
+            href={targetLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.fromBrandBtn}
+            title={`Visit ${brandName}`}
+          >
+            Visit {brandName}
+          </a>
+        </div>
+      );
+    }
+    return null;
+  }
+
   const handleChallengeSuccess = () => {
     setStage("unlocked");
     // Automatically record as seen in background so reloading treats it as seen
@@ -197,16 +207,6 @@ export default function AdInteractionHandler({
     // Snap back to 0 if not completed
     setSwipeOffset(0);
   };
-
-  useEffect(() => {
-    const handleGlobalUp = () => handleSwipeEnd();
-    window.addEventListener("mouseup", handleGlobalUp);
-    window.addEventListener("touchend", handleGlobalUp);
-    return () => {
-      window.removeEventListener("mouseup", handleGlobalUp);
-      window.removeEventListener("touchend", handleGlobalUp);
-    };
-  }, []);
 
   // 5. Challenge B: Hold Handlers
   const startHold = () => {
@@ -452,9 +452,13 @@ export default function AdInteractionHandler({
                   disabled={isProcessing || !!activeAction}
                   onClick={() => {
                     if (viewerProfile && viewerProfile.mutual_count >= 50) {
-                      alert(
-                        "⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals."
-                      );
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("xea:toast", {
+                            detail: { message: "Mutual limit reached (50 max)" },
+                          })
+                        );
+                      }
                     } else {
                       handleAction("mutual", () => onAdMutual(ad));
                     }

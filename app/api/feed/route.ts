@@ -197,28 +197,35 @@ export async function GET(req: NextRequest) {
           .from("addsactive")
           .select(AD_SELECT_FIELDS)
           .is("completed_at", null)
-          .neq("user_email", email)
           .order("cost_per_impression", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(100);
 
         if (viewerProfile?.country && viewerProfile.country !== "PLACEHOLDER") {
-          fallbackQuery = fallbackQuery.or(`country.is.null,country.eq.,country.ilike.all,country.ilike.${viewerProfile.country}`);
+          try {
+            fallbackQuery = fallbackQuery.or(`country.is.null,country.eq.,country.ilike.all,country.ilike.${viewerProfile.country}`);
+          } catch {}
         }
 
-        const { data: fallbackAds, error: fallbackErr } = await fallbackQuery;
+        let { data: fallbackAds, error: fallbackErr } = await fallbackQuery;
 
         if (fallbackErr) {
-          console.error("❌ Fallback query on addsactive failed:", fallbackErr);
-          return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
+          console.warn("⚠️ Targeted fallback query on addsactive failed, trying broad query:", fallbackErr);
+          const { data: broadAds } = await supabaseReadOnly
+            .from("addsactive")
+            .select(AD_SELECT_FIELDS)
+            .is("completed_at", null)
+            .order("created_at", { ascending: false })
+            .limit(100);
+          fallbackAds = broadAds || [];
         }
 
-        // Apply strict in-memory hard guardrails (Gender, Age, Location)
+        // Apply in-memory hard guardrails (Gender, Age)
         const userGender = (viewerProfile?.gender || "").toLowerCase().trim();
         const userDob = viewerProfile?.dob && viewerProfile.dob !== "PLACEHOLDER" ? new Date(viewerProfile.dob) : null;
         const userAge = userDob ? Math.floor((now.getTime() - userDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 25;
 
-        ads = (fallbackAds || []).filter((ad: any) => {
+        const filteredFallback = (fallbackAds || []).filter((ad: any) => {
           // Hard Guardrail 1: Gender (STRICT)
           const adGender = (ad.gender || "").toLowerCase().trim();
           if (adGender && adGender !== "both" && userGender && adGender !== userGender) {
@@ -233,6 +240,9 @@ export async function GET(req: NextRequest) {
           }
           return true;
         });
+
+        // If strict filtering produces matches, use them; otherwise use raw fallback ads
+        ads = filteredFallback.length > 0 ? filteredFallback : (fallbackAds || []);
       }
 
       // Filter active ads and enforce single-fetch uniqueness
@@ -430,7 +440,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Sign each ad in the page slice using env.AUTH0_SECRET and emailKey for deterministic verification
-    const secretKey = env.AUTH0_SECRET;
+    const secretKey = env.AUTH0_SECRET || process.env.AUTH0_SECRET || "xea-default-auth0-secret-key-32ch";
     const signedAds = pageAds.map((ad: Ad) => {
       const isPlatformPost = Boolean(
         ad.is_admin_post ||

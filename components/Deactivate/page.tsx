@@ -106,8 +106,8 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                 <li> User Profile and Demographics</li>
               </ul>
 
-              <div style={{ marginBottom: "16px", marginTop: "16px" }}>
-                <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-muted, #94a3b8)", marginBottom: "6px" }}>
+              <div className={styles.inputGroup}>
+                <label className={styles.inputLabel}>
                   Type your email address to confirm deactivation:
                 </label>
                 <input
@@ -115,22 +115,13 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                   placeholder="Enter Email"
                   value={confirmEmailInput}
                   onChange={(e) => setConfirmEmailInput(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--border-color, rgba(255,255,255,0.2))",
-                    background: "rgba(0,0,0,0.3)",
-                    color: "#fff",
-                    fontSize: "0.9rem",
-                    outline: "none",
-                  }}
+                  className={styles.input}
                 />
               </div>
 
               {error && (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#ef4444", fontSize: "0.85rem", margin: "12px 0", fontWeight: 600 }}>
-                  <AlertCircle size={16} color="#ef4444" />
+                <div className={styles.errorBox}>
+                  <AlertCircle size={16} color="var(--danger)" />
                   <span>{error}</span>
                 </div>
               )}
@@ -141,7 +132,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                   disabled={loading}
                   className={styles.danger}
                 >
-                  {loading ? "Deleting..." : "Yes, Delete My Account"}
+                  {loading ? "Deleting..." : "Permanently Delete"}
                 </button>
                 <button
                   onClick={() => router.push("/")}

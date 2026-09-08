@@ -5,7 +5,7 @@
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
-  background-color: var(--card-bg);
+  background-color: var(--background);
   color: var(--foreground);
   box-sizing: border-box;
 }
@@ -17,7 +17,7 @@
   left: 0;
   width: 100%;
   height: 68px;
-  background-color: var(--card-bg);
+  background-color: var(--background);
   border-bottom: 1px solid var(--card-border);
   z-index: 1100;
   transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
@@ -219,6 +219,7 @@
   scrollbar-width: none;
   -ms-overflow-style: none; /* IE and Edge */
   box-sizing: border-box;
+  background-color: var(--background);
 }
 
 .feedArea::-webkit-scrollbar {
@@ -381,7 +382,7 @@
   padding: 0.75rem 1rem;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   text-decoration: none;
   color: var(--foreground);
   font-size: 0.85rem;
@@ -411,7 +412,7 @@
   padding: 0.75rem 1rem;
   background-color: var(--card-bg);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   text-decoration: none;
   color: #ef4444;
   font-size: 0.85rem;
@@ -444,9 +445,10 @@
 /* Profile Details details */
 .profileSectionCard {
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-card, 12px);
   background-color: var(--sidebar-bg);
   overflow: hidden;
+  box-shadow: var(--shadow-surface);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -491,11 +493,11 @@
 }
 
 .editProfileBtn {
-  padding: 4px 14px;
+  padding: 6px 14px;
   border: 1px solid var(--card-border);
   background-color: var(--card-bg);
   color: var(--foreground);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   font-size: 0.75rem;
   font-weight: 700;
   text-decoration: none;
@@ -554,33 +556,33 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.72rem;
-  color: #0284c7;
-  background-color: rgba(14, 165, 233, 0.08);
-  border: 1px solid rgba(14, 165, 233, 0.2);
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border: 1px solid var(--primary);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   font-weight: 600;
   margin-top: 0.5rem;
 }
 
 .profileMonetizeBtn {
-  background-color: #10b981;
+  background-color: var(--primary);
   color: #ffffff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   padding: 6px 14px;
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
   margin-top: 0.75rem;
   width: 100%;
   text-align: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: none !important;
 }
 
 .profileMonetizeBtn:hover {
-  background-color: #059669;
+  opacity: 0.9;
   transform: translateY(-1px);
 }
 
@@ -592,15 +594,16 @@
 .verifiedIcon {
   width: 12px;
   height: 12px;
-  color: #0284c7;
+  color: var(--primary);
 }
 
 /* Wallet Card */
 .walletCard {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.04) 0%, rgba(138, 43, 226, 0.02) 100%);
-  padding: 1rem 1.25rem;
-  border-radius: 4px;
+  background: var(--card-bg);
+  padding: 1.15rem 1.25rem;
+  border-radius: var(--radius-card, 12px);
   border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-surface), var(--card-rim);
   display: flex;
   flex-direction: column;
 }
@@ -617,6 +620,7 @@
   font-size: 1.5rem;
   font-weight: 800;
   margin: 0 0 0.75rem 0;
+  letter-spacing: -0.02em;
 }
 
 .walletBtnGroup {
@@ -632,7 +636,7 @@
   background-color: var(--foreground);
   color: var(--background);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
@@ -657,24 +661,24 @@
 .sendMoneyBtn {
   width: 100%;
   padding: 8px;
-  background-color: #10b981;
+  background-color: var(--success);
   color: #ffffff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  box-shadow: none !important;
 }
 
 .sendMoneyBtn:hover {
-  background-color: #059669;
+  opacity: 0.9;
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
 }
 
 .balanceRowSub {
@@ -686,7 +690,7 @@
   margin-bottom: 0.75rem;
   padding: 4px 8px;
   background-color: rgba(99, 102, 241, 0.08);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   border: 1px solid rgba(99, 102, 241, 0.2);
 }
 
@@ -700,6 +704,11 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-card, 12px);
+  border: 1px solid var(--card-border);
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow-surface);
 }
 
 .tagGroup {
@@ -726,7 +735,7 @@
   background-color: var(--sidebar-bg);
   color: var(--text-muted);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 8px);
   font-size: 0.7rem;
   font-weight: 600;
   border: 1px solid var(--card-border);
@@ -965,12 +974,14 @@
   .notificationDropdown {
     position: fixed !important;
     top: 76px !important;
+    bottom: 10px !important;
     left: 12px !important;
     right: 12px !important;
     width: auto !important;
     margin: 0 auto !important;
-    max-height: calc(100vh - 115px) !important;
-    max-height: calc(100dvh - 115px) !important;
+    height: calc(100vh - 86px) !important;
+    height: calc(100dvh - 86px) !important;
+    max-height: none !important;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35) !important;
     border-radius: 12px !important;
   }
@@ -1256,17 +1267,17 @@
 
 .resolvedName {
   padding: 0.75rem;
-  background-color: rgba(16, 185, 129, 0.05);
-  border: 1px dashed rgba(16, 185, 129, 0.3);
-  border-radius: 8px;
-  color: #10b981;
+  background-color: rgba(22, 163, 74, 0.08);
+  border: 1px dashed var(--success);
+  border-radius: var(--radius-inner);
+  color: var(--success);
   font-size: 0.85rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .errorText {
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.8rem;
   margin-top: 0.25rem;
 }
@@ -1338,7 +1349,7 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #ef4444;
+  background-color: var(--danger);
   color: white;
   font-size: 0.7rem;
   font-weight: 800;
@@ -1349,24 +1360,24 @@
   align-items: center;
   justify-content: center;
   padding: 0 3px;
-  box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+  box-shadow: none !important;
 }
 
 .notificationDropdown {
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
-  width: 320px;
-  max-height: 400px;
+  width: 380px;
+  max-width: 92vw;
+  max-height: min(680px, calc(100vh - 120px));
+  height: auto;
   background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-  overflow-y: auto;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
+  border-radius: var(--radius-card);
+  box-shadow: none !important;
+  overflow: hidden;
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -1377,11 +1388,18 @@
 }
 
 .notificationHeader {
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1rem 0.625rem;
   border-bottom: 1px solid var(--card-border);
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notificationHeaderTop {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .notificationHeader h4 {
@@ -1391,14 +1409,109 @@
   color: var(--foreground);
 }
 
+.notificationActionsGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .markAllBtn {
   background: none;
   border: none;
   color: var(--primary);
   font-size: 0.75rem;
   font-weight: 600;
+  padding: 3px 8px;
   cursor: pointer;
   transition: color 0.2s ease;
+}
+
+.notifToggleSelectionBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-btn);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.notifToggleSelectionBtnActive {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+}
+
+.notifSelectionBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  padding-top: 6px;
+  border-top: 1px solid var(--card-border);
+}
+
+.notifSelectAllBtn {
+  padding: 4px 8px;
+  border-radius: var(--radius-btn);
+  background-color: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notifSelectAllBtnActive {
+  background-color: rgba(37, 99, 235, 0.15);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.notifDeleteSelectedBtn {
+  padding: 4px 10px;
+  border-radius: var(--radius-btn);
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: var(--danger);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notifDeleteSelectedBtnDisabled {
+  opacity: 0.5;
+  cursor: default;
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.notifDeleteAllBtn {
+  padding: 4px 10px;
+  border-radius: var(--radius-btn);
+  background-color: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notifCheckbox {
+  margin-top: 3px;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .markAllBtn:hover {
@@ -1408,6 +1521,8 @@
 .notificationList {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
@@ -1521,12 +1636,12 @@
 }
 
 .monetizeProgressValue {
-  color: #38bdf8;
+  color: var(--primary);
 }
 
 .monetizeProgressTrack {
   height: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--card-border);
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -1534,7 +1649,7 @@
 
 .monetizeProgressFill {
   height: 100%;
-  background: #3b82f6;
+  background: var(--primary);
   border-radius: 6px;
 }
 
@@ -1555,7 +1670,7 @@
 /* ── Pending withdrawal note ── */
 .pendingWithdrawal {
   font-size: 0.75rem;
-  color: #3b82f6;
+  color: var(--primary);
   margin-bottom: 0.5rem;
 }
 
@@ -1600,7 +1715,7 @@
 
 .balanceValue {
   font-weight: 700;
-  color: #10b981;
+  color: var(--success);
 }
 
 /* ── Withdrawal modal: resolving text ── */

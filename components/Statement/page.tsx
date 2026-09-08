@@ -340,7 +340,7 @@ export default function StatementComponent() {
           <div className={styles.statsGrid}>
             <div className={`${styles.statCard} ${styles.statBalance}`}>
               <div className={styles.statIconWrap}>
-                <Wallet size={18} color="#10b981" />
+                <Wallet size={18} color="#4b5e38" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Available Balance</div>
@@ -350,7 +350,7 @@ export default function StatementComponent() {
 
             <div className={`${styles.statCard} ${styles.statWithdraw}`}>
               <div className={styles.statIconWrap}>
-                <Clock size={18} color="#3b82f6" />
+                <Clock size={18} color="#2563eb" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Pending Withdrawal</div>
@@ -370,7 +370,7 @@ export default function StatementComponent() {
 
             <div className={`${styles.statCard} ${styles.statReceived}`}>
               <div className={styles.statIconWrap}>
-                <ArrowDownLeft size={18} color="#6366f1" />
+                <ArrowDownLeft size={18} color="#4b5e38" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total P2P Received</div>
@@ -380,7 +380,7 @@ export default function StatementComponent() {
 
             <div className={`${styles.statCard} ${styles.statWithdrawn}`}>
               <div className={styles.statIconWrap}>
-                <Building size={18} color="#f59e0b" />
+                <Building size={18} color="#4b5e38" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total Withdrawn</div>
@@ -456,48 +456,91 @@ export default function StatementComponent() {
                   <p>No payment or transfer records match your current filters.</p>
                 </div>
               ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th className={styles.th}>Date & Time</th>
-                      <th className={styles.th}>Reference</th>
-                      <th className={styles.th}>Type</th>
-                      <th className={styles.th}>Description</th>
-                      <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
-                      <th className={styles.th}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <>
+                  {/* Desktop Table View */}
+                  <table className={`${styles.table} ${styles.desktopTable}`}>
+                    <thead>
+                      <tr>
+                        <th className={styles.th}>Date & Time</th>
+                        <th className={styles.th}>Reference</th>
+                        <th className={styles.th}>Type</th>
+                        <th className={styles.th}>Description</th>
+                        <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
+                        <th className={styles.th}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedPayments.map((tx) => {
+                        const isCredit = tx.type === "transfer_received";
+                        return (
+                          <tr key={tx.id} className={styles.row}>
+                            <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
+                            <td className={styles.tdRef}>
+                              <span className={styles.refCode}>{tx.reference}</span>
+                              <button
+                                onClick={() => handleCopy(tx.reference)}
+                                className={styles.copyBtn}
+                                title="Copy Reference"
+                              >
+                                {copiedRef === tx.reference ? (
+                                  <Check size={12} color="#4b5e38" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            </td>
+                            <td className={styles.td}>{getTypeBadge(tx.type)}</td>
+                            <td className={styles.tdDesc}>{tx.description}</td>
+                            <td className={`${styles.tdAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
+                              {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
+                            </td>
+                            <td className={styles.td}>{getStatusBadge(tx.status)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* Mobile Card List View (matches xea-mobile, no horizontal scroll) */}
+                  <div className={styles.mobileCardList}>
                     {paginatedPayments.map((tx) => {
                       const isCredit = tx.type === "transfer_received";
                       return (
-                        <tr key={tx.id} className={styles.row}>
-                          <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
-                          <td className={styles.tdRef}>
-                            <span className={styles.refCode}>{tx.reference}</span>
-                            <button
-                              onClick={() => handleCopy(tx.reference)}
-                              className={styles.copyBtn}
-                              title="Copy Reference"
-                            >
-                              {copiedRef === tx.reference ? (
-                                <Check size={12} color="#10b981" />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                            </button>
-                          </td>
-                          <td className={styles.td}>{getTypeBadge(tx.type)}</td>
-                          <td className={styles.tdDesc}>{tx.description}</td>
-                          <td className={`${styles.tdAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
-                            {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
-                          </td>
-                          <td className={styles.td}>{getStatusBadge(tx.status)}</td>
-                        </tr>
+                        <div key={tx.id} className={styles.mobileCard}>
+                          <div className={styles.mobileCardLeft}>
+                            <div className={styles.mobileBadgeRow}>
+                              <span className={styles.mobileTypeBadge}>{getTypeBadge(tx.type)}</span>
+                              <span className={styles.mobileStatusBadge}>{getStatusBadge(tx.status)}</span>
+                            </div>
+                            <div className={styles.mobileDesc}>{tx.description}</div>
+                            {tx.reference && (
+                              <div className={styles.mobileRefRow}>
+                                <span className={styles.mobileRefText}>Ref: {tx.reference}</span>
+                                <button
+                                  onClick={() => handleCopy(tx.reference)}
+                                  className={styles.copyBtn}
+                                  title="Copy Reference"
+                                >
+                                  {copiedRef === tx.reference ? (
+                                    <Check size={12} color="#4b5e38" />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                            <div className={styles.mobileTime}>{formatDate(tx.created_at)}</div>
+                          </div>
+                          <div className={styles.mobileCardRight}>
+                            <div className={`${styles.mobileAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
+                              {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
+                            </div>
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+                </>
               )
             ) : filteredWithdrawals.length === 0 ? (
               <div className={styles.emptyState}>
@@ -505,43 +548,83 @@ export default function StatementComponent() {
                 <p>No bank withdrawal records match your current filters.</p>
               </div>
             ) : (
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th className={styles.th}>Date & Time</th>
-                    <th className={styles.th}>Reference</th>
-                    <th className={styles.th}>Destination Account</th>
-                    <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
-                    <th className={styles.th}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedWithdrawals.map((tx) => (
-                    <tr key={tx.id} className={styles.row}>
-                      <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
-                      <td className={styles.tdRef}>
-                        <span className={styles.refCode}>{tx.reference}</span>
-                        <button
-                          onClick={() => handleCopy(tx.reference)}
-                          className={styles.copyBtn}
-                          title="Copy Reference"
-                        >
-                          {copiedRef === tx.reference ? (
-                            <Check size={12} color="#10b981" />
-                          ) : (
-                            <Copy size={12} />
-                          )}
-                        </button>
-                      </td>
-                      <td className={styles.tdDesc}>{tx.description}</td>
-                      <td className={`${styles.tdAmount} ${styles.amountDebit}`}>
-                        - {formatAmount(tx.amount)}
-                      </td>
-                      <td className={styles.td}>{getStatusBadge(tx.status)}</td>
+              <>
+                {/* Desktop Table View */}
+                <table className={`${styles.table} ${styles.desktopTable}`}>
+                  <thead>
+                    <tr>
+                      <th className={styles.th}>Date & Time</th>
+                      <th className={styles.th}>Reference</th>
+                      <th className={styles.th}>Destination Account</th>
+                      <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
+                      <th className={styles.th}>Status</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedWithdrawals.map((tx) => (
+                      <tr key={tx.id} className={styles.row}>
+                        <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
+                        <td className={styles.tdRef}>
+                          <span className={styles.refCode}>{tx.reference}</span>
+                          <button
+                            onClick={() => handleCopy(tx.reference)}
+                            className={styles.copyBtn}
+                            title="Copy Reference"
+                          >
+                            {copiedRef === tx.reference ? (
+                              <Check size={12} color="#4b5e38" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </td>
+                        <td className={styles.tdDesc}>{tx.description}</td>
+                        <td className={`${styles.tdAmount} ${styles.amountDebit}`}>
+                          - {formatAmount(tx.amount)}
+                        </td>
+                        <td className={styles.td}>{getStatusBadge(tx.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Mobile Card List View (matches xea-mobile, no horizontal scroll) */}
+                <div className={styles.mobileCardList}>
+                  {paginatedWithdrawals.map((tx) => (
+                    <div key={tx.id} className={styles.mobileCard}>
+                      <div className={styles.mobileCardLeft}>
+                        <div className={styles.mobileBadgeRow}>
+                          <span className={styles.mobileTypeBadge}>{getTypeBadge("withdrawal")}</span>
+                          <span className={styles.mobileStatusBadge}>{getStatusBadge(tx.status)}</span>
+                        </div>
+                        <div className={styles.mobileDesc}>{tx.description}</div>
+                        {tx.reference && (
+                          <div className={styles.mobileRefRow}>
+                            <span className={styles.mobileRefText}>Ref: {tx.reference}</span>
+                            <button
+                              onClick={() => handleCopy(tx.reference)}
+                              className={styles.copyBtn}
+                              title="Copy Reference"
+                            >
+                              {copiedRef === tx.reference ? (
+                                <Check size={12} color="#4b5e38" />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                            </button>
+                          </div>
+                        )}
+                        <div className={styles.mobileTime}>{formatDate(tx.created_at)}</div>
+                      </div>
+                      <div className={styles.mobileCardRight}>
+                        <div className={`${styles.mobileAmount} ${styles.amountDebit}`}>
+                          - {formatAmount(tx.amount)}
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
 
             {/* Pagination Controls Bar */}

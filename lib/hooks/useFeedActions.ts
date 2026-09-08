@@ -33,10 +33,7 @@ export function useFeedActions({
   const handleAdSeen = useCallback(
     async (ad: Ad): Promise<boolean> => {
       if (!ad || !ad.id) return false;
-      if (ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase()) {
-        alert("This is your own ad. Seen action is disabled.");
-        return false;
-      }
+      const isOwner = Boolean(userEmail && ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase());
       if (processingRef.current.has(ad.id)) return false;
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
@@ -48,7 +45,7 @@ export function useFeedActions({
         !ad.impressions ||
         Number(ad.impressions) <= 0
       );
-      if (!isPlatform) {
+      if (!isPlatform && !isOwner) {
         incrementClicks?.(1);
       }
 
@@ -82,7 +79,6 @@ export function useFeedActions({
     async (ad: Ad): Promise<boolean> => {
       if (!ad || !ad.id) return false;
       if (ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase()) {
-        alert("This is your own ad. Earning is disabled.");
         return false;
       }
       if (processingRef.current.has(ad.id)) return false;
@@ -238,11 +234,12 @@ export function useFeedActions({
       const publisherEmail = ad.user_email.toLowerCase();
 
       if (publisherEmail === userEmail.toLowerCase()) {
-        alert("This is your own ad. You cannot add yourself to mutuals.");
         return false;
       }
       if (viewerProfile && viewerProfile.mutual_count >= 50) {
-        alert("⚠️ Mutual Limit Reached\nYou have reached the maximum limit of 50 mutuals.");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Mutual limit reached (50 max)" } }));
+        }
         return false;
       }
       if (processingRef.current.has(ad.id)) return false;
@@ -277,7 +274,9 @@ export function useFeedActions({
         const mutualResult = resData.result !== undefined ? resData.result : 1;
 
         if (mutualResult === -1 || mutualResult === -2) {
-          alert("Clicking suspended: You are clicking too fast! Clicking is suspended for 2 hours.");
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Clicking suspended: Rate limit reached" } }));
+          }
           suspendAccount(2);
           return false;
         }
@@ -289,7 +288,9 @@ export function useFeedActions({
         return true;
       } catch (e: unknown) {
         console.error("❌ Unexpected error in handleAdMutual:", e);
-        alert((e as Error).message || "An unexpected error occurred. Please try again.");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: (e as Error).message || "Action failed" } }));
+        }
         return false;
       } finally {
         processingRef.current.delete(ad.id);
@@ -306,7 +307,9 @@ export function useFeedActions({
       const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
       navigator.clipboard
         .writeText(shareUrl)
-        .then(() => alert("Ad share link copied to clipboard."))
+        .then(() => {
+          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Link copied to clipboard" } }));
+        })
         .catch((err) => console.error("❌ Failed to copy link:", err));
     }
   }, []);
