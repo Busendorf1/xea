@@ -15,7 +15,7 @@
   padding: 1.5rem;
   border-radius: 4px;
   border: 1px solid var(--card-border);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  box-shadow: none !important;
   color: var(--foreground);
 }
 
@@ -80,12 +80,12 @@
   background-color: var(--primary);
   border-color: var(--primary);
   color: #ffffff;
-  box-shadow: 0 0 12px var(--primary-glow);
+  box-shadow: none !important;
 }
 
 .stepItemCompleted .stepBadge {
-  background-color: #22c55e;
-  border-color: #22c55e;
+  background-color: var(--success);
+  border-color: var(--success);
   color: #ffffff;
 }
 

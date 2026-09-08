@@ -84,8 +84,8 @@
   font-weight: 600;
   border-radius: 10px;
   text-transform: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
+  transition: transform 0.2s ease;
+  box-shadow: none !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -93,7 +93,7 @@
 
 .ctaBtn:hover, .dashboardBtn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(138, 43, 226, 0.5);
+  box-shadow: none !important;
 }
 
 .signOutBtn {
@@ -301,7 +301,7 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #ef4444;
+  background-color: var(--danger);
   color: white;
   font-size: 0.7rem;
   font-weight: 800;
@@ -312,7 +312,7 @@
   align-items: center;
   justify-content: center;
   padding: 0 3px;
-  box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+  box-shadow: none !important;
 }
 
 .notificationDropdown {
@@ -321,14 +321,14 @@
   right: 0;
   width: 380px;
   max-width: 92vw;
-  max-height: min(680px, calc(100vh - 120px));
-  height: auto;
+  height: fit-content;
+  max-height: min(560px, calc(100vh - 100px));
   background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--card-border);
   border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  box-shadow: none !important;
   overflow: hidden;
   z-index: 1000;
   display: flex;
@@ -371,7 +371,8 @@
 .notificationList {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: min(460px, calc(100vh - 180px));
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;

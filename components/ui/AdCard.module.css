@@ -4,14 +4,17 @@
   z-index: 1;
   display: flex;
   flex-direction: row;
-  padding: 1.25rem 1rem;
-  border: 1px solid var(--card-border);
-  background-color: var(--card-bg);
-  border-radius: var(--radius-card, 12px);
+  padding: 1rem 1rem 1.15rem 1rem;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: 1px solid var(--card-border);
+  background-color: var(--background);
+  border-radius: 0;
   box-shadow: none !important;
   opacity: 1;
-  margin: 6px 8px;
-  transition: background-color 0.25s var(--ease-spring), border-color 0.25s var(--ease-spring);
+  margin: 0;
+  transition: background-color 0.15s ease;
 }
 
 .cardMenuOpen {

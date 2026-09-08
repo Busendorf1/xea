@@ -11,8 +11,8 @@
   border-radius: var(--radius-inner, 8px);
   padding: 0.4rem;
   background: var(--card-bg);
-  box-shadow: var(--shadow-surface), var(--card-rim);
-  transition: transform 0.25s var(--ease-spring), background-color 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: none !important;
+  transition: transform 0.25s var(--ease-spring), background-color 0.25s ease;
   width: 48%;
   height: fit-content;
   transform-origin: center;
@@ -20,7 +20,8 @@
 
 .adCard:hover {
   background-color: var(--sidebar-bg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: none !important;
+  border-color: var(--primary);
   transform: translateY(-2px);
   z-index: 2;
 }
@@ -93,7 +94,7 @@
   border: 1px solid var(--card-border);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: none !important;
 }
 
 .loadMoreButton:hover {

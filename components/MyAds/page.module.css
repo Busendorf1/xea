@@ -53,15 +53,15 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
+  box-shadow: none !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
 }
 
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.08);
-  border-color: rgba(29, 155, 240, 0.3);
+  box-shadow: none !important;
+  border-color: var(--primary);
 }
 
 .rowBody {
@@ -134,7 +134,7 @@
 }
 
 .carouselBtn:hover {
-  background: rgba(29, 155, 240, 0.9);
+  background: var(--primary);
 }
 
 .carouselBtnLeft {
@@ -165,7 +165,7 @@
 }
 
 .carouselDotActive {
-  background: #1d9bf0;
+  background: var(--primary);
   width: 14px;
   border-radius: 3px;
 }

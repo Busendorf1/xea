@@ -1369,8 +1369,8 @@
   right: 0;
   width: 380px;
   max-width: 92vw;
-  max-height: min(680px, calc(100vh - 120px));
-  height: auto;
+  height: fit-content;
+  max-height: min(560px, calc(100vh - 100px));
   background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -1521,7 +1521,8 @@
 .notificationList {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: min(460px, calc(100vh - 180px));
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */

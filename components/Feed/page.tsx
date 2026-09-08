@@ -306,7 +306,18 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
           ))}
         </div>
       )}
-      {!loading && error && <p className={styles.error}>Error loading ads.</p>}
+      {!loading && error && (
+        <div className={styles.errorContainer || styles.error} style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
+          <p className={styles.error} style={{ marginBottom: "1rem" }}>Unable to load ads right now.</p>
+          <button
+            onClick={() => fetchRelevantAds(0, false)}
+            className={styles.loadMoreBtn}
+            style={{ padding: "0.5rem 1.5rem", fontSize: "0.85rem" }}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
       {!loading && !error && ads.length === 0 && (
         <p className={styles.noAds}>No matching ads found for your profile.</p>
       )}
