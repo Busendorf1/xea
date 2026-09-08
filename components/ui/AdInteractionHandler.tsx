@@ -89,7 +89,7 @@ export default function AdInteractionHandler({
             className={styles.fromBrandBtn}
             title={`Visit ${brandName}`}
           >
-            Visit &apos;{brandName}&apos;
+            Visit {brandName}
           </a>
         </div>
       );

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 
@@ -13,18 +13,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const emailLower = email.toLowerCase().trim();
     const { touchUserActivity } = await import("@/lib/utils/activityTracker");
 
     // Attempt to fetch from Redis cache first
-    let user = await getCachedProfile(email);
+    let user = await getCachedProfile(emailLower);
     if (user) {
       // Background 24h activity touch
-      touchUserActivity(email, user).catch(() => {});
-      console.log(`🚀 Profile cache hit in /api/profile for: ${email}`);
+      touchUserActivity(emailLower, user).catch(() => {});
+      console.log(`🚀 Profile cache hit in /api/profile for: ${emailLower}`);
 
       if (isRedisReady()) {
         try {
-          const liveVal = await redisConnection.get(`user:live_clicks:${email.toLowerCase().trim()}`);
+          const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
           if (liveVal) {
             const liveClicks = Number(liveVal) || 0;
             user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
         let { data, error: dbErr } = await supabaseAdmin
           .from("users")
           .select(PROFILE_COLUMNS)
-          .eq("email", email.toLowerCase().trim())
+          .eq("email", emailLower)
           .maybeSingle();
 
         if (dbErr) {
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
           const fallback = await supabaseAdmin
             .from("users")
             .select(BASELINE_COLUMNS)
-            .eq("email", email.toLowerCase().trim())
+            .eq("email", emailLower)
             .maybeSingle();
 
           data = fallback.data as any;
@@ -111,7 +112,7 @@ export async function GET(req: NextRequest) {
       const { data: newUser, error: fetchError } = await supabaseAdmin
         .from("users")
         .select(PROFILE_COLUMNS)
-        .eq("email", email.toLowerCase().trim())
+        .eq("email", emailLower)
         .maybeSingle();
 
       if (fetchError) {
@@ -123,7 +124,7 @@ export async function GET(req: NextRequest) {
     // Merge live Redis atomic clicks (sub-millisecond accuracy)
     if (user) {
       try {
-        const liveVal = await redisConnection.get(`user:live_clicks:${email.toLowerCase().trim()}`);
+        const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
         if (liveVal) {
           const liveClicks = Number(liveVal) || 0;
           user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
@@ -132,6 +133,10 @@ export async function GET(req: NextRequest) {
           }
         }
       } catch {}
+
+      // Cache the loaded profile in Redis with 60s TTL to prevent subsequent DB hits
+      await setCachedProfile(emailLower, user);
+      touchUserActivity(emailLower, user).catch(() => {});
     }
 
     return NextResponse.json(user);

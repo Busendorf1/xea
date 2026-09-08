@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { type, amount, metadata, callbackUrl, channels } = body;
 
-    // Validate payment type
-    if (!["ad", "highlight", "monetization_standard", "monetization_instant"].includes(type)) {
+    // Validate payment type (Only Ad & Highlight campaigns)
+    if (!["ad", "highlight"].includes(type)) {
       return NextResponse.json({ error: "Invalid payment type" }, { status: 400 });
     }
 
@@ -32,13 +32,37 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Verify advertiser account status before initializing external payment
+    if (!isAdmin) {
+      const { data: userRecord } = await supabaseAdmin
+        .from("users")
+        .select("ad_account_status, ad_ban_until, ad_ban_reason")
+        .ilike("email", email)
+        .maybeSingle();
+
+      if (userRecord) {
+        const isRestricted =
+          userRecord.ad_account_status === "perm_banned" ||
+          userRecord.ad_account_status === "deactivated" ||
+          (userRecord.ad_account_status === "temp_banned" &&
+            userRecord.ad_ban_until &&
+            new Date(userRecord.ad_ban_until) > new Date());
+
+        if (isRestricted) {
+          const reasonText = userRecord.ad_ban_reason ? ` (${userRecord.ad_ban_reason})` : "";
+          const message =
+            userRecord.ad_account_status === "temp_banned"
+              ? `Your advertising access is temporarily paused${reasonText}. Please check back once the review period ends or reach out via Help Center.`
+              : `Your advertising access is currently paused${reasonText}. Please contact our Help Center if you'd like to appeal or learn more.`;
+
+          return NextResponse.json({ error: message, restricted: true }, { status: 403 });
+        }
+      }
+    }
+
     // Determine and enforce amount based on business rules
     let verifiedAmount = 0;
-    if (type === "monetization_standard") {
-      verifiedAmount = 28000;
-    } else if (type === "monetization_instant") {
-      verifiedAmount = 60000;
-    } else if (type === "highlight") {
+    if (type === "highlight") {
       const days = parseInt(metadata?.campaign_days || 1, 10);
       const isBidded = !!metadata?.is_bidded;
       const bidPrice = metadata?.bid_price ? parseFloat(metadata.bid_price) : 1000;

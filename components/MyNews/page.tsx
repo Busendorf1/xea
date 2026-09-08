@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import supabase from "@/lib/utils/db";
 import styles from "../MyNews/page.module.css";
 import Link from "next/link";
 import { Pause, Play, Edit3, AlertTriangle, MapPin, Zap, Calendar } from "lucide-react";
@@ -35,24 +34,74 @@ type HighlightItem = {
   campaign_days?: number | null;
 };
 
+import { fetchUserCampaignsShared } from "@/lib/campaignsClient";
+
 export default function MyNewsDashboard({ session }: MyNewsProps) {
   const [reviewNews, setReviewNews] = useState<HighlightItem[]>([]);
   const [activeNews, setActiveNews] = useState<HighlightItem[]>([]);
+  const [activeNewsPage, setActiveNewsPage] = useState<number>(1);
+  const [reviewNewsPage, setReviewNewsPage] = useState<number>(1);
+  const HIGHLIGHTS_PER_PAGE = 10;
+
+  const totalReviewPages = Math.max(1, Math.ceil(reviewNews.length / HIGHLIGHTS_PER_PAGE));
+  const safeReviewNewsPage = Math.min(Math.max(1, reviewNewsPage), totalReviewPages);
+
+  const totalActivePages = Math.max(1, Math.ceil(activeNews.length / HIGHLIGHTS_PER_PAGE));
+  const safeActiveNewsPage = Math.min(Math.max(1, activeNewsPage), totalActivePages);
+
+  const renderPageButtons = (
+    currentPage: number,
+    totalPages: number,
+    onPageChange: (pg: number) => void
+  ) => {
+    if (totalPages <= 1) return null;
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("ellipsis-1");
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("ellipsis-2");
+      pages.push(totalPages);
+    }
+    return pages.map((pg, idx) => {
+      if (typeof pg === "string") {
+        return (
+          <span key={`el-news-${idx}`} style={{ padding: "0 4px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+            …
+          </span>
+        );
+      }
+      return (
+        <button
+          key={`pg-news-${pg}`}
+          className={`${styles.pageBtn} ${pg === currentPage ? styles.pageBtnActive : ""}`}
+          onClick={() => onPageChange(pg)}
+        >
+          {pg}
+        </button>
+      );
+    });
+  };
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
-  const fetchNews = async () => {
+  const fetchNews = async (bypassCache: boolean = false) => {
     const email = session?.user?.email;
     if (!email) return;
     try {
-      const res = await fetch("/api/campaigns");
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setReviewNews(data.highlightsQueue || []);
-      setActiveNews(data.highlightsActive || []);
-    } catch (err) {
+      const data = await fetchUserCampaignsShared(email, bypassCache);
+      if (data) {
+        setReviewNews(data.highlightsQueue || []);
+        setActiveNews(data.highlightsActive || []);
+      }
+    } catch {
       setError(true);
     } finally {
       setLoading(false);
@@ -93,7 +142,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
         setNoticeMessage(data.error || "Could not update status.");
         setTimeout(() => setNoticeMessage(null), 4000);
       }
-    } catch (err: any) {
+    } catch {
       // Rollback optimistic update
       setActiveNews((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_paused: !nextState } : n)));
       setNoticeMessage("Network error updating status.");
@@ -134,9 +183,12 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
           />
         ) : (
           <img
-            src={item.image_url || "/placeholder.png"}
+            src={item.image_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60"}
             alt="Highlight cover"
             className={styles.adImgElement}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60";
+            }}
           />
         )}
         <span className={status === "active" ? (item.is_paused ? styles.badgeReview : styles.badgeActive) : styles.badgeReview}>
@@ -194,7 +246,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
         <div className={styles.cardFooter}>
           <p className={styles.adCoverage}>
-            Will be seen by users in the same interest category
+            Will be seen by users in the target interest category
           </p>
           <p className={styles.adTime}>
             Posted {formatTimestamp(item.created_at?.toString())}
@@ -223,13 +275,40 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
       {loading && <p className={styles.loading}>Loading Highlights...</p>}
       {!loading && error && <p className={styles.error}>Error loading Highlights.</p>}
       
-      <h3 className={styles.subheading}>Highlights in Review</h3>
+      <h3 className={styles.subheading}>Highlights in Review ({reviewNews.length})</h3>
       {!loading && reviewNews.length === 0 && <p className={styles.noAds}>No Highlights in review.</p>}
       <div className={styles.adGrid}>
-        {reviewNews.map((ad) => renderAdCard(ad, "review"))}
+        {reviewNews
+          .slice((safeReviewNewsPage - 1) * HIGHLIGHTS_PER_PAGE, safeReviewNewsPage * HIGHLIGHTS_PER_PAGE)
+          .map((ad) => renderAdCard(ad, "review"))}
       </div>
+      {reviewNews.length > HIGHLIGHTS_PER_PAGE && (
+        <div className={styles.paginationBar}>
+          <span className={styles.paginationInfo}>
+            Showing {(safeReviewNewsPage - 1) * HIGHLIGHTS_PER_PAGE + 1}–
+            {Math.min(safeReviewNewsPage * HIGHLIGHTS_PER_PAGE, reviewNews.length)} of {reviewNews.length} in review
+          </span>
+          <div className={styles.paginationControls}>
+            <button
+              className={styles.pageBtn}
+              onClick={() => setReviewNewsPage((p) => Math.max(1, p - 1))}
+              disabled={safeReviewNewsPage <= 1}
+            >
+              Prev
+            </button>
+            {renderPageButtons(safeReviewNewsPage, totalReviewPages, setReviewNewsPage)}
+            <button
+              className={styles.pageBtn}
+              onClick={() => setReviewNewsPage((p) => Math.min(totalReviewPages, p + 1))}
+              disabled={safeReviewNewsPage >= totalReviewPages}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
-      <h3 className={styles.subheading}>Active Highlights</h3>
+      <h3 className={styles.subheading}>Active Highlights ({activeNews.length})</h3>
       {!loading && activeNews.length === 0 ? (
         <>
           <p className={styles.noAds}>
@@ -242,9 +321,38 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
           </div>
         </>
       ) : (
-        <div className={styles.adGrid}>
-          {activeNews.map((ad) => renderAdCard(ad, "active"))}
-        </div>
+        <>
+          <div className={styles.adGrid}>
+            {activeNews
+              .slice((safeActiveNewsPage - 1) * HIGHLIGHTS_PER_PAGE, safeActiveNewsPage * HIGHLIGHTS_PER_PAGE)
+              .map((ad) => renderAdCard(ad, "active"))}
+          </div>
+          {activeNews.length > HIGHLIGHTS_PER_PAGE && (
+            <div className={styles.paginationBar}>
+              <span className={styles.paginationInfo}>
+                Showing {(safeActiveNewsPage - 1) * HIGHLIGHTS_PER_PAGE + 1}–
+                {Math.min(safeActiveNewsPage * HIGHLIGHTS_PER_PAGE, activeNews.length)} of {activeNews.length} active
+              </span>
+              <div className={styles.paginationControls}>
+                <button
+                  className={styles.pageBtn}
+                  onClick={() => setActiveNewsPage((p) => Math.max(1, p - 1))}
+                  disabled={safeActiveNewsPage <= 1}
+                >
+                  Prev
+                </button>
+                {renderPageButtons(safeActiveNewsPage, totalActivePages, setActiveNewsPage)}
+                <button
+                  className={styles.pageBtn}
+                  onClick={() => setActiveNewsPage((p) => Math.min(totalActivePages, p + 1))}
+                  disabled={safeActiveNewsPage >= totalActivePages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

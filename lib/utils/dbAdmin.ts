@@ -20,10 +20,34 @@ if (typeof window === "undefined" && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   }
 }
 
+/**
+ * Resilient timeout-controlled fetch wrapper.
+ * Protects database calls from hanging indefinitely while adhering strictly
+ * to Node.js / undici fetch specifications (avoiding forbidden headers like 'Connection').
+ */
+const createPooledFetch = (timeoutMs = 15000) => {
+  return (input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const mergedInit: RequestInit = {
+      ...init,
+      signal: init?.signal || controller.signal,
+    };
+
+    return fetch(input, mergedInit).finally(() => {
+      clearTimeout(timeoutId);
+    });
+  };
+};
+
 export const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
+  },
+  global: {
+    fetch: createPooledFetch(15000), // Generous 15s timeout for writes & RPCs
   },
 });
 
@@ -36,6 +60,9 @@ export const supabaseReadOnly = (supabaseReadUrl && supabaseReadServiceKey)
       auth: {
         persistSession: false,
         autoRefreshToken: false,
+      },
+      global: {
+        fetch: createPooledFetch(8000), // 8s timeout on read replica
       },
     })
   : supabaseAdmin;

@@ -1,4 +1,4 @@
-import redisConnection from "../redis";
+import redisConnection, { isRedisReady } from "../redis";
 import supabaseAdmin from "./dbAdmin";
 import { invalidateCachedProfile } from "./cache";
 
@@ -11,7 +11,7 @@ const ACTIVITY_THROTTLE_TTL_SECONDS = 86400; // 24 Hours
  */
 export async function touchUserActivity(
   email: string,
-  userProfile?: { last_active_at?: string | null; monetized?: any }
+  userProfile?: { last_active_at?: string | null; monetized?: any; monetization_clicks?: any }
 ): Promise<{ daysInactive: number; isDeMonetized: boolean }> {
   if (!email) return { daysInactive: 0, isDeMonetized: false };
 
@@ -28,14 +28,15 @@ export async function touchUserActivity(
       const nowMs = Date.now();
       daysInactive = Math.max(0, Math.floor((nowMs - lastActiveMs) / (1000 * 60 * 60 * 24)));
 
-      // 7-Day Inactivity Rule: If inactive >= 7 days and account was monetized
+      // 7-Day Inactivity Rule: If inactive >= 7 days and account was monetized or has progress clicks
       const wasMonetized =
         userProfile.monetized === "yes" ||
         userProfile.monetized === "true" ||
         userProfile.monetized === true;
+      const hadClicks = Number(userProfile.monetization_clicks || 0) > 0;
 
-      if (daysInactive >= 7 && wasMonetized) {
-        console.warn(` User ${emailLower} inactive for ${daysInactive} days. Revoking monetization...`);
+      if (daysInactive >= 7 && (wasMonetized || hadClicks)) {
+        console.warn(` User ${emailLower} inactive for ${daysInactive} days. Revoking monetization & resetting clicks...`);
         await supabaseAdmin.rpc("check_and_update_monetization_status", {
           p_email: emailLower,
         });
@@ -45,10 +46,24 @@ export async function touchUserActivity(
     }
 
     // 2. 24-Hour Throttling Gate in Redis
-    const isAlreadyTouched = await redisConnection.get(throttleKey);
+    let isAlreadyTouched: string | null = null;
+    if (isRedisReady()) {
+      try {
+        isAlreadyTouched = await redisConnection.get(throttleKey);
+      } catch (err: any) {
+        if (err?.message !== "Connection is closed.") {
+          console.warn("⚠️ Redis touchUserActivity read warning:", err.message || err);
+        }
+      }
+    }
+
     if (!isAlreadyTouched) {
       // Set Redis key with 24-hour TTL to prevent further DB writes today
-      await redisConnection.set(throttleKey, "1", "EX", ACTIVITY_THROTTLE_TTL_SECONDS);
+      if (isRedisReady()) {
+        try {
+          await redisConnection.set(throttleKey, "1", "EX", ACTIVITY_THROTTLE_TTL_SECONDS);
+        } catch {}
+      }
 
       // Async touch in PostgreSQL (fire-and-forget, non-blocking)
       (async () => {

@@ -16,6 +16,7 @@ const AttentionMarketTicker = dynamic(() => import("./AttentionMarketTicker"), {
 import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/lib/categoryTargetingMap";
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/authHelper";
+import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 
 interface Session {
   user?: {
@@ -96,6 +97,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     adMediaType: "" as AdMediaType | "",
     adContent: "",
     adMediaFiles: [] as File[],
+    existingMedia: "",
     adActionButtons: [] as ("phone" | "whatsapp" | "website" | "email" | "ios" | "android" | "read_more" | "watch_now")[],
     actionDetails: {
       phone: "",
@@ -127,53 +129,84 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, formSelections.country);
 
-  useEffect(() => {
-    if (editAdId) {
-      setEditingId(editAdId);
-      fetch(`/api/campaigns/details?id=${editAdId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.ad) {
-            const ad = data.ad;
-            if (ad.ad_type) setAdType(ad.ad_type);
-            setFormSelections((prev) => ({
-              ...prev,
-              industry: Array.isArray(ad.industry) ? ad.industry : (ad.industry ? [ad.industry] : []),
-              interest: Array.isArray(ad.interest) ? ad.interest : (ad.interest ? [ad.interest] : []),
-              lifestyle: Array.isArray(ad.lifestyle) ? ad.lifestyle : (ad.lifestyle ? [ad.lifestyle] : []),
-              behavior: Array.isArray(ad.behavior) ? ad.behavior : (ad.behavior ? [ad.behavior] : []),
-              personality: Array.isArray(ad.personality) ? ad.personality : (ad.personality ? [ad.personality] : []),
-              ageRange: ad.age_range || [18, 65],
-              targetingAll: !!ad.targeting_all,
-              impressions: ad.impressions || 1000,
-              campaignDays: ad.campaign_days || 5,
-              userFrequencyCap: ad.user_frequency_cap || 1,
-              country: ad.country || "",
-              state: ad.state || "",
-              province: ad.province || "",
-              targetLocations: ad.province ? ad.province.split("; ") : [],
-              gender: ad.gender || "",
-              employmentStatus: ad.employment_status ? ad.employment_status.split(", ") : [],
-              adMediaType: ad.ad_media_type || "text",
-              adContent: ad.ad_content || "",
-              adActionButtons: ad.ad_action_buttons || [],
-              actionDetails: {
-                phone: ad.action_phone || "",
-                whatsapp: ad.action_whatsapp || "",
-                website: ad.action_website || "",
-                email: ad.action_email || "",
-                ios: ad.action_ios || "",
-                android: ad.action_android || "",
-                watch_now: ad.action_watch_now || "",
-              },
-              displayMutualButton: !!ad.display_mutual_button,
-              productName: ad.product_name || "",
-              productPrice: ad.product_price ? String(ad.product_price) : "",
-            }));
-          }
-        })
-        .catch((err) => console.error("Error fetching ad details for edit:", err));
+  const loadAdForEdit = async (targetId: string) => {
+    if (!targetId) return;
+    try {
+      setEditingId(targetId);
+      setStep(0);
+      const res = await fetch(`/api/campaigns/details?id=${targetId}`);
+      const data = await res.json();
+      if (data.success && data.ad) {
+        const ad = data.ad;
+        if (ad.ad_type) setAdType(ad.ad_type);
+        setFormSelections((prev) => ({
+          ...prev,
+          industry: Array.isArray(ad.industry) ? ad.industry : (ad.industry ? [ad.industry] : []),
+          interest: Array.isArray(ad.interest) ? ad.interest : (ad.interest ? [ad.interest] : []),
+          lifestyle: Array.isArray(ad.lifestyle) ? ad.lifestyle : (ad.lifestyle ? [ad.lifestyle] : []),
+          behavior: Array.isArray(ad.behavior) ? ad.behavior : (ad.behavior ? [ad.behavior] : []),
+          personality: Array.isArray(ad.personality) ? ad.personality : (ad.personality ? [ad.personality] : []),
+          ageRange: ad.age_range || [18, 65],
+          targetingAll: !!ad.targeting_all,
+          impressions: ad.impressions || 1000,
+          campaignDays: ad.campaign_days || 5,
+          userFrequencyCap: ad.user_frequency_cap || 1,
+          country: ad.country || "",
+          state: ad.state || "",
+          province: ad.province || "",
+          targetLocations: ad.province ? ad.province.split("; ") : [],
+          gender: ad.gender || "",
+          employmentStatus: ad.employment_status ? ad.employment_status.split(", ") : [],
+          adMediaType: ad.ad_media_type || "text",
+          adContent: ad.ad_content || "",
+          adMediaFiles: [],
+          existingMedia: ad.ad_media && ad.ad_media !== "text" ? ad.ad_media : "",
+          adActionButtons: ad.ad_action_buttons || [],
+          actionDetails: {
+            phone: ad.action_phone || "",
+            whatsapp: ad.action_whatsapp || "",
+            website: ad.action_website || "",
+            email: ad.action_email || "",
+            ios: ad.action_ios || "",
+            android: ad.action_android || "",
+            watch_now: ad.action_watch_now || "",
+          },
+          displayMutualButton: !!ad.display_mutual_button,
+          productName: ad.product_name || "",
+          productPrice: ad.product_price ? String(ad.product_price) : "",
+          productCtaType: ad.product_cta_type || "Buy",
+          productCtaLink: ad.product_cta_link || "",
+          customSponsorName: ad.custom_sponsor_name || "",
+          customSponsorHandle: ad.custom_sponsor_handle || "",
+        }));
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("paayh_edit_ad_id");
+      }
+    } catch (err) {
+      console.error("Error fetching ad details for edit:", err);
     }
+  };
+
+  useEffect(() => {
+    const searchId = editAdId;
+    const storedEditId = typeof window !== "undefined" ? sessionStorage.getItem("paayh_edit_ad_id") : null;
+    const targetId = searchId || storedEditId;
+    if (targetId) {
+      loadAdForEdit(targetId);
+    }
+
+    const handleEditAdEvent = (e: any) => {
+      const adId = e.detail?.adId;
+      if (adId) {
+        loadAdForEdit(adId);
+      }
+    };
+
+    window.addEventListener("paayh_edit_ad", handleEditAdEvent);
+    return () => {
+      window.removeEventListener("paayh_edit_ad", handleEditAdEvent);
+    };
   }, [editAdId]);
 
   const [adAccountRestriction, setAdAccountRestriction] = useState<{
@@ -272,10 +305,35 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     }));
   };
 
+  const [activeSubscribers, setActiveSubscribers] = useState<string[]>(["baggyt.com"]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchActiveSubscribers = async () => {
+      try {
+        const res = await fetch("/api/business/subscribe");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.subscribers && Array.isArray(data.subscribers) && isMounted) {
+            const domains = data.subscribers
+              .filter((s: any) => s.status === "active" && (s.payment_status === "paid" || s.domain === "baggyt.com"))
+              .map((s: any) => s.domain.toLowerCase().trim())
+              .filter(Boolean);
+            setActiveSubscribers(Array.from(new Set(["baggyt.com", ...domains])));
+          }
+        }
+      } catch (e) {}
+    };
+    fetchActiveSubscribers();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const isSubsidizedLink = (link?: string) => {
     if (!link) return false;
     const cleaned = link.toLowerCase().trim();
-    return cleaned.includes("baggyt.com");
+    return activeSubscribers.some((domain) => cleaned.includes(domain));
   };
 
   const calculateTotalCostPerImpression = () => {
@@ -334,6 +392,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       customSponsorName: "",
       customSponsorHandle: "",
       customSponsorLogo: "",
+      existingMedia: "",
     });
     setAdType("politics");
   };
@@ -368,7 +427,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       setStepError("Please select an ad media type.");
       return false;
     }
-    if (formSelections.adMediaType !== "text" && formSelections.adMediaFiles.length === 0) {
+    if (formSelections.adMediaType !== "text" && formSelections.adMediaFiles.length === 0 && !formSelections.existingMedia) {
       setStepError("Please upload at least one media file.");
       return false;
     }
@@ -429,7 +488,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
     setIsSubmitting(true);
     try {
-      let mediaUrlString: string | null = null;
+      let mediaUrlString: string | null = formSelections.existingMedia || null;
 
       if (formSelections.adMediaFiles && formSelections.adMediaFiles.length > 0) {
         const mediaUrls: string[] = [];
@@ -439,10 +498,20 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
           const uniqueFileName = `${adId}_${i}_${sanitizedFileName}`;
           const isVid = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
 
+          // 1080p Standard Dimension Cap: Scale down high-resolution images (4K, 8K, iPhone ProRAW)
+          let optimizedFile: File | Blob = file;
+          if (!isVid && file instanceof File) {
+            try {
+              optimizedFile = await resizeImageToMax1080p(file);
+            } catch (optErr) {
+              console.warn("Image 1080p optimization notice:", optErr);
+            }
+          }
+
           // Force WebKit / iOS to resolve full iCloud asset download into memory buffer
-          let fileData: Blob | File = file;
+          let fileData: Blob | File = optimizedFile;
           try {
-            const buffer = await file.arrayBuffer();
+            const buffer = await optimizedFile.arrayBuffer();
             fileData = new Blob([buffer], { type: file.type || (isVid ? "video/mp4" : "image/jpeg") });
           } catch (e) {
             console.warn("ArrayBuffer fallback, using raw file:", e);
@@ -553,7 +622,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         hint: err?.hint,
         error: err
       });
-      alert(`An unexpected error occurred during submission: ${err?.message || JSON.stringify(err)}`);
+      alert(err?.message || "An unexpected error occurred during submission. Please try again.");
       setIsSubmitting(false);
     }
   };
@@ -573,7 +642,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             <ShieldAlert size={32} />
           </div>
           <h2 className={styles.suspendedTitle}>
-            Advertising & Highlight Account Disabled
+            Advertising and Highlight Account Disabled
           </h2>
           <p className={styles.suspendedBody}>
             {adAccountRestriction.status === "temp_banned" ? (
@@ -642,6 +711,68 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             <p className={styles.pageSubtitle}>
               {editingId ? "Update your target audience, locations, and creative. Edits will be submitted for verification." : "Reach active audiences with hyper-targeted ad delivery."}
             </p>
+            {editingId && (
+              <div style={{ marginBottom: "1rem" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(null);
+                    setStep(0);
+                    setFormSelections({
+                      industry: [],
+                      interest: [],
+                      lifestyle: [],
+                      behavior: [],
+                      personality: [],
+                      ageRange: [18, 65],
+                      targetingAll: false,
+                      impressions: 1000,
+                      campaignDays: 5,
+                      userFrequencyCap: 1,
+                      country: "",
+                      state: "",
+                      province: "",
+                      targetLocations: [],
+                      gender: "",
+                      employmentStatus: [],
+                      adMediaType: "",
+                      adContent: "",
+                      adMediaFiles: [],
+                      existingMedia: "",
+                      adActionButtons: [],
+                      actionDetails: {
+                        phone: "",
+                        whatsapp: "",
+                        website: "",
+                        email: "",
+                        ios: "",
+                        android: "",
+                        watch_now: "",
+                      },
+                      displayMutualButton: false,
+                      productName: "",
+                      productPrice: "",
+                      productCtaType: "Buy",
+                      productCtaLink: "",
+                      customSponsorName: "",
+                      customSponsorHandle: "",
+                      customSponsorLogo: "",
+                    });
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                    color: "var(--text-muted)",
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  &larr; Switch to Create New Campaign
+                </button>
+              </div>
+            )}
             <h2 className={`${styles.summaryTitle} ${styles.stepTitle}`}>{steps[step]}</h2>
 
             {/* Step 0 */}
@@ -936,7 +1067,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 {isAdmin && (
                   <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", padding: "16px", borderRadius: "12px", marginBottom: "20px" }}>
                     <h4 style={{ color: "var(--primary)", fontSize: "0.92rem", fontWeight: 700, marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding & Free Campaign Publishing
+                      <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding and Free Campaign Publishing
                     </h4>
                     <div className={styles.formGroup} style={{ marginBottom: "12px" }}>
                       <label>Custom Sponsor Name (Optional)</label>
@@ -1316,6 +1447,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         Selected: {formSelections.adMediaFiles.map(f => f.name).join(", ")}
                       </div>
                     )}
+                    {formSelections.existingMedia && formSelections.adMediaFiles.length === 0 && (
+                      <div className={styles.selectedFilesHint}>
+                        Current campaign media preserved. Choose new file(s) above if you wish to replace it.
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1660,6 +1796,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 <AdPreviewCard
                   mediaFiles={formSelections.adMediaFiles}
                   mediaType={formSelections.adMediaType}
+                  existingMedia={formSelections.existingMedia}
                   adContent={formSelections.adContent}
                   actionButtons={formSelections.adActionButtons}
                   actionDetails={formSelections.actionDetails}

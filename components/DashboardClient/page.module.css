@@ -354,9 +354,9 @@
 .menuButtonGroup {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
-  margin-bottom: 1rem;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.35rem;
 }
 
 .userMenuTrigger {
@@ -429,8 +429,12 @@
   transform: translateY(-1px);
 }
 
+.highlightsWrap {
+  margin-top: 0.25rem;
+}
+
 .offerArea {
-  margin-top: 1rem;
+  margin-top: 0.35rem;
   margin-bottom: 0.25rem;
   font-weight: 700;
   font-size: 0.9rem;
@@ -1615,4 +1619,82 @@
 .formHintSmall {
   font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+/* ── Bigger Screen Scaling (>= 1440px and >= 1800px) ── */
+@media screen and (min-width: 1440px) {
+  .headerContent,
+  .dashboardContainer {
+    max-width: 1560px;
+  }
+  .menuTitle {
+    font-size: 1.2rem;
+  }
+  .menuButton,
+  .menuButtonDanger {
+    font-size: 0.95rem;
+    padding: 0.85rem 1.15rem;
+  }
+  .profileName {
+    font-size: 1.25rem;
+  }
+  .usernameText {
+    font-size: 0.88rem;
+  }
+  .profileBio {
+    font-size: 0.92rem;
+  }
+  .detailItem {
+    font-size: 0.85rem;
+  }
+  .walletBalance {
+    font-size: 1.75rem;
+  }
+  .withdrawBtn,
+  .sendMoneyBtn {
+    font-size: 0.88rem;
+    padding: 10px;
+  }
+  .desktopNav a {
+    font-size: 0.95rem;
+  }
+}
+
+@media screen and (min-width: 1800px) {
+  .headerContent,
+  .dashboardContainer {
+    max-width: 1760px;
+  }
+  .menuTitle {
+    font-size: 1.3rem;
+  }
+  .menuButton,
+  .menuButtonDanger {
+    font-size: 1.02rem;
+    padding: 0.95rem 1.25rem;
+  }
+  .profileName {
+    font-size: 1.4rem;
+  }
+  .usernameText {
+    font-size: 0.95rem;
+  }
+  .profileBio {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .detailItem {
+    font-size: 0.92rem;
+  }
+  .walletBalance {
+    font-size: 2rem;
+  }
+  .withdrawBtn,
+  .sendMoneyBtn {
+    font-size: 0.95rem;
+    padding: 12px;
+  }
+  .desktopNav a {
+    font-size: 1.05rem;
+  }
 }

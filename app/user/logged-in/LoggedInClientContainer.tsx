@@ -90,6 +90,15 @@ export default function LoggedInClientContainer({ session }: Props) {
     // 2. Check query param fallback if any exists, then strip it instantly
     const urlParams = new URLSearchParams(window.location.search);
     const viewParam = urlParams.get("view") as TabKey;
+    const editIdParam = urlParams.get("id");
+    if (editIdParam) {
+      sessionStorage.setItem("paayh_edit_ad_id", editIdParam);
+      if (typeof window !== "undefined") {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("paayh_edit_ad", { detail: { adId: editIdParam } }));
+        }, 50);
+      }
+    }
 
     // 3. Check sessionStorage
     const storedTab = sessionStorage.getItem("paayh_active_tab") as TabKey;

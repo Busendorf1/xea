@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import supabase from "@/lib/utils/db";
 import { boostSchema } from "@/lib/validationSchemas";
 import { formatCurrency } from "@/lib/utils/currency";
 import styles from "../MyAds/page.module.css";
@@ -20,7 +19,6 @@ import {
   Globe,
   Mail,
   ShoppingCart,
-  ShieldCheck,
   AlertTriangle,
   Clock,
   CheckCircle2,
@@ -40,13 +38,17 @@ interface Session {
   };
 }
 
+import { fetchUserCampaignsShared, clearUserCampaignsCache } from "@/lib/campaignsClient";
+
 type MyAdsProps = {
   session: Session;
 };
 
 type Ad = {
   id: string;
-  ad_media: string;
+  ad_media?: string | null;
+  ad_media_url?: string | null;
+  ad_media_type?: string | null;
   ad_content: string;
   action_phone?: string;
   action_whatsapp?: string;
@@ -114,30 +116,45 @@ function getIcon(type: string): React.ReactNode {
   }
 }
 
-function MultimediaCarousel({ rawMedia }: { rawMedia: string }) {
+function MultimediaCarousel({ rawMedia, adMediaType }: { rawMedia?: string | null; adMediaType?: string | null }) {
+  const [imgError, setImgError] = useState(false);
   const mediaList = useMemo(() => {
-    if (!rawMedia || rawMedia.trim() === "" || rawMedia.toLowerCase() === "text") {
+    if (!rawMedia || typeof rawMedia !== "string" || rawMedia.trim() === "" || rawMedia.toLowerCase() === "text" || rawMedia.toLowerCase() === "null") {
       return [];
     }
     return rawMedia
       .split(",")
       .map((s) => s.trim())
-      .filter((s) => s.length > 0 && s.toLowerCase() !== "text");
+      .filter((s) => s.length > 0 && s.toLowerCase() !== "text" && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined");
   }, [rawMedia]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  if (mediaList.length === 0) {
+  if (mediaList.length === 0 || imgError) {
     return (
       <div className={styles.textOnlyBadge}>
-        <Megaphone size={28} color="#1d9bf0" />
-        <span className={styles.textCampaignLabel}>Text Campaign</span>
+        {adMediaType === "video" ? (
+          <>
+            <Video size={28} color="#1d9bf0" />
+            <span className={styles.textCampaignLabel}>Video Ad</span>
+          </>
+        ) : adMediaType === "image" ? (
+          <>
+            <ImageIcon size={28} color="#1d9bf0" />
+            <span className={styles.textCampaignLabel}>Image Ad</span>
+          </>
+        ) : (
+          <>
+            <Megaphone size={28} color="#1d9bf0" />
+            <span className={styles.textCampaignLabel}>Text Campaign</span>
+          </>
+        )}
       </div>
     );
   }
 
   const currentUrl = mediaList[currentIndex];
-  const isVideo = /\.(mp4|webm)$/i.test(currentUrl);
+  const isVideo = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(currentUrl);
 
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -152,9 +169,23 @@ function MultimediaCarousel({ rawMedia }: { rawMedia: string }) {
   return (
     <div className={styles.carouselWrapper}>
       {isVideo ? (
-        <video src={currentUrl} controls playsInline preload="metadata" className={styles.mediaVideo} />
+        <video
+          key={currentUrl}
+          src={currentUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className={styles.mediaVideo}
+          onError={() => setImgError(true)}
+        />
       ) : (
-        <img src={currentUrl} alt={`Slide ${currentIndex + 1}`} className={styles.adImgElement} />
+        <img
+          key={currentUrl}
+          src={currentUrl}
+          alt={`Slide ${currentIndex + 1}`}
+          className={styles.adImgElement}
+          onError={() => setImgError(true)}
+        />
       )}
 
       {mediaList.length > 1 && (
@@ -182,6 +213,54 @@ function MultimediaCarousel({ rawMedia }: { rawMedia: string }) {
 export default function MyAdsDashboard({ session }: MyAdsProps) {
   const [reviewAds, setReviewAds] = useState<Ad[]>([]);
   const [activeAds, setActiveAds] = useState<Ad[]>([]);
+  const [activeAdsPage, setActiveAdsPage] = useState<number>(1);
+  const [reviewAdsPage, setReviewAdsPage] = useState<number>(1);
+  const ADS_PER_PAGE = 10;
+
+  const totalReviewPages = Math.max(1, Math.ceil(reviewAds.length / ADS_PER_PAGE));
+  const safeReviewAdsPage = Math.min(Math.max(1, reviewAdsPage), totalReviewPages);
+
+  const totalActivePages = Math.max(1, Math.ceil(activeAds.length / ADS_PER_PAGE));
+  const safeActiveAdsPage = Math.min(Math.max(1, activeAdsPage), totalActivePages);
+
+  const renderPageButtons = (
+    currentPage: number,
+    totalPages: number,
+    onPageChange: (pg: number) => void
+  ) => {
+    if (totalPages <= 1) return null;
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("ellipsis-1");
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("ellipsis-2");
+      pages.push(totalPages);
+    }
+    return pages.map((pg, idx) => {
+      if (typeof pg === "string") {
+        return (
+          <span key={`el-${idx}`} style={{ padding: "0 4px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+            …
+          </span>
+        );
+      }
+      return (
+        <button
+          key={`pg-${pg}`}
+          className={`${styles.pageBtn} ${pg === currentPage ? styles.pageBtnActive : ""}`}
+          onClick={() => onPageChange(pg)}
+        >
+          {pg}
+        </button>
+      );
+    });
+  };
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [timeNow, setTimeNow] = useState(Date.now());
@@ -252,7 +331,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
     try {
       const [campaignsRes, analyticsRes] = await Promise.all([
-        fetch("/api/campaigns").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetchUserCampaignsShared(email, bypassCache),
         fetch("/api/campaigns/analytics").then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
 
@@ -431,6 +510,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         message: data.message || "Your campaign has been boosted successfully!",
       });
       setBoosterAd(null);
+      clearUserCampaignsCache(session?.user?.email || "");
       fetchAds(true);
     } catch (e: any) {
       setNoticeModal({
@@ -445,19 +525,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   function formatTimestamp(timestamp: string | null | undefined): string {
     if (!timestamp) return "Unknown time";
     const created = new Date(timestamp);
-    const now = new Date();
-    const diff = (now.getTime() - created.getTime()) / 1000;
+    if (isNaN(created.getTime())) return "Invalid date";
 
-    if (isNaN(diff)) return "Invalid date";
-    if (diff < 60) return "Just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} hour(s) ago`;
-    if (diff < 172800) return "Yesterday";
-
-    return created.toLocaleDateString(undefined, {
+    return created.toLocaleString(undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
@@ -521,6 +596,15 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
   };
 
+  const handleEditAd = (adId: string) => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("paayh_active_tab", "adPage");
+      sessionStorage.setItem("paayh_edit_ad_id", adId);
+      window.dispatchEvent(new CustomEvent("paayh_edit_ad", { detail: { adId } }));
+      window.dispatchEvent(new Event("paayh_tab_change"));
+    }
+  };
+
   const handleCancelAd = async (adId: string) => {
     const confirmCancel = window.confirm(
       "Are you sure you want to stop this campaign immediately? Delivery will cease immediately."
@@ -543,6 +627,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         title: "Campaign Cancelled",
         message: "Campaign successfully cancelled. Delivery has ceased immediately.",
       });
+      clearUserCampaignsCache(session?.user?.email || "");
       fetchAds(true);
     } catch (e: any) {
       setNoticeModal({
@@ -624,9 +709,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   };
 
   const renderAdCard = (ad: Ad, status: "review" | "active") => {
-    const mediaType = /\.(mp4|webm)$/i.test(ad.ad_media || "")
-      ? "video"
-      : "image";
+    const rawMediaString = ad.ad_media || ad.ad_media_url || "";
+    const isVideoMedia = ad.ad_media_type === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(rawMediaString);
+    const mediaType = isVideoMedia ? "video" : "image";
 
     const actionButtons = ["action_phone", "action_whatsapp", "action_email", "action_website"]
       .filter((key) => ad[key as keyof Ad]) as string[];
@@ -647,7 +732,6 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
     
     const targetImpressions = ad.impressions ?? 1000;
-    const remainingImpressions = Math.max(0, targetImpressions - seenCount);
     const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
     
     const isCompleted = !!ad.completed_at || seenCount >= targetImpressions;
@@ -657,7 +741,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       return null;
     }
 
-    const hasValidMedia = ad.ad_media && ad.ad_media.trim() !== "" && ad.ad_media.toLowerCase() !== "text";
+    const hasValidMedia = !!rawMediaString && rawMediaString.trim() !== "" && rawMediaString.toLowerCase() !== "text" && rawMediaString.toLowerCase() !== "null";
 
     return (
       <div key={ad.id} className={styles.card}>
@@ -665,7 +749,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         <div className={styles.rowBody}>
           {/* Thumbnail / Media Column */}
           <div className={styles.mediaCol}>
-            <MultimediaCarousel rawMedia={ad.ad_media} />
+            <MultimediaCarousel rawMedia={rawMediaString} adMediaType={ad.ad_media_type} />
           </div>
 
           {/* Main Content & Delivery Column */}
@@ -828,7 +912,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             )}
 
             <span className={styles.postedTime}>
-              Posted {formatTimestamp(ad.created_at)}
+              {status === "review"
+                ? `Submitted ${formatTimestamp(ad.created_at)}`
+                : isCompleted && ad.completed_at
+                ? `Posted ${formatTimestamp(ad.created_at)} • Completed ${formatTimestamp(ad.completed_at)}`
+                : `Posted ${formatTimestamp(ad.created_at)}`}
             </span>
           </div>
 
@@ -858,7 +946,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               {expandedSpecsMap[ad.id] ? (
                 <span className={styles.specsBtnInner}><ChevronUp size={13} /> Hide Specs</span>
               ) : (
-                <span className={styles.specsBtnInner}><SlidersHorizontal size={13} /> Specs & Budget</span>
+                <span className={styles.specsBtnInner}><SlidersHorizontal size={13} /> Specs and Budget</span>
               )}
             </button>
 
@@ -923,6 +1011,10 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 <a
                   href={`/user/adPage?id=${ad.id}`}
                   className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleEditAd(ad.id);
+                  }}
                 >
                   Edit Ad
                 </a>
@@ -1064,7 +1156,12 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           <div className={styles.kpiCard}>
             <span className={styles.kpiLabel}>Active Campaigns</span>
             <span className={styles.kpiValue}>{activeAds.length}</span>
-            <span className={styles.kpiSub}>{reviewAds.length} in review</span>
+            <span className={styles.kpiSub}>Currently delivering</span>
+          </div>
+          <div className={styles.kpiCard}>
+            <span className={styles.kpiLabel}>Ads in Review</span>
+            <span className={styles.kpiValue} style={{ color: "#f59e0b" }}>{reviewAds.length}</span>
+            <span className={styles.kpiSub} style={{ color: "#f59e0b" }}>Pending approval</span>
           </div>
           <div className={styles.kpiCard}>
             <span className={styles.kpiLabel}>Impressions Delivered</span>
@@ -1084,15 +1181,42 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         </div>
       )}
 
-      <h3 className={styles.subheading}>Ads in Review</h3>
+      <h3 className={styles.subheading}>Ads in Review ({reviewAds.length})</h3>
       {!loading && reviewAds.length === 0 && (
         <p className={styles.noAds}>No ads in review.</p>
       )}
       <div className={styles.adGrid}>
-        {reviewAds.map((ad) => renderAdCard(ad, "review"))}
+        {reviewAds
+          .slice((safeReviewAdsPage - 1) * ADS_PER_PAGE, safeReviewAdsPage * ADS_PER_PAGE)
+          .map((ad) => renderAdCard(ad, "review"))}
       </div>
+      {reviewAds.length > ADS_PER_PAGE && (
+        <div className={styles.paginationBar}>
+          <span className={styles.paginationInfo}>
+            Showing {(safeReviewAdsPage - 1) * ADS_PER_PAGE + 1}–
+            {Math.min(safeReviewAdsPage * ADS_PER_PAGE, reviewAds.length)} of {reviewAds.length} in review
+          </span>
+          <div className={styles.paginationControls}>
+            <button
+              className={styles.pageBtn}
+              onClick={() => setReviewAdsPage((p) => Math.max(1, p - 1))}
+              disabled={safeReviewAdsPage <= 1}
+            >
+              Prev
+            </button>
+            {renderPageButtons(safeReviewAdsPage, totalReviewPages, setReviewAdsPage)}
+            <button
+              className={styles.pageBtn}
+              onClick={() => setReviewAdsPage((p) => Math.min(totalReviewPages, p + 1))}
+              disabled={safeReviewAdsPage >= totalReviewPages}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
-      <h3 className={styles.subheading}>Active Ads</h3>
+      <h3 className={styles.subheading}>Active Ads ({activeAds.length})</h3>
       {!loading && activeAds.length === 0 ? (
         <>
           <p className={styles.noAds}>
@@ -1105,9 +1229,38 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           </div>
         </>
       ) : (
-        <div className={styles.adGrid}>
-          {activeAds.map((ad) => renderAdCard(ad, "active"))}
-        </div>
+        <>
+          <div className={styles.adGrid}>
+            {activeAds
+              .slice((safeActiveAdsPage - 1) * ADS_PER_PAGE, safeActiveAdsPage * ADS_PER_PAGE)
+              .map((ad) => renderAdCard(ad, "active"))}
+          </div>
+          {activeAds.length > ADS_PER_PAGE && (
+            <div className={styles.paginationBar}>
+              <span className={styles.paginationInfo}>
+                Showing {(safeActiveAdsPage - 1) * ADS_PER_PAGE + 1}–
+                {Math.min(safeActiveAdsPage * ADS_PER_PAGE, activeAds.length)} of {activeAds.length} active
+              </span>
+              <div className={styles.paginationControls}>
+                <button
+                  className={styles.pageBtn}
+                  onClick={() => setActiveAdsPage((p) => Math.max(1, p - 1))}
+                  disabled={safeActiveAdsPage <= 1}
+                >
+                  Prev
+                </button>
+                {renderPageButtons(safeActiveAdsPage, totalActivePages, setActiveAdsPage)}
+                <button
+                  className={styles.pageBtn}
+                  onClick={() => setActiveAdsPage((p) => Math.min(totalActivePages, p + 1))}
+                  disabled={safeActiveAdsPage >= totalActivePages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Top-Up Booster Modal */}

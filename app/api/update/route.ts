@@ -91,10 +91,19 @@ export async function POST(req: NextRequest) {
     // Wait, on initial profile setup we validate dob, country, state, location, phone in profile-setup component.
     // So we don't need strict validation on all updates unless they are provided.
 
+    // Sanitize dob if present to guarantee valid date syntax
+    let sanitizedDob: string | null = null;
+    if (updateData.dob && updateData.dob !== "PLACEHOLDER" && updateData.dob.trim() !== "") {
+      const parsedDate = new Date(updateData.dob);
+      if (!isNaN(parsedDate.getTime())) {
+        sanitizedDob = parsedDate.toISOString().split("T")[0];
+      }
+    }
+
     const { error } = await supabaseAdmin.rpc("update_user_profile", {
       p_email: email,
       p_username: updateData.username || null,
-      p_dob: updateData.dob || null,
+      p_dob: sanitizedDob,
       p_country: updateData.country || null,
       p_state: updateData.state || null,
       p_location: updateData.location || null,

@@ -70,20 +70,167 @@
   text-align: left;
 }
 
-.tagline {
-  background: rgba(138, 43, 226, 0.1);
-  border: 1px solid var(--primary-glow);
-  padding: 0.4rem 1rem;
-  border-radius: 99px;
-  margin-bottom: 1.5rem;
+/* 3D Aerospace Orbital Stage & Motion Graphics (Pure Visual, Zero Text) */
+.orbitalStage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
 }
 
-.tagline span {
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--primary);
+.horizonGlow {
+  position: absolute;
+  bottom: -25%;
+  left: -20%;
+  right: -20%;
+  height: 55%;
+  background: radial-gradient(ellipse 70% 40% at 50% 100%, rgba(0, 242, 254, 0.12), rgba(29, 155, 240, 0.04) 50%, transparent 80%);
+  filter: blur(30px);
+}
+
+.perspectiveGrid {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 45vh;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  transform: perspective(600px) rotateX(65deg);
+  transform-origin: bottom center;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent 85%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent 85%);
+}
+
+.gyroscopeSphere {
+  position: absolute;
+  right: 8%;
+  top: 48%;
+  transform: translateY(-50%);
+  width: 320px;
+  height: 320px;
+  perspective: 900px;
+  transform-style: preserve-3d;
+}
+
+.orbitRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+.orbitRing1 {
+  border: 1px dashed rgba(0, 242, 254, 0.35);
+  transform: rotateX(68deg) rotateY(18deg);
+  animation: orbitRotate1 22s linear infinite;
+}
+
+.orbitRing2 {
+  border: 1px solid rgba(138, 43, 226, 0.25);
+  transform: rotateX(74deg) rotateY(-28deg);
+  animation: orbitRotate2 30s linear infinite reverse;
+}
+
+.orbitRing3 {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transform: rotateX(82deg);
+  animation: orbitRotate3 40s linear infinite;
+}
+
+.orbitNode {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  background: #00f2fe;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #00f2fe, 0 0 20px rgba(0, 242, 254, 0.9);
+  transform: translateX(-50%);
+}
+
+.orbitNode2 {
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  background: #a855f7;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #a855f7, 0 0 18px rgba(168, 85, 247, 0.9);
+  transform: translateX(-50%);
+}
+
+.gyroCore {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #00f2fe 0%, rgba(29, 155, 240, 0.4) 60%, transparent 100%);
+  box-shadow: 0 0 24px rgba(0, 242, 254, 0.8), 0 0 48px rgba(29, 155, 240, 0.4);
+  animation: corePulse 3.5s ease-in-out infinite alternate;
+}
+
+@keyframes orbitRotate1 {
+  from { transform: rotateX(68deg) rotateY(18deg) rotateZ(0deg); }
+  to   { transform: rotateX(68deg) rotateY(18deg) rotateZ(360deg); }
+}
+
+@keyframes orbitRotate2 {
+  from { transform: rotateX(74deg) rotateY(-28deg) rotateZ(0deg); }
+  to   { transform: rotateX(74deg) rotateY(-28deg) rotateZ(360deg); }
+}
+
+@keyframes orbitRotate3 {
+  from { transform: rotateX(82deg) rotateZ(0deg); }
+  to   { transform: rotateX(82deg) rotateZ(360deg); }
+}
+
+@keyframes corePulse {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+}
+
+/* Aerospace HUD Reticle Marks (Zero Text) */
+.reticleMark {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: rgba(255, 255, 255, 0.18);
+  border-style: solid;
+  pointer-events: none;
+}
+
+.reticleTopLeft {
+  top: 20px;
+  left: 20px;
+  border-width: 1.5px 0 0 1.5px;
+}
+
+.reticleTopRight {
+  top: 20px;
+  right: 20px;
+  border-width: 1.5px 1.5px 0 0;
+}
+
+.reticleBottomLeft {
+  bottom: 20px;
+  left: 20px;
+  border-width: 0 0 1.5px 1.5px;
+}
+
+.reticleBottomRight {
+  bottom: 20px;
+  right: 20px;
+  border-width: 0 1.5px 1.5px 0;
 }
 
 .title {
@@ -352,6 +499,27 @@
     justify-content: space-between;
     align-items: stretch;
     box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .orbitalStage {
+    opacity: 0.7;
+  }
+
+  .gyroscopeSphere {
+    right: auto;
+    left: 50%;
+    top: 44%;
+    transform: translate(-50%, -50%);
+    width: 250px;
+    height: 250px;
+    opacity: 0.42;
+  }
+
+  .perspectiveGrid {
+    height: 38vh;
+    mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent 75%);
+    -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent 75%);
   }
 
   .heroContent {
@@ -363,10 +531,11 @@
     width: 100%;
     max-width: 100%;
     gap: 0;
+    z-index: 2;
   }
 
   .leftSection {
-    margin-top: calc(56px + 6vh);
+    margin-top: calc(56px + 3vh);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -375,10 +544,10 @@
   }
 
   .title {
-    font-size: clamp(2rem, 7.5vw, 2.5rem);
+    font-size: clamp(2.15rem, 8vw, 2.75rem);
     font-weight: 850;
-    line-height: 1.15;
-    letter-spacing: -0.025em;
+    line-height: 1.12;
+    letter-spacing: -0.03em;
     text-align: left;
     margin-bottom: 0.85rem;
     width: 100%;
@@ -402,19 +571,28 @@
 
   .howItWorksWrapper {
     margin-bottom: 0;
-    width: auto;
+    width: 100%;
   }
 
   .howItWorksBtn {
-    padding: 0.55rem 1.1rem;
+    padding: 0.6rem 1.15rem;
     font-size: 0.85rem;
+    font-weight: 700;
     border-radius: 99px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--foreground);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
   }
 
   .rightSection {
     width: 100%;
     margin-top: auto;
-    margin-bottom: 5vh;
+    margin-bottom: 4.5vh;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -433,6 +611,7 @@
     -webkit-backdrop-filter: none !important;
   }
 
+  /* Without Get Started and tagline on mobile */
   .cardHeader {
     display: none;
   }
@@ -441,6 +620,7 @@
     width: 100%;
     display: flex;
     flex-direction: column;
+    gap: 0.75rem;
   }
 
   .googleLoginBtn {
@@ -449,19 +629,45 @@
     padding: 0.85rem 1.25rem;
     font-size: 0.95rem;
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--card-bg);
-    border: none !important;
-    box-shadow: none !important;
+    color: var(--foreground);
+    border: 1px solid var(--card-border) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
+    letter-spacing: -0.01em;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .appleLoginBtn {
+    width: 100%;
+    height: 50px;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 10px;
+    background: var(--foreground);
+    color: var(--background);
+    border: 1px solid var(--foreground) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    letter-spacing: -0.01em;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .googleLoginBtn:active,
+  .appleLoginBtn:active {
+    transform: scale(0.985);
   }
 
   .cardFooter {
     border-top: none !important;
-    padding-top: 0.25rem;
+    padding-top: 0.5rem;
     text-align: center;
     width: 100%;
   }
@@ -472,13 +678,46 @@
   }
 }
 
+/* Color Theme Switch Compliance for Web Homepage */
+[data-theme='white'] .googleLoginBtn,
+[data-theme='light'] .googleLoginBtn {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-theme='white'] .appleLoginBtn,
+[data-theme='light'] .appleLoginBtn {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border-color: #000000 !important;
+}
+
+[data-theme='white'] .orbitalStage,
+[data-theme='light'] .orbitalStage {
+  opacity: 0.2;
+}
+
+[data-theme='white'] .perspectiveGrid,
+[data-theme='light'] .perspectiveGrid {
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+}
+
+[data-theme='white'] .reticleMark,
+[data-theme='light'] .reticleMark {
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
 @media screen and (max-width: 480px) {
   .heroContainer {
-    padding: 0 1.25rem;
+    padding: 0 1.15rem;
   }
 
   .leftSection {
-    margin-top: calc(56px + 6vh);
+    margin-top: calc(56px + 2.5vh);
   }
 
   .title {
@@ -486,11 +725,17 @@
   }
 
   .subtitle {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .loginCard {
+    padding: 1.1rem 1rem;
+    border-radius: 14px;
   }
 
   .rightSection {
-    margin-bottom: 5vh;
+    margin-bottom: 2.5vh;
   }
 }
 
@@ -523,8 +768,18 @@
 }
 
 .arrowIcon {
-  font-size: 0.7rem;
-  opacity: 0.6;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  margin-left: 2px;
+  transition: transform 0.2s ease;
+}
+
+.howItWorksBtn:hover .arrowIcon {
+  transform: rotate(-45deg) translate(2px, 2px);
 }
 
 /* How Paayh Works Modal */

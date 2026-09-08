@@ -420,7 +420,7 @@
     border-right: none;
     padding: 0;
     width: 100%;
-  margin-top: 3rem;
+    margin-top: 3rem;
     max-width: 100%;
   }
   .card {
@@ -431,6 +431,47 @@
   }
   .fixedFooterContainer {
     max-width: 50%;
+  }
+}
+
+/* ── Bigger Screen Scaling (>= 1440px and >= 1800px) ── */
+@media screen and (min-width: 1440px) {
+  .feedContainer,
+  .fixedFooterContainer {
+    max-width: 680px;
+  }
+  .adText {
+    font-size: 1.05rem;
+    line-height: 1.6;
+  }
+  .tweetHeader {
+    font-size: 0.92rem;
+  }
+  .sponsorName {
+    font-size: 0.95rem;
+  }
+  .sponsorLabel {
+    font-size: 0.8rem;
+  }
+}
+
+@media screen and (min-width: 1800px) {
+  .feedContainer,
+  .fixedFooterContainer {
+    max-width: 760px;
+  }
+  .adText {
+    font-size: 1.15rem;
+    line-height: 1.65;
+  }
+  .tweetHeader {
+    font-size: 1rem;
+  }
+  .sponsorName {
+    font-size: 1.05rem;
+  }
+  .sponsorLabel {
+    font-size: 0.85rem;
   }
 }
 

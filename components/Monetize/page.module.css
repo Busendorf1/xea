@@ -64,21 +64,25 @@
 }
 
 .statusCard {
-  border-radius: 4px;
-  padding: 20px 24px;
+  border-radius: 12px;
+  padding: 22px 26px;
   border: 1px solid var(--card-border);
   background: var(--sidebar-bg);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.2s ease;
 }
 
 .statusMonetized {
-  border-color: rgba(16, 185, 129, 0.4);
-  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.05);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.08);
 }
 
 .statusPending {
-  border-color: rgba(245, 158, 11, 0.4);
-  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.05);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.08);
 }
 
 .statusHeaderRow {
@@ -92,7 +96,31 @@
 .statusTitleGroup {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+}
+
+.iconBadgeSuccess {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.iconBadgePending {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .successIcon {
@@ -108,50 +136,97 @@
   font-weight: 800;
   margin: 0 0 4px 0;
   color: var(--foreground);
+  letter-spacing: -0.01em;
 }
 
 .statusSub {
   font-size: 0.85rem;
   color: var(--text-muted);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .badgeActive {
-  background: #10b981;
-  color: #ffffff;
-  font-weight: 800;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-weight: 700;
   font-size: 0.72rem;
-  padding: 4px 10px;
-  border-radius: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
   letter-spacing: 0.05em;
 }
 
 .badgeProgress {
-  background: #f59e0b;
-  color: #ffffff;
-  font-weight: 800;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-weight: 700;
   font-size: 0.72rem;
-  padding: 4px 10px;
-  border-radius: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
   letter-spacing: 0.05em;
+}
+
+.cancelBtn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.cancelBtn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
 .progressCard {
   background: var(--sidebar-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: 12px;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+.titleIconBox {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--primary-glow);
+  border: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .cardSectionTitle {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--foreground);
   margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.percentBadge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border: 1px solid var(--card-border);
+  padding: 3px 10px;
+  border-radius: 12px;
 }
 
 .metricsGrid {
@@ -163,11 +238,16 @@
 .metricBox {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
-  padding: 14px 16px;
+  border-radius: 10px;
+  padding: 14px 18px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  transition: border-color 0.2s ease;
+}
+
+.metricBox:hover {
+  border-color: var(--card-border-hover);
 }
 
 .metricLabel {
@@ -175,18 +255,21 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  font-weight: 600;
 }
 
 .metricValue {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 800;
-  color: #2563eb;
+  color: var(--primary);
+  letter-spacing: -0.01em;
 }
 
 .metricValueRemaining {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: #f59e0b;
+  letter-spacing: -0.01em;
 }
 
 .progressBarWrapper {
@@ -197,18 +280,18 @@
 }
 
 .progressBarTrack {
-  height: 14px;
+  height: 10px;
   background: var(--card-bg);
-  border-radius: 4px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--card-border);
 }
 
 .progressBarFill {
   height: 100%;
-  background: #2563eb;
-  border-radius: 4px;
-  transition: width 0.4s ease;
+  background: linear-gradient(90deg, var(--primary) 0%, #3b82f6 100%);
+  border-radius: 10px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .progressLabelRow {
@@ -219,7 +302,7 @@
 }
 
 .progressPercentText {
-  color: #2563eb;
+  color: var(--primary);
   font-weight: 700;
 }
 
@@ -232,35 +315,48 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #2563eb;
+  background: var(--primary);
   color: #ffffff;
-  padding: 12px 20px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
   text-decoration: none;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .feedBtn:hover {
-  background: #1d4ed8;
+  opacity: 0.92;
+  transform: translateY(-1px);
 }
 
 .policyCard {
   background: var(--sidebar-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
-  padding: 16px 20px;
+  border-radius: 12px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .policyHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   color: var(--foreground);
+}
+
+.policyIconBox {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .warningIcon {

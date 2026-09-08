@@ -1,9 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   RefreshCw,
   Wallet,
   ArrowUpRight,
@@ -32,15 +30,52 @@ interface Transaction {
 }
 
 export default function StatementComponent() {
-  const [profile, setProfile] = useState<any>(null);
-  const [payments, setPayments] = useState<Transaction[]>([]);
-  const [withdrawals, setWithdrawals] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("paayh_statement_cache");
+        if (cached) return JSON.parse(cached).profile || null;
+      } catch {}
+    }
+    return null;
+  });
+  const [payments, setPayments] = useState<Transaction[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("paayh_statement_cache");
+        if (cached) return JSON.parse(cached).payments || [];
+      } catch {}
+    }
+    return [];
+  });
+  const [withdrawals, setWithdrawals] = useState<Transaction[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("paayh_statement_cache");
+        if (cached) return JSON.parse(cached).withdrawals || [];
+      } catch {}
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("paayh_statement_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.payments || parsed.withdrawals) return false;
+        }
+      } catch {}
+    }
+    return true;
+  });
   const [activeTab, setActiveTab] = useState<"payments" | "withdrawals">("payments");
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [copiedRef, setCopiedRef] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -79,7 +114,7 @@ export default function StatementComponent() {
             withdrawals: newWithdrawals,
           })
         );
-      } catch (e) {}
+      } catch {}
     } catch (err) {
       console.error("❌ Error fetching statement data:", err);
     } finally {
@@ -98,7 +133,7 @@ export default function StatementComponent() {
         if (parsed.withdrawals) setWithdrawals(parsed.withdrawals);
         setLoading(false);
       }
-    } catch (e) {}
+    } catch {}
 
     fetchData();
   }, []);
@@ -256,6 +291,15 @@ export default function StatementComponent() {
   const filteredPayments = filterList(payments);
   const filteredWithdrawals = filterList(withdrawals);
 
+  // Pagination calculation
+  const currentList = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
+  const totalPages = Math.max(1, Math.ceil(currentList.length / pageSize));
+  const validPage = Math.min(currentPage, totalPages);
+  const startIndex = (validPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, currentList.length);
+  const paginatedPayments = filteredPayments.slice(startIndex, startIndex + pageSize);
+  const paginatedWithdrawals = filteredWithdrawals.slice(startIndex, startIndex + pageSize);
+
   return (
     <main className={styles.container}>
       <div className={styles.header}>
@@ -349,13 +393,19 @@ export default function StatementComponent() {
             <div className={styles.tabsContainer}>
               <button
                 className={`${styles.tabBtn} ${activeTab === "payments" ? styles.activeTabBtn : ""}`}
-                onClick={() => setActiveTab("payments")}
+                onClick={() => {
+                  setActiveTab("payments");
+                  setCurrentPage(1);
+                }}
               >
                 Payments & Transfers ({payments.length})
               </button>
               <button
                 className={`${styles.tabBtn} ${activeTab === "withdrawals" ? styles.activeTabBtn : ""}`}
-                onClick={() => setActiveTab("withdrawals")}
+                onClick={() => {
+                  setActiveTab("withdrawals");
+                  setCurrentPage(1);
+                }}
               >
                 Withdrawals ({withdrawals.length})
               </button>
@@ -368,7 +418,10 @@ export default function StatementComponent() {
                   type="text"
                   placeholder="Search reference or description..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className={styles.searchInput}
                 />
               </div>
@@ -377,7 +430,10 @@ export default function StatementComponent() {
                 <Filter size={14} className={styles.filterIcon} />
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className={styles.statusSelect}
                   aria-label="Filter transactions by status"
                 >
@@ -407,12 +463,12 @@ export default function StatementComponent() {
                       <th className={styles.th}>Reference</th>
                       <th className={styles.th}>Type</th>
                       <th className={styles.th}>Description</th>
-                      <th className={styles.th}>Amount</th>
+                      <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
                       <th className={styles.th}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPayments.map((tx) => {
+                    {paginatedPayments.map((tx) => {
                       const isCredit = tx.type === "transfer_received";
                       return (
                         <tr key={tx.id} className={styles.row}>
@@ -455,12 +511,12 @@ export default function StatementComponent() {
                     <th className={styles.th}>Date & Time</th>
                     <th className={styles.th}>Reference</th>
                     <th className={styles.th}>Destination Account</th>
-                    <th className={styles.th}>Amount</th>
+                    <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
                     <th className={styles.th}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWithdrawals.map((tx) => (
+                  {paginatedWithdrawals.map((tx) => (
                     <tr key={tx.id} className={styles.row}>
                       <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
                       <td className={styles.tdRef}>
@@ -486,6 +542,48 @@ export default function StatementComponent() {
                   ))}
                 </tbody>
               </table>
+            )}
+
+            {/* Pagination Controls Bar */}
+            {currentList.length > 0 && (
+              <div className={styles.paginationBar}>
+                <div className={styles.paginationInfo}>
+                  Showing {startIndex + 1}–{endIndex} of {currentList.length} {activeTab === "payments" ? "transactions" : "withdrawals"}
+                </div>
+                <div className={styles.paginationControls}>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={validPage <= 1}
+                    className={styles.pageBtn}
+                    title="Previous Page"
+                  >
+                    ‹ Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - validPage) <= 2)
+                    .map((p, idx, arr) => (
+                      <React.Fragment key={p}>
+                        {idx > 0 && arr[idx - 1] !== p - 1 && (
+                          <span style={{ color: "var(--text-muted)", padding: "0 2px" }}>…</span>
+                        )}
+                        <button
+                          onClick={() => setCurrentPage(p)}
+                          className={`${styles.pageBtn} ${validPage === p ? styles.pageBtnActive : ""}`}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    ))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={validPage >= totalPages}
+                    className={styles.pageBtn}
+                    title="Next Page"
+                  >
+                    Next ›
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </>

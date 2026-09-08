@@ -4,11 +4,9 @@ import { useEffect, useState } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
-import Footer from "../Footer/page";
-import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
 import AppleSpinner from "@/components/ui/AppleSpinner";
-import { CheckCircle2, AlertCircle, Info } from "lucide-react";
+import { CheckCircle2, AlertCircle, Info, ShieldCheck } from "lucide-react";
 
 import {
   ALL_INDUSTRIES as industries,
@@ -51,8 +49,16 @@ interface UserProfileData {
   has_updated_profile?: boolean;
 }
 
+const steps = [
+  "Personal",
+  "Demographics",
+  "Targeting",
+  "Review and Submit",
+];
+
 export default function Update({ email }: Props) {
   const isAdmin = isAdminEmail(email);
+  const [currentStep, setCurrentStep] = useState(0);
   const [dbProfile, setDbProfile] = useState<UserProfileData | null>(null);
   const [formData, setFormData] = useState<Partial<UserProfileData>>({});
   const [loading, setLoading] = useState(true);
@@ -71,6 +77,55 @@ export default function Update({ email }: Props) {
 
   const toggleDropdown = (key: keyof typeof openDropdowns) => {
     setOpenDropdowns((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const validateStep = (stepIdx: number): boolean => {
+    setStatus(null);
+    if (!dbProfile) return false;
+
+    if (stepIdx === 0) {
+      // Step 0: Location and username
+      const resolvedCountry = formData.country ? formData.country : dbProfile.country;
+      const resolvedState = formData.state ? formData.state : dbProfile.state;
+      const resolvedLocation = formData.location ? formData.location : dbProfile.location;
+      if (!resolvedCountry || !resolvedState || !resolvedLocation) {
+        setStatus("⚠️ Location is required. Please use 'Auto-detect location' to set your country, state, and city.");
+        return false;
+      }
+      return true;
+    }
+
+    if (stepIdx === 2) {
+      // Step 2: Interests and Industries
+      const resolvedInterest = Array.isArray(formData.interest) ? formData.interest : dbProfile.interest || [];
+      const resolvedIndustry = Array.isArray(formData.industry) ? formData.industry : dbProfile.industry || [];
+
+      if (!resolvedInterest || resolvedInterest.length === 0) {
+        setStatus("⚠️ At least one Interest must be selected so we can target relevant ads for you.");
+        return false;
+      }
+
+      if (!resolvedIndustry || resolvedIndustry.length === 0) {
+        setStatus("⚠️ At least one Industry must be selected so we can target relevant ads for you.");
+        return false;
+      }
+      return true;
+    }
+
+    return true;
+  };
+
+  const handleNextStep = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep((prev) => Math.min(steps.length - 1, prev + 1));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const handlePrevStep = () => {
+    setStatus(null);
+    setCurrentStep((prev) => Math.max(0, prev - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -384,20 +439,28 @@ export default function Update({ email }: Props) {
 
   return (
     <div className={styles.profileContainer}>
+      {/* Step Progress Bar Header */}
+      <div className={styles.progressContainer}>
+        {steps.map((label, idx) => (
+          <div
+            key={label}
+            className={`${styles.progressStep} ${
+              idx === currentStep ? styles.activeStep : idx < currentStep ? styles.completedStep : ""
+            }`}
+          >
+            <div className={styles.stepNumber}>{idx < currentStep ? "✓" : idx + 1}</div>
+            <span className={styles.stepLabel}>{label}</span>
+            {idx < steps.length - 1 && <div className={styles.stepLine} />}
+          </div>
+        ))}
+      </div>
+
       <h1 className={styles.update}>Update Profile</h1>
       
       {isAdmin && (
-        <div style={{
-          background: "rgba(234, 179, 8, 0.12)",
-          border: "1px solid rgba(234, 179, 8, 0.4)",
-          borderRadius: "8px",
-          padding: "0.85rem 1rem",
-          marginBottom: "1.5rem",
-          textAlign: "center",
-          color: "var(--primary)",
-          fontWeight: "700"
-        }}>
-          👑 Admin Privilege: Unlimited Profile Updates (30-day cooldown bypassed)
+        <div className={styles.adminPrivilegeBanner}>
+          <ShieldCheck size={15} style={{ flexShrink: 0 }} />
+          <span>Admin Privilege: Unlimited profile updates (30-day cooldown bypassed)</span>
         </div>
       )}
 
@@ -440,221 +503,355 @@ export default function Update({ email }: Props) {
         </div>
       )}
 
-      {/* Section 1: Personal & Contact Info */}
-      <div className={styles.formSection}>
-        <div className={styles.formGrid}>
-          <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
-            <label>Username / Handle</label>
-            <input
-              name="username"
-              placeholder={dbProfile.username || "e.g. alex_dev or user@example.com"}
-              value={formData.username || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-            <div style={{
-              marginTop: "6px",
-              padding: "8px 12px",
-              borderRadius: "8px",
-              backgroundColor: "rgba(99, 102, 241, 0.08)",
-              border: "1px solid rgba(99, 102, 241, 0.25)",
-              fontSize: "0.78rem",
-              color: "var(--text-muted)",
-              lineHeight: "1.4",
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "8px"
-            }}>
-              <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
-              <span>
-                <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform.
-              </span>
+      {/* STEP 0: Personal & Location Details */}
+      {currentStep === 0 && (
+        <div className={styles.formSection}>
+          <div className={styles.formGrid}>
+            <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
+              <label>Username / Handle</label>
+              <input
+                name="username"
+                placeholder={dbProfile.username || "e.g. alex_dev or user@example.com"}
+                value={formData.username || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+              <div style={{
+                marginTop: "6px",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                backgroundColor: "rgba(99, 102, 241, 0.08)",
+                border: "1px solid rgba(99, 102, 241, 0.25)",
+                fontSize: "0.78rem",
+                color: "var(--text-muted)",
+                lineHeight: "1.4",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px"
+              }}>
+                <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+                <span>
+                  <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform.
+                </span>
+              </div>
             </div>
-          </div>
-          <div className={styles.formGroup}>
-            <label>Date of Birth</label>
-            <input
-              type="date"
-              name="dob"
-              value={formData.dob || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label>First Name</label>
-            <input
-              name="firstName"
-              placeholder={dbProfile.firstName || "First Name"}
-              value={formData.firstName || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label>Last Name</label>
-            <input
-              name="lastName"
-              placeholder={dbProfile.lastName || "Last Name"}
-              value={formData.lastName || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label>Business Name (Optional)</label>
-            <input
-              name="business_name"
-              placeholder={dbProfile.business_name || "Business Name"}
-              maxLength={25}
-              value={formData.business_name || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label>Phone Number</label>
-            <input
-              name="phone"
-              type="tel"
-              placeholder={dbProfile.phone || "Phone"}
-              value={formData.phone || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label>Email Address</label>
-            <input
-              name="email"
-              type="email"
-              placeholder={dbProfile.email || "Email"}
-              value={formData.email || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-            />
-          </div>
 
-          <LocationSelector
-            country={formData.country !== undefined ? formData.country : (dbProfile.country || "")}
-            state={formData.state !== undefined ? formData.state : (dbProfile.state || "")}
-            location={formData.location !== undefined ? formData.location : (dbProfile.location || "")}
-            onChange={({ country, state, location }) =>
-              setFormData((prev) => ({ ...prev, country, state, location }))
-            }
-            showLabels={true}
-            groupClass={styles.formGroup}
-            cityGroupClass={styles.formGroup}
-            cityLabel="City/Location"
-            disabled={isFormDisabled}
-            gpsEnforced={true}
-          />
+            <div className={styles.formGroup}>
+              <label>First Name</label>
+              <input
+                name="firstName"
+                placeholder={dbProfile.firstName || "First Name"}
+                value={formData.firstName || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+            </div>
 
-          <div className={styles.formGroup}>
-            <label>Gender</label>
-            <select name="gender" value={formData.gender || ""} onChange={handleChange} disabled={isFormDisabled}>
-              <option value="">Select Gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          </div>
+            <div className={styles.formGroup}>
+              <label>Last Name</label>
+              <input
+                name="lastName"
+                placeholder={dbProfile.lastName || "Last Name"}
+                value={formData.lastName || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+            </div>
 
-          <div className={styles.formGroup}>
-            <label>Employment Status</label>
-            <select
-              name="employment"
-              value={formData.employment || ""}
-              onChange={handleChange}
+            <div className={styles.formGroup}>
+              <label>Date of Birth</label>
+              <input
+                type="date"
+                name="dob"
+                value={formData.dob || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Phone Number</label>
+              <input
+                name="phone"
+                type="tel"
+                placeholder={dbProfile.phone || "Phone"}
+                value={formData.phone || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Email Address</label>
+              <input
+                name="email"
+                type="email"
+                placeholder={dbProfile.email || "Email"}
+                value={formData.email || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Business Name (Optional)</label>
+              <input
+                name="business_name"
+                placeholder={dbProfile.business_name || "Business Name"}
+                maxLength={25}
+                value={formData.business_name || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              />
+            </div>
+
+            <LocationSelector
+              country={formData.country !== undefined ? formData.country : (dbProfile.country || "")}
+              state={formData.state !== undefined ? formData.state : (dbProfile.state || "")}
+              location={formData.location !== undefined ? formData.location : (dbProfile.location || "")}
+              onChange={({ country, state, location }) =>
+                setFormData((prev) => ({ ...prev, country, state, location }))
+              }
+              showLabels={true}
+              groupClass={styles.formGroup}
+              cityGroupClass={styles.formGroup}
+              cityLabel="City/Location"
               disabled={isFormDisabled}
-            >
-              <option value="">Select Employment</option>
-              <option value="employed">Employed</option>
-              <option value="student">Student</option>
-              <option value="unemployed">Unemployed</option>
-              <option value="freelancer">Freelancer</option>
-              <option value="entrepreneur">Entrepreneur</option>
-              <option value="retired">Retired</option>
-            </select>
+              gpsEnforced={true}
+            />
           </div>
         </div>
-      </div>
-
-      {/* Section 2: Preferences & Profile Details */}
-      <div className={styles.formSection}>
-        <h2>Preferences & Profile Details</h2>
-        <div className={styles.formGrid}>
-          <label>International Traveller?</label>
-          <select
-            name="intlTravel"
-            value={formData.intlTravel || "no"}
-            onChange={handleChange}
-            disabled={isFormDisabled}
-          >
-            <option value="no">No</option>
-            <option value="yes">Yes</option>
-          </select>
-
-          <label>Local Traveller by Air?</label>
-          <select
-            name="localTravel"
-            value={formData.localTravel || "no"}
-            onChange={handleChange}
-            disabled={isFormDisabled}
-          >
-            <option value="no">No</option>
-            <option value="yes">Yes</option>
-          </select>
-
-          <label className={styles.fileUpload} style={{ opacity: isFormDisabled ? 0.6 : 1, cursor: isFormDisabled ? "not-allowed" : "pointer" }}>
-            Upload Profile Picture
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) setImageFile(file);
-              }}
-              disabled={isFormDisabled}
-            />
-          </label>
-        </div>
-
-        {/* Dropdowns: Keep them full width */}
-        {renderDropdown("Industries", "industry", industries)}
-        {renderDropdown("Interests", "interest", interests)}
-        {renderDropdown("Behaviors", "behavior", behaviors)}
-        {renderDropdown("Lifestyles", "lifestyle", lifestyles)}
-        {renderDropdown("Personality Traits", "personality", personalityTraits)}
-
-        <textarea
-          name="bio"
-          placeholder={dbProfile.bio || "Short Bio (max 90 characters)"}
-          maxLength={90}
-          value={formData.bio || ""}
-          onChange={handleChange}
-          disabled={isFormDisabled}
-          className={styles.textbo}
-        />
-      </div>
-      
-      {dbProfile && !dbProfile.has_updated_profile && (
-        <p style={{ fontSize: "0.8rem", color: "#d97706", marginTop: "1rem", marginBottom: "0.5rem", textAlign: "center", fontWeight: "600" }}>
-          Note: After this initial update, you can only update your profile once every 30 days.
-        </p>
       )}
 
-      <button
-        className={styles.buttonGroup}
-        onClick={handleUpdate}
-        disabled={loading || isFormDisabled}
-        style={{
-          cursor: isFormDisabled ? "not-allowed" : "pointer",
-          background: isFormDisabled ? "#374151" : undefined,
-          color: isFormDisabled ? "#9ca3af" : undefined
-        }}
-      >
-        {loading ? "Updating..." : isFormDisabled ? `Locked (Cooldown)` : "Update"}
-      </button>
+      {/* STEP 1: Demographics & Lifestyle */}
+      {currentStep === 1 && (
+        <div className={styles.formSection}>
+          <div className={styles.formGrid}>
+            <div className={styles.formGroup}>
+              <label>Gender</label>
+              <select name="gender" value={formData.gender || ""} onChange={handleChange} disabled={isFormDisabled}>
+                <option value="">Select Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Employment Status</label>
+              <select
+                name="employment"
+                value={formData.employment || ""}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              >
+                <option value="">Select Employment</option>
+                <option value="employed">Employed</option>
+                <option value="student">Student</option>
+                <option value="unemployed">Unemployed</option>
+                <option value="freelancer">Freelancer</option>
+                <option value="entrepreneur">Entrepreneur</option>
+                <option value="retired">Retired</option>
+              </select>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>International Traveller?</label>
+              <select
+                name="intlTravel"
+                value={formData.intlTravel || "no"}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Local Traveller by Air?</label>
+              <select
+                name="localTravel"
+                value={formData.localTravel || "no"}
+                onChange={handleChange}
+                disabled={isFormDisabled}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
+
+            <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
+              <label className={styles.fileUpload} style={{ opacity: isFormDisabled ? 0.6 : 1, cursor: isFormDisabled ? "not-allowed" : "pointer" }}>
+                {imageFile ? `Selected: ${imageFile.name}` : "Upload Profile Picture"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setImageFile(file);
+                  }}
+                  disabled={isFormDisabled}
+                />
+              </label>
+              {dbProfile.profileImage && (
+                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Current profile photo is active. Select a new file above to replace it.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: Categories, Interests & Bio */}
+      {currentStep === 2 && (
+        <div className={styles.formSection}>
+          <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
+            Select your relevant industries and interests to receive targeted ads and business highlights.
+          </p>
+
+          {renderDropdown("Industries (Required)", "industry", industries)}
+          {renderDropdown("Interests (Required)", "interest", interests)}
+          {renderDropdown("Behaviors", "behavior", behaviors)}
+          {renderDropdown("Lifestyles", "lifestyle", lifestyles)}
+          {renderDropdown("Personality Traits", "personality", personalityTraits)}
+
+          <div style={{ marginTop: "1.25rem" }}>
+            <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
+              Bio / Tagline
+            </label>
+            <textarea
+              name="bio"
+              placeholder={dbProfile.bio || "Short Bio (max 90 characters)"}
+              maxLength={90}
+              value={formData.bio || ""}
+              onChange={handleChange}
+              disabled={isFormDisabled}
+              className={styles.textbo}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: Review & Submit */}
+      {currentStep === 3 && (
+        <div className={styles.formSection}>
+          <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
+            Please review your updated profile information before saving.
+          </p>
+
+          <div className={styles.reviewGrid}>
+            <div className={styles.reviewCard}>
+              <div className={styles.reviewCardTitle}>Personal</div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Username:</span>
+                <span className={styles.reviewValue}>{formData.username || dbProfile.username || "—"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Name:</span>
+                <span className={styles.reviewValue}>{`${formData.firstName || dbProfile.firstName || ""} ${formData.lastName || dbProfile.lastName || ""}`.trim() || "—"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Email:</span>
+                <span className={styles.reviewValue}>{formData.email || dbProfile.email || "—"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Phone:</span>
+                <span className={styles.reviewValue}>{formData.phone || dbProfile.phone || "—"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Location:</span>
+                <span className={styles.reviewValue}>{formData.location || dbProfile.location ? `${formData.location || dbProfile.location}, ${formData.state || dbProfile.state}, ${formData.country || dbProfile.country}` : "—"}</span>
+              </div>
+            </div>
+
+            <div className={styles.reviewCard}>
+              <div className={styles.reviewCardTitle}>Demographics</div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Gender:</span>
+                <span className={styles.reviewValue}>{formData.gender || dbProfile.gender || "—"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Employment:</span>
+                <span className={styles.reviewValue}>{formData.employment || dbProfile.employment || "—"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Intl Traveller:</span>
+                <span className={styles.reviewValue}>{formData.intlTravel || "no"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Local Flight Traveller:</span>
+                <span className={styles.reviewValue}>{formData.localTravel || "no"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Profile Picture:</span>
+                <span className={styles.reviewValue}>{imageFile ? `New file (${imageFile.name})` : dbProfile.profileImage ? "Active" : "None"}</span>
+              </div>
+            </div>
+
+            <div className={styles.reviewCard} style={{ gridColumn: "1 / -1" }}>
+              <div className={styles.reviewCardTitle}>Selected Targeting</div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Industries:</span>
+                <span className={styles.reviewValue}>{(formData.industry?.length ? formData.industry : dbProfile.industry || []).join(", ") || "None"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Interests:</span>
+                <span className={styles.reviewValue}>{(formData.interest?.length ? formData.interest : dbProfile.interest || []).join(", ") || "None"}</span>
+              </div>
+              <div className={styles.reviewItem}>
+                <span className={styles.reviewLabel}>Bio:</span>
+                <span className={styles.reviewValue}>{formData.bio || dbProfile.bio || "None"}</span>
+              </div>
+            </div>
+          </div>
+
+          {dbProfile && !dbProfile.has_updated_profile && (
+            <p style={{ fontSize: "0.82rem", color: "#d97706", marginTop: "1.25rem", textAlign: "center", fontWeight: "600" }}>
+              ⚠️ Note: Once confirmed, you can only update your profile once every 30 days.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Step Navigation Controls */}
+      <div className={styles.stepNavigationRow}>
+        {currentStep > 0 && (
+          <button
+            type="button"
+            className={styles.prevBtn}
+            onClick={handlePrevStep}
+            disabled={loading}
+          >
+            ← Previous Step
+          </button>
+        )}
+
+        {currentStep < steps.length - 1 ? (
+          <button
+            type="button"
+            className={styles.nextBtn}
+            onClick={handleNextStep}
+            disabled={isFormDisabled}
+          >
+            Continue to {steps[currentStep + 1]} →
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.nextBtn}
+            onClick={handleUpdate}
+            disabled={loading || isFormDisabled}
+            style={{
+              background: isFormDisabled ? "#374151" : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+              color: isFormDisabled ? "#9ca3af" : "#ffffff",
+              boxShadow: isFormDisabled ? "none" : "0 4px 14px rgba(16, 185, 129, 0.4)",
+            }}
+          >
+            {loading ? "Saving Profile..." : isFormDisabled ? `Locked (Cooldown)` : "Save Profile"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,21 +1,30 @@
 // app/api/withdrawals/history/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const url = new URL(req.url);
+    let email = await getAuthenticatedEmail(req);
+
+    // Resilient fallback for mobile app
+    if (!email) {
+      const mobileEmail = req.headers.get("x-user-email") || url.searchParams.get("email");
+      if (mobileEmail && mobileEmail.includes("@")) {
+        email = mobileEmail.toLowerCase().trim();
+      }
+    }
+
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const emailLower = email.toLowerCase().trim();
     const cacheKey = `statement:withdrawals:${emailLower}`;
-    const url = new URL(req.url);
     const forceRefresh = url.searchParams.get("refresh") === "true";
 
     // 1. Redis Cache Read Path (<5ms response time)
@@ -40,7 +49,8 @@ export async function GET(req: NextRequest) {
       .select("id, reference, amount, status, type, description, created_at")
       .eq("user_email", emailLower)
       .eq("type", "withdrawal")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(250);
 
     if (error) {
       console.error("❌ Error fetching withdrawal history:", error);

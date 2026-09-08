@@ -36,12 +36,10 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
         mutual_count: initialProfile.mutual_count ?? 0,
         mutuals: Array.isArray(initialProfile.mutuals) ? initialProfile.mutuals : [],
         monetized:
-          ((initialProfile.monetized === "yes" ||
+          (initialProfile.monetized === "yes" ||
             initialProfile.monetized === "true" ||
             initialProfile.monetized === true ||
-            clicks >= 300)) &&
-          (!initialProfile.monetized_until ||
-            new Date(initialProfile.monetized_until).getTime() > Date.now()),
+            clicks >= 300),
         suspended_until: initialProfile.suspended_until || null,
         cooldown_until: initialProfile.cooldown_until || null,
         cooldown_type: initialProfile.cooldown_type || null,
@@ -64,8 +62,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
           const balance = Math.max(currentBalance, Number(data.balance) || 0);
           const mutualCount = Math.max(currentMutualCount, Number(data.mutual_count) || 0);
           const isMonetized =
-            ((data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 300)) &&
-            (!data.monetized_until || new Date(data.monetized_until).getTime() > Date.now());
+            data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 300;
 
           return {
             balance,

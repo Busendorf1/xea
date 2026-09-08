@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
 // Standard Industry Floor Rates (in NGN)
@@ -14,7 +14,7 @@ const INDUSTRY_FLOOR_RATES: Record<string, number> = {
 
 const CACHE_TTL_SECONDS = 10; // 10s Redis caching for high scalability
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const cacheKey = "attention:market_rates";
 

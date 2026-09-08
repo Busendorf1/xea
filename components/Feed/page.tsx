@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import supabase from "@/lib/utils/db";
 import styles from "../Feed/page.module.css";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import dynamic from "next/dynamic";

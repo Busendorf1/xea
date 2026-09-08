@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { v4 as uuidv4 } from "uuid";
-import { invalidateCachedProfile, invalidateTargetedHighlightCache } from "@/lib/utils/cache";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
@@ -44,10 +44,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 1. Fetch current user balance
+    // 1. Fetch current user balance and check advertiser account restrictions
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
-      .select("balance")
+      .select("balance, ad_account_status, ad_ban_until, ad_ban_reason")
       .ilike("email", email)
       .maybeSingle();
 
@@ -56,22 +56,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User profile not found" }, { status: 404 });
     }
 
+    if (!isAdmin) {
+      const isRestricted =
+        user.ad_account_status === "perm_banned" ||
+        user.ad_account_status === "deactivated" ||
+        (user.ad_account_status === "temp_banned" &&
+          user.ad_ban_until &&
+          new Date(user.ad_ban_until) > new Date());
+
+      if (isRestricted) {
+        const reasonText = user.ad_ban_reason ? ` (${user.ad_ban_reason})` : "";
+        const message =
+          user.ad_account_status === "temp_banned"
+            ? `Your advertising access is temporarily paused${reasonText}. Please check back once the review period ends or reach out via Help Center.`
+            : `Your advertising access is currently paused${reasonText}. Please contact our Help Center if you'd like to appeal or learn more.`;
+
+        return NextResponse.json({ error: message, restricted: true }, { status: 403 });
+      }
+    }
+
     const currentBalance = parseFloat(user.balance || 0);
-    if (currentBalance < amountNum) {
+    if (!isAdmin && currentBalance < amountNum) {
       return NextResponse.json({ error: "Insufficient wallet balance" }, { status: 400 });
     }
 
-    const newBalance = currentBalance - amountNum;
+    const newBalance = isAdmin ? currentBalance : currentBalance - amountNum;
 
-    // 2. Deduct user balance
-    const { error: balanceUpdateError } = await supabaseAdmin
-      .from("users")
-      .update({ balance: newBalance })
-      .ilike("email", email);
+    // 2. Deduct user balance (skip if admin)
+    if (!isAdmin) {
+      const { error: balanceUpdateError } = await supabaseAdmin
+        .from("users")
+        .update({ balance: newBalance })
+        .ilike("email", email);
 
-    if (balanceUpdateError) {
-      console.error("❌ Error updating user balance:", balanceUpdateError);
-      return NextResponse.json({ error: "Failed to update wallet balance" }, { status: 500 });
+      if (balanceUpdateError) {
+        console.error("❌ Error updating user balance:", balanceUpdateError);
+        return NextResponse.json({ error: "Failed to update wallet balance" }, { status: 500 });
+      }
     }
 
     // 3. Create successful payment record
@@ -99,7 +120,21 @@ export async function POST(req: NextRequest) {
 
     // 4. Perform business logic
     if (type === "highlight") {
-      const { title, content, image_url, interest, country, state, province, campaign_days, is_bidded, bid_price, editingId } = metadata;
+      const {
+        title,
+        content,
+        image_url,
+        interest,
+        country,
+        state,
+        province,
+        campaign_days,
+        is_bidded,
+        bid_price,
+        custom_sponsor_name,
+        custom_sponsor_handle,
+        editingId
+      } = metadata;
 
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers if editing
       if (editingId) {
@@ -122,7 +157,9 @@ export async function POST(req: NextRequest) {
             province: province || null,
             campaign_days: campaign_days || 1,
             is_bidded: !!is_bidded,
-            bid_price: bid_price ? parseFloat(bid_price) : null
+            bid_price: bid_price ? parseFloat(bid_price) : null,
+            custom_sponsor_name: custom_sponsor_name || null,
+            custom_sponsor_handle: custom_sponsor_handle || null,
           }).eq("id", editingId),
           supabaseAdmin.from("newsactive").update({
             title,
@@ -134,7 +171,9 @@ export async function POST(req: NextRequest) {
             province: province || null,
             campaign_days: campaign_days || 1,
             is_bidded: !!is_bidded,
-            bid_price: bid_price ? parseFloat(bid_price) : null
+            bid_price: bid_price ? parseFloat(bid_price) : null,
+            custom_sponsor_name: custom_sponsor_name || null,
+            custom_sponsor_handle: custom_sponsor_handle || null,
           }).eq("id", editingId)
         ]);
       } else {
@@ -150,6 +189,8 @@ export async function POST(req: NextRequest) {
             campaign_days: campaign_days || 1,
             is_bidded: !!is_bidded,
             bid_price: bid_price ? parseFloat(bid_price) : null,
+            custom_sponsor_name: custom_sponsor_name || null,
+            custom_sponsor_handle: custom_sponsor_handle || null,
             user_email: email,
           },
         ]);
@@ -250,8 +291,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Payment succeeded but failed to submit ad campaign" }, { status: 500 });
       }
 
+      // Ensure newly submitted ad is only in 'adds' review queue and not in addsactive
+      await supabaseAdmin.from("addsactive").delete().eq("id", adData.id);
+
       if (isAdmin || adData.isAdminPost) {
-        await supabaseAdmin.from("ads").update({
+        await supabaseAdmin.from("adds").update({
           is_admin_post: true,
           custom_sponsor_name: adData.customSponsorName || null,
           custom_sponsor_handle: adData.customSponsorHandle || null,

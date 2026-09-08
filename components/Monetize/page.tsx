@@ -10,8 +10,10 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  MousePointerClick,
-  Eye,
+  Award,
+  Sparkles,
+  MousePointer,
+  ShieldCheck,
   Calendar,
   X,
 } from "lucide-react";
@@ -154,7 +156,7 @@ export default function Monetize({ session }: MonetizeProps) {
         <div className={styles.header}>
           <h1 className={styles.title}>Account Monetization &amp; ATW Levels</h1>
           <p className={styles.subtitle}>
-            Monetization is 100% free! Unlock earning rights by completing <strong>300 Ad Clicks</strong>. Continued interactions increase your ATW Level and wallet holding cap!
+            Continued interactions increase your ATW Level and wallet holding cap!
           </p>
         </div>
 
@@ -163,42 +165,32 @@ export default function Monetize({ session }: MonetizeProps) {
           <div className={`${styles.statusCard} ${isMonetized ? styles.statusMonetized : styles.statusPending}`}>
             <div className={styles.statusHeaderRow}>
               <div className={styles.statusTitleGroup}>
-                {isMonetized ? (
-                  <CheckCircle2 size={26} className={styles.successIcon} />
-                ) : (
-                  <Clock size={26} className={styles.pendingIcon} />
-                )}
+                <div className={isMonetized ? styles.iconBadgeSuccess : styles.iconBadgePending}>
+                  {isMonetized ? (
+                    <ShieldCheck size={22} className={styles.successIcon} />
+                  ) : (
+                    <Clock size={22} className={styles.pendingIcon} />
+                  )}
+                </div>
                 <div>
                   <h2 className={styles.statusTitle}>
-                    {isMonetized ? `Monetization Active (${atwTier})` : "Monetization Inactive"}
+                    {isMonetized ? `Monetized Account` : "Account Status: Unmonetized Account"}
                   </h2>
                   <p className={styles.statusSub}>
                     {isMonetized
-                      ? `Congratulations! Your account is monetized with ATW Level ${atwLevelNum} (Max wallet cap: ₦${holdingLimitNaira}). Earn on every ad!`
-                      : `Complete 300 ad interactions to activate monetization.`}
+                      ? `Congratulations! Your account is an active Monetized Account at ATW Level ${atwLevelNum} (Max wallet holding limit: ₦${holdingLimitNaira}). You earn on every ad interaction!`
+                      : `Complete 300 ad interactions in the feed to qualify and activate account monetization.`}
                   </p>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span className={isMonetized ? styles.badgeActive : styles.badgeProgress}>
-                  {isMonetized ? `${atwTier} • MONETIZED` : `${clicksPercent}% COMPLETED`}
+                  {isMonetized ? `MONETIZED ACCOUNT • ${atwTier}` : `QUALIFICATION IN PROGRESS • ${clicksPercent}%`}
                 </span>
                 {isMonetized && (
                   <button
                     onClick={() => setShowCancelModal(true)}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: "6px",
-                      background: "rgba(245, 158, 11, 0.15)",
-                      border: "1px solid #f59e0b",
-                      color: "#f59e0b",
-                      fontWeight: 600,
-                      fontSize: "0.8rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
+                    className={styles.cancelBtn}
                   >
                     <AlertTriangle size={14} /> Cancel Monetization
                   </button>
@@ -307,30 +299,32 @@ export default function Monetize({ session }: MonetizeProps) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1.25rem" }}>
             {/* 300 Ad Clicks */}
             <div className={styles.progressCard}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <h3 className={styles.cardSectionTitle} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <MousePointerClick size={20} color="#6366f1" />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                <h3 className={styles.cardSectionTitle} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div className={styles.titleIconBox}>
+                    <Award size={18} color="var(--primary)" />
+                  </div>
                   <span>Qualification Target: 300 Ad Clicks</span>
                 </h3>
-                <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#6366f1", backgroundColor: "rgba(99,102,241,0.12)", padding: "3px 8px", borderRadius: "6px" }}>
+                <span className={styles.percentBadge}>
                   {clicksPercent}%
                 </span>
               </div>
 
-              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "14px" }}>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.5 }}>
                 Watch ads in your feed and click <strong>Seen</strong> or <strong>Mutual+</strong>. Each ad interaction increments your click count live.
               </p>
 
               <div className={styles.metricsGrid}>
                 <div className={styles.metricBox}>
-                  <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <Eye size={12} color="#6366f1" /> Clicks Done
+                  <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <MousePointer size={13} color="var(--primary)" /> Clicks Done
                   </span>
                   <strong className={styles.metricValue}>{clicksCount} / 300</strong>
                 </div>
                 <div className={styles.metricBox}>
-                  <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <Clock size={12} color="#f59e0b" /> Remaining
+                  <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Clock size={13} color="#f59e0b" /> Remaining
                   </span>
                   <strong className={styles.metricValueRemaining}>{clicksRemaining} clicks</strong>
                 </div>
@@ -351,16 +345,22 @@ export default function Monetize({ session }: MonetizeProps) {
             </div>
           </div>
 
-
           {/* 7-Day Inactivity Warning Card */}
           <div className={styles.policyCard}>
             <div className={styles.policyHeader}>
-              <Calendar size={22} color="#f59e0b" />
+              <div className={styles.policyIconBox}>
+                <Calendar size={18} color="#f59e0b" />
+              </div>
               <h4 style={{ color: "#f59e0b" }}>7-Day Activity Policy</h4>
             </div>
             <p className={styles.policyDesc}>
               To maintain monetization, you must remain an active community member. If you are inactive for 7 consecutive days without logging in or interacting, your monetization status will pause and clicks reset to 0. Logging in automatically keeps your activity active.
             </p>
+            {daysInactive > 0 && (
+              <p style={{ marginTop: "10px", fontSize: "0.85rem", color: "#f59e0b", fontWeight: 700 }}>
+                Current Inactivity: {daysInactive} day{daysInactive > 1 ? "s" : ""} / 7 days
+              </p>
+            )}
           </div>
         </div>
       </main>

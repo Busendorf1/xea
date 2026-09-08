@@ -12,6 +12,12 @@ import {
   acquireWalletLock,
   releaseWalletLock,
 } from "@/lib/security/rateLimiter";
+import {
+  recordLiveTransferDelta,
+  runAutomatedDiscrepancyCheck,
+  freezeUserAccount,
+  isUserAccountFrozen,
+} from "@/lib/security/discrepancyAuditor";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
@@ -48,6 +54,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You cannot send money to your own email account" }, { status: 400 });
     }
 
+    // 2. Targeted Security Freeze Check (Sub-millisecond containment)
+    const [senderFrozen, recipientFrozen] = await Promise.all([
+      isUserAccountFrozen(cleanSender),
+      isUserAccountFrozen(cleanRecipient),
+    ]);
+
+    if (senderFrozen.frozen) {
+      return NextResponse.json(
+        { error: senderFrozen.reason || "Your account has been placed on a temporary security hold. Transfers are restricted." },
+        { status: 403 }
+      );
+    }
+
+    if (recipientFrozen.frozen) {
+      return NextResponse.json(
+        { error: "Recipient account is currently on security hold and cannot receive transfers." },
+        { status: 403 }
+      );
+    }
+
     // Convert to Fixed-Point Integer Kobo (Prevents IEEE 754 precision rounding bugs)
     const amountKobo = Math.round(amountNum * 100);
 
@@ -79,6 +105,18 @@ export async function POST(req: NextRequest) {
     // 4. Acquire Distributed Wallet Mutex Lock (Prevents Concurrency Double-Spending)
     walletLockAcquired = await acquireWalletLock(cleanSender);
     if (!walletLockAcquired) {
+      // Check for rapid concurrent lock collision attacks
+      const collisionKey = `ratelimit:collisions:${cleanSender}`;
+      const collisions = await redisConnection.incr(collisionKey).catch(() => 1);
+      if (collisions === 1) await redisConnection.expire(collisionKey, 10).catch(() => {});
+      if (collisions >= 5) {
+        await freezeUserAccount(cleanSender, "Automated Security Hold: Repeated concurrent wallet mutex collision attack detected", 24);
+        return NextResponse.json(
+          { error: "Suspicious concurrent transaction volume detected. Account placed on temporary security hold." },
+          { status: 423 }
+        );
+      }
+
       return NextResponse.json(
         { error: "Another transaction on your wallet is currently processing. Please wait a moment." },
         { status: 429 }
@@ -166,7 +204,12 @@ export async function POST(req: NextRequest) {
       console.warn("⚠️ BullMQ paymentQueue enqueue warning:", queueErr);
     }
 
-    // 10. Invalidate Redis Caches
+    // 10. Record In-Flight Live Delta & Real-Time Discrepancy Check
+    await recordLiveTransferDelta(amountKobo);
+    // Asynchronous non-blocking background auditor check
+    runAutomatedDiscrepancyCheck().catch(() => {});
+
+    // 11. Invalidate Redis Caches
     await Promise.all([
       invalidateCachedProfile(cleanSender),
       invalidateCachedProfile(cleanRecipient),

@@ -200,6 +200,7 @@ export async function invalidateCachedProfile(email: string): Promise<void> {
       redisConnection.del(`monetize:status:${emailLower}`),
       redisConnection.del(`statement:payments:${emailLower}`),
       redisConnection.del(`statement:withdrawals:${emailLower}`),
+      redisConnection.del(`statement:all:${emailLower}`),
     ]);
   } catch (err: any) {
     if (err?.message !== "Connection is closed.") {
@@ -256,10 +257,103 @@ export async function setCachedHighlights<T = Record<string, unknown>>(
 
 // Rely 100% on Natural TTL Expiry across the entire app
 export async function invalidateTargetedHighlightCache(_interest?: string, _country?: string | null, _state?: string | null): Promise<void> {
-  // No-op: relying on natural 30-second TTL expiry to eliminate write-path Redis churn
+  // No-op: relying on natural TTL expiry to eliminate write-path Redis churn
 }
 
 export async function invalidateAllHighlights(): Promise<void> {
-  // No-op: relying on natural 30-second TTL expiry to eliminate write-path Redis churn
+  // No-op: relying on natural TTL expiry to eliminate write-path Redis churn
+}
+
+// ----------------------------------------------------
+// USER CAMPAIGNS & CAMPAIGN ANALYTICS CACHING
+// ----------------------------------------------------
+
+export async function getCachedUserCampaigns<T = Record<string, unknown>>(
+  email: string
+): Promise<T | null> {
+  if (!email || !isRedisReady()) return null;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    const data = await redisConnection.get(`user:campaigns:${emailLower}`);
+    return data ? (JSON.parse(data) as T) : null;
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis getCachedUserCampaigns notice:", err.message || err);
+    }
+    return null;
+  }
+}
+
+export async function setCachedUserCampaigns<T = Record<string, unknown>>(
+  email: string,
+  campaigns: T
+): Promise<void> {
+  if (!email || !isRedisReady()) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    await redisConnection.set(
+      `user:campaigns:${emailLower}`,
+      JSON.stringify(campaigns),
+      "EX",
+      30 // 30-second TTL for fast client response with fresh data
+    );
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis setCachedUserCampaigns notice:", err.message || err);
+    }
+  }
+}
+
+export async function invalidateCachedUserCampaigns(email?: string): Promise<void> {
+  if (!isRedisReady()) return;
+  try {
+    if (email) {
+      const emailLower = email.toLowerCase().trim();
+      await Promise.all([
+        redisConnection.del(`user:campaigns:${emailLower}`),
+        redisConnection.del(`user:campaign_analytics:${emailLower}`),
+      ]);
+    }
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis invalidateCachedUserCampaigns notice:", err.message || err);
+    }
+  }
+}
+
+export async function getCachedUserCampaignAnalytics<T = Record<string, unknown>>(
+  email: string
+): Promise<T | null> {
+  if (!email || !isRedisReady()) return null;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    const data = await redisConnection.get(`user:campaign_analytics:${emailLower}`);
+    return data ? (JSON.parse(data) as T) : null;
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis getCachedUserCampaignAnalytics notice:", err.message || err);
+    }
+    return null;
+  }
+}
+
+export async function setCachedUserCampaignAnalytics<T = Record<string, unknown>>(
+  email: string,
+  analytics: T
+): Promise<void> {
+  if (!email || !isRedisReady()) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    await redisConnection.set(
+      `user:campaign_analytics:${emailLower}`,
+      JSON.stringify(analytics),
+      "EX",
+      60 // 60-second TTL
+    );
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis setCachedUserCampaignAnalytics notice:", err.message || err);
+    }
+  }
 }
 

@@ -6,7 +6,7 @@ import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getAuthenticatedEmail(req);
+    const userEmail = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!userEmail) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

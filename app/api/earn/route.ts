@@ -13,6 +13,7 @@ import {
   publishLiveBalanceUpdate,
 } from "@/lib/utils/cache";
 import { dispatchEarningWebhook } from "@/lib/webhookDispatcher";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 
 function logToTerminal(message: string) {
   if (process.env.NODE_ENV !== "production") {
@@ -21,6 +22,16 @@ function logToTerminal(message: string) {
 }
 
 export async function POST(request: NextRequest) {
+  // Edge Rate Limiting: max 60 requests/minute per IP to drop flood volume
+  const rateLimit = await checkRateLimit(request, {
+    limit: 60,
+    windowSeconds: 60,
+    identifierPrefix: "earn",
+  });
+  if (!rateLimit.allowed && rateLimit.response) {
+    return rateLimit.response;
+  }
+
   let emailKey = "";
   let adIdToUnlock: string | null = null;
   let atomicViews = 1;
@@ -525,6 +536,17 @@ export async function POST(request: NextRequest) {
           p_user_email: emailKey,
         });
         await supabaseAdmin.rpc("qualify_referral_on_interaction", { p_referee_email: emailKey });
+
+        // Stream mutual interaction event directly to ClickHouse Cloud (high-throughput non-blocking)
+        const { streamImpressionsToClickHouse } = await import("@/lib/clickhouse");
+        streamImpressionsToClickHouse([
+          {
+            ad_id: adId,
+            user_email: emailKey,
+            cost_per_impression: 0,
+            interaction_type: "mutual",
+          },
+        ]).catch(() => {});
       } catch (mErr) {
         console.error("❌ DB mutual error in /api/earn:", mErr);
       }

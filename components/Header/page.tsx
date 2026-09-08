@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useUser } from "@auth0/nextjs-auth0";
 import styles from "../Header/page.module.css";
 import { useTheme } from "../ThemeProvider";
-import { Sun, Moon, Contrast, Bell, ArrowUpRight, ArrowDownLeft, Wallet, ShieldAlert, CheckCircle2, Trash2 } from "lucide-react";
+import { Sun, Moon, Bell, ArrowUpRight, ArrowDownLeft, Wallet, ShieldAlert, CheckCircle2, Trash2 } from "lucide-react";
 import SidebarMenu from "@/components/SidebarToggle/page";
 
 export default function Header() {
@@ -293,6 +293,26 @@ export default function Header() {
             {/* Selection and Deletion Controls - Only visible when in Selection Mode */}
             {isSelectionMode && notifications.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.76rem", paddingTop: "6px", borderTop: "1px solid var(--card-border)" }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectAllNotifs();
+                  }}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "5px",
+                    backgroundColor: selectedNotifs.length === notifications.length ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                    border: "1px solid var(--card-border)",
+                    color: "var(--text-muted)",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {selectedNotifs.length === notifications.length ? "Deselect All" : "Select All"}
+                </button>
+
                 <button
                   type="button"
                   onClick={async (e) => {

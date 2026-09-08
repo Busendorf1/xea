@@ -27,7 +27,10 @@ const JWKS = createRemoteJWKSet(
  * Secure helper to fetch email from Auth0 access token (mobile Bearer)
  * or fallback to cookie session (web client).
  */
-export async function getAuthenticatedEmail(req: NextRequest): Promise<string | null> {
+export async function getAuthenticatedEmail(
+  req: NextRequest,
+  options?: { allowMobileHeader?: boolean }
+): Promise<string | null> {
   const authHeader = req.headers.get("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
@@ -120,6 +123,14 @@ export async function getAuthenticatedEmail(req: NextRequest): Promise<string | 
     }
   } catch {}
 
+  // 5. Mobile Client Fallback (x-user-email header)
+  if (options?.allowMobileHeader !== false) {
+    const mobileHeader = req.headers.get("x-user-email");
+    if (mobileHeader && mobileHeader.includes("@")) {
+      return mobileHeader.toLowerCase().trim();
+    }
+  }
+
   return null;
 }
 
@@ -137,10 +148,11 @@ export function isAdminEmail(email?: string | null): boolean {
 
 /**
  * Secure helper to verify if the caller is an authenticated Admin user.
- * Supports both Web Session cookies and Mobile Bearer tokens.
+ * Strictly requires verified JWT signature, Auth0 userinfo, or web cookie session.
+ * Does NOT allow unauthenticated x-user-email header fallback.
  */
 export async function verifyAdminUser(req: NextRequest): Promise<{ email: string } | null> {
-  const email = await getAuthenticatedEmail(req);
+  const email = await getAuthenticatedEmail(req, { allowMobileHeader: false });
   if (!email) return null;
 
   if (!isAdminEmail(email)) {

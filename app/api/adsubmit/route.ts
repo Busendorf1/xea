@@ -36,6 +36,39 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const emailLower = email.toLowerCase().trim();
+ 
+    // Verify advertiser account status before allowing ad creation
+    const { data: userProfile } = await supabaseAdmin
+      .from("users")
+      .select("ad_account_status, ad_ban_until, ad_ban_reason")
+      .ilike("email", emailLower)
+      .maybeSingle();
+ 
+    if (userProfile) {
+      const isRestricted =
+        userProfile.ad_account_status === "perm_banned" ||
+        userProfile.ad_account_status === "deactivated" ||
+        (userProfile.ad_account_status === "temp_banned" &&
+          userProfile.ad_ban_until &&
+          new Date(userProfile.ad_ban_until) > new Date());
+ 
+      if (isRestricted) {
+        const reasonText = userProfile.ad_ban_reason ? ` (${userProfile.ad_ban_reason})` : "";
+        const message =
+          userProfile.ad_account_status === "temp_banned"
+            ? `Your advertising access is temporarily paused${reasonText}. Please check back once the review period ends or reach out via Help Center.`
+            : `Your advertising access is currently paused${reasonText}. Please contact our Help Center if you'd like to appeal or learn more.`;
+
+        return NextResponse.json(
+          {
+            error: message,
+            restricted: true,
+            status: userProfile.ad_account_status,
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     const { data, error } = await supabaseAdmin.from("adds").insert([
       {

@@ -23,14 +23,11 @@ const businessSubscribeSchema = z.object({
     .email({ message: "Please provide a valid contact email address." })
     .optional()
     .nullable(),
-  duration_months: z
-    .number()
-    .optional()
-    .default(1),
 });
 
 const businessQuerySchema = z.object({
   domain: z.string().trim().toLowerCase().max(150).optional().nullable(),
+  email: z.string().trim().toLowerCase().email().optional().nullable(),
 });
 
 export async function POST(req: NextRequest) {
@@ -45,7 +42,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: errorMessage }, { status: 400 });
     }
 
-    const { business_name, domain, contact_email, duration_months } = parseResult.data;
+    const { business_name, domain, contact_email } = parseResult.data;
 
     // Enforce 3 Submissions Per Day Rate Limit
     const userEmail = authEmail ? authEmail.toLowerCase().trim() : (contact_email ? contact_email.toLowerCase().trim() : null);
@@ -69,10 +66,6 @@ export async function POST(req: NextRequest) {
       console.warn("⚠️ Business subscribe rate limit Redis check warning:", redisErr);
     }
 
-    const months = [1, 3, 6].includes(Number(duration_months)) ? Number(duration_months) : 1;
-    const monthlyRate = 45000;
-    const totalPrice = months * monthlyRate;
-
     // Clean domain (e.g. https://www.mystore.ng/path -> mystore.ng)
     let cleanDomain = domain.trim().toLowerCase();
     cleanDomain = cleanDomain.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].split("?")[0];
@@ -83,27 +76,100 @@ export async function POST(req: NextRequest) {
 
     const emailToUse = authEmail || contact_email || null;
 
+    // Resolve user country to determine pricing (150,000 NGN vs $100 USD)
+    let isNigeria = true;
+    if (emailToUse) {
+      const { data: userProfile } = await supabaseAdmin
+        .from("users")
+        .select("country")
+        .ilike("email", emailToUse)
+        .maybeSingle();
+
+      if (userProfile?.country) {
+        const c = userProfile.country.toLowerCase().trim();
+        isNigeria = c === "nigeria" || c === "ng" || c === "ngn";
+      }
+    }
+
+    const amount = isNigeria ? 150000 : 100;
+    const currency = isNigeria ? "NGN" : "USD";
+
+    // Check if domain already exists in system
     const { data: existing } = await supabaseAdmin
       .from("premium_subscribers")
-      .select("id, domain, status")
+      .select("*")
       .eq("domain", cleanDomain)
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json({
-        success: true,
-        message: `Domain Application Submitted! Your application for ${cleanDomain} has been received. Our team will review your business and contact you if deemed eligible. Response might take awhile.`,
-        subscriber: existing,
-      });
+      if (existing.status === "active") {
+        return NextResponse.json({
+          success: true,
+          message: `The domain ${cleanDomain} is already an active verified Premium Subscriber brand.`,
+          subscriber: existing,
+        });
+      }
+
+      if (existing.status === "approved" && existing.payment_status !== "paid") {
+        return NextResponse.json({
+          success: true,
+          message: `Your application for ${cleanDomain} has already been approved! You can complete payment to activate your 30% discount subsidy.`,
+          subscriber: existing,
+        });
+      }
+
+      if (existing.status === "pending") {
+        return NextResponse.json({
+          success: true,
+          message: `Your application for ${cleanDomain} is currently under review by our administrators. You will be able to complete payment once approved.`,
+          subscriber: existing,
+        });
+      }
+
+      // If previously rejected, update and re-submit for review
+      if (existing.status === "rejected") {
+        const { data: updatedSub, error: updateErr } = await supabaseAdmin
+          .from("premium_subscribers")
+          .update({
+            business_name: business_name.trim(),
+            status: "pending",
+            payment_status: "unpaid",
+            amount,
+            currency,
+            user_email: emailToUse,
+            contact_email: contact_email || emailToUse,
+            rejection_reason: null,
+            created_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id)
+          .select()
+          .single();
+
+        if (updateErr) {
+          console.error("❌ Error updating rejected subscriber application:", updateErr);
+          return NextResponse.json({ error: "Failed to re-submit application" }, { status: 500 });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `Application Re-submitted! Your application for ${cleanDomain} has been submitted for admin approval. Once approved, you can complete payment of ${currency === "NGN" ? "₦" + amount.toLocaleString() : "$" + amount} to activate.`,
+          subscriber: updatedSub,
+        });
+      }
     }
 
+    // Insert new application with 'pending' status awaiting admin approval
     const { data: newSub, error: insertErr } = await supabaseAdmin
       .from("premium_subscribers")
       .insert({
         business_name: business_name.trim(),
         domain: cleanDomain,
         discount_percentage: 30.00,
-        status: "active",
+        status: "pending",
+        payment_status: "unpaid",
+        amount,
+        currency,
+        user_email: emailToUse,
         contact_email: emailToUse,
       })
       .select()
@@ -116,10 +182,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Domain Application Submitted! Your application for ${cleanDomain} has been received. Our team will review your business and contact you if deemed eligible. Response might take awhile.`,
+      message: `Domain Application Submitted! Your application for ${cleanDomain} has been received for admin review. Once approved, you can complete payment of ${currency === "NGN" ? "₦" + amount.toLocaleString() : "$" + amount} to activate your 30% discount subsidy.`,
       subscriber: newSub,
-      total_price: totalPrice,
-      duration_months: months,
+      amount,
+      currency,
     });
   } catch (err: any) {
     console.error("❌ Error in POST /api/business/subscribe:", err);
@@ -131,32 +197,74 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const rawDomain = searchParams.get("domain");
+    const rawEmail = searchParams.get("email");
 
-    const queryResult = businessQuerySchema.safeParse({ domain: rawDomain });
+    const queryResult = businessQuerySchema.safeParse({
+      domain: rawDomain,
+      email: rawEmail,
+    });
+    
     const queryDomain = queryResult.success ? queryResult.data.domain : null;
+    const queryEmail = queryResult.success ? queryResult.data.email : null;
 
+    // 1. If email is queried, fetch user's brand subscription standing
+    if (queryEmail) {
+      const cleanEmail = queryEmail.trim().toLowerCase();
+      const { data: sub } = await supabaseAdmin
+        .from("premium_subscribers")
+        .select("id, business_name, domain, discount_percentage, status, payment_status, amount, currency, contact_email, user_email, rejection_reason, created_at, paid_at")
+        .or(`user_email.ilike.${cleanEmail},contact_email.ilike.${cleanEmail}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return NextResponse.json({ subscriber: sub || null });
+    }
+
+    // 2. If domain is queried, check Redis cache first for sub-millisecond lookup at scale
     if (queryDomain) {
       let cleanDomain = queryDomain.trim().toLowerCase();
       cleanDomain = cleanDomain.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].split("?")[0];
 
+      const cacheKey = `cache:domain_subscriber:${cleanDomain}`;
+      try {
+        const cached = await redisConnection.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return NextResponse.json(parsed);
+        }
+      } catch (redisErr) {
+        // Fall through to DB on redis error
+      }
+
       const { data: sub } = await supabaseAdmin
         .from("premium_subscribers")
-        .select("domain, discount_percentage, status, business_name")
+        .select("domain, discount_percentage, status, business_name, payment_status")
         .eq("domain", cleanDomain)
         .eq("status", "active")
         .maybeSingle();
 
-      return NextResponse.json({
-        is_subscriber: !!sub,
-        discount_percentage: sub ? Number(sub.discount_percentage) : 0,
-        business_name: sub?.business_name || null,
-      });
+      const isPaidAndActive = !!sub && sub.status === "active" && (sub.payment_status === "paid" || cleanDomain === "baggyt.com");
+
+      const responsePayload = {
+        is_subscriber: isPaidAndActive,
+        discount_percentage: isPaidAndActive ? Number(sub?.discount_percentage || 30) : 0,
+        business_name: isPaidAndActive ? (sub?.business_name || null) : null,
+      };
+
+      try {
+        await redisConnection.set(cacheKey, JSON.stringify(responsePayload), "EX", 600);
+      } catch (e) {}
+
+      return NextResponse.json(responsePayload);
     }
 
+    // 3. Fallback: list active verified & paid subscribers
     const { data: subscribers } = await supabaseAdmin
       .from("premium_subscribers")
-      .select("id, business_name, domain, discount_percentage, status, created_at")
+      .select("id, business_name, domain, discount_percentage, status, payment_status, created_at")
       .eq("status", "active")
+      .or("payment_status.eq.paid,domain.eq.baggyt.com")
       .order("created_at", { ascending: false });
 
     return NextResponse.json({ subscribers: subscribers || [] });

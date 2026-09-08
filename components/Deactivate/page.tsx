@@ -4,9 +4,7 @@ import { useState } from "react";
 import { deactivationSchema } from "@/lib/validationSchemas";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
-import HeaderJoin from "../HeaderJoin/page";
-import Footer from "../Footer/page";
-import { AlertTriangle, CheckCircle2, ShieldAlert, AlertCircle } from "lucide-react";
+import { CheckCircle2, ShieldAlert, AlertCircle } from "lucide-react";
 
 interface Session {
   user?: {
@@ -105,7 +103,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                 <li> Highlights and Campaigns</li>
                 <li> Account Monetization Progress</li>
                 <li> Wallet Balance and Payment Records</li>
-                <li> User Profile & Demographics</li>
+                <li> User Profile and Demographics</li>
               </ul>
 
               <div style={{ marginBottom: "16px", marginTop: "16px" }}>

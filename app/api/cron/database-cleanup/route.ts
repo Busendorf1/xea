@@ -35,15 +35,21 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error archiving platform ads:", err.message || err);
     }
 
-    // 3. Purge completed ads older than 24 hours from historical archive
+    // 3. Purge completed ads older than 48 hours from historical archive and active tables
     try {
       console.log("🧹 Cron: Purging expired completed ads from archive...");
       const { error: errAds } = await supabaseAdmin.rpc("delete_expired_completed_ads");
       if (errAds) {
-        console.error("❌ Cron: Failed to purge expired completed ads:", errAds.message);
-      } else {
-        console.log("✅ Cron: Completed ads purged successfully.");
+        console.warn("⚠️ Cron: RPC delete_expired_completed_ads failed, executing direct fallback:", errAds.message);
       }
+      // Direct cleanup fallback: delete from completed_ads, addsactive, and adds where completed_at is older than 48 hours
+      const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      await Promise.all([
+        supabaseAdmin.from("addsactive").delete().not("completed_at", "is", null).lt("completed_at", fortyEightHoursAgo),
+        supabaseAdmin.from("adds").delete().not("completed_at", "is", null).lt("completed_at", fortyEightHoursAgo),
+        supabaseAdmin.from("completed_ads").delete().lt("completed_at", fortyEightHoursAgo)
+      ]);
+      console.log("✅ Cron: Completed ads purged successfully.");
     } catch (err: any) {
       console.error("❌ Cron: Unexpected error purging completed ads:", err.message || err);
     }

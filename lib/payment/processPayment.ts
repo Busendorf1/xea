@@ -48,7 +48,8 @@ export async function processSuccessfulPayment(
       custom_sponsor_handle
     } = metadata as any;
 
-    const targetTable = is_admin_post ? "newsactive" : "news";
+    // All submitted user highlights strictly go to 'news' review queue for admin moderation
+    const targetTable = "news";
 
     const { error: insertError } = await supabaseAdmin.from(targetTable).insert([
       {
@@ -76,11 +77,71 @@ export async function processSuccessfulPayment(
     // Insert user notification
     await supabaseAdmin.from("notifications").insert({
       user_email,
-      title: is_admin_post ? "Highlight Live 🚀" : "Highlight Submitted 🚀",
-      message: is_admin_post
-        ? `Your highlight "${title}" has been published directly.`
-        : `Your highlight "${title}" has been submitted for review. It will be published after admin approval!`,
+      title: "Highlight Submitted 🚀",
+      message: `Your highlight "${title}" has been submitted for review. It will be published after admin approval!`,
     });
+  } else if (type === "boost_campaign" || type === "boost") {
+    const {
+      ad_id,
+      additional_impressions = 0,
+      additional_days = 0,
+      cost_per_impression,
+      user_frequency_cap,
+      gender,
+      country,
+      state,
+      province,
+      industry,
+      interest
+    } = metadata as any;
+
+    if (ad_id) {
+      let { data: ad } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).maybeSingle();
+      if (!ad) {
+        const { data: activeAd } = await supabaseAdmin.from("addsactive").select("*").eq("id", ad_id).maybeSingle();
+        ad = activeAd;
+      }
+
+      if (ad) {
+        const currentCost = Number(ad.cost_per_impression || 25);
+        const effectiveCost = cost_per_impression && Number(cost_per_impression) > currentCost
+          ? Number(cost_per_impression)
+          : currentCost;
+
+        const updatePayload: Record<string, any> = {
+          cost_per_impression: effectiveCost,
+          completed_at: null,
+          is_paused: false,
+        };
+
+        if (Number(additional_impressions) > 0) {
+          updatePayload.impressions = Number(ad.impressions || 1000) + Number(additional_impressions);
+        }
+        if (Number(additional_days) > 0) {
+          updatePayload.campaign_days = Number(ad.campaign_days || 1) + Number(additional_days);
+        }
+        if (user_frequency_cap !== undefined && Number(user_frequency_cap) > 0) {
+          updatePayload.user_frequency_cap = Number(user_frequency_cap);
+        }
+        if (gender) updatePayload.gender = gender;
+        if (country !== undefined) updatePayload.country = country;
+        if (state !== undefined) updatePayload.state = state;
+        if (province !== undefined) updatePayload.province = province;
+        if (industry) updatePayload.industry = Array.isArray(industry) ? industry : [industry];
+        if (interest) updatePayload.interest = Array.isArray(interest) ? interest : [interest];
+
+        await Promise.all([
+          supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
+          supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id),
+        ]);
+
+        await supabaseAdmin.from("notifications").insert({
+          user_email,
+          title: "Campaign Priority Boosted ⚡",
+          message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost}.`,
+        });
+      }
+    }
   } else if (type === "ad") {
     const adData = metadata.adData as Record<string, unknown> | undefined;
     if (!adData) {
@@ -131,6 +192,9 @@ export async function processSuccessfulPayment(
       console.error("❌ RPC submit_ad_campaign failed:", rpcError);
       throw rpcError;
     }
+
+    // Ensure newly submitted ad is only in 'adds' review queue and not in addsactive
+    await supabaseAdmin.from("addsactive").delete().eq("id", adData.id);
 
     // If ad is bidded, record in bidded_ads table for instant priority auction inclusion
     const isBidded = !!adData.isBidded;

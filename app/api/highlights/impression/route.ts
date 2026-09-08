@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -20,11 +20,16 @@ export async function POST(req: NextRequest) {
     const emailKey = email.toLowerCase().trim();
     const redisKey = `hl:views:${emailKey}:${dateStr}`;
 
-    // Atomically increment render count for this highlight for this user today
-    const newCount = await redisConnection.hincrby(redisKey, String(highlightId), 1);
-    
-    // Set 24-hour TTL (86400s) on key so tracking expires naturally
-    await redisConnection.expire(redisKey, 86400);
+    let newCount = 1;
+    try {
+      // Atomically increment render count for this highlight for this user today
+      newCount = (await redisConnection.hincrby(redisKey, String(highlightId), 1)) || 1;
+      
+      // Set 24-hour TTL (86400s) on key so tracking expires naturally
+      await redisConnection.expire(redisKey, 86400).catch(() => {});
+    } catch (redisErr: any) {
+      console.warn("⚠️ Redis highlight view tracking bypassed:", redisErr?.message || redisErr);
+    }
 
     return NextResponse.json({ success: true, highlightId, count: newCount });
   } catch (err: any) {

@@ -65,30 +65,38 @@ export default function FrontText() {
       <div className={styles.glowBlob1}></div>
       <div className={styles.glowBlob2}></div>
 
+      {/* 3D Aerospace Orbital Motion Graphic (Pure Visual, Zero Text) */}
+      <div className={styles.orbitalStage} aria-hidden="true">
+        <div className={styles.horizonGlow}></div>
+        <div className={styles.perspectiveGrid}></div>
+        <div className={styles.gyroscopeSphere}>
+          <div className={`${styles.orbitRing} ${styles.orbitRing1}`}>
+            <span className={styles.orbitNode}></span>
+          </div>
+          <div className={`${styles.orbitRing} ${styles.orbitRing2}`}>
+            <span className={styles.orbitNode2}></span>
+          </div>
+          <div className={`${styles.orbitRing} ${styles.orbitRing3}`}></div>
+          <div className={styles.gyroCore}></div>
+        </div>
+        {/* Aerospace HUD Reticle Marks (Zero Text) */}
+        <div className={`${styles.reticleMark} ${styles.reticleTopLeft}`}></div>
+        <div className={`${styles.reticleMark} ${styles.reticleTopRight}`}></div>
+        <div className={`${styles.reticleMark} ${styles.reticleBottomLeft}`}></div>
+        <div className={`${styles.reticleMark} ${styles.reticleBottomRight}`}></div>
+      </div>
+
       <div className={styles.heroContent}>
         {/* Left Side: Value Proposition */}
         <div className={styles.leftSection}>
-          {/* <div className={styles.tagline}>
-            <span>Attention Monetization Platform</span>
-          </div> */}
-           <h1 className={styles.title}>
+          <h1 className={styles.title}>
             <span className={styles.titleLine}>Pay for my attention,</span>
             <span className={`${styles.titleLine} ${styles.gradientText}`}>I will offer it willingly!</span>
           </h1>
-          {/* <h1 className={styles.title}>
-            <span className={styles.titleLine}>.</span>
-            <span className={`${styles.titleLine} ${styles.gradientText}`}>.</span>
-          </h1> */}
-           {/* <h1 className={styles.title}>
-            Your Attention Is Valuable.<br />
-            <span className={styles.gradientText}>Get Rewarded For It.</span>
-          </h1> */}
+
           <p className={styles.subtitle}>
-          99.99% Ad deliverability. Advertise your business, reward your audience.
+            99.99% Ad deliverability. Advertise your business, reward your audience.
           </p>
-          {/* <p className={styles.subtitle}>
-          99.99% Ads deliverability. We share 60% of ads revenue with genuine ads listeners.
-          </p> */}
 
           <div className={styles.howItWorksWrapper}>
             <button 
@@ -99,35 +107,6 @@ export default function FrontText() {
               <span className={styles.arrowIcon}></span>
             </button>
           </div>
-
-
-           {/* <p className={styles.subtitle}>
-            Discover curated offers, jobs, and announcements tailored specifically to your background and interests. Earn guaranteed cash payouts for every second of your engagement.
-          </p> */}
-
-          {/* <div className={styles.featuresList}>
-            <div className={styles.featureItem}>
-              <div className={styles.featureIcon}>🤩</div>
-              <div>
-                <h4>Smart Matching</h4>
-                <p>See ads only relevant to your interests, traits, and industry.</p>
-              </div>
-            </div>
-            <div className={styles.featureItem}>
-              <div className={styles.featureIcon}>💰</div>
-              <div>
-                <h4>Guaranteed Earnings</h4>
-                <p>Earn direct UBI payouts directly credited to your digital wallet.</p>
-              </div>
-            </div>
-            <div className={styles.featureItem}>
-              <div className={styles.featureIcon}>⚡</div>
-              <div>
-                <h4>Zero Hassle Sign In</h4>
-                <p>Use your existing Google/Gmail account for single-tap onboarding.</p>
-              </div>
-            </div>
-          </div> */}
         </div>
 
         {/* Right Side: Login Card */}

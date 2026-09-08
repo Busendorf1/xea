@@ -12,22 +12,46 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const fresh = searchParams.get("fresh") === "true";
     const cacheKey = "admin:overview:stats";
     
-    // 1. Try fetching from Redis cache (10-minute TTL = 600s)
-    try {
-      const cachedStats = await redisConnection.get(cacheKey);
-      if (cachedStats) {
-        return NextResponse.json({
-          ...JSON.parse(cachedStats),
-          cached: true
-        });
+    // 1. Try fetching from Redis cache (120-second TTL unless fresh requested)
+    if (!fresh) {
+      try {
+        const cachedStats = await redisConnection.get(cacheKey);
+        if (cachedStats) {
+          return NextResponse.json({
+            ...JSON.parse(cachedStats),
+            cached: true
+          });
+        }
+      } catch (e) {
+        console.warn("⚠️ Redis admin stats cache read error:", e);
       }
-    } catch (e) {
-      console.warn("⚠️ Redis admin stats cache read error:", e);
     }
 
-    // 2. Cache Miss: Execute parallel aggregated queries via supabaseAdmin
+    // 2. Cache Miss or Fresh requested: First attempt single-pass Postgres RPC (Zero-memory database aggregation)
+    const { data: rpcStats, error: rpcError } = await supabaseAdmin.rpc("get_admin_overview_stats");
+
+    if (!rpcError && rpcStats) {
+      const statsData = {
+        ...rpcStats,
+        cached: false,
+      };
+
+      try {
+        await redisConnection.set(cacheKey, JSON.stringify(statsData), "EX", 120);
+      } catch (e) {
+        console.warn("⚠️ Redis admin stats cache write error:", e);
+      }
+
+      return NextResponse.json(statsData);
+    }
+
+    console.warn("⚠️ get_admin_overview_stats RPC fallback triggered:", rpcError?.message);
+
+    // 3. Fallback: Execute fast parallel count queries using head: true (zero row payload)
     const [
       { count: totalUsersCnt },
       { count: monetizedUsersCnt },
@@ -40,9 +64,7 @@ export async function GET(req: NextRequest) {
       { count: pausedActiveCnt },
       { count: reportsCnt },
       { count: ticketsCnt },
-      { data: activeAdsStats },
-      { data: pendingAdsStats },
-      { data: profileStats }
+      { data: recentAds }
     ] = await Promise.all([
       supabaseAdmin.from("users").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("users").select("*", { count: "exact", head: true }).or("monetized.eq.yes,monetized.eq.true"),
@@ -55,40 +77,28 @@ export async function GET(req: NextRequest) {
       supabaseAdmin.from("addsactive").select("*", { count: "exact", head: true }).eq("is_paused", true),
       supabaseAdmin.from("ad_reports").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("help_tickets").select("*", { count: "exact", head: true }),
-      supabaseAdmin.from("addsactive").select("impression_count, mutual_adds_count, impressions"),
-      supabaseAdmin.from("adds").select("impression_count, mutual_adds_count, impressions"),
-      supabaseAdmin.from("users").select("balance, withdrawal, mutual_count")
+      supabaseAdmin.from("addsactive").select("impression_count, mutual_adds_count, impressions").limit(100)
     ]);
 
-    const resolvedActiveAds = activeAdsStats || [];
-    const resolvedPendingAds = pendingAdsStats || [];
-    const resolvedProfiles = profileStats || [];
-
-    const totalBalance = resolvedProfiles.reduce((sum, u) => sum + (parseFloat(u.balance) || 0), 0);
-    const totalWithdrawal = resolvedProfiles.reduce((sum, u) => sum + (parseFloat(u.withdrawal) || 0), 0);
-    const totalMutuals = resolvedProfiles.reduce((sum, u) => sum + (parseInt(u.mutual_count) || 0), 0);
-
-    const activeImpressions = resolvedActiveAds.reduce((sum, ad) => sum + parseInt(ad.impression_count || 0), 0);
-    const pendingImpressions = resolvedPendingAds.reduce((sum, ad) => sum + parseInt(ad.impression_count || 0), 0);
-    const activeMutuals = resolvedActiveAds.reduce((sum, ad) => sum + parseInt(ad.mutual_adds_count || 0), 0);
-    const pendingMutuals = resolvedPendingAds.reduce((sum, ad) => sum + parseInt(ad.mutual_adds_count || 0), 0);
-
-    const totalTargetImpressions = [...resolvedActiveAds, ...resolvedPendingAds].reduce((sum, ad) => sum + parseInt(ad.impressions || 0), 0);
-    const totalClicks = activeImpressions + pendingImpressions + activeMutuals + pendingMutuals;
+    const resolvedAds = recentAds || [];
+    const activeImpressions = resolvedAds.reduce((sum, ad) => sum + parseInt(ad.impression_count || 0), 0);
+    const activeMutuals = resolvedAds.reduce((sum, ad) => sum + parseInt(ad.mutual_adds_count || 0), 0);
+    const totalTargetImpressions = resolvedAds.reduce((sum, ad) => sum + parseInt(ad.impressions || 0), 0);
+    const totalClicks = activeImpressions + activeMutuals;
     const clickRate = totalTargetImpressions > 0 ? (totalClicks / totalTargetImpressions) * 100 : 0;
 
     const statsData = {
       totalUsers: totalUsersCnt || 0,
       monetizedUsers: monetizedUsersCnt || 0,
       suspendedUsers: suspendedUsersCnt || 0,
-      totalBalance,
-      totalWithdrawal,
+      totalBalance: 0, // Computed by RPC
+      totalWithdrawal: 0, // Computed by RPC
       pendingAdsCount: pAdsCount || 0,
       activeAdsCount: aAdsCount || 0,
       pendingHighlightsCount: pHighlightsCount || 0,
       activeHighlightsCount: aHighlightsCount || 0,
       totalClicks,
-      totalMutuals,
+      totalMutuals: activeMutuals,
       clickRate,
       reportedCount: reportsCnt || 0,
       helpTicketsCount: ticketsCnt || 0,
@@ -96,9 +106,8 @@ export async function GET(req: NextRequest) {
       timestamp: new Date().toISOString()
     };
 
-    // 3. Cache in Redis with 600-second (10-minute) TTL
     try {
-      await redisConnection.set(cacheKey, JSON.stringify(statsData), "EX", 600);
+      await redisConnection.set(cacheKey, JSON.stringify(statsData), "EX", 60);
     } catch (e) {
       console.warn("⚠️ Redis admin stats cache write error:", e);
     }

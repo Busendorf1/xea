@@ -5,7 +5,7 @@ import redisConnection from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -87,6 +87,9 @@ export async function POST(req: NextRequest) {
       console.error("❌ Error updating is_paused:", addsUpdate.error || activeUpdate.error);
       return NextResponse.json({ error: addsUpdate.error?.message || activeUpdate.error?.message }, { status: 500 });
     }
+
+    const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
+    await invalidateCachedUserCampaigns(emailLower);
 
     return NextResponse.json({
       success: true,

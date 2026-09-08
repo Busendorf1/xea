@@ -9,7 +9,6 @@ import { sendMoneySchema, withdrawalSchema } from "@/lib/validationSchemas";
 import { 
   Sun, 
   Moon, 
-  Contrast, 
   User, 
   Settings, 
   Compass, 
@@ -98,7 +97,6 @@ export default function DashboardClient({
 }: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<UserProfile>(initialUser);
-  const [monetizing, setMonetizing] = useState(false);
 
   const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, user?.country);
 
@@ -152,7 +150,7 @@ export default function DashboardClient({
           }));
         }
       }
-    } catch (e) {
+    } catch {
       // Quiet background error catch
     }
   };
@@ -595,6 +593,26 @@ export default function DashboardClient({
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.76rem", paddingTop: "6px", borderTop: "1px solid var(--card-border)" }}>
                 <button
                   type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectAllNotifs();
+                  }}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "5px",
+                    backgroundColor: selectedNotifs.length === notifications.length ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                    border: "1px solid var(--card-border)",
+                    color: "var(--text-muted)",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {selectedNotifs.length === notifications.length ? "Deselect All" : "Select All"}
+                </button>
+
+                <button
+                  type="button"
                   onClick={async (e) => {
                     e.stopPropagation();
                     await handleDeleteSelectedNotifs();
@@ -819,73 +837,7 @@ export default function DashboardClient({
     }
   };
 
-  const handleStandardMonetize = async () => {
-    setMonetizing(true);
-    try {
-      const response = await fetch("/api/payments/initialize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "monetization_standard",
-          amount: 28000,
-          metadata: {
-            type: "monetization_standard",
-            user_email: email.toLowerCase()
-          },
-          callbackUrl: `${window.location.origin}/user/statement`
-        })
-      });
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        alert(`Failed to initialize payment: ${data.error || "Server error"}`);
-      } else {
-        alert("Redirecting to Paystack to complete your Standard Monetization subscription payment...");
-        window.location.href = data.authorization_url;
-      }
-    } catch (e: any) {
-      alert(`An error occurred: ${e.message}`);
-    } finally {
-      setMonetizing(false);
-    }
-  };
-
-  const handleStandardMonetizeWallet = async () => {
-    if (user.balance < 28000) {
-      alert("Insufficient wallet balance. You need at least ₦28,000.00 to renew via wallet.");
-      return;
-    }
-    if (!confirm(`Deduct ${formatCurrency(28000)} from your wallet balance to renew your Standard Monetization subscription?`)) return;
-    setMonetizing(true);
-    try {
-      const response = await fetch("/api/payments/wallet-pay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "monetization_standard",
-          amount: 28000,
-          metadata: { type: "monetization_standard", user_email: email.toLowerCase() }
-        })
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        alert(`Payment failed: ${data.error || "Server error"}`);
-      } else {
-        alert("✅ Subscription renewed! Your Standard Monetization is now active.");
-        setUser((prev) => ({
-          ...prev,
-          balance: Math.max(0, (prev.balance || 0) - 28000),
-          monetized: true,
-        }));
-        refreshProfileQuietly();
-        fetchNotifications();
-      }
-    } catch (e: any) {
-      alert(`An error occurred: ${e.message}`);
-    } finally {
-      setMonetizing(false);
-    }
-  };
   
   const feedAreaRef = useRef<HTMLElement>(null);
   const highlightsRef = useRef<HTMLDivElement>(null);
@@ -902,7 +854,6 @@ export default function DashboardClient({
 
   // Mobile Header scroll behavior states
   const [showHeader, setShowHeader] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
 
   // Sync window size state
   useEffect(() => {
@@ -1373,14 +1324,12 @@ export default function DashboardClient({
                   onClick={() => setShowWithdrawModal(true)}
                   className={styles.withdrawBtn}
                   disabled={
-                    !((user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) &&
-                      (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now()))
+                    !(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
                   }
                 >
-                  {((user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) &&
-                  (!user.monetized_until || new Date(user.monetized_until).getTime() > Date.now()))
+                  {(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
                     ? "Request Withdrawal"
-                    : "Monetize to withdraw earnings"}
+                    : "Complete 300 clicks to withdraw earnings"}
                 </button>
 
                 <button

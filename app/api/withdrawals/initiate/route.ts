@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { createHash } from "crypto";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
-const MAX_WITHDRAWAL_AMOUNT = 50000; // 50,000 NGN
 
 export async function POST(req: NextRequest) {
   try {

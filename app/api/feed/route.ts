@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth0";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
-import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import crypto from "crypto";
 import redisConnection from "@/lib/redis";
 import { env } from "@/lib/env";
@@ -22,8 +21,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const session = await auth0.getSession();
-    const userId = session?.user?.sub || email;
     const now = new Date();
     const servedAt = Date.now();
 

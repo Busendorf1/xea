@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import supabaseAdmin from "./utils/dbAdmin";
 import { invalidateCachedProfile, invalidateAllHighlights } from "./utils/cache";
 import { env } from "./env";
-import { streamImpressionsToClickHouse } from "./clickhouse";
+import { streamImpressionsToClickHouse, getClickHouseClient } from "./clickhouse";
 
 const connectionOptions = {
   host: env.REDIS_HOST,
@@ -21,6 +21,9 @@ export interface FeedJobData {
   email: string;
   type: "earn" | "mutual" | "seen" | "action-click";
   clickType?: string;
+  amount?: number;
+  deviceId?: string;
+  cpi?: number;
 }
 
 export interface CampaignJobPayload {
@@ -188,6 +191,16 @@ export const flushBatch = async (): Promise<void> => {
         }
       })
     );
+
+    // Stream mutual interaction events to ClickHouse Cloud
+    streamImpressionsToClickHouse(
+      mutuals.map((m) => ({
+        ad_id: m.job.data.adId,
+        user_email: m.job.data.email,
+        cost_per_impression: 0,
+        interaction_type: "mutual",
+      }))
+    ).catch((err) => console.warn("⚠️ Worker ClickHouse stream (mutual) warning:", err));
   }
 
   // 4. Process Action redirect clicks
@@ -546,11 +559,56 @@ paymentWorker.on("failed", async (job, err) => {
   }
 });
 
+// ----------------------------------------------------
+// CLICKHOUSE CLOUD KEEP-ALIVE HEARTBEAT (PREVENTS SLEEP)
+// ----------------------------------------------------
+const CLICKHOUSE_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function pingClickHouseHeartbeat(): Promise<boolean> {
+  const client = getClickHouseClient();
+  if (!client) return false;
+
+  try {
+    const pingResult = await client.ping();
+    if (pingResult.success) {
+      await client.query({
+        query: "SELECT 1",
+        format: "JSONEachRow",
+      });
+      console.log("⚡ [Render Worker] ClickHouse Cloud keep-alive ping successful (Instance Warm)");
+      return true;
+    }
+    return false;
+  } catch (err: any) {
+    console.warn("⚠️ [Render Worker] ClickHouse keep-alive ping warning:", err?.message || err);
+    return false;
+  }
+}
+
+let clickhouseHeartbeatTimer: NodeJS.Timeout | null = null;
+
+if (process.env.NODE_ENV !== "test") {
+  // Fire initial warm-up ping 10 seconds after worker boot
+  setTimeout(() => {
+    pingClickHouseHeartbeat().catch(() => {});
+  }, 10000);
+
+  // Recurring 5-minute keep-alive heartbeat
+  clickhouseHeartbeatTimer = setInterval(() => {
+    pingClickHouseHeartbeat().catch(() => {});
+  }, CLICKHOUSE_HEARTBEAT_INTERVAL_MS);
+}
+
 /**
  * Gracefully shuts down all BullMQ workers and flushes any pending in-flight batches.
  */
 export async function shutdownWorkers(): Promise<void> {
   console.log("🛑 Gracefully shutting down BullMQ workers...");
+  if (clickhouseHeartbeatTimer) {
+    clearInterval(clickhouseHeartbeatTimer);
+    clickhouseHeartbeatTimer = null;
+  }
+
   try {
     // 1. Flush any pending batch interactions
     await flushBatch();
@@ -568,6 +626,6 @@ export async function shutdownWorkers(): Promise<void> {
   }
 }
 
-const workers = { feedWorker, campaignsWorker, hlsWorker, paymentWorker, shutdownWorkers };
+const workers = { feedWorker, campaignsWorker, hlsWorker, paymentWorker, pingClickHouseHeartbeat, shutdownWorkers };
 export default workers;
 

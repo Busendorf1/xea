@@ -3,8 +3,15 @@
 -- Run this in your Supabase Dashboard -> SQL Editor
 -- ============================================================
 
--- 1. Accelerate statement payments queries by user_email and type
+-- 1. Accelerate statement queries by user_email ordered by created_at DESC (unified & paginated statements)
+CREATE INDEX IF NOT EXISTS idx_payments_user_email_created ON public.payments (user_email, created_at DESC);
+
+-- 2. Accelerate statement queries with lowercase user_email function index
+CREATE INDEX IF NOT EXISTS idx_payments_lower_email_created_desc ON public.payments ((lower(user_email)), created_at DESC);
+
+-- 3. Accelerate statement queries filtered by type (e.g. withdrawal vs payments)
 CREATE INDEX IF NOT EXISTS idx_payments_user_email_type ON public.payments (user_email, type, created_at DESC);
 
--- 2. Accelerate statement queries by user_email ordered by created_at DESC
-CREATE INDEX IF NOT EXISTS idx_payments_user_email_created ON public.payments (user_email, created_at DESC);
+-- 4. Accelerate statement queries filtered by lowercase user_email and type
+CREATE INDEX IF NOT EXISTS idx_payments_lower_email_type_created_desc ON public.payments ((lower(user_email)), type, created_at DESC);
+

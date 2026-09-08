@@ -8,6 +8,7 @@ import styles from "../Adreview/page.module.css"; // Your CSS module
 interface AdPreviewCardProps {
   mediaFiles: File[];
   mediaType: "text" | "image" | "video" | "mixed" | "";
+  existingMedia?: string;
   actionButtons: string[];
   actionDetails: Record<string, string>;
   adContent: string;
@@ -22,6 +23,7 @@ interface AdPreviewCardProps {
 const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   mediaFiles = [],
   mediaType = "text",
+  existingMedia = "",
   actionButtons = [],
   actionDetails = {},
   adContent = "",
@@ -44,10 +46,13 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
       return () => {
         urls.forEach((url) => URL.revokeObjectURL(url));
       };
+    } else if (existingMedia && existingMedia.trim() && existingMedia.toLowerCase() !== "text") {
+      setMediaURLs(existingMedia.split(",").map((s) => s.trim()).filter(Boolean));
+      setCurrentMediaIndex(0);
     } else {
       setMediaURLs([]);
     }
-  }, [mediaFiles]);
+  }, [mediaFiles, existingMedia]);
 
   const getIcon = (type: string) => {
     switch (type) {

@@ -1,37 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth0";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
+import { verifyAdminUser } from "@/lib/authHelper";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
-
-// Admin email whitelist logic
-const getAdminEmails = (): string[] => {
-  return process.env.ADMIN_EMAILS
-    ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
-    : [];
-};
-
-// Middleware-like verification helper
-async function verifyAdmin() {
-  const session = await auth0.getSession();
-  if (!session || !session.user) {
-    return { errorResponse: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), email: null };
-  }
-
-  const email = session.user.email?.toLowerCase();
-  if (!email) {
-    return { errorResponse: NextResponse.json({ error: "No email associated with session" }, { status: 400 }), email: null };
-  }
-
-  const adminEmails = getAdminEmails();
-  if (!adminEmails.includes(email)) {
-    return { errorResponse: NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 }), email };
-  }
-
-  return { errorResponse: null, email };
-}
 
 // Zod validation schema for POST actions
 const adminActionSchema = z.object({
@@ -40,9 +13,33 @@ const adminActionSchema = z.object({
   payload: z.record(z.string(), z.any()).optional(),
 });
 
+async function recordAdminAudit(
+  adminEmail: string,
+  action: string,
+  targetId?: string,
+  targetType: string = "user",
+  reason?: string | null,
+  previousState?: any,
+  newState?: any
+) {
+  try {
+    await supabaseAdmin.from("admin_audit_logs").insert([{
+      admin_email: adminEmail.toLowerCase(),
+      action,
+      target_id: targetId || null,
+      target_type: targetType,
+      previous_state: previousState ? JSON.parse(JSON.stringify(previousState)) : null,
+      new_state: newState ? JSON.parse(JSON.stringify(newState)) : null,
+      reason: reason || null,
+    }]);
+  } catch {}
+}
+
 export async function GET(req: NextRequest) {
-  const { errorResponse } = await verifyAdmin();
-  if (errorResponse) return errorResponse;
+  const admin = await verifyAdminUser(req);
+  if (!admin) {
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+  }
 
   try {
     const searchParams = req.nextUrl.searchParams;
@@ -65,36 +62,20 @@ export async function GET(req: NextRequest) {
       const { data: statsJson, error: rpcError } = await supabaseAdmin.rpc("get_admin_overview_stats");
 
       if (!rpcError && statsJson) {
-        // Cache result in Redis for 60 seconds
         await redisConnection.set(cacheKey, JSON.stringify(statsJson), "EX", 60).catch(() => {});
         return NextResponse.json(statsJson);
       }
 
-      // Fallback: If RPC is not created yet, run optimized database count queries
-      console.warn("⚠️ get_admin_overview_stats RPC fallback triggered:", rpcError?.message);
-      const { data: users, error } = await supabaseAdmin
-        .from("users")
-        .select("balance, withdrawal, mutual_count, suspended_until, monetized");
-
-      if (error) {
-        console.error("❌ Admin API get stats error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-
-      const resolvedUsers = users || [];
-      const totalBalance = resolvedUsers.reduce((sum, u) => sum + parseFloat(u.balance || 0), 0);
-      const totalWithdrawal = resolvedUsers.reduce((sum, u) => sum + parseFloat(u.withdrawal || 0), 0);
-      const totalMutuals = resolvedUsers.reduce((sum, u) => sum + parseInt(u.mutual_count || 0), 0);
-      const monetizedCount = resolvedUsers.filter(u => u.monetized === "yes" || u.monetized === true).length;
-      const suspendedCount = resolvedUsers.filter(u => u.suspended_until && new Date(u.suspended_until).getTime() > Date.now()).length;
-
+      // Fallback: fast count queries
+      console.warn("⚠️ get_admin_overview_stats RPC fallback triggered in users route:", rpcError?.message);
+      const { count: totalUsersCnt } = await supabaseAdmin.from("users").select("*", { count: "exact", head: true });
       const fallbackStats = {
-        totalUsers: resolvedUsers.length,
-        totalBalance,
-        totalWithdrawal,
-        totalMutuals,
-        monetizedUsers: monetizedCount,
-        suspendedUsers: suspendedCount
+        totalUsers: totalUsersCnt || 0,
+        totalBalance: 0,
+        totalWithdrawal: 0,
+        totalMutuals: 0,
+        monetizedUsers: 0,
+        suspendedUsers: 0,
       };
 
       await redisConnection.set(cacheKey, JSON.stringify(fallbackStats), "EX", 60).catch(() => {});
@@ -102,11 +83,34 @@ export async function GET(req: NextRequest) {
 
     } else {
       // Paginated and searched users list
-      const page = parseInt(searchParams.get("page") || "0", 10);
+      const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
       const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10), 1), 100);
-      const search = searchParams.get("search") || "";
+      const search = searchParams.get("search")?.trim() || "";
+      const fresh = searchParams.get("fresh") === "true";
 
-      let query = supabaseAdmin.from("users").select("*", { count: "exact" });
+      const cacheKey = `admin:users:list:${page}:${limit}:${search.toLowerCase()}`;
+
+      // 1. Try Redis cache first (30-second TTL) for instant response (<2ms)
+      if (!fresh) {
+        try {
+          const cached = await redisConnection.get(cacheKey);
+          if (cached) {
+            return NextResponse.json({ ...JSON.parse(cached), cached: true }, {
+              headers: {
+                "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
+                "X-Cache": "HIT",
+              },
+            });
+          }
+        } catch (err) {
+          console.warn("⚠️ Redis read error in /api/admin/users:", err);
+        }
+      }
+
+      const dbClient = supabaseReadOnly || supabaseAdmin;
+      // Fetch only the specific fields needed by the admin dashboard to minimize PostgreSQL memory & wire transfer
+      const selectedColumns = "id, username, email, firstName, lastName, business_name, phone, state, country, balance, withdrawal, monetized, monetization_type, monetized_until, monetized_at, suspended_until, ad_account_status, ad_ban_until, ad_ban_reason, mutual_count, created_at";
+      let query = dbClient.from("users").select(selectedColumns, { count: "exact" });
 
       if (search) {
         query = query.or(`email.ilike.%${search}%,username.ilike.%${search}%,firstName.ilike.%${search}%,lastName.ilike.%${search}%,business_name.ilike.%${search}%`);
@@ -121,7 +125,58 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      return NextResponse.json({ users: users || [], count: count || 0 });
+      const resolvedUsers = users || [];
+
+      // Server-Side Enrichment for the current page (eliminates client-side DB roundtrips)
+      let enrichedUsers = resolvedUsers;
+      if (resolvedUsers.length > 0) {
+        const emails = resolvedUsers.map((u: any) => (u.email || "").toLowerCase()).filter(Boolean);
+
+        const [adsRes, activeAdsRes, newsRes, activeNewsRes] = await Promise.all([
+          dbClient.from("adds").select("user_email, impression_count, mutual_adds_count").in("user_email", emails),
+          dbClient.from("addsactive").select("user_email, impression_count, mutual_adds_count").in("user_email", emails),
+          dbClient.from("news").select("user_email").in("user_email", emails),
+          dbClient.from("newsactive").select("user_email").in("user_email", emails),
+        ]);
+
+        const adsData = adsRes.data || [];
+        const activeAdsData = activeAdsRes.data || [];
+        const newsData = newsRes.data || [];
+        const activeNewsData = activeNewsRes.data || [];
+
+        enrichedUsers = resolvedUsers.map((user: any) => {
+          const emailLower = (user.email || "").toLowerCase();
+          const reviewAds = adsData.filter((ad: any) => (ad.user_email || "").toLowerCase() === emailLower);
+          const activeAds = activeAdsData.filter((ad: any) => (ad.user_email || "").toLowerCase() === emailLower);
+
+          const reviewHighlights = newsData.filter((h: any) => (h.user_email || "").toLowerCase() === emailLower).length;
+          const activeHighlights = activeNewsData.filter((h: any) => (h.user_email || "").toLowerCase() === emailLower).length;
+
+          const adImpressionsCount = [...reviewAds, ...activeAds].reduce((sum: number, ad: any) => sum + parseInt(ad.impression_count || 0), 0);
+          const adMutualsCount = [...reviewAds, ...activeAds].reduce((sum: number, ad: any) => sum + parseInt(ad.mutual_adds_count || 0), 0);
+          const totalClicksOnAds = adImpressionsCount + adMutualsCount;
+
+          return {
+            ...user,
+            totalClicksOnAds,
+            reviewAdsCount: reviewAds.length,
+            activeAdsCount: activeAds.length,
+            reviewHighlightsCount: reviewHighlights,
+            activeHighlightsCount: activeHighlights,
+          };
+        });
+      }
+
+      const responsePayload = { users: enrichedUsers, count: count || 0, page, limit };
+
+      // Cache enriched user page in Redis with 30s TTL
+      try {
+        await redisConnection.set(cacheKey, JSON.stringify(responsePayload), "EX", 30);
+      } catch (err) {
+        console.warn("⚠️ Redis write error in /api/admin/users:", err);
+      }
+
+      return NextResponse.json(responsePayload);
     }
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/admin/users:", err);
@@ -130,8 +185,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { errorResponse } = await verifyAdmin();
-  if (errorResponse) return errorResponse;
+  const admin = await verifyAdminUser(req);
+  if (!admin) {
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+  }
 
   try {
     const rawBody = await req.json();
@@ -142,9 +199,17 @@ export async function POST(req: NextRequest) {
     }
 
     const { action, userId, payload } = parseResult.data;
+    const adminEmail = admin.email.toLowerCase();
 
-    // Invalidate cached overview stats in Redis whenever an admin modifies user balances, status, or deletes users
+    // Invalidate cached overview stats and user pages in Redis whenever an admin modifies user balances, status, or deletes users
     await redisConnection.del("admin:overview_stats").catch(() => {});
+    await redisConnection.del("admin:overview:stats").catch(() => {});
+    try {
+      const userListKeys = await redisConnection.keys("admin:users:list:*");
+      if (userListKeys && userListKeys.length > 0) {
+        await redisConnection.del(userListKeys);
+      }
+    } catch {}
 
     if (action === "toggle_monetization") {
       const { nextMonetizedVal, nextMonetizedType, nextMonetizedUntil, isCurrentlyMonetized } = payload || {};
@@ -159,38 +224,94 @@ export async function POST(req: NextRequest) {
         .eq("id", userId);
 
       if (error) throw error;
+
+      await recordAdminAudit(
+        adminEmail,
+        "toggle_monetization",
+        userId,
+        "user",
+        null,
+        null,
+        { monetized: nextMonetizedVal, monetization_type: nextMonetizedType }
+      );
+
       return NextResponse.json({ success: true });
     } 
     
     else if (action === "suspend") {
-      const { suspendedUntil } = payload || {};
+      const { suspendedUntil, reason } = payload || {};
       const { error } = await supabaseAdmin
         .from("users")
         .update({ suspended_until: suspendedUntil })
         .eq("id", userId);
 
       if (error) throw error;
+
+      await recordAdminAudit(
+        adminEmail,
+        "suspend_user",
+        userId,
+        "user",
+        reason || "Admin suspension",
+        null,
+        { suspended_until: suspendedUntil }
+      );
+
       return NextResponse.json({ success: true });
     } 
     
     else if (action === "adjust_balance") {
-      const { newBalance } = payload || {};
+      const { newBalance, reason } = payload || {};
+      const { data: previousUser } = await supabaseAdmin
+        .from("users")
+        .select("balance, email")
+        .eq("id", userId)
+        .maybeSingle();
+
       const { error } = await supabaseAdmin
         .from("users")
         .update({ balance: newBalance })
         .eq("id", userId);
 
       if (error) throw error;
+
+      await recordAdminAudit(
+        adminEmail,
+        "adjust_user_balance",
+        userId,
+        "user",
+        reason || "Manual administrative adjustment",
+        { balance: previousUser?.balance, email: previousUser?.email },
+        { balance: newBalance }
+      );
+
       return NextResponse.json({ success: true });
     } 
     
     else if (action === "delete") {
+      const { data: previousUser } = await supabaseAdmin
+        .from("users")
+        .select("email, username")
+        .eq("id", userId)
+        .maybeSingle();
+
       const { error } = await supabaseAdmin
         .from("users")
         .delete()
         .eq("id", userId);
 
       if (error) throw error;
+
+      await recordAdminAudit(
+        adminEmail,
+        "delete_user",
+        userId,
+        "user",
+        null,
+        previousUser,
+        null
+      );
+
       return NextResponse.json({ success: true });
     } 
     
@@ -214,6 +335,17 @@ export async function POST(req: NextRequest) {
         .eq("id", userId);
 
       if (error) throw error;
+
+      await recordAdminAudit(
+        adminEmail,
+        "update_ad_account_status",
+        userId,
+        "user",
+        banReason || null,
+        null,
+        { adStatus, adBanUntil, banReason }
+      );
+
       return NextResponse.json({ success: true });
     } 
     

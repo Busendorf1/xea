@@ -10,7 +10,7 @@ const MONETIZE_STATUS_TTL_SECONDS = 15;
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -92,25 +92,31 @@ export async function GET(req: NextRequest) {
         daysInactive = Math.max(0, Math.floor((now - lastActive) / (1000 * 60 * 60 * 24)));
       }
 
+      let effectiveMonetized = isMonetized;
+      let effectiveClicks = clicks;
+
+      // Immediately enforce 7-day inactivity reset if threshold reached
+      if (daysInactive >= 7 && (isMonetized || clicks > 0)) {
+        await supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower });
+        effectiveMonetized = false;
+        effectiveClicks = 0;
+      }
+
       const { calculateAtwTier } = await import("@/lib/referralEngine");
-      const { tier: computedTier } = calculateAtwTier(clicks);
+      const { tier: computedTier } = calculateAtwTier(effectiveClicks);
 
       payload = {
         success: true,
-        isMonetized,
-        clicksCount: clicks,
-        clicksRemaining: Math.max(0, 300 - clicks),
+        isMonetized: effectiveMonetized,
+        clicksCount: effectiveClicks,
+        clicksRemaining: Math.max(0, 300 - effectiveClicks),
         targetClicks: 300,
         atwTier: uData.atw_tier || computedTier,
         referralCode: uData.referral_code || null,
         daysInactive,
         lastActiveAt: uData.last_active_at || null,
+        statusMessage: daysInactive >= 7 ? "Monetization reset due to 7 days of inactivity" : null,
       };
-
-      // Asynchronously trigger status update check in background if inactive >= 7 days
-      if (isMonetized && daysInactive >= 7) {
-        Promise.resolve(supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower })).catch(() => {});
-      }
     }
 
     // Cache payload in Redis to absorb traffic surges
@@ -129,7 +135,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

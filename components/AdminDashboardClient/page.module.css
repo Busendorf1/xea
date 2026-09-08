@@ -187,30 +187,44 @@
 .statCard {
   background-color: var(--sidebar-bg);
   border: 1px solid var(--card-border);
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 12px;
+  padding: 1.25rem 1.35rem;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  transition: transform 0.2s, border-color 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .statCard:hover {
   transform: translateY(-2px);
   border-color: var(--card-border-hover);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
 }
 
-.statIcon {
-  position: absolute;
-  right: 1.5rem;
-  top: 1.5rem;
+.statHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.statIconBox {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
-  opacity: 0.15;
+  flex-shrink: 0;
 }
 
 .statLabel {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -218,15 +232,17 @@
 }
 
 .statValue {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 800;
-  margin: 0.5rem 0;
-  letter-spacing: -1px;
+  margin: 0.25rem 0 0.4rem 0;
+  letter-spacing: -0.5px;
+  color: var(--foreground);
 }
 
 .statDesc {
   font-size: 0.78rem;
   color: var(--text-muted);
+  line-height: 1.4;
 }
 
 /* User management / Account styling */
@@ -437,16 +453,16 @@
 }
 
 .modalHeader {
-  padding: 1.25rem 1.5rem;
+  padding: 1.5rem 1.75rem;
   border-bottom: 1px solid var(--card-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: rgba(255, 255, 255, 0.015);
+  background-color: rgba(255, 255, 255, 0.02);
 }
 
 .modalTitle {
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   font-weight: 700;
   margin: 0;
   color: var(--foreground);
@@ -456,28 +472,28 @@
 }
 
 .modalBody {
-  padding: 1.5rem;
+  padding: 1.75rem 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .modalFooter {
-  padding: 1rem 1.5rem;
+  padding: 1.25rem 1.75rem;
   border-top: 1px solid var(--card-border);
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 0.75rem;
-  background-color: rgba(255, 255, 255, 0.015);
+  gap: 0.85rem;
+  background-color: rgba(255, 255, 255, 0.02);
 }
 
-.btnClose {
+.btnClose, .closeBtn {
   background: transparent;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -485,7 +501,7 @@
   transition: all 0.2s;
 }
 
-.btnClose:hover {
+.btnClose:hover, .closeBtn:hover {
   color: var(--foreground);
   background-color: rgba(255, 255, 255, 0.08);
 }
@@ -540,18 +556,18 @@
 .modalSectionCard {
   background-color: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--card-border);
-  border-radius: 10px;
-  padding: 1.1rem;
+  border-radius: 12px;
+  padding: 1.35rem 1.45rem;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 1.1rem;
 }
 
 .modalSectionTitle {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--foreground);
-  margin: 0 0 0.25rem 0;
+  margin: 0 0 0.35rem 0;
 }
 
 .metricCard {
@@ -1248,5 +1264,18 @@
 
 [data-theme='white'] .reportReasonBox {
   background-color: rgba(0, 0, 0, 0.02);
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 

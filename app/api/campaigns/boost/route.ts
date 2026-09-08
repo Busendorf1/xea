@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -160,10 +160,37 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Failed to process wallet payment." }, { status: 500 });
       }
 
+      // Log wallet transaction in payments table
+      const reference = `wallet_boost_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+      await supabaseAdmin.from("payments").insert({
+        user_email: emailLower,
+        reference,
+        amount: totalCost,
+        status: "success",
+        type: "boost_campaign",
+        description: `Boost priority top-up for Ad #${adId.substring(0, 8)}`,
+        metadata: {
+          ad_id: adId,
+          type: "boost_campaign",
+          additional_impressions: additionalImpressions,
+          additional_days: additionalDays,
+          cost_per_impression: effectiveCost,
+          payment_method: "wallet"
+        }
+      });
+
+      // Update both review and active tables
       await Promise.all([
         supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
         supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
       ]);
+
+      // Insert notification
+      await supabaseAdmin.from("notifications").insert({
+        user_email: emailLower,
+        title: "Campaign Priority Boosted ⚡",
+        message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost} and ${additionalImpressions || 0} additional impressions.`,
+      });
 
       return NextResponse.json({
         success: true,
@@ -179,7 +206,35 @@ export async function POST(req: NextRequest) {
       const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
       
       const origin = req.headers.get("origin") || "http://localhost:3000";
-      const callbackUrl = `${origin}/user/myAds?boost_ref=${reference}`;
+      const isMobile = !!req.headers.get("x-user-email") && !req.headers.get("origin")?.includes("http");
+      const callbackUrl = isMobile 
+        ? "xea-auth://payment-callback"
+        : `${origin}/user/myAds?boost_ref=${reference}`;
+
+      // Insert pending payment record so verify endpoint and webhooks recognize it
+      await supabaseAdmin.from("payments").insert({
+        user_email: emailLower,
+        reference,
+        amount: totalCost,
+        status: "pending",
+        type: "boost_campaign",
+        description: `Card payment boost top-up for Ad #${adId.substring(0, 8)}`,
+        metadata: {
+          ad_id: adId,
+          type: "boost_campaign",
+          additional_impressions: additionalImpressions,
+          additional_days: additionalDays,
+          cost_per_impression: effectiveCost,
+          user_frequency_cap: userFrequencyCap,
+          gender,
+          country,
+          state,
+          province,
+          industry,
+          interest,
+          payment_method: "card"
+        }
+      });
 
       if (paystackSecret) {
         try {
@@ -220,10 +275,14 @@ export async function POST(req: NextRequest) {
       }
 
       // Fallback test payment URL if secret key is not set
+      const mockUrl = new URL(callbackUrl);
+      mockUrl.searchParams.set("reference", reference);
+      mockUrl.searchParams.set("trxref", reference);
+
       return NextResponse.json({
         success: true,
         paymentMethod: "card",
-        paymentUrl: callbackUrl,
+        paymentUrl: mockUrl.toString(),
         reference,
         totalCost,
         message: "Payment gateway link generated."

@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
       console.error("❌ Error completing campaign in addsactive table:", updateAddsActiveError.message);
     }
 
+    const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
+    await invalidateCachedUserCampaigns(email);
+
     return NextResponse.json({ success: true, message: "Campaign cancelled successfully. No refunds were issued." });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/campaigns/cancel:", err);

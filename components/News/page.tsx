@@ -4,12 +4,12 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
-import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
 import { Zap, Calendar, ShieldAlert, Crown, Rocket } from "lucide-react";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 import { newsSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/authHelper";
+import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 
 interface Session {
   user?: {
@@ -107,7 +107,7 @@ export default function News({ session }: NewsProps) {
             setBidPrice(data.highestBid + 200);
           }
         }
-      } catch (e) {}
+      } catch {}
     };
     fetchTopBid();
   }, [interest]);
@@ -141,19 +141,6 @@ export default function News({ session }: NewsProps) {
     txt.trim() ? txt.trim().charAt(0).toUpperCase() + txt.trim().slice(1) : "";
 
   const totalCost = isBiddingEnabled ? (bidPrice * campaignDays) : (1000 * campaignDays);
-
-  const isFormComplete = () => {
-    if (!mediaFile) return false;
-    const result = newsSchema.safeParse({
-      title,
-      content,
-      interest,
-      country,
-      campaignDays,
-      bidPrice: isBiddingEnabled ? bidPrice : undefined,
-    });
-    return result.success;
-  };
 
   const handleSubmit = async () => {
     setStepError(null);
@@ -194,10 +181,20 @@ export default function News({ session }: NewsProps) {
         "_"
       )}`;
       
+      // 1080p Standard Dimension Cap: Scale down high-resolution images
+      let optimizedFile: Blob | File = mediaFile!;
+      if (mediaFile instanceof File) {
+        try {
+          optimizedFile = await resizeImageToMax1080p(mediaFile);
+        } catch (optErr) {
+          console.warn("Highlight cover 1080p optimization notice:", optErr);
+        }
+      }
+
       // Force WebKit / iOS to resolve full iCloud asset download into memory buffer
-      let fileData: Blob | File = mediaFile!;
+      let fileData: Blob | File = optimizedFile;
       try {
-        const buffer = await mediaFile!.arrayBuffer();
+        const buffer = await optimizedFile.arrayBuffer();
         fileData = new Blob([buffer], { type: mediaFile!.type || "image/jpeg" });
       } catch (e) {
         console.warn("ArrayBuffer fallback for news image:", e);
@@ -242,7 +239,7 @@ export default function News({ session }: NewsProps) {
             campaign_days: campaignDays,
             is_bidded: isBiddingEnabled,
             bid_price: isBiddingEnabled ? bidPrice : null,
-            is_admin_post: isAdmin,
+            is_admin_post: false,
             custom_sponsor_name: customSponsorName || null,
             custom_sponsor_handle: customSponsorHandle || null,
           },
@@ -458,7 +455,7 @@ export default function News({ session }: NewsProps) {
                 )}
                 {/* Category Card */}
                 <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
-                  <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Category & Interest</label>
+                  <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Category and Interest</label>
                   <div className={styles.selectWrapper}>
                     <select value={interest} onChange={(e) => setInterest(e.target.value)} className={styles.selectBox}>
                       <option value="">-- Select Target Category --</option>

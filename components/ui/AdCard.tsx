@@ -576,11 +576,11 @@ function AdCard({
                           className={styles.fromBrandBtn}
                           title={`Visit ${brandName}`}
                         >
-                          Visit &apos;{brandName}&apos;
+                          Visit {brandName}
                         </a>
                       ) : (
                         <span className={styles.fromBrandText}>
-                          Visit &apos;{brandName}&apos;
+                          Visit {brandName}
                         </span>
                       )}
                     </div>
@@ -683,11 +683,11 @@ function AdCard({
                       title={`Visit ${brandName}`}
                       onClick={() => handleCtaClick("brand_visit")}
                     >
-                      Visit &apos;{brandName}&apos;
+                      Visit {brandName}
                     </a>
                   ) : (
                     <span className={styles.fromBrandText}>
-                      Visit &apos;{brandName}&apos;
+                      Visit {brandName}
                     </span>
                   )}
                 </div>

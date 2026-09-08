@@ -11,18 +11,41 @@ export interface RateLimitResult {
  * Checks if emergency system pause flag is active in Redis or DB
  */
 export async function checkEmergencyPause(): Promise<RateLimitResult> {
+  let isPaused: string | null = null;
   try {
-    const isPaused = await redisConnection.get("system:transfers_paused");
-    if (isPaused === "true" || isPaused === "1") {
-      return {
-        allowed: false,
-        reason: "P2P transfers are temporarily under routine security maintenance. Please try again shortly.",
-        statusCode: 503,
-      };
-    }
+    isPaused = await redisConnection.get("system:transfers_paused");
   } catch (err) {
     console.warn("⚠️ Emergency pause Redis check error:", err);
   }
+
+  if (isPaused === "true" || isPaused === "1") {
+    return {
+      allowed: false,
+      reason: "P2P transfers are temporarily paused for maintenance. Please try again shortly.",
+      statusCode: 503,
+    };
+  }
+
+  if (isPaused === null) {
+    try {
+      const { data: latestAudit } = await supabaseAdmin
+        .from("admin_audit_logs")
+        .select("new_state")
+        .in("action", ["toggle_emergency_p2p_pause", "auto_trip_emergency_circuit_breaker"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestAudit?.new_state?.transfers_paused === true) {
+        return {
+          allowed: false,
+          reason: "P2P transfers are temporarily paused for maintenance. Please try again shortly.",
+          statusCode: 503,
+        };
+      }
+    } catch {}
+  }
+
   return { allowed: true };
 }
 

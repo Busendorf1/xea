@@ -7,7 +7,7 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Payment record not found" }, { status: 404 });
     }
 
-    if (payment.user_email.toLowerCase() !== email) {
+    if (payment.user_email.toLowerCase().trim() !== email.toLowerCase().trim()) {
       return NextResponse.json({ error: "Unauthorized: Payment record owner mismatch" }, { status: 403 });
     }
 

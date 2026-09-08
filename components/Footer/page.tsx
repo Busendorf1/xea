@@ -10,7 +10,7 @@ const faqs = [
   {
     question: "Know More About Us",
     answer:
-      "Paayh is a platform that turns your attention into income. We deliver ads with 100% deliverability & transparency, and you earn for engaging with content you actually care about.",
+      "Paayh is a platform that turns your attention into income. We deliver ads with 100% deliverability and transparency, and you earn for engaging with content you actually care about.",
   },
   {
     question: "What is UBI?",
@@ -123,7 +123,7 @@ export default function Footer() {
         <div className={styles.section}>
           <h4 className={styles.heading}><Link href="/help" className={styles.link}>Help Center</Link></h4>
           <ul className={styles.linkList}>
-            <li><Link href="/help" className={styles.link}>Contact & Support</Link></li>
+            <li><Link href="/help" className={styles.link}>Contact and Support</Link></li>
             <li><Link href="/help?category=Suspended+Account" className={styles.link}>Suspended Account</Link></li>
             <li><Link href="/careers" className={styles.link}>Careers</Link></li>
             <li><Link href="/help?category=Collaboration" className={styles.link}>Collaboration</Link></li>
