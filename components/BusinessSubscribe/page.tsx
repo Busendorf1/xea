@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "@auth0/nextjs-auth0";
@@ -276,21 +276,21 @@ export default function BusinessSubscribeComponent() {
 
       {/* SECTION 1: PENDING APPLICATION STATUS */}
       {subscriber && subscriber.status === "pending" && !showReapplyForm && (
-        <div className={styles.formCard} style={{ borderColor: "#f59e0b" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "rgba(245,158,11,0.15)", margin: "0 auto 1.25rem auto" }}>
-            <Clock size={28} color="#f59e0b" />
+        <div className={styles.formCard} style={{ borderColor: "var(--card-border)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "var(--sidebar-bg)", margin: "0 auto 1.25rem auto" }}>
+            <Clock size={28} color="var(--primary)" />
           </div>
           <h2 className={styles.formTitle} style={{ marginBottom: "0.5rem" }}>
             Application Under Review
           </h2>
           <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-            Your brand application for <strong style={{ color: "#38bdf8" }}>{subscriber.domain}</strong> ({subscriber.business_name}) has been submitted to platform administrators for review.
+            Your brand application for <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong> ({subscriber.business_name}) has been submitted to platform administrators for review.
           </p>
 
           <div style={{ backgroundColor: "var(--background)", borderRadius: 8, padding: "1.25rem", border: "1px solid var(--card-border)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Registered Domain:</span>
-              <strong style={{ color: "#38bdf8" }}>{subscriber.domain}</strong>
+              <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Business / Platform Name:</span>
@@ -298,13 +298,13 @@ export default function BusinessSubscribeComponent() {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Review Status:</span>
-              <span style={{ color: "#f59e0b", fontWeight: 700, textTransform: "uppercase", fontSize: "0.8rem", backgroundColor: "rgba(245,158,11,0.15)", padding: "2px 8px", borderRadius: 4 }}>
+              <span style={{ color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", fontSize: "0.8rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 8px", borderRadius: 4, border: "1px solid var(--card-border)" }}>
                 Pending Admin Approval
               </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ color: "var(--text-muted)" }}>Activation Fee Upon Approval:</span>
-              <strong style={{ color: "#10b981" }}>{subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`}</strong>
+              <strong style={{ color: "var(--success)" }}>{subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`}</strong>
             </div>
           </div>
 
@@ -316,21 +316,21 @@ export default function BusinessSubscribeComponent() {
 
       {/* SECTION 2: APPROVED APPLICATION - COMPLETE PAYMENT IN THIS SAME SECTION */}
       {subscriber && subscriber.status === "approved" && subscriber.payment_status !== "paid" && (
-        <div className={styles.formCard} style={{ borderColor: "#10b981", boxShadow: "0 0 24px rgba(16,185,129,0.12)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "rgba(16,185,129,0.15)", margin: "0 auto 1.25rem auto" }}>
-            <CheckCircle2 size={28} color="#10b981" />
+        <div className={styles.formCard} style={{ borderColor: "var(--success)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "var(--sidebar-bg)", margin: "0 auto 1.25rem auto" }}>
+            <CheckCircle2 size={28} color="var(--success)" />
           </div>
-          <h2 className={styles.formTitle} style={{ color: "#10b981", marginBottom: "0.5rem" }}>
+          <h2 className={styles.formTitle} style={{ color: "var(--success)", marginBottom: "0.5rem" }}>
             Application Approved!
           </h2>
           <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-            Your application for <strong style={{ color: "#38bdf8" }}>{subscriber.domain}</strong> has been approved by administrators. Complete payment to activate your brand's 30% discount subsidy.
+            Your application for <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong> has been approved by administrators. Complete payment to activate your brand's 30% discount subsidy.
           </p>
 
           <div style={{ backgroundColor: "var(--background)", borderRadius: 8, padding: "1.25rem", border: "1px solid var(--card-border)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Domain:</span>
-              <strong style={{ color: "#38bdf8" }}>{subscriber.domain}</strong>
+              <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Business Name:</span>
@@ -338,19 +338,19 @@ export default function BusinessSubscribeComponent() {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Status:</span>
-              <span style={{ color: "#10b981", fontWeight: 700, fontSize: "0.8rem", backgroundColor: "rgba(16,185,129,0.15)", padding: "2px 8px", borderRadius: 4 }}>
+              <span style={{ color: "var(--success)", fontWeight: 700, fontSize: "0.8rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 8px", borderRadius: 4, border: "1px solid var(--card-border)" }}>
                 APPROVED (AWAITING PAYMENT)
               </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ color: "var(--text-muted)" }}>Subscription Amount:</span>
-              <strong style={{ color: "#10b981", fontSize: "1.1rem" }}>
+              <strong style={{ color: "var(--success)", fontSize: "1.1rem" }}>
                 {subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`}
               </strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ color: "var(--text-muted)" }}>Your Wallet Balance:</span>
-              <strong style={{ color: walletBalance >= Number(subscriber.amount || 150000) ? "#10b981" : "#f59e0b" }}>
+              <strong style={{ color: walletBalance >= Number(subscriber.amount || 150000) ? "var(--success)" : "var(--danger)" }}>
                 {currency === "NGN" ? `₦${walletBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}` : `$${walletBalance.toFixed(2)}`}
               </strong>
             </div>

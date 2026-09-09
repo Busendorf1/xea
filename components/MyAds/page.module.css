@@ -173,7 +173,7 @@
 .textOnlyBadge {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(29, 155, 240, 0.12) 0%, rgba(99, 102, 241, 0.12) 100%);
+  background: var(--primary-glow);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -308,9 +308,9 @@
 }
 
 .rolloverActiveBadge {
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  color: #f59e0b;
+  background: var(--primary-glow);
+  border: 1px solid var(--primary);
+  color: var(--primary);
   font-size: 0.75rem;
   font-weight: 700;
   padding: 0.2rem 0.6rem;
@@ -321,9 +321,9 @@
 }
 
 .rolloverNormalBadge {
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #10b981;
+  background: var(--primary-glow);
+  border: 1px solid var(--primary);
+  color: var(--primary);
   font-size: 0.75rem;
   font-weight: 700;
   padding: 0.2rem 0.6rem;
@@ -382,39 +382,39 @@
 }
 
 .badgeActive {
-  background-color: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 [data-theme='white'] .badgeActive {
-  background-color: #f0fdf4;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .badgeReview {
-  background-color: rgba(234, 179, 8, 0.15);
-  color: #facc15;
-  border: 1px solid rgba(234, 179, 8, 0.25);
+  background-color: var(--card-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
 }
 
 [data-theme='white'] .badgeReview {
-  background-color: #fffbeb;
-  color: #92400e;
-  border: 1px solid #fef3c7;
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
 }
 
 .badgePaused {
-  background-color: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
 }
 
 .badgeCompleted {
-  background-color: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
   white-space: normal;
 }
 
@@ -493,7 +493,7 @@
 }
 
 .statValueRollover {
-  color: #d97706; /* Matured amber for rollover state */
+  color: var(--primary);
   font-weight: 700;
 }
 
@@ -607,17 +607,17 @@
 .mutualBadgeOn {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #4ade80;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  color: var(--primary);
+  background: var(--primary-glow);
+  border: 1px solid var(--primary);
   padding: 0.15rem 0.5rem;
   border-radius: 5px;
 }
 
 [data-theme='white'] .mutualBadgeOn {
-  color: #166534;
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  color: var(--primary);
+  background: var(--primary-glow);
+  border-color: var(--primary);
 }
 
 .mutualBadgeOff {
@@ -666,7 +666,7 @@
 
 .kpiSub {
   font-size: 0.75rem;
-  color: #10b981;
+  color: var(--primary);
 }
 
 /* Health Shield Badges */
@@ -691,15 +691,16 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background-color: #f59e0b;
-  color: #ffffff;
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
   z-index: 5;
 }
 
 .pauseBtn {
-  background-color: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  color: #f59e0b;
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
   padding: 6px 12px;
   border-radius: 8px;
   font-size: 0.8rem;
@@ -709,13 +710,14 @@
 }
 
 .pauseBtn:hover {
-  background-color: rgba(245, 158, 11, 0.2);
+  background-color: var(--hover-bg);
+  color: var(--foreground);
 }
 
 .resumeBtn {
-  background-color: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #10b981;
+  background-color: var(--primary-glow);
+  border: 1px solid var(--primary);
+  color: var(--primary);
   padding: 6px 12px;
   border-radius: 8px;
   font-size: 0.8rem;
@@ -725,7 +727,8 @@
 }
 
 .resumeBtn:hover {
-  background-color: rgba(16, 185, 129, 0.2);
+  background-color: var(--primary);
+  color: #ffffff;
 }
 
 .boostBtn {
@@ -949,9 +952,9 @@
   gap: 5px;
   padding: 0.25rem 0.65rem;
   border-radius: 20px;
-  border: 1px solid #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  border: 1px solid var(--primary);
+  background: var(--primary-glow);
+  color: var(--primary);
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
@@ -961,30 +964,19 @@
 }
 
 .rateBtn:hover {
-  background: rgba(245, 158, 11, 0.2);
+  background: var(--primary);
+  color: #ffffff;
   transform: scale(1.04);
 }
 
 /* ── Glowing pulse variant — draws attention before rating ── */
-@keyframes ratePulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.28), 0 0 14px 2px rgba(245, 158, 11, 0.18);
-  }
-}
-
 .rateBtnGlow {
-  animation: ratePulse 2s ease-in-out infinite;
-  border-color: #f59e0b;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+  border-color: var(--primary);
 }
 
 .rateBtnGlow:hover {
-  animation: none;
-  box-shadow: 0 0 14px rgba(245, 158, 11, 0.45);
-  background: rgba(245, 158, 11, 0.22);
+  background: var(--primary);
+  color: #ffffff;
   transform: scale(1.05);
 }
 
@@ -995,9 +987,9 @@
   gap: 5px;
   padding: 0.25rem 0.65rem;
   border-radius: 20px;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  background: rgba(16, 185, 129, 0.08);
-  color: #10b981;
+  border: 1px solid var(--primary);
+  background: var(--primary-glow);
+  color: var(--primary);
   font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
@@ -1066,7 +1058,7 @@
 .starLabel {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #f59e0b;
+  color: var(--primary);
   margin-bottom: 1.25rem;
 }
 
@@ -1106,9 +1098,9 @@
 
 /* ── Tag Pill Variants ── */
 .tagPillMediaType {
-  background-color: rgba(99, 102, 241, 0.12);
-  color: #818cf8;
-  border-color: rgba(99, 102, 241, 0.3);
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  border-color: var(--card-border);
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -1116,9 +1108,9 @@
 }
 
 .tagPillReview {
-  background-color: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  border-color: rgba(245, 158, 11, 0.4);
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  border-color: var(--card-border);
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -1126,9 +1118,9 @@
 }
 
 .tagPillBidded {
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border-color: rgba(245, 158, 11, 0.3);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border-color: var(--primary);
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -1151,13 +1143,13 @@
 
 /* ── Admin Statement / Notice Box ── */
 .adminNotice {
-  background-color: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   border-radius: 10px;
   padding: 0.75rem 1rem;
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
-  color: #f59e0b;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -1166,7 +1158,7 @@
   align-items: center;
   gap: 6px;
   margin-bottom: 0.25rem;
-  color: #fbbf24;
+  color: var(--foreground);
   font-weight: 700;
 }
 
@@ -1260,8 +1252,8 @@
   opacity: 0.85;
   cursor: pointer;
   background-color: var(--sidebar-bg);
-  border-color: rgba(245, 158, 11, 0.4);
-  color: #f59e0b;
+  border-color: var(--card-border);
+  color: var(--text-muted);
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -1273,7 +1265,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #f59e0b;
+  color: var(--text-muted);
   font-weight: 700;
   margin-bottom: 4px;
 }

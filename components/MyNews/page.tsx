@@ -209,7 +209,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
               <button
                 onClick={() => handleTogglePause(item)}
                 disabled={actionLoading === item.id}
-                style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: item.is_paused ? "#10b981" : "#f59e0b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "3px", fontWeight: 600 }}
+                style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: item.is_paused ? "var(--success)" : "var(--text-muted)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "3px", fontWeight: 600 }}
               >
                 {item.is_paused ? <Play size={12} /> : <Pause size={12} />}
                 {item.is_paused ? "Resume" : "Pause"}
@@ -223,8 +223,8 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
         {/* Admin Statement */}
         {item.admin_statement && (
-          <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "rgba(245, 158, 11, 0.12)", borderRadius: "6px", border: "1px solid rgba(245, 158, 11, 0.4)", color: "#f59e0b", fontSize: "0.78rem", marginTop: "0.5rem" }}>
-            <strong style={{ display: "flex", alignItems: "center", gap: "4px" }}><AlertTriangle size={13} color="#f59e0b" /> Important Notice / Reason:</strong>
+          <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "6px", border: "1px solid var(--card-border)", color: "var(--text-muted)", fontSize: "0.78rem", marginTop: "0.5rem" }}>
+            <strong style={{ display: "flex", alignItems: "center", gap: "4px", color: "var(--foreground)" }}><AlertTriangle size={13} color="var(--primary)" /> Important Notice / Reason:</strong>
             {item.admin_statement}
           </div>
         )}
@@ -232,8 +232,8 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
         {/* Bidded & Location Badges */}
         <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
           {(!!item.is_bidded || Number(item.bid_price || 0) > 1000) && (
-            <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
-              <Zap size={11} color="#f59e0b" /> Bidded (₦{item.bid_price || 1500}/day)
+            <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--primary-glow)", color: "var(--primary)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+              <Zap size={11} color="var(--primary)" /> Bidded (₦{item.bid_price || 1500}/day)
             </span>
           )}
           <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--sidebar-bg)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "3px" }}>
@@ -260,9 +260,9 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
     <div className={styles.feedContainer}>
       {noticeMessage && (
         <div style={{
-          backgroundColor: "rgba(245, 158, 11, 0.15)",
-          border: "1px solid #f59e0b",
-          color: "#f59e0b",
+          backgroundColor: "var(--primary-glow)",
+          border: "1px solid var(--primary)",
+          color: "var(--primary)",
           padding: "10px 14px",
           borderRadius: "8px",
           marginBottom: "1rem",

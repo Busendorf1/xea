@@ -226,9 +226,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
   border-radius: 9999px;
   padding: 0.35rem 0.75rem;
   font-size: 0.75rem;

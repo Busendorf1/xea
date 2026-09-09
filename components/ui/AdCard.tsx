@@ -466,7 +466,7 @@ function AdCard({
               customLogo={ad.custom_sponsor_logo}
               isPlatformPost={isPlatformPost}
             >
-              <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer", minWidth: 0 }}>
                 <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
               </div>
             </AdvertiserHoverCard>

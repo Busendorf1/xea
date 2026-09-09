@@ -40,6 +40,7 @@ export default function AdvertiserHoverCard({
 }: AdvertiserHoverCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = () => {
     if (timerRef.current) {
@@ -55,6 +56,28 @@ export default function AdvertiserHoverCard({
       setIsOpen(false);
     }, 200);
   };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsOpen((prev) => !prev);
+  };
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [isOpen]);
 
   // Determine display values
   const displayName = (() => {
@@ -113,9 +136,11 @@ export default function AdvertiserHoverCard({
 
   return (
     <div
-      className={styles.hoverCardWrapper}
+      ref={wrapperRef}
+      className={`${styles.hoverCardWrapper} ${isOpen ? styles.hoverCardWrapperOpen : ""}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
     >
       {children}
 

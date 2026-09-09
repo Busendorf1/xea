@@ -9,7 +9,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 8rem 2rem 4rem 2rem;
+  padding: 2.5rem 1.5rem 3rem 1.5rem;
   overflow: hidden;
   transition: background-color 0.3s ease;
 }
@@ -358,10 +358,9 @@
   box-shadow: 0 0 10px var(--primary-glow);
 }
 
-/* Responsiveness */
 @media screen and (max-width: 768px) {
   .container {
-    padding: 6rem 1rem 3rem 1rem;
+    padding: 2rem 1rem 2.5rem 1rem;
   }
 
   .setupCard {
@@ -385,12 +384,12 @@
 
 @media screen and (max-width: 480px) {
   .container {
-    padding: 5rem 0.75rem 2rem 0.75rem;
+    padding: 1.25rem 0.75rem 2rem 0.75rem;
   }
   
   .setupCard {
     padding: 1.5rem 1.25rem;
-    border-radius: 18px;
+    border-radius: 4px;
   }
   
   .cardHeader h2 {
@@ -416,6 +415,20 @@
     width: 100%;
     text-align: center;
   }
+}
+
+.privacyNotice {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 /* -- Zod inline field error -- */

@@ -340,7 +340,7 @@ export default function StatementComponent() {
           <div className={styles.statsGrid}>
             <div className={`${styles.statCard} ${styles.statBalance}`}>
               <div className={styles.statIconWrap}>
-                <Wallet size={18} color="#4b5e38" />
+                <Wallet size={18} color="var(--primary)" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Available Balance</div>
@@ -350,7 +350,7 @@ export default function StatementComponent() {
 
             <div className={`${styles.statCard} ${styles.statWithdraw}`}>
               <div className={styles.statIconWrap}>
-                <Clock size={18} color="#2563eb" />
+                <Clock size={18} color="var(--primary)" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Pending Withdrawal</div>
@@ -370,7 +370,7 @@ export default function StatementComponent() {
 
             <div className={`${styles.statCard} ${styles.statReceived}`}>
               <div className={styles.statIconWrap}>
-                <ArrowDownLeft size={18} color="#4b5e38" />
+                <ArrowDownLeft size={18} color="var(--primary)" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total P2P Received</div>
@@ -380,7 +380,7 @@ export default function StatementComponent() {
 
             <div className={`${styles.statCard} ${styles.statWithdrawn}`}>
               <div className={styles.statIconWrap}>
-                <Building size={18} color="#4b5e38" />
+                <Building size={18} color="var(--primary)" />
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total Withdrawn</div>

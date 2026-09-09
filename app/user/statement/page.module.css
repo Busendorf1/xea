@@ -403,9 +403,9 @@
 }
 
 .statusPending {
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
 }
 
 .statusFailed {
@@ -459,9 +459,9 @@
 }
 
 .typeHighlight {
-  color: #f59e0b;
-  background-color: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.2);
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border-color: var(--primary);
 }
 
 /* ── Empty & Loading States ── */

@@ -74,8 +74,8 @@
 }
 
 .statusMonetized {
-  border-color: rgba(34, 197, 94, 0.35);
-  background: rgba(34, 197, 94, 0.05);
+  border-color: var(--primary);
+  background: var(--sidebar-bg);
   box-shadow: none !important;
 }
 
@@ -103,8 +103,8 @@
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: var(--primary-glow);
+  border: 1px solid var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,7 +124,7 @@
 }
 
 .successIcon {
-  color: var(--success);
+  color: var(--primary);
 }
 
 .pendingIcon {
@@ -147,9 +147,9 @@
 }
 
 .badgeActive {
-  background: rgba(34, 197, 94, 0.12);
-  color: var(--success);
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
   font-weight: 700;
   font-size: 0.72rem;
   padding: 5px 12px;
@@ -268,7 +268,7 @@
 .metricValueRemaining {
   font-size: 1.4rem;
   font-weight: 800;
-  color: var(--success);
+  color: var(--primary);
   letter-spacing: -0.01em;
 }
 

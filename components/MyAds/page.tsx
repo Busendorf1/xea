@@ -769,7 +769,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
               {Number(ad.cost_per_impression || 25) > 25 && (
                 <span className={`${styles.tagPill} ${styles.tagPillBidded}`} title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds. You can boost priority anytime.">
-                  <Zap size={13} color="#f59e0b" /> Bidded Priority Ad ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
+                  <Zap size={13} color="var(--primary)" /> Bidded Priority Ad ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
                 </span>
               )}
             </div>
@@ -779,7 +779,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             {ad.admin_statement && (
               <div className={styles.adminNotice}>
                 <strong className={styles.adminNoticeTitle}>
-                  <AlertTriangle size={15} color="#f59e0b" /> Important Notice / Reason:
+                  <AlertTriangle size={15} color="var(--primary)" /> Important Notice / Reason:
                 </strong>
                 {ad.admin_statement}
               </div>
@@ -789,7 +789,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             <div className={styles.targetTagsRow}>
               {(!!ad.is_bidded || Number(ad.cost_per_impression || 0) > 25) && (
                 <span className={`${styles.tagPill} ${styles.tagPillBidded}`}>
-                  <Zap size={13} color="#f59e0b" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
+                  <Zap size={13} color="var(--primary)" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
                 </span>
               )}
               <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
@@ -808,7 +808,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <span className={styles.tagPill}>{daysInfo.scheduled} Days Cap</span>
               {ad.display_mutual_button && (
                 <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                  <CheckCircle2 size={13} color="#10b981" /> Mutual+ Enabled
+                  <CheckCircle2 size={13} color="var(--primary)" /> Mutual+ Enabled
                 </span>
               )}
             </div>
@@ -852,7 +852,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <span className={styles.metricTitle}>Ad Health</span>
               {reportsCount === 0 && advertiserBlockCount === 0 ? (
                 <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
-                  <CheckCircle2 size={13} color="#10b981" /> Clean
+                  <CheckCircle2 size={13} color="var(--primary)" /> Clean
                 </span>
               ) : (
                 <span className={`${styles.metricVal} ${styles.metricValRed}`}>
@@ -875,8 +875,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             ) : daysInfo.isRollover ? (
               <span
                 style={{
-                  backgroundColor: "rgba(234, 88, 12, 0.15)",
-                  color: "#ea580c",
+                  backgroundColor: "var(--primary-glow)",
+                  color: "var(--primary)",
+                  border: "1px solid var(--primary)",
                   padding: "4px 10px",
                   borderRadius: "6px",
                   fontSize: "0.75rem",
@@ -899,7 +900,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             {(ad.is_paused || isCompleted) && (
               ratedAdIds.has(ad.id) ? (
                 <span className={styles.rateBtnDone}>
-                  <CheckCircle2 size={13} color="#10b981" /> Audience Rated
+                  <CheckCircle2 size={13} color="var(--primary)" /> Audience Rated
                 </span>
               ) : (
                 <button
@@ -908,7 +909,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   className={`${styles.rateBtn} ${styles.rateBtnGlow}`}
                   title="Rate campaign conversion outcomes to boost top-performing listener Attention Scores"
                 >
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" /> Rate Audience
+                  <Star size={13} fill="var(--primary)" color="var(--primary)" /> Rate Audience
                 </button>
               )
             )}
@@ -971,7 +972,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                           onClick={() => setNoticeModal({ title: "Boosting Unavailable", message: reason, adId: ad.id })}
                           className={`${styles.boostBtn} ${styles.boostUnavailableBtn}`}
                         >
-                          <AlertTriangle size={14} color="#f59e0b" />
+                          <AlertTriangle size={14} color="var(--text-muted)" />
                           Boosting Unavailable
                         </button>
                         <div className={styles.boostTooltipContent}>
@@ -1076,7 +1077,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 <div>
                   {daysInfo.isRollover ? (
                     <span className={`${styles.rolloverActiveBadge} ${styles.rolloverBadgeInner}`}>
-                      <AlertTriangle size={12} color="#f59e0b" /> Rollover Active (+{daysInfo.rolloverDays}d exceeded)
+                      <AlertTriangle size={12} color="var(--primary)" /> Rollover Active (+{daysInfo.rolloverDays}d exceeded)
                     </span>
                   ) : (
                     <span className={`${styles.rolloverNormalBadge} ${styles.rolloverBadgeInner}`}>
@@ -1162,8 +1163,8 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           </div>
           <div className={styles.kpiCard}>
             <span className={styles.kpiLabel}>Ads in Review</span>
-            <span className={styles.kpiValue} style={{ color: "#f59e0b" }}>{reviewAds.length}</span>
-            <span className={styles.kpiSub} style={{ color: "#f59e0b" }}>Pending approval</span>
+            <span className={styles.kpiValue} style={{ color: "var(--text-muted)" }}>{reviewAds.length}</span>
+            <span className={styles.kpiSub} style={{ color: "var(--text-muted)" }}>Pending approval</span>
           </div>
           <div className={styles.kpiCard}>
             <span className={styles.kpiLabel}>Impressions Delivered</span>
@@ -1271,7 +1272,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.modalHeaderLeft}>
-                <Zap size={18} color="#f59e0b" />
+                <Zap size={18} color="var(--primary)" />
                 <h3 className={styles.modalTitle}>Boost & Top Up Campaign</h3>
               </div>
               <button className={styles.modalClose} onClick={() => setBoosterAd(null)}>✕</button>
@@ -1424,7 +1425,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           >
             <div className={styles.modalHeader}>
               <div className={styles.modalHeaderLeft}>
-                <AlertTriangle size={22} color="#f59e0b" />
+                <AlertTriangle size={22} color="var(--primary)" />
                 <h3 className={`${styles.modalTitle} ${styles.noticeModalTitle}`}>{noticeModal.title}</h3>
               </div>
               <button className={styles.modalClose} onClick={() => setNoticeModal(null)}>
@@ -1458,7 +1459,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           >
             <div className={styles.ratingModalHeader}>
               <div className={styles.ratingModalHeaderLeft}>
-                <Star size={20} fill="#f59e0b" color="#f59e0b" />
+                <Star size={20} fill="var(--primary)" color="var(--primary)" />
                 <h3 className={styles.ratingModalTitle}>Rate Audience Engagement</h3>
               </div>
               <button className={styles.modalClose} onClick={() => { setRatingAdId(null); setRatingMessage(null); }}>
@@ -1482,8 +1483,8 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 >
                   <Star
                     size={32}
-                    fill={ratingStars >= star ? "#f59e0b" : "transparent"}
-                    color={ratingStars >= star ? "#f59e0b" : "#4b5563"}
+                    fill={ratingStars >= star ? "var(--primary)" : "transparent"}
+                    color={ratingStars >= star ? "var(--primary)" : "var(--card-border)"}
                   />
                 </button>
               ))}

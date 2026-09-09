@@ -38,7 +38,7 @@ export default function Header() {
       return <Wallet size={15} color="#3b82f6" />;
     }
     if (t.includes("limit") || t.includes("holding") || t.includes("suspended") || t.includes("alert")) {
-      return <ShieldAlert size={15} color="#f59e0b" />;
+      return <ShieldAlert size={15} color="#ef4444" />;
     }
     if (t.includes("threshold") || t.includes("unlocked") || t.includes("completed") || t.includes("success")) {
       return <CheckCircle2 size={15} color="#10b981" />;

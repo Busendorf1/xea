@@ -82,32 +82,56 @@
 .headerLeft {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.35rem;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
 }
 
 .sponsorLabel {
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .sponsorName {
   font-weight: 700;
   color: var(--foreground);
   letter-spacing: -0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  display: inline-block;
+  vertical-align: bottom;
 }
 
 .sponsorHandle {
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .dot {
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .adTime {
   color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .sponsorName {
+    max-width: 130px;
+  }
 }
 
 .adText {

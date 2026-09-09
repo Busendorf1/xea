@@ -362,10 +362,10 @@ export default function News({ session }: NewsProps) {
           {statusNotice && (
             <div style={{
               padding: "10px 14px",
-              backgroundColor: "rgba(16, 185, 129, 0.15)",
-              border: "1px solid #10b981",
+              backgroundColor: "var(--primary-glow)",
+              border: "1px solid var(--primary)",
               borderRadius: "8px",
-              color: "#10b981",
+              color: "var(--primary)",
               fontSize: "0.88rem",
               fontWeight: 600,
               marginBottom: "1rem",
@@ -427,7 +427,7 @@ export default function News({ session }: NewsProps) {
             {step === 3 && (
               <div className={styles.formGroup} style={{ gap: "1.5rem" }}>
                 {isAdmin && (
-                  <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "rgba(234, 179, 8, 0.1)", borderRadius: "14px", border: "1px solid rgba(234, 179, 8, 0.3)", marginBottom: "1.25rem" }}>
+                  <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--card-bg)", borderRadius: "14px", border: "1px solid var(--primary)", marginBottom: "1.25rem" }}>
                     <h4 style={{ color: "var(--primary)", fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "6px" }}>
                       <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding & Free Publishing
                     </h4>
@@ -516,11 +516,11 @@ export default function News({ session }: NewsProps) {
                 </div>
 
                 {/* Bidding Card */}
-                <div style={{ padding: "1.5rem", backgroundColor: "rgba(245, 158, 11, 0.06)", borderRadius: "14px", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                <div style={{ padding: "1.5rem", backgroundColor: "var(--primary-glow)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
                     <div>
-                      <strong style={{ fontSize: "0.95rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <Zap size={16} color="#f59e0b" /> Contest for Top Highlight Position (Bidding)
+                      <strong style={{ fontSize: "0.95rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Zap size={16} color="var(--primary)" /> Contest for Top Highlight Position (Bidding)
                       </strong>
                       <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.4 }}>
                         Highest bids stay at the top of the highlights carousel. Current top bid for {interest || "this category"}: <strong>{formatCurrency(highestBid)}/day</strong>.
@@ -535,7 +535,7 @@ export default function News({ session }: NewsProps) {
                   </div>
 
                   {isBiddingEnabled && (
-                    <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px dashed rgba(245, 158, 11, 0.3)" }}>
+                    <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px dashed var(--card-border)" }}>
                       <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Your Bid Price Per Day (₦)</label>
                       <input
                         type="number"
@@ -545,7 +545,7 @@ export default function News({ session }: NewsProps) {
                         onChange={(e) => setBidPrice(parseFloat(e.target.value) || 1000)}
                         className={styles.inputBox}
                       />
-                      <p style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "6px", fontWeight: 600 }}>
+                      <p style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "6px", fontWeight: 600 }}>
                         Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} {campaignDays === 1 ? "day" : "days"}. Higher bids overtake lower bids at top position.
                       </p>
                     </div>

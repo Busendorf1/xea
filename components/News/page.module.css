@@ -126,13 +126,13 @@
 }
 
 .completedStep .stepNumber {
-  background-color: var(--success);
-  border-color: var(--success);
+  background-color: var(--primary);
+  border-color: var(--primary);
   color: #ffffff;
 }
 
 .completedStep .stepLine {
-  background-color: var(--success);
+  background-color: var(--primary);
 }
 
 /* Ad Form Container */

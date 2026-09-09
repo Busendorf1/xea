@@ -661,23 +661,23 @@
 .sendMoneyBtn {
   width: 100%;
   padding: 8px;
-  background-color: var(--success);
+  background-color: var(--primary);
   color: #ffffff;
-  border: none;
+  border: 1px solid var(--primary);
   border-radius: var(--radius-inner, 8px);
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  box-shadow: none !important;
+  box-shadow: 0 4px 12px var(--primary-glow) !important;
 }
 
 .sendMoneyBtn:hover {
-  opacity: 0.9;
+  background-color: var(--primary-hover);
   transform: translateY(-1px);
 }
 
@@ -689,14 +689,14 @@
   color: var(--text-muted);
   margin-bottom: 0.75rem;
   padding: 4px 8px;
-  background-color: rgba(99, 102, 241, 0.08);
+  background-color: var(--card-bg);
   border-radius: var(--radius-inner, 8px);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid var(--card-border);
 }
 
 .maxAllowedValue {
   font-weight: 700;
-  color: #6366f1;
+  color: var(--primary);
 }
 
 /* Tags card */
@@ -1716,7 +1716,7 @@
 
 .balanceValue {
   font-weight: 700;
-  color: var(--success);
+  color: var(--primary);
 }
 
 /* ── Withdrawal modal: resolving text ── */

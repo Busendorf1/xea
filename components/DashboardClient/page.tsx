@@ -907,9 +907,21 @@ export default function DashboardClient({
     return Array.isArray(val) ? val : val.split(",").map((v) => v.trim());
   };
 
-  const ago = user.lastUpdated
-    ? `${Math.floor((Date.now() - new Date(user.lastUpdated).getTime()) / (1000 * 60 * 60 * 24))} day(s) ago`
-    : "Never";
+  const formatRelativeTime = (timestamp: string | Date | null | undefined): string => {
+    if (!timestamp) return "Never";
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    if (diffMs < 0 || isNaN(diffMs)) return "Just now";
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 60) return sec <= 1 ? "1 sec ago" : `${sec} secs ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min === 1 ? "1 min ago" : `${min} mins ago`;
+    const hours = Math.floor(min / 60);
+    if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    return days === 1 ? "1 day ago" : `${days} days ago`;
+  };
+
+  const ago = formatRelativeTime(user.lastUpdated);
 
   const renderThemeSwitcher = () => {
     const cycleTheme = () => {
@@ -1219,7 +1231,7 @@ export default function DashboardClient({
                               </svg>
                               <span>
                                 
-                                <strong style={{ color: tier.badgeColor }}>
+                                <strong style={{ color: "var(--primary)" }}>
                                   {tier.code}
                                 </strong></span>
                             </div>

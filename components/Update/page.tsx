@@ -497,7 +497,7 @@ export default function Update({ email }: Props) {
           {status.includes("Successful") ? (
             <CheckCircle2 size={18} color="#10b981" />
           ) : (
-            <AlertCircle size={18} color={status.includes("Failed") || status.includes("❌") ? "#ef4444" : "#f59e0b"} />
+            <AlertCircle size={18} color={status.includes("Failed") || status.includes("❌") ? "#ef4444" : "var(--primary)"} />
           )}
           <span>{status.replace(/^[✅⚠️❌⏳]\s*/, "")}</span>
         </div>

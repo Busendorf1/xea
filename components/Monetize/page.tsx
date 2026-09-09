@@ -164,36 +164,6 @@ export default function Monetize({ session }: MonetizeProps) {
 
   const atwLevelNum = parseInt(atwTier.replace(/\D/g, ""), 10) || 1;
 
-  if (!hasResolved) {
-    return (
-      <div className={styles.container}>
-        <main className={styles.main}>
-          <div className={styles.header}>
-            <h1 className={styles.title}>Account Monetization</h1>
-            <p className={styles.subtitle}>
-              Continued interactions increase your ATW Level and wallet holding cap!
-            </p>
-          </div>
-          <div className={styles.contentGrid}>
-            <div className={styles.statusCard} style={{ opacity: 0.7 }}>
-              <div className={styles.statusHeaderRow}>
-                <div className={styles.statusTitleGroup}>
-                  <div className={styles.iconBadgePending}>
-                    <Clock size={22} className={styles.pendingIcon} />
-                  </div>
-                  <div>
-                    <h2 className={styles.statusTitle}>Checking Monetization...</h2>
-                    <p className={styles.statusSub}>Retrieving your monetization progress...</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.container}>
       <main className={styles.main}>
@@ -369,7 +339,7 @@ export default function Monetize({ session }: MonetizeProps) {
                 </div>
                 <div className={styles.metricBox}>
                   <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Clock size={13} color="var(--success)" /> Remaining
+                    <Clock size={13} color="var(--primary)" /> Remaining
                   </span>
                   <strong className={styles.metricValueRemaining}>{clicksRemaining} clicks</strong>
                 </div>

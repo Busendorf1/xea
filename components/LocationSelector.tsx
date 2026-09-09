@@ -363,7 +363,7 @@ export default function LocationSelector({
                   </button>
 
                   {(multiLocations?.length || 0) >= 30 && (
-                    <p style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "0.4rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                    <p style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "0.4rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
                       <AlertCircle size={14} /> Maximum 30 target locations reached. For broader audience reach across multiple regions, we recommend targeting by Country or State instead.
                     </p>
                   )}

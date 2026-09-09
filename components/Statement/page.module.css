@@ -56,14 +56,14 @@
 
 .downloadBtn {
   color: #ffffff;
-  background-color: var(--success);
-  border: 1px solid var(--success);
+  background-color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .downloadBtn:hover {
-  filter: brightness(1.1);
+  background-color: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: none !important;
+  box-shadow: 0 4px 12px var(--primary-glow);
 }
 
 .refreshBtn,
@@ -395,7 +395,7 @@
 }
 
 .amountCredit {
-  color: var(--success);
+  color: var(--primary);
 }
 
 .amountDebit {
@@ -422,9 +422,9 @@
 }
 
 .statusSuccess {
-  background-color: rgba(34, 197, 94, 0.12);
-  color: var(--success);
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .statusPending {
@@ -465,9 +465,9 @@
 }
 
 .typeTransferReceived {
-  color: var(--success);
-  background-color: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.2);
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border-color: var(--primary);
 }
 
 .typeWithdrawal {
@@ -477,9 +477,9 @@
 }
 
 .typeAd {
-  color: var(--success);
-  background-color: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.2);
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border-color: var(--primary);
 }
 
 .typeHighlight {

@@ -1497,7 +1497,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                         <label>
                           Action Buttons (Max {maxButtons})
                           {hasPrimaryCta && (
-                            <span style={{ fontSize: "0.76rem", color: "var(--primary, #eab308)", marginLeft: "8px", fontWeight: "normal" }}>
+                            <span style={{ fontSize: "0.76rem", color: "var(--primary)", marginLeft: "8px", fontWeight: "normal" }}>
                               (Reduced to {maxButtons} to ensure clean mobile card spacing alongside &quot;{formSelections.productCtaType || "Comment"}&quot;)
                             </span>
                           )}

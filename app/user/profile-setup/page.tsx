@@ -309,8 +309,8 @@ interface ProfileFormData {
           </div>
 
           <div className={styles.cardHeader}>
-            <h2>Complete Profile Setup</h2>
-            <p>Help us customize your dashboard so you only see ads that pay well and fit your preferences.</p>
+            <h2>Profile Setup</h2>
+            <p>Set up your profile and preferences to start earning.</p>
           </div>
 
           {errorMessage && <div className={styles.errorAlert}>{errorMessage}</div>}
@@ -320,13 +320,13 @@ interface ProfileFormData {
               <div className={styles.formStep}>
                 <div className={styles.grid}>
                   <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
-                    <label htmlFor="username" className={styles.inputLabel}>Choose your Unique Username / Handle</label>
+                    <label htmlFor="username" className={styles.inputLabel}>Username</label>
                     <div style={{ position: "relative" }}>
                       <input
                         type="text"
                         id="username"
                         name="username"
-                        placeholder="e.g. alex_dev or crypto_king"
+                        placeholder="e.g. alex_dev"
                         required
                         maxLength={30}
                         value={formData.username}
@@ -334,7 +334,7 @@ interface ProfileFormData {
                         className={styles.inputField}
                         style={{
                           paddingLeft: "32px",
-                          borderColor: usernameAvailable === true ? "#10b981" : usernameAvailable === false ? "#ef4444" : undefined
+                          borderColor: usernameAvailable === true ? "var(--primary)" : usernameAvailable === false ? "#ef4444" : undefined
                         }}
                       />
                       <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontWeight: 700 }}>
@@ -343,8 +343,8 @@ interface ProfileFormData {
                     </div>
 
                     {checkingUsername && (
-                      <p style={{ fontSize: "0.78rem", color: "#3b82f6", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
-                        <Loader2 size={14} className="animate-spin" color="#3b82f6" />
+                      <p style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
+                        <Loader2 size={14} className="animate-spin" color="var(--primary)" />
                         <span>Checking availability...</span>
                       </p>
                     )}
@@ -354,32 +354,20 @@ interface ProfileFormData {
                         fontSize: "0.78rem",
                         marginTop: "6px",
                         fontWeight: 600,
-                        color: usernameAvailable ? "#10b981" : "#ef4444",
+                        color: usernameAvailable ? "var(--primary)" : "#ef4444",
                         display: "flex",
                         alignItems: "center",
                         gap: "6px"
                       }}>
-                        {usernameAvailable ? <CheckCircle2 size={14} color="#10b981" /> : <XCircle size={14} color="#ef4444" />}
+                        {usernameAvailable ? <CheckCircle2 size={14} color="var(--primary)" /> : <XCircle size={14} color="#ef4444" />}
                         <span>{usernameStatus}</span>
                       </p>
                     )}
 
-                    <div style={{
-                      marginTop: "8px",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      backgroundColor: "rgba(99, 102, 241, 0.08)",
-                      border: "1px solid rgba(99, 102, 241, 0.25)",
-                      fontSize: "0.78rem",
-                      color: "var(--text-muted)",
-                      lineHeight: "1.4",
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "8px"
-                    }}>
-                      <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+                    <div className={styles.privacyNotice}>
+                      <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
                       <span>
-                        <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform and are <strong>not encrypted</strong>. Email privacy protections only apply to account login records.
+                        <strong>Public Handle:</strong> Usernames are visible to others and not encrypted. Avoid using private email addresses.
                       </span>
                     </div>
 
@@ -468,7 +456,7 @@ interface ProfileFormData {
                   />
 
                   <div className={styles.inputGroupFull}>
-                    <label htmlFor="businessName" className={styles.inputLabel}>Business Name (Optional, max 25 characters)</label>
+                    <label htmlFor="businessName" className={styles.inputLabel}>Business Name (Optional)</label>
                     <input
                       type="text"
                       id="businessName"
@@ -482,7 +470,7 @@ interface ProfileFormData {
                   </div>
 
                   <div className={styles.inputGroupFull}>
-                    <label htmlFor="bio" className={styles.inputLabel}>Bio (max 90 characters)</label>
+                    <label htmlFor="bio" className={styles.inputLabel}>Bio</label>
                     <textarea
                       id="bio"
                       name="bio"
@@ -589,7 +577,7 @@ interface ProfileFormData {
                     className={styles.submitBtn}
                     disabled={loading}
                   >
-                    {loading ? "Completing setup..." : "Complete & Enter Dashboard"}
+                    {loading ? "Saving..." : "Complete Setup"}
                   </button>
                 </div>
               </div>

@@ -15,7 +15,7 @@
 
 .status {
   margin-bottom: 1.25rem;
-  color: #10b981;
+  color: var(--primary);
   font-weight: 600;
   font-size: 0.95rem;
   text-align: center;
@@ -288,17 +288,17 @@
 }
 
 .completedStep .stepNumber {
-  background-color: #10b981;
+  background-color: var(--primary);
   color: #ffffff;
-  border-color: #10b981;
+  border-color: var(--primary);
 }
 
 .completedStep .stepLabel {
-  color: #10b981;
+  color: var(--primary);
 }
 
 .completedStep .stepLine {
-  background-color: #10b981;
+  background-color: var(--primary);
 }
 
 /* Subtle, Professional Admin Privilege Notice */
@@ -307,20 +307,20 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background-color: rgba(234, 179, 8, 0.08);
-  border: 1px solid rgba(234, 179, 8, 0.25);
-  border-radius: 6px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
   padding: 0.5rem 0.85rem;
   margin-bottom: 1.25rem;
-  color: #ca8a04;
+  color: var(--primary);
   font-size: 0.78rem;
   font-weight: 600;
 }
 
 [data-theme='dark'] .adminPrivilegeBanner {
-  color: #facc15;
-  background-color: rgba(234, 179, 8, 0.1);
-  border-color: rgba(234, 179, 8, 0.3);
+  color: var(--primary);
+  background-color: var(--card-bg);
+  border-color: var(--primary);
 }
 
 /* Step Navigation Footer Controls */

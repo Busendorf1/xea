@@ -2,6 +2,11 @@
   position: relative;
   display: inline-flex;
   align-items: center;
+  cursor: pointer;
+}
+
+.hoverCardWrapperOpen {
+  z-index: 99999 !important;
 }
 
 .hoverCardPopover {
