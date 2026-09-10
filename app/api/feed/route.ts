@@ -47,114 +47,163 @@ export async function GET(req: NextRequest) {
     const todayDate = now.toISOString().slice(0, 10);
     const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
 
-    // Fetch user's active seen set, blocked sets, daily pacing hash in Redis, and past impressions from DB
-    const [seenAdIdsList, blockedAdIdsList, blockedAdvertisersList, todayPacingMap, dbImpressionsRes] = await Promise.all([
-      redisConnection.smembers(seenAdsSetKey).catch(() => []),
-      redisConnection.smembers(blockedAdsSetKey).catch(() => []),
-      redisConnection.smembers(blockedAdvertisersSetKey).catch(() => []),
-      redisConnection.hgetall(pacingHashKey).catch(() => ({}) as Record<string, string>),
-      supabaseReadOnly
-        .from("ad_impressions")
-        .select("ad_id, view_count, today_view_count, last_viewed_at")
-        .ilike("user_email", emailKey),
-    ]);
+    // Pipeline all Redis lookups (Cache, Sets, Frequency Hashes, Pacing) into a single O(1) network trip
+    const redisPipe = redisConnection.pipeline();
+    if (!refresh) {
+      redisPipe.get(adIdsCacheKey);
+      redisPipe.get(profilesCacheKey);
+    }
+    redisPipe.smembers(seenAdsSetKey);
+    redisPipe.smembers(blockedAdsSetKey);
+    redisPipe.smembers(blockedAdvertisersSetKey);
+    redisPipe.hgetall(pacingHashKey);
+    redisPipe.hgetall(`user:freq:${emailKey}:${todayDate}`);
+    redisPipe.hgetall(`user:freq_lifetime:${emailKey}`);
+
+    const redisResultsRaw = await redisPipe.exec().catch(() => []);
+
+    let cachedAdIdsStr: string | null = null;
+    let cachedProfilesStr: string | null = null;
+    let seenAdIdsList: string[] = [];
+    let blockedAdIdsList: string[] = [];
+    let blockedAdvertisersList: string[] = [];
+    let todayPacingMap: Record<string, string> = {};
+    let todayFreqMap: Record<string, string> = {};
+    let lifetimeFreqMap: Record<string, string> = {};
+
+    if (Array.isArray(redisResultsRaw) && redisResultsRaw.length > 0) {
+      let offsetIdx = 0;
+      if (!refresh) {
+        cachedAdIdsStr = redisResultsRaw[0]?.[1] as string | null;
+        cachedProfilesStr = redisResultsRaw[1]?.[1] as string | null;
+        offsetIdx = 2;
+      }
+      seenAdIdsList = (redisResultsRaw[offsetIdx]?.[1] as string[]) || [];
+      blockedAdIdsList = (redisResultsRaw[offsetIdx + 1]?.[1] as string[]) || [];
+      blockedAdvertisersList = (redisResultsRaw[offsetIdx + 2]?.[1] as string[]) || [];
+      todayPacingMap = (redisResultsRaw[offsetIdx + 3]?.[1] as Record<string, string>) || {};
+      todayFreqMap = (redisResultsRaw[offsetIdx + 4]?.[1] as Record<string, string>) || {};
+      lifetimeFreqMap = (redisResultsRaw[offsetIdx + 5]?.[1] as Record<string, string>) || {};
+    }
 
     const userImpressionMap = new Map<string, { view_count: number; today_view_count: number; last_viewed_at: string | null }>();
     const completedOrCappedAdIds: string[] = [];
 
-    (dbImpressionsRes?.data || []).forEach((imp: any) => {
-      if (imp.ad_id) {
-        userImpressionMap.set(imp.ad_id, {
-          view_count: Number(imp.view_count || 0),
-          today_view_count: Number(imp.today_view_count || 0),
-          last_viewed_at: imp.last_viewed_at,
-        });
-      }
+    // 1. Populate frequency counters directly from in-memory Redis hashes (O(1) lookup)
+    Object.entries(lifetimeFreqMap).forEach(([adId, countStr]) => {
+      userImpressionMap.set(adId, {
+        view_count: Number(countStr) || 0,
+        today_view_count: Number(todayFreqMap[adId]) || 0,
+        last_viewed_at: null,
+      });
     });
+
+    // 2. If Redis frequency counters are cold, hydrate once from DB and backfill Redis asynchronously
+    if (userImpressionMap.size === 0) {
+      try {
+        const { data: dbImpressions } = await supabaseReadOnly
+          .from("ad_impressions")
+          .select("ad_id, view_count, today_view_count, last_viewed_at")
+          .eq("user_email", emailKey);
+
+        if (dbImpressions && dbImpressions.length > 0) {
+          const backfillPipe = redisConnection.pipeline();
+          dbImpressions.forEach((imp: any) => {
+            if (imp.ad_id) {
+              userImpressionMap.set(imp.ad_id, {
+                view_count: Number(imp.view_count || 0),
+                today_view_count: Number(imp.today_view_count || 0),
+                last_viewed_at: imp.last_viewed_at,
+              });
+              backfillPipe.hset(`user:freq_lifetime:${emailKey}`, imp.ad_id, String(imp.view_count || 1));
+              if (imp.today_view_count && imp.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate) {
+                backfillPipe.hset(`user:freq:${emailKey}:${todayDate}`, imp.ad_id, String(imp.today_view_count));
+              }
+            }
+          });
+          backfillPipe.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30);
+          backfillPipe.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2);
+          backfillPipe.exec().catch(() => {});
+        }
+      } catch {}
+    }
 
     const seenAdIdsSet = new Set<string>(seenAdIdsList);
     const blockedAdIdsSet = new Set<string>(blockedAdIdsList);
     const blockedAdvertisersSet = new Set<string>(blockedAdvertisersList.map((e) => e.toLowerCase()));
 
     // Try to retrieve cached candidate ad IDs and profiles unless refresh is requested
-    if (!refresh) {
+    if (!refresh && cachedAdIdsStr && cachedProfilesStr) {
       try {
-        const [cachedAdIdsStr, cachedProfilesStr] = await Promise.all([
-          redisConnection.get(adIdsCacheKey),
-          redisConnection.get(profilesCacheKey),
-        ]);
+        const cachedAdIds: string[] = JSON.parse(cachedAdIdsStr);
+        profilesMap = JSON.parse(cachedProfilesStr);
 
-        if (cachedAdIdsStr && cachedProfilesStr) {
-          const cachedAdIds: string[] = JSON.parse(cachedAdIdsStr);
-          profilesMap = JSON.parse(cachedProfilesStr);
+        // Filter out ads already seen or blocked by the user in this session & preserve single-fetch uniqueness
+        const eligibleIds = Array.from(new Set(cachedAdIds)).filter(
+          (id) => !seenAdIdsSet.has(id) && !blockedAdIdsSet.has(id)
+        );
 
-          // Filter out ads already seen or blocked by the user in this session & preserve single-fetch uniqueness
-          const eligibleIds = Array.from(new Set(cachedAdIds)).filter(
-            (id) => !seenAdIdsSet.has(id) && !blockedAdIdsSet.has(id)
-          );
+        // Extract slice of IDs for the requested page
+        const slicedIds = eligibleIds.slice(offset, offset + limit);
 
-          // Extract slice of IDs for the requested page
-          const slicedIds = eligibleIds.slice(offset, offset + limit);
+        if (slicedIds.length > 0) {
+          // Fetch shared ad details from Redis in bulk
+          const detailKeys = slicedIds.map((id) => `ad:detail:${id}`);
+          const cachedDetailsRaw = detailKeys.length > 0 ? await redisConnection.mget(detailKeys) : [];
 
-          if (slicedIds.length > 0) {
-            // Fetch shared ad details from Redis in bulk
-            const detailKeys = slicedIds.map((id) => `ad:detail:${id}`);
-            const cachedDetailsRaw = detailKeys.length > 0 ? await redisConnection.mget(detailKeys) : [];
+          const missingIds: string[] = [];
+          const fetchedDetailsMap: Record<string, Ad> = {};
 
-            const missingIds: string[] = [];
-            const fetchedDetailsMap: Record<string, Ad> = {};
-
-            cachedDetailsRaw.forEach((raw, idx) => {
-              const adId = slicedIds[idx];
-              if (raw) {
-                try {
-                  const adDetail: Ad = JSON.parse(raw);
-                  if (adDetail.user_email && blockedAdvertisersSet.has(adDetail.user_email.toLowerCase())) {
-                    return;
-                  }
-                  fetchedDetailsMap[adId] = adDetail;
-                } catch {
-                  missingIds.push(adId);
+          cachedDetailsRaw.forEach((raw, idx) => {
+            const adId = slicedIds[idx];
+            if (raw) {
+              try {
+                const adDetail: Ad = JSON.parse(raw);
+                if (adDetail.user_email && blockedAdvertisersSet.has(adDetail.user_email.toLowerCase())) {
+                  return;
                 }
-              } else {
+                fetchedDetailsMap[adId] = adDetail;
+              } catch {
                 missingIds.push(adId);
               }
-            });
-
-            // Backfill missing ad details from Supabase using pruned columns if evicted from Redis
-            if (missingIds.length > 0) {
-              const { data: dbMissing, error: dbErr } = await supabaseReadOnly
-                .from("addsactive")
-                .select(AD_SELECT_FIELDS)
-                .in("id", missingIds);
-
-              if (!dbErr && dbMissing) {
-                const pipeline = redisConnection.pipeline();
-                dbMissing.forEach((ad: any) => {
-                  if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) {
-                    return;
-                  }
-                  fetchedDetailsMap[ad.id] = ad;
-                  pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
-                });
-                pipeline.exec().catch((err) => console.error("❌ Redis backfill error:", err));
-              }
+            } else {
+              missingIds.push(adId);
             }
+          });
 
-            pageAds = slicedIds
-              .map((id) => fetchedDetailsMap[id])
-              .filter(Boolean)
-              .filter((ad: Ad) => {
-                const userCap = Number(ad.user_frequency_cap || 1);
-                const imp = userImpressionMap.get(ad.id);
-                const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? 1 : 0);
-                return totalViews < userCap;
+          // Backfill missing ad details from Supabase using pruned columns if evicted from Redis
+          if (missingIds.length > 0) {
+            const { data: dbMissing, error: dbErr } = await supabaseReadOnly
+              .from("addsactive")
+              .select(AD_SELECT_FIELDS)
+              .in("id", missingIds);
+
+            if (!dbErr && dbMissing) {
+              const pipeline = redisConnection.pipeline();
+              dbMissing.forEach((ad: any) => {
+                if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) {
+                  return;
+                }
+                fetchedDetailsMap[ad.id] = ad;
+                pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
               });
+              pipeline.exec().catch((err) => console.error("❌ Redis backfill error:", err));
+            }
           }
 
-          cacheHit = true;
-          console.log(`🚀 Scalable Feed cache hit for user: ${emailKey} (Offset: ${offset}, Limit: ${limit})`);
+          pageAds = slicedIds
+            .map((id) => fetchedDetailsMap[id])
+            .filter(Boolean)
+            .filter((ad: Ad) => {
+              const userCap = Number(ad.user_frequency_cap || 1);
+              const imp = userImpressionMap.get(ad.id);
+              const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? 1 : 0);
+              return totalViews < userCap;
+            });
         }
+
+        cacheHit = true;
+        console.log(`🚀 Scalable Feed cache hit for user: ${emailKey} (Offset: ${offset}, Limit: ${limit})`);
       } catch (err: any) {
         console.error("❌ Redis read error in feed route:", err.message || err);
       }
@@ -172,66 +221,57 @@ export async function GET(req: NextRequest) {
 
       let ads = initialFeedAds;
 
-      // Fallback: If RPC fails or is missing, query addsactive with pruned columns and enforce hard guardrails
-      if (error) {
-        console.warn("⚠️ RPC get_user_feed fallback to addsactive:", error.message || error);
+      // Fallback: If RPC fails or is missing, query addsactive with pruned columns and enforce hard guardrails in parallel
+      if (error || !ads || ads.length === 0) {
+        if (error) {
+          console.warn("⚠️ RPC get_user_feed fallback to parallel addsactive:", error.message || error);
+        }
         
-        // Fetch viewer profile to enforce hard targeting guardrails in fallback
-        let viewerProfile: any = null;
-        try {
-          const cachedProfile = await redisConnection.get(`user:profile:${emailKey}`);
-          if (cachedProfile) {
-            viewerProfile = JSON.parse(cachedProfile);
-          }
-        } catch {}
-        if (!viewerProfile) {
-          const { data: dbUser } = await supabaseReadOnly
-            .from("users")
-            .select("dob, country, state, location, gender, employment, interest, lifestyle, behavior, personality, industry")
-            .eq("email", emailKey)
-            .maybeSingle();
-          viewerProfile = dbUser;
-        }
-
-        let fallbackQuery = supabaseReadOnly
-          .from("addsactive")
-          .select(AD_SELECT_FIELDS)
-          .is("completed_at", null)
-          .order("cost_per_impression", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(100);
-
-        if (viewerProfile?.country && viewerProfile.country !== "PLACEHOLDER") {
-          try {
-            fallbackQuery = fallbackQuery.or(`country.is.null,country.eq.,country.ilike.all,country.ilike.${viewerProfile.country}`);
-          } catch {}
-        }
-
-        let { data: fallbackAds, error: fallbackErr } = await fallbackQuery;
-
-        if (fallbackErr) {
-          console.warn("⚠️ Targeted fallback query on addsactive failed, trying broad query:", fallbackErr);
-          const { data: broadAds } = await supabaseReadOnly
+        // Fetch viewer profile and candidate active ads in PARALLEL to eliminate waterfall latency
+        const [viewerProfile, fallbackAdsRes] = await Promise.all([
+          (async () => {
+            try {
+              const cachedProfile = await redisConnection.get(`user:profile:${emailKey}`);
+              if (cachedProfile) return JSON.parse(cachedProfile);
+            } catch {}
+            const { data: dbUser } = await supabaseReadOnly
+              .from("users")
+              .select("dob, country, state, location, gender, employment, interest, lifestyle, behavior, personality, industry")
+              .eq("email", emailKey)
+              .maybeSingle();
+            return dbUser;
+          })(),
+          supabaseReadOnly
             .from("addsactive")
             .select(AD_SELECT_FIELDS)
             .is("completed_at", null)
+            .order("cost_per_impression", { ascending: false })
             .order("created_at", { ascending: false })
-            .limit(100);
-          fallbackAds = broadAds || [];
-        }
+            .limit(100),
+        ]);
 
-        // Apply in-memory hard guardrails (Gender, Age)
+        let fallbackAds = fallbackAdsRes.data || [];
+
+        // Apply in-memory hard guardrails (Country, Gender, Age)
+        const userCountry = (viewerProfile?.country || "").toLowerCase().trim();
         const userGender = (viewerProfile?.gender || "").toLowerCase().trim();
         const userDob = viewerProfile?.dob && viewerProfile.dob !== "PLACEHOLDER" ? new Date(viewerProfile.dob) : null;
         const userAge = userDob ? Math.floor((now.getTime() - userDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 25;
 
-        const filteredFallback = (fallbackAds || []).filter((ad: any) => {
-          // Hard Guardrail 1: Gender (STRICT)
+        const filteredFallback = fallbackAds.filter((ad: any) => {
+          // Hard Guardrail 1: Country
+          if (userCountry && userCountry !== "placeholder") {
+            const adCountry = (ad.country || "").toLowerCase().trim();
+            if (adCountry && adCountry !== "all" && adCountry !== userCountry) {
+              return false;
+            }
+          }
+          // Hard Guardrail 2: Gender (STRICT)
           const adGender = (ad.gender || "").toLowerCase().trim();
           if (adGender && adGender !== "both" && userGender && adGender !== userGender) {
             return false;
           }
-          // Hard Guardrail 2: Age (STRICT)
+          // Hard Guardrail 3: Age (STRICT)
           if (Array.isArray(ad.age_range) && ad.age_range.length >= 2) {
             const [minAge, maxAge] = ad.age_range;
             if (userAge < minAge || userAge > maxAge) {
@@ -242,7 +282,7 @@ export async function GET(req: NextRequest) {
         });
 
         // If strict filtering produces matches, use them; otherwise use raw fallback ads
-        ads = filteredFallback.length > 0 ? filteredFallback : (fallbackAds || []);
+        ads = filteredFallback.length > 0 ? filteredFallback : fallbackAds;
       }
 
       // Filter active ads and enforce single-fetch uniqueness

@@ -37,6 +37,7 @@ import styles from "./page.module.css";
 import Footer from "../Footers/page";
 import { resolveAtwTier } from "@/lib/attentionTierEngine";
 import RollingCounter from "@/components/ui/RollingCounter";
+import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
 
 export interface UserProfile {
   id: string;
@@ -122,6 +123,7 @@ export default function DashboardClient({
   const [sendAmount, setSendAmount] = useState("");
   const [submittingSend, setSubmittingSend] = useState(false);
   const [sendMoneyError, setSendMoneyError] = useState("");
+  const [transferSuccessData, setTransferSuccessData] = useState<TransferSuccessData | null>(null);
 
   const refreshProfileQuietly = async () => {
     try {
@@ -146,7 +148,7 @@ export default function DashboardClient({
             monetization_clicks: Math.max(prev.monetization_clicks || 0, liveClicks),
             mutual_count: Math.max(prev.mutual_count || 0, Number(data.mutual_count) || 0),
             monetized: isMonetized ?? prev.monetized,
-            balance: Math.max(prev.balance || 0, Number(data.balance) || 0),
+            balance: typeof data.balance !== "undefined" && !isNaN(Number(data.balance)) ? Number(data.balance) : (prev.balance || 0),
           }));
         }
       }
@@ -209,15 +211,21 @@ export default function DashboardClient({
 
       const data = await res.json();
       if (res.ok && data.success) {
-        alert(`Success! ${data.message || `Sent ${formatCurrency(amountNum)} to ${cleanEmail}`}`);
         setShowSendMoneyModal(false);
         setSendRecipientEmail("");
         setSendAmount("");
         // Seamlessly update balance without reloading the page
+        const finalBal = typeof data.new_balance === "number" ? data.new_balance : Math.max(0, (user.balance || 0) - amountNum);
         setUser((prev) => ({
           ...prev,
-          balance: Math.max(0, (prev.balance || 0) - amountNum),
+          balance: finalBal,
         }));
+        setTransferSuccessData({
+          amount: amountNum,
+          recipientEmail: cleanEmail,
+          reference: data.reference,
+          newBalance: finalBal,
+        });
         refreshProfileQuietly();
         fetchNotifications();
       } else {
@@ -774,13 +782,23 @@ export default function DashboardClient({
 
       const data = await res.json();
       if (res.ok) {
-        alert("Success! Your withdrawal request has been queued for the next batch.");
         setShowWithdrawModal(false);
+        const finalBal = typeof data.newBalance === "number" ? data.newBalance : Math.max(0, (user.balance || 0) - amountNum);
         setUser((prev) => ({
           ...prev,
-          balance: Math.max(0, (prev.balance || 0) - amountNum),
+          balance: finalBal,
           withdrawal: (prev.withdrawal || 0) + amountNum,
         }));
+        setTransferSuccessData({
+          type: "withdrawal",
+          title: "Withdrawal Queued",
+          amount: amountNum,
+          bankName: bank?.name || "Bank Account",
+          accountNumber,
+          accountName: resolvedAccountName,
+          reference: data.reference,
+          newBalance: finalBal,
+        });
         refreshProfileQuietly();
         fetchNotifications();
       } else {
@@ -1506,6 +1524,13 @@ export default function DashboardClient({
             </div>
           </div>
         )}
+        
+        {/* Premium Transfer Success Animation Modal */}
+        <TransferSuccessModal
+          data={transferSuccessData}
+          onClose={() => setTransferSuccessData(null)}
+          formatCurrency={formatCurrency}
+        />
       </div>
     </div>
   );

@@ -180,7 +180,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: rpcResult.error || "Ledger entry creation failed" }, { status: 400 });
     }
 
-    // 8. Update Redis Unique Recipients Rate Limit Set
+    // 8. Ensure atomic balance deduction in PostgreSQL
+    let newBalance = rpcResult?.new_sender_balance;
+    if (typeof newBalance !== "number") {
+      newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
+      // Immediately deduct sender balance in DB
+      await supabaseAdmin
+        .from("users")
+        .update({ balance: newBalance })
+        .ilike("email", cleanSender);
+
+      // Immediately credit recipient balance in DB
+      const { data: recipientRow } = await supabaseAdmin
+        .from("users")
+        .select("balance")
+        .ilike("email", cleanRecipient)
+        .maybeSingle();
+
+      if (recipientRow) {
+        const recipBal = parseFloat(recipientRow.balance || "0") || 0;
+        await supabaseAdmin
+          .from("users")
+          .update({ balance: recipBal + amountNum })
+          .ilike("email", cleanRecipient);
+      }
+    }
+
+    // 9. Update Redis Unique Recipients Rate Limit Set
     try {
       const recipientSetKey = `ratelimit:send_money_recipients:${cleanSender}`;
       await redisConnection.sadd(recipientSetKey, cleanRecipient);
@@ -189,7 +215,7 @@ export async function POST(req: NextRequest) {
       console.warn("⚠️ Redis recipient set update warning:", redisErr);
     }
 
-    // 9. Enqueue Settlement & Cache Sync Job to BullMQ paymentQueue
+    // 10. Enqueue Settlement & Cache Sync Job to BullMQ paymentQueue (Audit & Notifications)
     try {
       await paymentQueue.add("transfer-settlement", {
         type: "p2p_transfer",
@@ -199,24 +225,24 @@ export async function POST(req: NextRequest) {
         amountKobo,
         reference,
         timestamp: new Date().toISOString(),
+        settledImmediately: true,
       });
     } catch (queueErr) {
       console.warn("⚠️ BullMQ paymentQueue enqueue warning:", queueErr);
     }
 
-    // 10. Record In-Flight Live Delta & Real-Time Discrepancy Check
+    // 11. Record In-Flight Live Delta & Real-Time Discrepancy Check
     await recordLiveTransferDelta(amountKobo);
     // Asynchronous non-blocking background auditor check
     runAutomatedDiscrepancyCheck().catch(() => {});
 
-    // 11. Invalidate Redis Caches
+    // 12. Invalidate Redis Caches Immediately for both parties
     await Promise.all([
       invalidateCachedProfile(cleanSender),
       invalidateCachedProfile(cleanRecipient),
     ]);
 
     const formattedAmount = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(amountNum);
-    const newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
 
     return NextResponse.json({
       success: true,

@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
 
     const emailKey = email.toLowerCase().trim();
 
-    // Server-side double click check (NX lock in Redis)
+    // Server-side double click check (NX lock in Redis) & Atomic Frequency Counters
+    const todayDate = new Date().toISOString().slice(0, 10);
     if (isRedisReady()) {
       try {
         const lockKey = `lock:click:${emailKey}:${adId}:seen`;
@@ -31,6 +32,16 @@ export async function POST(request: NextRequest) {
         if (!lockAcquired) {
           return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
         }
+
+        // Atomically increment frequency counters in Redis for O(1) feed filtering
+        const freqPipe = redisConnection.pipeline();
+        freqPipe.hincrby(`user:freq:${emailKey}:${todayDate}`, adId, 1);
+        freqPipe.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2);
+        freqPipe.hincrby(`user:freq_lifetime:${emailKey}`, adId, 1);
+        freqPipe.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30);
+        freqPipe.sadd(`seen:ads:${emailKey}`, adId);
+        freqPipe.expire(`seen:ads:${emailKey}`, 86400 * 7);
+        freqPipe.exec().catch(() => {});
       } catch {}
     }
 

@@ -23,6 +23,8 @@ export default async function Home() {
           user={profileResult.user}
           parsedInterest={profileResult.parsedInterest}
           email={profileResult.email}
+          initialAds={profileResult.initialAds}
+          initialProfiles={profileResult.initialProfiles}
         />
       );
     }

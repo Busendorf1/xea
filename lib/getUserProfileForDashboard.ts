@@ -2,11 +2,16 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 import { safeParseArray } from "@/lib/utils/parsers";
 import { UserProfile } from "@/components/DashboardClient/page";
+import redisConnection from "@/lib/redis";
+import crypto from "crypto";
+import { isAdminEmail } from "@/lib/authHelper";
 
 export interface DashboardProfileResult {
   user?: UserProfile;
   parsedInterest?: string[];
   email?: string;
+  initialAds?: any[];
+  initialProfiles?: Record<string, any>;
   redirectUrl?: string;
   error?: string;
 }
@@ -228,9 +233,68 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     .then(({ touchUserActivity }) => touchUserActivity(email, user))
     .catch(() => {});
 
+  // 4. Server-Side Feed Pre-load: If Redis already has candidate ads cached, hydrate initialAds
+  let initialAds: any[] | undefined = undefined;
+  let initialProfiles: Record<string, any> | undefined = undefined;
+  try {
+    const [cachedAdIdsStr, cachedProfilesStr] = await Promise.all([
+      redisConnection.get(`feed:ad_ids:${email}`).catch(() => null),
+      redisConnection.get(`feed:profiles:${email}`).catch(() => null),
+    ]);
+
+    if (cachedAdIdsStr) {
+      const adIds: string[] = JSON.parse(cachedAdIdsStr).slice(0, 10);
+      if (adIds.length > 0) {
+        const detailKeys = adIds.map((id) => `ad:detail:${id}`);
+        const rawDetails = await redisConnection.mget(detailKeys).catch(() => []);
+        const secretKey = process.env.AUTH0_SECRET || "xea-default-auth0-secret-key-32ch";
+        const servedAt = Date.now();
+
+        initialAds = (rawDetails || [])
+          .map((raw) => {
+            if (!raw) return null;
+            try {
+              const ad = JSON.parse(raw);
+              const isPlatformPost = Boolean(
+                ad.is_admin_post ||
+                isAdminEmail(ad.user_email || ad.email) ||
+                !ad.cost_per_impression ||
+                Number(ad.cost_per_impression) <= 0 ||
+                !ad.impressions ||
+                Number(ad.impressions) <= 0
+              );
+              const payload = `${ad.id}:${email}:${servedAt}`;
+              const token = crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
+              return {
+                ...ad,
+                is_admin_post: isPlatformPost,
+                cost_per_impression: isPlatformPost ? 0 : Number(ad.cost_per_impression || 0),
+                impressions: isPlatformPost ? 0 : Number(ad.impressions || 0),
+                verification_token: token,
+                served_at: servedAt,
+              };
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean);
+
+        if (cachedProfilesStr) {
+          try {
+            initialProfiles = JSON.parse(cachedProfilesStr);
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    // Non-blocking prefetch failure fallback
+  }
+
   return {
     user: user as UserProfile,
     parsedInterest,
     email,
+    initialAds,
+    initialProfiles,
   };
 }

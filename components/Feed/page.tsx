@@ -152,18 +152,24 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         if (userEmail) {
           headers["x-user-email"] = userEmail;
         }
-        let response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`, {
-          headers,
-        });
+        const fetchUrl = `/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`;
+        let response = await fetch(fetchUrl, { headers });
+
+        // Resilient progressive retry for initial feed load (e.g. serverless cold starts)
+        // CRITICAL: Never pass &refresh=true on retry, as that actively destroys the Redis cache being warmed in background.
         if (!response.ok && pageNum === 0 && !isLoadMore) {
-          // Retry once on initial failure after a brief delay
-          await new Promise((r) => setTimeout(r, 600));
-          response = await fetch(`/api/feed?offset=${offset}&limit=${LIMIT}&refresh=true${sharedAdParam}`, {
-            headers,
-          });
+          console.warn("⚠️ Feed initial fetch non-OK status:", response.status, "- Retrying with warm cache...");
+          await new Promise((r) => setTimeout(r, 1000));
+          response = await fetch(fetchUrl, { headers });
+
+          if (!response.ok) {
+            await new Promise((r) => setTimeout(r, 2000));
+            response = await fetch(fetchUrl, { headers });
+          }
         }
+
         if (!response.ok) {
-          throw new Error("Failed to fetch ad feed");
+          throw new Error(`Failed to fetch ad feed (Status: ${response.status})`);
         }
         const data = await response.json();
         const feedAds: Ad[] = data.ads || [];
@@ -188,7 +194,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         setLoadingMore(false);
       }
     },
-    [setSeenAds]
+    [userEmail, setSeenAds]
   );
 
   useEffect(() => {

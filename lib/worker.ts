@@ -53,6 +53,7 @@ export interface PaymentJobData {
   amountKobo?: number;
   reference: string;
   timestamp?: string;
+  settledImmediately?: boolean;
 }
 
 interface JobItem {
@@ -490,7 +491,7 @@ export const paymentWorker = new Worker<PaymentJobData>(
           .ilike("email", recipientEmail)
           .maybeSingle();
 
-        if (senderUser && recipientUser) {
+        if (!job.data.settledImmediately && senderUser && recipientUser) {
           const newSenderBal = Math.max(0, parseFloat(senderUser.balance || "0") - amount);
           const newRecipientBal = parseFloat(recipientUser.balance || "0") + amount;
 

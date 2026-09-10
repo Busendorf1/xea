@@ -59,7 +59,9 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
           const currentBalance = prev?.balance ?? 0;
           const currentMutualCount = prev?.mutual_count ?? 0;
           const clicks = Math.max(currentClicks, Number(data.monetization_clicks) || 0);
-          const balance = Math.max(currentBalance, Number(data.balance) || 0);
+          const balance = typeof data.balance !== "undefined" && !isNaN(Number(data.balance))
+            ? Number(data.balance)
+            : currentBalance;
           const mutualCount = Math.max(currentMutualCount, Number(data.mutual_count) || 0);
           const isMonetized =
             data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 300;

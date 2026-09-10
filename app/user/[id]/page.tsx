@@ -32,6 +32,8 @@ export default async function UserPage(props: { params: Promise<{ id: string }> 
       user={profileResult.user} 
       parsedInterest={profileResult.parsedInterest} 
       email={profileResult.email} 
+      initialAds={profileResult.initialAds}
+      initialProfiles={profileResult.initialProfiles}
     />
   );
 }

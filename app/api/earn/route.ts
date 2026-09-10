@@ -469,9 +469,14 @@ export async function POST(request: NextRequest) {
       if (isRedisReady()) {
         try {
           const reachedCap = atomicViews >= atomicCap;
+          const todayDate = new Date().toISOString().slice(0, 10);
 
           const syncPromises: Promise<any>[] = [
             redisConnection.set(`user:live_clicks:${emailKey}`, String(liveClicks), "EX", 86400 * 30).catch(() => {}),
+            redisConnection.hincrby(`user:freq:${emailKey}:${todayDate}`, adId, 1).catch(() => {}),
+            redisConnection.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2).catch(() => {}),
+            redisConnection.hincrby(`user:freq_lifetime:${emailKey}`, adId, 1).catch(() => {}),
+            redisConnection.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30).catch(() => {}),
           ];
 
           if (reachedCap) {

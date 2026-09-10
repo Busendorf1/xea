@@ -1,0 +1,226 @@
+﻿.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: fadeIn 0.25s var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background-color: var(--card-bg, var(--background, #ffffff));
+  color: var(--foreground, #0f172a);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 24px;
+  padding: 2.25rem 1.75rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 40px -10px var(--primary-glow, rgba(37, 99, 235, 0.1));
+  animation: modalPop 0.35s var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+@keyframes modalPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Success Checkmark Animation */
+.iconWrapper {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.pulseRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(22, 163, 74, 0.35) 0%, rgba(22, 163, 74, 0) 70%);
+  animation: pulseExpand 2s infinite ease-out;
+}
+
+@keyframes pulseExpand {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+.circleBg {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--success, #16a34a) 0%, #15803d 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35);
+  animation: circlePop 0.45s var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)) 0.1s both;
+}
+
+@keyframes circlePop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+.checkmarkSvg {
+  width: 36px;
+  height: 36px;
+}
+
+.checkmarkCheck {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  stroke-width: 3.5;
+  stroke: #ffffff;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: checkDraw 0.45s cubic-bezier(0.65, 0, 0.45, 1) 0.35s forwards;
+}
+
+@keyframes checkDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--foreground, #0f172a);
+  margin: 0 0 0.5rem 0;
+  text-align: center;
+}
+
+.amountText {
+  font-size: 2.25rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: var(--success, #16a34a);
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Receipt Details Card */
+.receiptCard {
+  width: 100%;
+  background: var(--input-bg, var(--card-bg, #f8fafc));
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  box-sizing: border-box;
+}
+
+.receiptRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.receiptLabel {
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
+}
+
+.receiptValue {
+  color: var(--foreground, #0f172a);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refTag {
+  font-family: monospace;
+  font-size: 0.78rem;
+  background: var(--card-bg, #f1f5f9);
+  color: var(--foreground, #0f172a);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border, #e2e8f0);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.refTag:hover {
+  background: var(--input-bg, #e2e8f0);
+  border-color: var(--card-border-hover, #cbd5e1);
+}
+
+.doneBtn {
+  width: 100%;
+  padding: 0.85rem;
+  border-radius: var(--radius-btn, 10px);
+  background-color: var(--primary, #2563eb);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px var(--primary-glow, rgba(37, 99, 235, 0.25));
+  transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.doneBtn:hover {
+  background-color: var(--primary-hover, #1d4ed8);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px var(--primary-glow, rgba(37, 99, 235, 0.35));
+}
+
+.doneBtn:active {
+  transform: translateY(0);
+}

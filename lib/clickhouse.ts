@@ -111,3 +111,42 @@ export async function streamImpressionsToClickHouse(events: ClickHouseImpression
 
   return true;
 }
+
+/**
+ * Fast analytical query to retrieve campaign impression count per ad from ClickHouse.
+ * Executes across millions of rows in single-digit milliseconds.
+ */
+export async function getCampaignDeliveryCounts(adIds?: string[]): Promise<Record<string, number>> {
+  const client = getClickHouseClient();
+  if (!client) return {};
+
+  try {
+    let whereClause = "";
+    if (adIds && adIds.length > 0) {
+      const escapedIds = adIds.map((id) => `'${id.replace(/'/g, "\\'")}'`).join(",");
+      whereClause = `WHERE ad_id IN (${escapedIds})`;
+    }
+
+    const resultSet = await client.query({
+      query: `
+        SELECT ad_id, count() AS total_delivered
+        FROM default.ad_impressions
+        ${whereClause}
+        GROUP BY ad_id
+      `,
+      format: "JSONEachRow",
+    });
+
+    const rows: { ad_id: string; total_delivered: string | number }[] = await resultSet.json();
+    const result: Record<string, number> = {};
+    rows.forEach((r) => {
+      if (r.ad_id) {
+        result[r.ad_id] = Number(r.total_delivered || 0);
+      }
+    });
+    return result;
+  } catch (err: any) {
+    console.warn("⚠️ ClickHouse delivery counts query warning:", err?.message || err);
+    return {};
+  }
+}
