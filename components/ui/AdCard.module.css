@@ -118,8 +118,17 @@
 }
 
 .dot {
-  color: var(--text-muted);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
+  display: inline-block;
+}
+
+[data-theme='white'] .dot,
+[data-theme='light'] .dot {
+  background-color: rgba(0, 0, 0, 0.35);
 }
 
 .adTime {
@@ -592,7 +601,7 @@
   align-items: center;
 }
 
-.dot {
+.carouselDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -603,7 +612,7 @@
   transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.dot:hover {
+.carouselDot:hover {
   background-color: rgba(255, 255, 255, 0.8);
 }
 

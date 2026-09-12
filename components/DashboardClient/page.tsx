@@ -296,7 +296,16 @@ export default function DashboardClient({
       const res = await fetch("/api/notifications");
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data || []);
+        const rawList = Array.isArray(data) ? data : [];
+        const seen = new Set<string>();
+        const unique = rawList.filter((n: any) => {
+          if (!n || !n.id) return false;
+          const k = `${n.id}:::${(n.title || "").trim().toLowerCase()}:::${(n.message || "").trim().toLowerCase()}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        setNotifications(unique);
       }
     } catch (e) {
       console.error("Failed to fetch notifications:", e);
@@ -321,6 +330,29 @@ export default function DashboardClient({
       clearInterval(interval);
     };
   }, []);
+
+  // Synchronize monetization status to client storage so /monetize opens instantly with 0ms flicker
+  useEffect(() => {
+    if (typeof window !== "undefined" && user?.email) {
+      try {
+        const isMon = Boolean(
+          user.monetized === true ||
+          user.monetized === "yes" ||
+          user.monetized === "true" ||
+          (user.monetization_clicks ?? 0) >= 300
+        );
+        const cachePayload = JSON.stringify({
+          isMonetized: isMon,
+          clicksCount: user.monetization_clicks ?? 0,
+          clicksRemaining: Math.max(0, 300 - (user.monetization_clicks ?? 0)),
+          atwTier: (user as any)?.atw_tier || "ATW1",
+          daysInactive: 0,
+        });
+        localStorage.setItem("paayh_monetize_cache", cachePayload);
+        sessionStorage.setItem("paayh_monetize_cache", cachePayload);
+      } catch {}
+    }
+  }, [user.monetized, user.monetization_clicks, user.email]);
 
   // Supabase Real-Time Cross-Device Synchronization (Laptop, TV, Live Screen, Mobile)
   useEffect(() => {
@@ -395,12 +427,40 @@ export default function DashboardClient({
       });
     };
 
+    const handleLiveBalanceSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { newBalance, delta, clicks, earnedAmount } = customEvent.detail || {};
+      setUser((prev) => {
+        let updatedBal = prev.balance;
+        if (typeof newBalance === "number" && !isNaN(newBalance)) {
+          updatedBal = newBalance;
+        } else if (typeof delta === "number" && !isNaN(delta)) {
+          updatedBal = Math.max(0, Math.round(((prev.balance || 0) + delta) * 100) / 100);
+        } else if (typeof earnedAmount === "number" && !isNaN(earnedAmount)) {
+          updatedBal = Math.max(0, Math.round(((prev.balance || 0) + earnedAmount) * 100) / 100);
+        }
+        const updatedClicks = typeof clicks === "number" ? Math.max(prev.monetization_clicks || 0, clicks) : prev.monetization_clicks;
+        const updatedMonetized = (typeof clicks === "number" && clicks >= 300) || prev.monetized;
+        return {
+          ...prev,
+          balance: updatedBal,
+          monetization_clicks: updatedClicks,
+          monetized: updatedMonetized,
+        };
+      });
+      triggerEarnFeedback();
+    };
+
     window.addEventListener("focus", onFocus);
     window.addEventListener("xea:click-increment", handleClickIncrement);
+    window.addEventListener("xea:live-balance-sync", handleLiveBalanceSync);
+    window.addEventListener("xea:live-balance-earned", handleLiveBalanceSync);
 
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("xea:click-increment", handleClickIncrement);
+      window.removeEventListener("xea:live-balance-sync", handleLiveBalanceSync);
+      window.removeEventListener("xea:live-balance-earned", handleLiveBalanceSync);
     };
   }, [email]);
 
@@ -1069,7 +1129,8 @@ export default function DashboardClient({
               )}
               <div className={styles.desktopNav}>
                 <Link href="/">Home</Link>
-                <Link href="/privacy">Policies</Link>
+                <Link href="/terms">Terms</Link>
+                <Link href="/privacy">Privacy</Link>
                 <Link href="/faq">FAQ</Link>
               </div>
               {renderNotificationBell()}

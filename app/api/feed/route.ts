@@ -5,6 +5,7 @@ import crypto from "crypto";
 import redisConnection from "@/lib/redis";
 import { env } from "@/lib/env";
 import { Ad, AdvertiserProfile } from "@/types/ads";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +22,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const refresh = searchParams.get("refresh") === "true";
+
+    // Rate limit feed fetches: Stricter cap of 8 refreshes/min with 6-hour lockout penalty on violation
+    const rateLimit = await checkRateLimit(req, {
+      limit: refresh ? 8 : 45,
+      windowSeconds: 60,
+      identifierPrefix: refresh ? "feed_refresh" : "feed_paginate",
+      blockDurationSeconds: refresh ? 21600 : undefined, // 6-hour lockout window on refresh violation
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimit.response!;
+    }
+
     const now = new Date();
     const servedAt = Date.now();
 
-    // Parse pagination, refresh, and optional sharedAdId parameters
-    const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get("limit") || "15", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
-    const refresh = searchParams.get("refresh") === "true";
     const sharedAdId = searchParams.get("sharedAdId");
 
     const emailKey = email.toLowerCase().trim();

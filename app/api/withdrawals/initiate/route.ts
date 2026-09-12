@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch user's current profile details
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, bvn_hash, monetized, monetized_until, monetization_clicks, atw_tier")
+      .select("balance, withdrawal, phone, bvn_hash, monetized, monetization_clicks, atw_tier")
       .ilike("email", email)
       .maybeSingle();
 
@@ -68,49 +68,6 @@ export async function POST(req: NextRequest) {
     if (!user.phone || normalizePhone(user.phone) !== normalizePhone(phone)) {
       console.warn(`❌ Security Block: Phone mismatch. Input: "${phone}", Profile: "${user.phone}"`);
       return NextResponse.json({ error: "Verification failed. Phone number must match your registered account phone number." }, { status: 400 });
-    }
-
-    // Rule D: Bank account uniqueness (no multi-accounting)
-    const { data: duplicateBank, error: dupBankErr } = await supabaseAdmin
-      .from("payments")
-      .select("user_email")
-      .eq("type", "withdrawal")
-      .in("status", ["success", "pending"])
-      .neq("user_email", email)
-      .eq("metadata->>accountNumber", accountNumber)
-      .eq("metadata->>bankCode", bankCode)
-      .limit(1);
-
-    if (dupBankErr) {
-      console.error("❌ Database error checking duplicate bank account:", dupBankErr);
-      return NextResponse.json({ error: "Verification failed. Please review your account details or contact support." }, { status: 500 });
-    }
-
-    if (duplicateBank && duplicateBank.length > 0) {
-      console.warn(`❌ Security Block: Bank details already used by ${duplicateBank[0].user_email}`);
-      return NextResponse.json({ error: "Verification failed. Bank account details are registered to another profile." }, { status: 400 });
-    }
-
-    // Rule E: First Bank Account Enforcement
-    const { data: pastWithdrawal, error: pastWithdrawalErr } = await supabaseAdmin
-      .from("payments")
-      .select("metadata")
-      .eq("user_email", email)
-      .eq("type", "withdrawal")
-      .in("status", ["success", "pending"])
-      .order("created_at", { ascending: true })
-      .limit(1);
-
-    if (!pastWithdrawalErr && pastWithdrawal && pastWithdrawal.length > 0) {
-      const firstMeta = pastWithdrawal[0].metadata as any;
-      const firstAccNum = firstMeta?.accountNumber;
-      const firstBankCode = firstMeta?.bankCode;
-
-      if (firstAccNum && firstBankCode) {
-        if (firstAccNum.trim() !== accountNumber.trim() || firstBankCode.trim() !== bankCode.trim()) {
-          return NextResponse.json({ error: "For security and fraud prevention, withdrawals must use the bank account associated with your initial payout." }, { status: 400 });
-        }
-      }
     }
 
     // Attempt Bank Resolution & Payout Initiation with Network Fault Recovery

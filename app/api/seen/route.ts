@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(request);
+    const email = await getAuthenticatedEmail(request, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -23,15 +23,26 @@ export async function POST(request: NextRequest) {
 
     const emailKey = email.toLowerCase().trim();
 
-    // Server-side double click check (NX lock in Redis) & Atomic Frequency Counters
+    // Server-side rapid click deduplication (NX lock in Redis) & Atomic Frequency Counters
     const todayDate = new Date().toISOString().slice(0, 10);
+    let userCap = 1;
     if (isRedisReady()) {
       try {
         const lockKey = `lock:click:${emailKey}:${adId}:seen`;
-        const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX");
+        const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 2, "NX");
         if (!lockAcquired) {
-          return NextResponse.json({ error: "Duplicate click action detected. Please wait." }, { status: 429 });
+          // Gracefully acknowledge duplicate without throwing or generating client errors
+          return NextResponse.json({ success: true, duplicate: true });
         }
+
+        // Check if ad allows retargeting (frequency cap > 1)
+        try {
+          const cached = await redisConnection.get(`ad:detail:${adId}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            userCap = Number(parsed.user_frequency_cap || 1);
+          }
+        } catch {}
 
         // Atomically increment frequency counters in Redis for O(1) feed filtering
         const freqPipe = redisConnection.pipeline();
@@ -39,8 +50,10 @@ export async function POST(request: NextRequest) {
         freqPipe.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2);
         freqPipe.hincrby(`user:freq_lifetime:${emailKey}`, adId, 1);
         freqPipe.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30);
-        freqPipe.sadd(`seen:ads:${emailKey}`, adId);
-        freqPipe.expire(`seen:ads:${emailKey}`, 86400 * 7);
+        if (userCap <= 1) {
+          freqPipe.sadd(`seen:ads:${emailKey}`, adId);
+          freqPipe.expire(`seen:ads:${emailKey}`, 86400 * 7);
+        }
         freqPipe.exec().catch(() => {});
       } catch {}
     }
@@ -99,12 +112,19 @@ export async function POST(request: NextRequest) {
         const seenSetKey = `seen:ads:${emailKey}`;
         const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
 
-        await Promise.all([
-          redisConnection.sadd(seenSetKey, adId).catch(() => null),
-          redisConnection.expire(seenSetKey, 86400).catch(() => null),
+        const syncOps: Promise<any>[] = [
           redisConnection.hincrby(pacingHashKey, adId, 1).catch(() => null),
           redisConnection.expire(pacingHashKey, 86400).catch(() => null),
-        ]);
+        ];
+
+        if (userCap <= 1) {
+          syncOps.push(
+            redisConnection.sadd(seenSetKey, adId).catch(() => null),
+            redisConnection.expire(seenSetKey, 86400).catch(() => null)
+          );
+        }
+
+        await Promise.all(syncOps);
       } catch {}
     }
 

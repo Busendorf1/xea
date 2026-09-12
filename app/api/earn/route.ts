@@ -255,6 +255,21 @@ export async function POST(request: NextRequest) {
       atomicViews = 1;
       atomicCap = 1;
 
+      let hasAlreadyEarned = false;
+      if (isRedisReady()) {
+        try {
+          hasAlreadyEarned = Boolean(await redisConnection.sismember(earnedSetKey, adId));
+        } catch {}
+      }
+
+      if (hasAlreadyEarned) {
+        return NextResponse.json({
+          success: false,
+          code: "ALREADY_EARNED",
+          error: "This ad reward has already been claimed on your account.",
+        }, { status: 400 });
+      }
+
       const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("claim_ad_earning_atomic", {
         p_ad_id: adId,
         p_user_email: emailKey,
@@ -262,12 +277,14 @@ export async function POST(request: NextRequest) {
         p_device_id: deviceId || null,
       });
 
-      if (atomicErr) {
-        console.warn("⚠️ Atomic DB RPC returned error or not found, running direct DB fallback:", atomicErr.message || atomicErr);
+      const shouldUseFallback = atomicErr || (atomicResult && !atomicResult.success && atomicResult.code === "ALREADY_EARNED");
+
+      if (shouldUseFallback) {
+        console.warn("⚠️ Running direct DB fallback for earn claim:", atomicErr?.message || atomicResult?.error || "Reconciling seen view");
         // Fallback gracefully to direct verification if RPC is not yet executed in database
         const { data: dbUser, error: userFetchErr } = await supabaseAdmin
           .from("users")
-          .select("balance, monetization_clicks, monetized, referral_downloads_count, suspended_until")
+          .select("balance, monetization_clicks, monetized, referral_downloads_count, suspended_until, atw_tier")
           .ilike("email", emailKey)
           .maybeSingle();
 
@@ -371,25 +388,28 @@ export async function POST(request: NextRequest) {
         atomicViews = existingViews + 1;
         atomicCap = userFreqCap;
 
-        if (existingViews >= userFreqCap) {
+        if (hasAlreadyEarned) {
           if (isRedisReady()) {
             await redisConnection.sadd(earnedSetKey, adId).catch(() => {});
           }
           return NextResponse.json({
             success: false,
             code: "ALREADY_EARNED",
-            error: "Frequency cap reached for this ad campaign.",
+            error: "This ad reward has already been claimed on your account.",
             views: existingViews,
             cap: userFreqCap,
           }, { status: 400 });
         }
 
         const rateToApply = Math.round(adCpi * 0.60 * 100) / 100;
-        updatedBalance = Math.round((currentBal + rateToApply) * 100) / 100;
+        const { getAtwBalanceLimit } = await import("@/lib/attentionTierEngine");
+        const atwCap = getAtwBalanceLimit(dbUser?.atw_tier, isAdminEmail(emailKey));
+        const uncappedBalance = Math.round((currentBal + rateToApply) * 100) / 100;
+        updatedBalance = Math.min(atwCap, uncappedBalance);
         liveClicks = currentClicks + 1;
         earnedRateNumber = rateToApply;
 
-        console.log(`📊 [POST /api/earn] Fallback DB calculation: 60PctRate=${rateToApply} (CPI=${adCpi}), prevBal=${currentBal}, newBalance=${updatedBalance}, newClicks=${liveClicks}, views=${existingViews + 1}/${userFreqCap}`);
+        console.log(`📊 [POST /api/earn] Fallback DB calculation: 60PctRate=${rateToApply} (CPI=${adCpi}), prevBal=${currentBal}, newBalance=${updatedBalance} (ATW Cap=${atwCap}), newClicks=${liveClicks}, views=${existingViews + 1}/${userFreqCap}`);
 
         if (existingImp) {
           await supabaseAdmin

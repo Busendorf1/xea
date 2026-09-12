@@ -7,9 +7,10 @@ const IP_RATE_LIMIT_TTL_SECONDS = 86400; // 24 Hours
 
 /**
  * Calculates ATW Tier Level from Clicks
- * Level 1: 300 Clicks
- * Each level increment: +300 Clicks
- * Max: ATW14 (₦1.4M Cap)
+ * NB: ATW is exclusively for wallet balance holding caps to ensure users maintain low balances.
+ * Level 1: 300 Clicks (₦30,000 cap / ~$20 USD)
+ * Level 2: 600 Clicks (₦60,000 cap / ~$40 USD)
+ * Level 3: 900+ Clicks (₦90,000 cap / ~$60 USD - Maximum Cap)
  */
 export function calculateAtwTier(clicks = 0): {
   tier: string;
@@ -17,12 +18,12 @@ export function calculateAtwTier(clicks = 0): {
   holdingLimit: number;
 } {
   const levelFromClicks = clicks >= 300 ? 1 + Math.floor((clicks - 300) / 300) : 1;
-  const finalLevel = Math.min(14, Math.max(1, levelFromClicks));
+  const finalLevel = Math.min(3, Math.max(1, levelFromClicks));
 
   return {
     tier: `ATW${finalLevel}`,
     level: finalLevel,
-    holdingLimit: finalLevel * 100000,
+    holdingLimit: finalLevel * 30000,
   };
 }
 

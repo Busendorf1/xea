@@ -23,6 +23,18 @@ const JWKS = createRemoteJWKSet(
   new URL(`https://${cleanDomain}/.well-known/jwks.json`)
 );
 
+// Helper to check deactivated tombstone without pulling ioredis into client bundles
+async function isEmailDeactivated(email: string): Promise<boolean> {
+  try {
+    const { default: redisConnection, isRedisReady } = await import("./redis");
+    if (isRedisReady()) {
+      const isDeactivated = await redisConnection.get(`deactivated:${email}`);
+      return !!isDeactivated;
+    }
+  } catch {}
+  return false;
+}
+
 /**
  * Secure helper to fetch email from Auth0 access token (mobile Bearer)
  * or fallback to cookie session (web client).
@@ -94,7 +106,7 @@ export async function getAuthenticatedEmail(
     }
 
     if (email) {
-      const normalizedEmail = email.toLowerCase();
+      const normalizedEmail = email.toLowerCase().trim();
       // Bound cache to prevent memory leaks in serverless/Node instances
       if (tokenCache.size >= MAX_CACHE_SIZE) {
         cleanExpiredTokens();
@@ -104,47 +116,58 @@ export async function getAuthenticatedEmail(
         }
       }
       tokenCache.set(token, { email: normalizedEmail, expiresAt });
+      
+      // Instant Tombstone Guard: Immediately deny deactivated accounts
+      if (await isEmailDeactivated(normalizedEmail)) {
+        return null;
+      }
       return normalizedEmail;
     }
   }
 
   // 4. Resolve Web Cookie Session (passing req first for Route Handlers, then fallback)
+  let resolvedCookieEmail: string | null = null;
   try {
     const sessionWithReq = await (auth0 as any).getSession(req);
     if (sessionWithReq?.user?.email) {
-      return sessionWithReq.user.email.toLowerCase().trim();
+      resolvedCookieEmail = sessionWithReq.user.email.toLowerCase().trim();
     }
   } catch {}
 
-  try {
-    const session = await auth0.getSession();
-    if (session?.user?.email) {
-      return session.user.email.toLowerCase().trim();
+  if (!resolvedCookieEmail) {
+    try {
+      const session = await auth0.getSession();
+      if (session?.user?.email) {
+        resolvedCookieEmail = session.user.email.toLowerCase().trim();
+      }
+    } catch {}
+  }
+
+  if (resolvedCookieEmail) {
+    if (await isEmailDeactivated(resolvedCookieEmail)) {
+      return null;
     }
-  } catch {}
+    return resolvedCookieEmail;
+  }
 
   // 5. Mobile Client Fallback (x-user-email header)
   if (options?.allowMobileHeader !== false) {
     const mobileHeader = req.headers.get("x-user-email");
     if (mobileHeader && mobileHeader.includes("@")) {
-      return mobileHeader.toLowerCase().trim();
+      const normalizedMobile = mobileHeader.toLowerCase().trim();
+      if (await isEmailDeactivated(normalizedMobile)) {
+        return null;
+      }
+      return normalizedMobile;
     }
   }
 
   return null;
 }
 
-/**
- * Helper to check if an email belongs to an administrator.
- */
-export function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const adminEmails = (process.env.ADMIN_EMAILS || process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  return adminEmails.includes(email.trim().toLowerCase());
-}
+// Import and re-export isAdminEmail from lightweight adminHelper
+import { isAdminEmail } from "./adminHelper";
+export { isAdminEmail };
 
 /**
  * Secure helper to verify if the caller is an authenticated Admin user.

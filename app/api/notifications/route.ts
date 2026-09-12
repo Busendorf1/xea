@@ -97,7 +97,31 @@ export async function GET(req: NextRequest) {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    return NextResponse.json(merged);
+    // Deduplicate: ensure unique by id and unique by content (title + message + date)
+    const seenIds = new Set<string>();
+    const seenContentKeys = new Set<string>();
+    const deduplicated: typeof merged = [];
+
+    for (const item of merged) {
+      if (!item || !item.id) continue;
+      const strId = String(item.id);
+      if (seenIds.has(strId)) continue;
+      seenIds.add(strId);
+
+      const normTitle = (item.title || "").trim().toLowerCase();
+      const normMsg = (item.message || "").trim().toLowerCase();
+      const dateKey = item.created_at ? new Date(item.created_at).toISOString().slice(0, 10) : "";
+      const contentKey = `${normTitle}:::${normMsg}:::${dateKey}`;
+
+      if (seenContentKeys.has(contentKey)) {
+        continue;
+      }
+      seenContentKeys.add(contentKey);
+
+      deduplicated.push(item);
+    }
+
+    return NextResponse.json(deduplicated);
   } catch (err: any) {
     console.warn("⚠️ Error in GET /api/notifications:", err?.message || err);
     return NextResponse.json([]);

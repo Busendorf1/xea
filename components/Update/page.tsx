@@ -15,7 +15,7 @@ import {
   ALL_LIFESTYLES as lifestyles,
   ALL_PERSONALITY_TRAITS as personalityTraits,
 } from "@/lib/categoryTargetingMap";
-import { isAdminEmail } from "@/lib/authHelper";
+import { isAdminEmail } from "@/lib/adminHelper";
 
 
 interface Props {

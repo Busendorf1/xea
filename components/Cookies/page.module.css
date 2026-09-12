@@ -1,11 +1,11 @@
 .container {
   max-width: 960px;
   margin: 3.5rem auto 4.3rem auto;
-  padding: 2rem;
+  padding: 2.25rem;
   font-family: var(--font-geist-sans), "Inter", sans-serif;
   background-color: var(--card-bg);
   color: var(--foreground);
-  line-height: 1.6;
+  line-height: 1.65;
   border-radius: 16px;
   border: 1px solid var(--card-border);
 }
@@ -17,11 +17,12 @@
 }
 
 .title {
-  font-size: 2rem;
-  font-weight: bold;
+  font-size: 2.2rem;
+  font-weight: 800;
   text-align: center;
   color: var(--foreground);
   margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
 }
 
 .updatedDate {
@@ -36,33 +37,32 @@
   border-top: 1px solid var(--card-border);
 }
 
-.acknowledgment {
-  margin-top: 1.5rem;
-  background-color: var(--primary-glow);
+.noticeBox {
+  background-color: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  padding: 1.25rem;
   color: var(--foreground);
-  padding: 1rem;
-  font-weight: 600;
-  border-radius: 0 8px 8px 0;
-  text-align: justify;
-  text-justify: inter-word;
-}
-
-.main p {
-  text-align: justify;
-  text-justify: inter-word;
-}
-
-.section {
-  margin-bottom: 2rem;
+  font-size: 0.95rem;
 }
 
 .heading {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
+  font-weight: 700;
   color: var(--primary);
   border-left: 4px solid var(--primary);
   padding-left: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.subheading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .list {
@@ -70,22 +70,23 @@
 }
 
 .listItem {
-  margin-bottom: 0.5rem;
-  text-align: justify;
-  text-justify: inter-word;
+  margin-bottom: 0.65rem;
+}
+
+.link {
+  color: var(--primary);
+  text-decoration: underline;
+  font-weight: 600;
 }
 
 @media screen and (max-width: 768px) {
   .container {
-    margin-top: 3.2rem;
-    padding: 1.5rem 1rem;
-    border-radius: 12px;
+    padding: 1.25rem;
+    margin: 2rem 1rem;
   }
-  
   .title {
-    font-size: 1.6rem;
+    font-size: 1.7rem;
   }
-  
   .heading {
     font-size: 1.2rem;
   }

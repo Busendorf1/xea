@@ -1209,8 +1209,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     setUserActionSubmitting(true);
     const isCurrentlyMonetized = user.monetized === "yes" || user.monetized === true;
     const nextMonetizedVal = isCurrentlyMonetized ? "no" : "yes";
-    const nextMonetizedType = isCurrentlyMonetized ? null : "standard";
-    const nextMonetizedUntil = isCurrentlyMonetized ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const nextMonetizedType = null;
+    const nextMonetizedUntil = null;
 
     try {
       const response = await fetch("/api/admin/users", {

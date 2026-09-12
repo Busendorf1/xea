@@ -98,6 +98,56 @@ export default function AdInteractionHandler({
     return () => observer.disconnect();
   }, []);
 
+  // Dynamic Scroll-Away Seen Registration
+  const isAutoSeenTriggered = useRef(false);
+  const hasTakenAction = useRef(false);
+
+  // Auto-register seen when user unlocks interaction buttons but scrolls away without clicking
+  useEffect(() => {
+    if (
+      stage === "unlocked" &&
+      !inView &&
+      !activeAction &&
+      !successAction &&
+      !hasTakenAction.current &&
+      !isAutoSeenTriggered.current
+    ) {
+      isAutoSeenTriggered.current = true;
+      hasTakenAction.current = true;
+      onMarkSeen(ad).catch((err) => console.warn("Auto seen on scroll away failed:", err));
+    }
+  }, [stage, inView, activeAction, successAction, ad, onMarkSeen]);
+
+  // Unmount fallback: if user navigates or unmounts while in 'unlocked' stage without action
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
+  const activeActionRef = useRef(activeAction);
+  activeActionRef.current = activeAction;
+  const successActionRef = useRef(successAction);
+  successActionRef.current = successAction;
+  const adRef = useRef(ad);
+  adRef.current = ad;
+  const onMarkSeenRef = useRef(onMarkSeen);
+  onMarkSeenRef.current = onMarkSeen;
+
+  useEffect(() => {
+    return () => {
+      if (
+        stageRef.current === "unlocked" &&
+        !activeActionRef.current &&
+        !successActionRef.current &&
+        !hasTakenAction.current &&
+        !isAutoSeenTriggered.current
+      ) {
+        isAutoSeenTriggered.current = true;
+        hasTakenAction.current = true;
+        onMarkSeenRef.current(adRef.current).catch((err) =>
+          console.warn("Auto seen on unmount failed:", err)
+        );
+      }
+    };
+  }, []);
+
   // 2. Tab visibility tracking
   useEffect(() => {
     const handleVisibility = () => {
@@ -167,12 +217,6 @@ export default function AdInteractionHandler({
 
   const handleChallengeSuccess = () => {
     setStage("unlocked");
-    // Automatically record as seen in background so reloading treats it as seen
-    fetch("/api/seen", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adId: ad.id }),
-    }).catch((err) => console.error("❌ Auto background seen recording error:", err));
   };
 
   // 4. Challenge A: Swipe Handlers
@@ -390,8 +434,11 @@ export default function AdInteractionHandler({
               <button
                 className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
                 type="button"
-                disabled={isProcessing || !!activeAction}
-                onClick={() => handleAction("seen", () => onMarkSeen(ad))}
+                disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
+                onClick={() => {
+                  hasTakenAction.current = true;
+                  handleAction("seen", () => onMarkSeen(ad));
+                }}
                 title="Dismiss this ad"
               >
                 {activeAction === "seen" ? (
@@ -417,8 +464,11 @@ export default function AdInteractionHandler({
                 <button
                   className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
                   type="button"
-                  disabled={isProcessing || !!activeAction}
-                  onClick={() => handleAction("earn", () => onAdEarn(ad))}
+                  disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
+                  onClick={() => {
+                    hasTakenAction.current = true;
+                    handleAction("earn", () => onAdEarn(ad));
+                  }}
                   title="Earn from this ad"
                 >
                   {activeAction === "earn" ? (
@@ -449,8 +499,9 @@ export default function AdInteractionHandler({
                       : `${styles.mutualBtn} ${successAction === "mutual" ? styles.successBtn : ""}`
                   }
                   type="button"
-                  disabled={isProcessing || !!activeAction}
+                  disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
                   onClick={() => {
+                    hasTakenAction.current = true;
                     if (viewerProfile && viewerProfile.mutual_count >= 50) {
                       if (typeof window !== "undefined") {
                         window.dispatchEvent(

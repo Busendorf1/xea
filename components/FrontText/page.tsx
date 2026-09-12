@@ -22,36 +22,35 @@ export default function FrontText() {
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>1</div>
             <p className={styles.stepText}>
-              <strong>Attention Marketplace:</strong> We connect advertisers seeking high-quality organic views with audiences who value their own time.
+              <strong>Smart Attention Exchange:</strong> We connect promotional content and brands seeking real human visibility with an engaged audience rewarded directly for their attention.
             </p>
           </div>
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>2</div>
             <p className={styles.stepText}>
-              <strong>Targeted Ads (Advertisers):</strong> Create campaigns target-locked directly to user interest. Pay only for actual, verified human views.
+              <strong>Targeted Impact (For Advertisers):</strong> Deliver bot free, verified campaigns matched directly to real human interests and demographics with zero wasted impressions.
             </p>
           </div>
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>3</div>
             <p className={styles.stepText}>
-              <strong>Conversion (Advertisers):</strong> We guarantee attention, not conversions. Every ad receives a minimum of 16 seconds of genuine viewer attention, but result depends on the quality of your offer and creative. Use that time wisely.
+              <strong>Real Human Discovery:</strong> Viewers enjoy complete freedom to explore offers and content that genuinely interest them, with zero forced engagement or conversions.
             </p>
           </div>
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>4</div>
             <p className={styles.stepText}>
-              <strong>Earn Rewards:</strong> Select your interests, scroll your personalized campaign feeds, and view matched ads to earn payouts directly to your wallet.
+              <strong>Earn Rewards (For Listeners):</strong> Transparent reward path with prompt withdrawals. Paayh is an attention rewards platform, not a bank or escrow, so incentives are designed to be withdrawn promptly as you earn.
             </p>
           </div>
-          
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>5</div>
             <p className={styles.stepText}>
-              <strong>Eligibility for Earning:</strong> Only monetized profiles with active, genuine interest settings are eligible for payout withdrawals. Suspicious click velocity, bots, or farming activity will trigger automated suspensions.
+              <strong>100% Free to Join:</strong> Completely free with no subscription fees or upfront deposits. Qualify for monetization naturally through regular activity or reaching 300 verified interactions.
             </p>
           </div>
           <div className={styles.termsCallout}>
-            Please read our <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms and Conditions</Link> for detailed rules and expectations. We only decide to share rewards with genuine listeners.
+            Want all the details? Review our <Link href="/terms" className={styles.termsLink} onClick={() => setIsOpen(false)}>Terms of Service</Link> and <Link href="/privacy" className={styles.termsLink} onClick={() => setIsOpen(false)}>Privacy Policy</Link> for program guidelines, ATW holding tiers, and withdrawal policies.
           </div>
         </div>
       </div>
@@ -165,7 +164,7 @@ export default function FrontText() {
             </div>
 
             <div className={styles.cardFooter}>
-              <p>By signing in, you agree to our <Link href="/privacy">Terms &amp; Conditions</Link>.</p>
+              <p>By signing in, you agree to our <Link href="/terms">Terms of Service</Link> and <Link href="/privacy">Privacy Policy</Link>.</p>
             </div>
           </div>
         </div>

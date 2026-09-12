@@ -12,21 +12,21 @@ export default function AboutPage() {
 
       <section className={styles.section}>
         <p className={styles.sectionText}>
-          <strong>Paayh</strong> is pioneering a new economic model, one where attention is currency and Universal Basic Income is not just a concept, but a reality.
+          <strong>Paayh</strong> is pioneering an equitable attention economy where focused human attention is valued, respected, and directly compensated through respectful content engagement.
         </p>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Our Mission</h2>
         <p className={styles.sectionText}>
-          We aim to build a fair ecosystem where advertisers get <strong>99.99% ad deliverability</strong> and users are rewarded for giving <strong>genuine human attention</strong>. This is not just about ads, it is an income stream rooted in participation, not exploitation.
+          We aim to build a fair digital ecosystem where advertisers achieve <strong>industry leading target deliverability of up to 99.99%</strong> to real active users, and listeners receive transparent incentive rewards for providing <strong>genuine human attention</strong>. This is an attention based digital economy rooted in voluntary participation.
         </p>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>How It Works</h2>
         <p className={styles.sectionText}>
-          When you view ads tailored to your interests, you earn a <strong>60% share</strong> of the ad revenue. The remaining 40% supports platform growth, operations, and ongoing innovation. No subscriptions. No tricks. Just fair value for your time.
+          When you view ads tailored to your interests, you can earn a dynamic share of <strong>up to 60%</strong> of net ad revenue. The remaining portion supports platform growth, digital operations, and infrastructure. No subscriptions. No tricks. Just fair value for your time.
         </p>
       </section>
 
@@ -56,7 +56,8 @@ export default function AboutPage() {
           As the platform grows, so does your earning power. Paayh is more than a product, it is a movement toward equitable, accessible income. We hope to inspire a new generation of platforms to follow suit.
         </p>
         <p className={styles.sectionText}>
-          <strong>Your data and privacy are safe with us.</strong> We never sell your information, and all data is handled with care. Learn more in our{' '}
+          <strong>Your data and privacy are safe with us.</strong> We never sell your information, and all data is handled with care. Review our{' '}
+          <Link href="/terms" className={styles.link}>Terms of Service</Link> and{' '}
           <Link href="/privacy" className={styles.link}>Privacy Policy</Link>.
         </p>
       </section>

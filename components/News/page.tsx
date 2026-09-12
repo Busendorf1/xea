@@ -8,7 +8,7 @@ import LocationSelector from "../LocationSelector";
 import { Zap, Calendar, ShieldAlert, Crown, Rocket } from "lucide-react";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 import { newsSchema } from "@/lib/validationSchemas";
-import { isAdminEmail } from "@/lib/authHelper";
+import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 
 interface Session {
@@ -611,12 +611,14 @@ export default function News({ session }: NewsProps) {
                   />
                   <label htmlFor="newsTermsPolicyCheckbox" style={{ fontSize: "0.85rem", color: "var(--foreground)", cursor: "pointer", lineHeight: 1.4 }}>
                     I have reviewed my highlight details and agree to Paayh&apos;s{" "}
-                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/terms" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
                       Terms of Service
-                    </Link>{" "}
-                    and{" "}
-                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
-                      Advertisement Policy
+                    </Link>,{" "}
+                    <Link href="/advertiser-guidelines" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Advertising Guidelines
+                    </Link>, and{" "}
+                    <Link href="/privacy" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Privacy Policy
                     </Link>.
                   </label>
                 </div>

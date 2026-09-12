@@ -70,6 +70,9 @@ export type TabKey =
 
 interface Props {
   session: any;
+  initialMonetized?: boolean;
+  initialClicks?: number;
+  initialAtwTier?: string;
 }
 
 const VALID_TABS: TabKey[] = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
@@ -101,7 +104,7 @@ function getInitialTab(): TabKey {
   return "adPage";
 }
 
-export default function LoggedInClientContainer({ session }: Props) {
+export default function LoggedInClientContainer({ session, initialMonetized, initialClicks, initialAtwTier }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
   const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([getInitialTab()]));
 
@@ -189,7 +192,12 @@ export default function LoggedInClientContainer({ session }: Props) {
 
         {visitedTabs.has("monetize") && (
           <div style={{ display: activeTab === "monetize" ? "block" : "none" }} className="py-4">
-            <Monetize session={session} />
+            <Monetize 
+              session={session} 
+              initialMonetized={initialMonetized}
+              initialClicks={initialClicks}
+              initialAtwTier={initialAtwTier}
+            />
           </div>
         )}
 

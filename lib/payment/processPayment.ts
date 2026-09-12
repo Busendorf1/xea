@@ -1,6 +1,29 @@
 // lib/payment/processPayment.ts
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 
+async function sendIdempotentNotification(userEmail: string, title: string, message: string) {
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: recent } = await supabaseAdmin
+      .from("notifications")
+      .select("id")
+      .ilike("user_email", userEmail.toLowerCase().trim())
+      .eq("title", title)
+      .gte("created_at", fiveMinutesAgo)
+      .limit(1);
+
+    if (!recent || recent.length === 0) {
+      await supabaseAdmin.from("notifications").insert({
+        user_email: userEmail.toLowerCase().trim(),
+        title,
+        message,
+      });
+    }
+  } catch (err) {
+    console.warn("⚠️ Notification insert notice:", err);
+  }
+}
+
 export async function processSuccessfulPayment(
   reference: string,
   metadata: Record<string, unknown>,
@@ -23,7 +46,8 @@ export async function processSuccessfulPayment(
     return { alreadyProcessed: true };
   }
 
-  const { type, user_email } = metadata;
+  const type = metadata.type as string | undefined;
+  const user_email = metadata.user_email as string | undefined;
   if (!type || !user_email) {
     throw new Error("Invalid payment metadata: missing type or user_email");
   }
@@ -75,11 +99,11 @@ export async function processSuccessfulPayment(
     }
 
     // Insert user notification
-    await supabaseAdmin.from("notifications").insert({
+    await sendIdempotentNotification(
       user_email,
-      title: "Highlight Submitted 🚀",
-      message: `Your highlight "${title}" has been submitted for review. It will be published after admin approval!`,
-    });
+      "Highlight Submitted 🚀",
+      `Your highlight "${title}" has been submitted for review. It will be published after admin approval!`
+    );
   } else if (type === "boost_campaign" || type === "boost") {
     const {
       ad_id,
@@ -135,11 +159,11 @@ export async function processSuccessfulPayment(
           supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id),
         ]);
 
-        await supabaseAdmin.from("notifications").insert({
+        await sendIdempotentNotification(
           user_email,
-          title: "Campaign Priority Boosted ⚡",
-          message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost}.`,
-        });
+          "Campaign Priority Boosted ⚡",
+          `Your campaign has been successfully boosted with priority bid ₦${effectiveCost}.`
+        );
       }
     }
   } else if (type === "ad") {
@@ -214,11 +238,11 @@ export async function processSuccessfulPayment(
     }
 
     // Insert user notification
-    await supabaseAdmin.from("notifications").insert({
+    await sendIdempotentNotification(
       user_email,
-      title: "Ad Campaign Created 📢",
-      message: `Your ad campaign with ${adData.impressions} impressions was successfully created and submitted for review.`,
-    });
+      "Ad Campaign Created 📢",
+      `Your ad campaign with ${adData.impressions} impressions was successfully created and submitted for review.`
+    );
   }
 
   // 3. Update the payment record status in DB

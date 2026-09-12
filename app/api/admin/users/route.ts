@@ -217,8 +217,8 @@ export async function POST(req: NextRequest) {
         .from("users")
         .update({
           monetized: nextMonetizedVal,
-          monetization_type: nextMonetizedType,
-          monetized_until: nextMonetizedUntil,
+          monetization_type: null,
+          monetized_until: null,
           monetized_at: isCurrentlyMonetized ? null : new Date().toISOString()
         })
         .eq("id", userId);

@@ -15,7 +15,7 @@ const AdPreviewCard = dynamic(() => import("../Adreview/page"));
 const AttentionMarketTicker = dynamic(() => import("./AttentionMarketTicker"), { ssr: false });
 import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/lib/categoryTargetingMap";
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
-import { isAdminEmail } from "@/lib/authHelper";
+import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 
 interface Session {
@@ -1849,12 +1849,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   />
                   <label htmlFor="adTermsPolicyCheckbox" style={{ fontSize: "0.85rem", color: "var(--foreground)", cursor: "pointer", lineHeight: 1.4 }}>
                     I have reviewed my ad details and agree to Paayh&apos;s{" "}
-                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/terms" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
                       Terms of Service
-                    </Link>{" "}
-                    and{" "}
-                    <Link href="/about" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
-                      Advertisement Policy
+                    </Link>,{" "}
+                    <Link href="/advertiser-guidelines" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Advertising Guidelines
+                    </Link>, and{" "}
+                    <Link href="/privacy" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                      Privacy Policy
                     </Link>.
                   </label>
                 </div>

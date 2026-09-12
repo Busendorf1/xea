@@ -248,7 +248,7 @@ export default function Header() {
       </button>
       
       {showNotifications && (
-        <div className={styles.notificationDropdown} style={{ width: "380px", maxWidth: "92vw" }}>
+        <div className={styles.notificationDropdown}>
           <div className={styles.notificationHeader} style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "10px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
               <h4 style={{ margin: 0 }}>Notifications</h4>

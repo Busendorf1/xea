@@ -71,6 +71,8 @@
   font-size: 1rem;
   line-height: 1.6;
   color: var(--text-muted);
+  text-align: justify;
+  text-justify: inter-word;
   animation: fadeDown 0.3s ease-in-out;
 }
 

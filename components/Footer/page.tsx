@@ -109,13 +109,13 @@ export default function Footer() {
         <div className={styles.section}>
           <h4 className={styles.heading}>Policies</h4>
           <ul className={styles.linkList}>
-            <li><Link href="/privacy#privacy" className={styles.link}>Privacy</Link></li>
-            <li><Link href="/privacy#infringement" className={styles.link}>Infringement</Link></li>
-            <li><Link href="/privacy#abuse" className={styles.link}>Stealing / Abuse</Link></li>
-            <li><Link href="/privacy#misleading-ads" className={styles.link}>Misleading Advert</Link></li>
-            <li><Link href="/privacy#cookies" className={styles.link}>Cookies</Link></li>
-            <li><Link href="/privacy#terms" className={styles.link}>Terms of Service</Link></li>
-            <li><Link href="/privacy#copyright" className={styles.link}>Copyrights</Link></li>
+            <li><Link href="/terms" className={styles.link}>Terms of Service</Link></li>
+            <li><Link href="/privacy" className={styles.link}>Privacy Policy</Link></li>
+            <li><Link href="/cookies" className={styles.link}>Cookie Policy</Link></li>
+            <li><Link href="/advertiser-guidelines" className={styles.link}>Advertising Guidelines</Link></li>
+            <li><Link href="/terms#inactivity-guidelines" className={styles.link}>Inactivity Guidelines</Link></li>
+            <li><Link href="/privacy#user-rights" className={styles.link}>User Rights (NDPA)</Link></li>
+            <li><Link href="/terms" className={styles.link}>AML &amp; Anti-Fraud</Link></li>
           </ul>
         </div>
 

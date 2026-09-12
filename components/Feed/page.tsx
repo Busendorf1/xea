@@ -21,7 +21,7 @@ interface FeedProps {
   initialProfile?: InitialProfileInput;
   initialAds?: Ad[];
   initialProfiles?: Record<string, any>;
-  onEarnSuccess?: (earnedAmount?: number) => void;
+  onEarnSuccess?: (earnedAmount?: number, newBalance?: number, newClicks?: number) => void;
   onMutualSuccess?: () => void;
 }
 

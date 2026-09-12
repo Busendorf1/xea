@@ -28,14 +28,18 @@ interface Session {
 
 type MonetizeProps = {
   session: Session;
+  initialMonetized?: boolean;
+  initialClicks?: number;
+  initialAtwTier?: string;
 };
 
-export default function Monetize({ session }: MonetizeProps) {
+export default function Monetize({ session, initialMonetized, initialClicks, initialAtwTier }: MonetizeProps) {
   const email = session?.user?.email;
   const [, startTransition] = useTransition();
 
-  // Instant SWR state initialization from client storage for 0ms load
+  // Instant SWR state initialization from client storage or props for 0ms load
   const [hasResolved, setHasResolved] = useState(() => {
+    if (typeof initialMonetized === "boolean") return true;
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
@@ -46,36 +50,44 @@ export default function Monetize({ session }: MonetizeProps) {
   });
 
   const [isMonetized, setIsMonetized] = useState(() => {
+    if (typeof initialMonetized === "boolean") return initialMonetized;
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
-        if (cached) return !!JSON.parse(cached).isMonetized;
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (typeof parsed.isMonetized === "boolean") return parsed.isMonetized;
+        }
       } catch {}
     }
-    return false;
+    // Default to true as requested: show monetized first, only unmonetize if API confirms it is not
+    return true;
   });
 
   const [clicksCount, setClicksCount] = useState(() => {
+    if (typeof initialClicks === "number") return initialClicks;
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
         if (cached) return JSON.parse(cached).clicksCount || 0;
       } catch {}
     }
-    return 0;
-  });
-
-  const [clicksRemaining, setClicksRemaining] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
-        if (cached) return JSON.parse(cached).clicksRemaining ?? 300;
-      } catch {}
-    }
     return 300;
   });
 
+  const [clicksRemaining, setClicksRemaining] = useState(() => {
+    if (typeof initialClicks === "number") return Math.max(0, 300 - initialClicks);
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
+        if (cached) return JSON.parse(cached).clicksRemaining ?? 0;
+      } catch {}
+    }
+    return 0;
+  });
+
   const [atwTier, setAtwTier] = useState(() => {
+    if (initialAtwTier) return initialAtwTier;
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
@@ -171,7 +183,7 @@ export default function Monetize({ session }: MonetizeProps) {
         <div className={styles.header}>
           <h1 className={styles.title}>Monetization</h1>
           <p className={styles.subtitle}>
-            Higher ATW tiers increase your earnings and wallet holding cap.
+            ATW tiers determine your wallet balance holding cap. Users should always withdraw earnings promptly and maintain a low balance.
           </p>
         </div>
 

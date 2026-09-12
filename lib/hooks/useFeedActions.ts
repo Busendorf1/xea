@@ -56,16 +56,16 @@ export function useFeedActions({
           body: JSON.stringify({ adId: ad.id }),
         });
         if (!response.ok) {
-          if (response.status === 401) {
-            console.warn("⚠️ Session expired or unauthorized in handleAdSeen");
+          if (response.status === 401 || response.status === 429) {
             return true;
           }
-          throw new Error("Failed to record ad seen via API");
+          console.warn("⚠️ Non-critical status recording ad seen:", response.status);
+          return true;
         }
         return true;
       } catch (e) {
-        console.error("❌ Error recording ad seen via queue API:", e);
-        return false;
+        console.warn("⚠️ Non-critical error recording ad seen:", e);
+        return true;
       } finally {
         processingRef.current.delete(ad.id);
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));

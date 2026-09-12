@@ -50,8 +50,17 @@ const nextConfig = {
       },
     ];
   },
-  webpack: (config: any) => {
-    config.resolve.fallback = { fs: false, path: false };
+  webpack: (config: any, { isServer }: any) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        dns: false,
+        net: false,
+        tls: false,
+      };
+    }
     config.module.exprContextCritical = false;
     return config;
   },

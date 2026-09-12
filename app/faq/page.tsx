@@ -10,22 +10,22 @@ const faqs = [
   {
     question: "What is Paayh and how does it work?",
     answer:
-      "Paayh is a platform that rewards users with a share of ad revenue in exchange for genuine attention. Advertisers receive 99.99% ad deliverability, and users earn 60% of the revenue generated from each verified ad impression."
+      "Paayh is an attention exchange and digital content platform that rewards users with promotional incentive rewards in exchange for genuine human attention. Advertisers achieve an industry leading target deliverability of up to 99.99% to real active users, and monetized users can earn a dynamic share ranging up to 60% of net advertising revenue generated from confirmed human impressions."
   },
   {
     question: "Can I post both Ads and Highlights?",
     answer:
-      "Yes. Users and businesses can post standard Adverts, Highlights, or both. Highlights are short flash promotions that appear every 10 minutes and are automatically removed after 24 hours. They are ideal for flash sales, quick updates, or time-sensitive visibility."
+      "Yes. Users and businesses can post standard Adverts, Highlights, or both. Highlights are short flash promotions that appear every 10 minutes and are automatically removed after 24 hours. They are ideal for flash sales, quick updates, or time sensitive visibility."
   },
   {
     question: "How do I become monetized?",
     answer:
-      "Monetization is completely free, with no subscriptions, fees, or charges. To qualify, your account must demonstrate clear and consistent activity, or you must accumulate at least 300 verified clicks (\"Seen\" or \"Mutual\"). Once you meet either condition, you become eligible to start earning."
+      "Monetization is completely free, with no subscriptions, fees, or charges. To qualify, your account must demonstrate clear and consistent activity, or you must accumulate at least 300 verified interactions (\"Seen\" or \"Mutual\"). Once you meet either condition, you become eligible to start earning."
   },
   {
     question: "How does ad viewing and impression tracking work?",
     answer:
-      "When you watch an ad and click \"Seen,\" \"Earn,\" or \"Mutual,\" that counts as one impression, confirming the ad was successfully delivered to a real person. After the impression is recorded, the ad is removed from your feed. Each ad is only shown to you once per campaign, unless  you are retargetted."
+      "When you view an ad card, scroll past it in your feed, or click \"Seen,\" \"Earn,\" or \"Mutual,\" that counts as a verified impression confirming the promotion was successfully served to a real person. After the impression is recorded, the ad is cleared from your active feed. Each ad is only shown to you once per campaign, unless you are retargeted."
   },
   {
     question: "Do I have to watch ads?",
@@ -40,12 +40,22 @@ const faqs = [
   {
     question: "What happens to inactive accounts?",
     answer:
-      "If you do not use Paayh for 7 consecutive days, your monetization status will be revoked and you will need to re-qualify. Ads are always redirected to active users, even while you are offline, to ensure advertisers receive their guaranteed delivery."
+      "If you do not use Paayh for 7 consecutive days, your monetization status will be automatically revoked and you will need to requalify. Ads are always redirected to active users to ensure delivery. If an account remains completely dormant with zero activity for 60 consecutive days, unclaimed incentive balances are forfeited to cover ledger maintenance."
   },
   {
     question: "When can I withdraw my earnings?",
     answer:
-      "You can withdraw your earnings at any time, provided your balance meets the minimum withdrawal amount of ₦30,000. Upon withdrawal, your balance resets to ₦0 and earnings begin accumulating again from zero. You must have active monetization status to request a withdrawal."
+      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 (or localized equivalent). You may withdraw any amount from ₦10,000 up to your full available balance (including withdrawing 100% of incentives down to ₦0.00), leaving any remainder in your wallet for future payouts. Withdrawals are authenticated via your verified registered phone number, and Paayh does not lock you to a single static bank account."
+  },
+  {
+    question: "Why should I withdraw my earnings promptly and what is the ATW ceiling?",
+    answer:
+      "Paayh is an advertising and attention exchange, not a bank or savings vault. To safeguard users from unforeseen technical issues or ledger anomalies, we strongly advise users to maintain minimal balances and withdraw promptly once reaching ₦10,000. Furthermore, wallets are governed by ATW tier holding caps (up to ₦90,000 at ATW3). Any earnings generated while at your tier ceiling are voluntarily surrendered to platform liquidity and do not accumulate until you withdraw."
+  },
+  {
+    question: "Can I get a refund on advertising campaigns or deposited funds?",
+    answer:
+      "No. In strict compliance with Nigerian Anti Money Laundering regulations (Money Laundering (Prevention and Prohibition) Act 2022) and to prevent financial fraud, all payments for campaigns and Highlights represent consumable infrastructure fees and are strictly non refundable under any circumstance. Users are encouraged to test campaigns with modest budgets."
   },
   {
     question: "Is referral allowed?",
@@ -58,9 +68,9 @@ const faqs = [
       "You must be at least 18 years old to create an account and use Paayh."
   },
   {
-    question: "Where can I learn more about privacy and security?",
+    question: "Where can I learn more about privacy, terms, and security?",
     answer:
-      "Your data is safe with Paayh. We never sell or misuse personal information. You can learn more on our Privacy Policy page."
+      "Your data is safe with Paayh. We never sell or misuse personal information. You can review our full Terms of Service at /terms and our Privacy Policy at /privacy."
   }
 ];
 

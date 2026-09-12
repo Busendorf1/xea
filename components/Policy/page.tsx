@@ -1,254 +1,145 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import styles from "./page.module.css";
 
 export default function PolicyPage() {
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <h1 className={styles.title}>Paayh Policies and Terms of Service</h1>
-        <p className={styles.updatedDate}><em>Last Updated: July 25, 2025</em></p>
+        <h1 className={styles.title}>Paayh Privacy &amp; Data Protection Policy</h1>
+        <p className={styles.updatedDate}>
+          <em>Last Updated: September 12, 2026 | Effective Date: September 12, 2026</em>
+        </p>
+
+        <div style={{ backgroundColor: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", borderLeft: "4px solid var(--primary)", borderRadius: "8px", padding: "1.25rem", color: "var(--foreground)", fontSize: "0.95rem" }}>
+          This Privacy Policy explains how Paayh collects, uses, encrypts, and protects your personal data in compliance with the
+          <strong> Nigeria Data Protection Act (NDPA 2023)</strong> and global privacy frameworks (including GDPR). For contractual terms governing platform access, content posting, and attention monetization, please review our dedicated{" "}
+          <Link href="/terms" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+            Terms of Service
+          </Link>.
+        </div>
 
         <hr className={styles.divider} />
 
-        <section>
-          <h2 className={styles.heading}>I. Introduction</h2>
+        {/* SECTION 1 */}
+        <section id="introduction">
+          <h2 className={styles.heading}>I. Data Controller &amp; Scope</h2>
           <p>
-            Welcome to Paayh. Paayh is a digital advertising platform that connects advertisers with real users and rewards those users for their genuine attention. By accessing or using Paayh, you agree to comply with the policies, conditions, and terms outlined in this document. These terms apply to all participants, including advertisers, viewers, and business partners. If you do not agree with these terms, please do not use Paayh.
+            Paayh (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates an attention exchange and digital content platform. We are committed to processing your personal data lawfully, transparently, and securely. This policy applies to all registered listeners, creators, businesses, and platform visitors.
           </p>
         </section>
 
-        <section>
-          <h2 className={styles.heading}>II. Definitions</h2>
-          <p>The following terms are used throughout this document:</p>
+        {/* SECTION 2 */}
+        <section id="data-collected">
+          <h2 className={styles.heading}>II. Information We Collect</h2>
+          <ol className={styles.list}>
+            <li className={styles.listItem}>
+              <strong>Authentication Data:</strong> When you sign up or log in via Google OAuth through Auth0, we receive basic identity attributes: your verified email address and display name. Paayh does not import or store your external Google profile photo URL; profile images and business logos are uploaded manually by users directly to their profile settings if they choose. We do not access your Gmail inbox, Google Drive files, calendar, or private Google account data.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Profile &amp; Demographic Preferences:</strong> Voluntary user details including country, state, gender, date of birth / age bracket, and selected interest categories used solely to deliver relevant feed content.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Engagement &amp; Attention Metrics:</strong> Timestamps of verified ad interactions, verification challenge outcomes (swipe, hold, tap), dwell time, and ATW score progression.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Settlement &amp; Payout Information:</strong> When requesting a payout, you submit your registered phone number, settlement bank name, and account number. These details are transmitted via encrypted TLS connections directly to our regulated payment infrastructure partner (Paystack) to process disbursements. Paayh does not permanently store bank account numbers on your user profile record.
+            </li>
+          </ol>
+        </section>
+
+        {/* SECTION 3 */}
+        <section id="encryption">
+          <h2 className={styles.heading}>III. Advanced Security &amp; Application Layer Encryption</h2>
+          <p>
+            Paayh implements multi layered data security:
+          </p>
           <ul className={styles.list}>
-            <li className={styles.listItem}><strong>&quot;Paayh&quot;</strong> refers to the platform, We, including the application, website, and all associated services.</li>
-            <li className={styles.listItem}><strong>&quot;Advertiser&quot;</strong> refers to any individual or organisation that posts an advertisement or promotional campaign on Paayh.</li>
-            <li className={styles.listItem}><strong>&quot;User&quot;</strong> (also referred to as &quot;Listener&quot;) refers to any registered individual who views or interacts with content on the platform.</li>
-            <li className={styles.listItem}><strong>&quot;Highlights&quot;</strong> are short promotional ads that appear every 10 minutes and automatically expire after 24 hours.</li>
-            <li className={styles.listItem}><strong>&quot;Monetization&quot;</strong> is the feature that enables eligible users to earn real income from verified ad interactions.</li>
-            <li className={styles.listItem}><strong>&quot;Impression&quot;</strong> is a verified ad view, recorded when a user watches an ad and clicks &quot;Seen&quot;, &quot;Earn&quot;, or &quot;Mutual.&quot; Each impression confirms that the ad was delivered to a real person.</li>
-          <li className={styles.listItem}><strong>&quot;Attention&quot;</strong> Attention is a person&apos;s focused awareness and engagement with an ad for a period of time. Attention is a scarce resource that companies compete for. Users provide their attention by intentionally viewing ads.</li>
-        
-          </ul></section>
+            <li className={styles.listItem}>
+              <strong>Application Layer Field Encryption:</strong> Highly sensitive personal attributes (including settlement details and security credentials) are encrypted at the application layer prior to storage in database records. In the unlikely event of underlying infrastructure access, stored ciphertext remains mathematically unreadable.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Encrypted Network Transmission:</strong> All data in transit is protected using modern Transport Layer Security (TLS 1.3) protocols.
+            </li>
+          </ul>
+        </section>
 
-        <section>
-          <h2 className={styles.heading}>III. General Platform Usage</h2>
+        {/* SECTION 4 */}
+        <section id="data-use">
+          <h2 className={styles.heading}>IV. How We Use Your Data</h2>
+          <p>We process personal data strictly for legitimate operational purposes:</p>
           <ol className={styles.list}>
-            <li className={styles.listItem}>Paayh serves as a marketplace where advertisers post campaigns and users engage with them.</li>
-            <li className={styles.listItem}>Users must not attempt to exploit, manipulate, or game the impression tracking or monetization systems.</li>
-            <li className={styles.listItem}>All advertisements must be truthful, lawful, and free from harmful content.</li>
-            <li className={styles.listItem}>Each ad is typically shown to a user only once per campaign. Once you click &quot;Seen,&quot; &quot;Earn,&quot; or &quot;Mutual,&quot; that ad is removed from your feed.</li>
-            <li className={styles.listItem}>Clicking &quot;Seen,&quot; &quot;Earn,&quot; or &quot;Mutual&quot; confirms that you have viewed the ad. We encourage all users to do this, even if not monetized, because it registers the ad as delivered and clears it from your feed.</li>
-            <li className={styles.listItem}>Ads are presented independently and are never embedded within unrelated content.</li>
-            <li className={styles.listItem}>The use of bots, automation tools, or spoofing methods is strictly prohibited and will result in an immediate ban.</li>
+            <li className={styles.listItem}>To authenticate your account session and maintain account security.</li>
+            <li className={styles.listItem}>To deliver relevant sponsored content and calculate earned promotional incentive credits.</li>
+            <li className={styles.listItem}>To audit transactions for fraud prevention, sybil prevention, and anti money laundering (AML) compliance under Nigerian law.</li>
+            <li className={styles.listItem}>To disburse verified settlement payouts through licensed payment processors.</li>
+            <li className={styles.listItem}>We do <strong>NOT</strong> sell, rent, or trade your personal information to third party data brokers.</li>
           </ol>
         </section>
 
-        <section>
-          <h2 className={styles.heading}>IV. Eligibility and Account Management</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}><strong>Age Requirement:</strong> You must be at least <strong>18 years old</strong> to use Paayh.</li>
-            <li className={styles.listItem}><strong>Monetization Eligibility:</strong> To activate monetization, your account must demonstrate clear and consistent activity, or you must accumulate at least <strong>300 verified clicks</strong> (&quot;Seen&quot; or &quot;Mutual&quot;). Monetization is entirely free, with no fees or subscriptions required.</li>
-            <li className={styles.listItem}><strong>Inactivity Policy:</strong> If your account remains inactive for <strong>7 consecutive days</strong>, your monetization status will be revoked and you will need to re-qualify. Ads assigned to inactive users are automatically redirected to active users, even while you are offline, to ensure advertisers receive their promised delivery.</li>
-            <li className={styles.listItem}><strong>Referrals:</strong> You are welcome to invite others to join Paayh. However, there are currently no referral bonuses or incentives attached to this feature.</li>
-          </ol>
-        </section>
-
-        <section id="advertiser-terms">
-          <h2 className={styles.heading}>V. Advertiser Terms, Ads, and Highlights</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>Paayh guarantees <strong>99.99% ad deliverability</strong> to active, verified users, meaning virtually every ad paid for will reach a real person.</li>
-            <li className={styles.listItem} id="misleading-ads">Every advertisement or highlight must promote a legitimate product, service, or cause. Misleading content will be removed immediately and may result in campaign suspension.</li>
-            <li className={styles.listItem}><strong>Creating Campaigns:</strong> Advertisers can create standard interactive feed Ads (supporting text, images, and video) or sidebar flash Highlights.</li>
-            <li className={styles.listItem}><strong>Highlights System:</strong> Highlights are short promotional assets displayed on the sidebar or mobile overlay. They rotate every 10 minutes and automatically expire 24 hours after going live.</li>
-            <li className={styles.listItem}>All ad content must be honest, respectful, and compliant with applicable laws. The following categories are <strong>strictly prohibited</strong>:
-              <ul className={styles.list}>
-                <li className={styles.listItem}>False endorsements or misleading claims</li>
-                <li className={styles.listItem}>Counterfeit goods or pirated services</li>
-                <li className={styles.listItem}>Adult, explicit, or sexually suggestive material</li>
-                <li className={styles.listItem}>Weapons, ammunition, and related paraphernalia</li>
-                <li className={styles.listItem}>Illegal substances, unverified pharmaceuticals, or gambling solicitations</li>
-              </ul>
-            </li>
-            <li className={styles.listItem}>Advertisers should optimise their creatives for maximum attention and engagement.</li>
-            <li className={styles.listItem}>All offers or claims made within an advertisement must be honoured by the advertiser.</li>
-            <li className={styles.listItem}>
-              <strong>Advertiser Liability:</strong> The advertiser is solely and fully responsible for all content submitted to Paayh. Paayh operates as a digital advertising medium and does not create, endorse, or assume responsibility for any advertisement. If an ad violates any law or regulation, including the ARCON Act 2022 and the Nigerian Code of Advertising Practice, the advertiser bears full legal liability. The advertiser agrees to indemnify and hold Paayh harmless from any claims, damages, or legal actions arising from their advertising content.
-            </li>
-          </ol>
-        </section>
-
-        <section id="monetization">
-          <h2 className={styles.heading}>VI. Monetization and Payouts</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}><strong>Activating Monetization:</strong> Monetization is completely free. Once your account demonstrates consistent activity or you have accumulated at least <strong>300 verified clicks</strong> (&quot;Seen&quot; or &quot;Mutual&quot;), you become eligible. There are no subscriptions or hidden fees.</li>
-            <li className={styles.listItem}><strong>Revenue Share:</strong> Monetized users earn <strong>60% of the ad revenue</strong> generated by each valid impression. The remaining 40% supports platform operations, growth, and innovation.</li>
-            <li className={styles.listItem}><strong>The Earn Button:</strong> The Earn button is only visible to monetized users. If you are not yet monetized, you will see the &quot;Seen&quot; and &quot;Mutual&quot; buttons only.</li>
-            <li className={styles.listItem}><strong>Voluntary Ad Engagement:</strong> Watching ads is not mandatory. However, clicking &quot;Seen,&quot; &quot;Earn,&quot; or &quot;Mutual&quot; is how you generate income and how advertisers confirm their ads were delivered. Even if you choose not to earn, we encourage clicking &quot;Seen&quot; so the ad registers as delivered and is removed from your feed.</li>
-            <li className={styles.listItem}><strong>Withdrawals &amp; ATW Limits:</strong> Earnings can be withdrawn once your balance meets the <strong>minimum withdrawal threshold of ₦10,000.00</strong>. Individual withdrawal limits and payout frequency are dynamically governed by the platform&apos;s <strong>Attention Worth Tier (ATW) Engine</strong> based on engagement quality. Upon withdrawal, the requested amount is deducted from your wallet balance, leaving any remaining funds available for future transactions.</li>
-            <li className={styles.listItem}><strong>Anti-Fraud Policy:</strong> Any attempt to manipulate ad views through bots, click farms, automation, or similar methods will result in an immediate permanent ban and forfeiture of all earnings.</li>
-          </ol>
-        </section>
-
-        <section id="privacy">
-          <h2 className={styles.heading}>VII. Privacy and Data Security</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>
-              <strong>Advanced Data Security &amp; Application Encryption:</strong> All sensitive personal data—including contact details, security credentials, and settlement account information—are encrypted using high-grade application-level encryption before being stored. Even in the event of an infrastructure compromise or external data leak, plaintext personal data remains strictly unreadable and protected against unauthorized access.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Google Account Authentication:</strong> If you sign up or log in using your Google account via Auth0, we request only basic, non-sensitive profile permissions (<code>openid</code>, <code>email</code>, and <code>profile</code>). The data we collect includes your email address, display name, and profile picture URL. We do not access your emails, files, calendar, or any other Google services.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Use of Google OAuth Data:</strong> Your Google data is used strictly for authentication, profile setup, and account management. It is never used for marketing purposes and is never shared with unauthorised third parties.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Third Party Service Providers:</strong> We share data with trusted service providers (Auth0, database infrastructure, payment processors) under strict confidentiality agreements.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Account Monetization &amp; Inactivity Policy:</strong> Users may manage or cancel their monetization status at any time. Unclaimed wallet balances on inactive accounts remain preserved for withdrawal. However, accounts that experience zero activity for an extended period (60+ days) will have unclaimed balances forfeited in accordance with platform inactivity management guidelines.
-            </li>
-            <li className={styles.listItem}>
-              <strong>GDPR &amp; User Privacy Rights:</strong> Users have full rights to access, rectify, port, or request permanent deletion of their personal data at any time.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Account Deletion:</strong> You may request complete deletion of your account and all associated data at any time via the deactivation option or the Help Center. You may also revoke Paayh&apos;s access to your Google account through your Google Security Settings.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Data Retention:</strong> Personal data is retained only for as long as necessary to provide our services and meet legal obligations. Once your account is deleted, all associated data is permanently erased from our systems.
-            </li>
-          </ol>
-        </section>
-
+        {/* SECTION 5 */}
         <section id="cookies">
-          <h2 className={styles.heading}>VIII. Cookies and Tracking</h2>
+          <h2 className={styles.heading}>V. Cookies &amp; Tracking Technologies</h2>
           <ol className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Use of Cookies:</strong> We use cookies and similar tracking technologies to maintain secure user sessions, track ad impressions for monetization purposes, and save your theme and preference settings.
+              <strong>Essential Session Cookies:</strong> We utilize encrypted HTTP only session cookies to authenticate logged in users, prevent cross site request forgery (CSRF), and maintain UI preferences (dark or light theme).
             </li>
             <li className={styles.listItem}>
-              <strong>Managing Cookies:</strong> You may manage or disable cookies through your browser settings. However, disabling essential cookies will prevent you from logging in, using the dashboard, or completing monetization activities.
+              <strong>Impression Tracking:</strong> Ephemeral browser tokens are used to prevent duplicate ad deliveries and record single view impression confirmations.
             </li>
             <li className={styles.listItem}>
-              <strong>Privacy Assurance:</strong> The cookies we use do not store unencrypted personally identifiable information on your device. All tracking data is encrypted.
+              <strong>Cookie Control:</strong> You can manage or disable cookies via your browser settings; however, disabling essential session cookies will prevent login and dashboard access.
             </li>
           </ol>
         </section>
 
-        <section id="infringement">
-          <h2 className={styles.heading} id="copyright">IX. Infringement and Intellectual Property</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>Users must respect copyright and intellectual property laws at all times.</li>
-            <li className={styles.listItem}>Only original or properly licensed content may be uploaded to the platform.</li>
-            <li className={styles.listItem}>Reported infringements will be investigated and may result in content removal.</li>
-            <li className={styles.listItem}>Repeat offenders will have their accounts suspended or terminated.</li>
-          </ol>
+        {/* SECTION 6 */}
+        <section id="user-rights">
+          <h2 className={styles.heading}>VI. User Privacy Rights (NDPA 2023 &amp; GDPR)</h2>
+          <p>Under the Nigeria Data Protection Act 2023 and applicable international regulations, you possess the right to:</p>
+          <ul className={styles.list}>
+            <li className={styles.listItem}><strong>Right of Access:</strong> Review the personal data held on your profile.</li>
+            <li className={styles.listItem}><strong>Right to Rectification:</strong> Update inaccurate account or contact information.</li>
+            <li className={styles.listItem}><strong>Right to Erasure (Account Deletion):</strong> Request the permanent deletion of your account and associated personal data via your dashboard or our Help Center.</li>
+            <li className={styles.listItem}><strong>Right to Revoke OAuth Permissions:</strong> Revoke Paayh&apos;s access to your Google account at any time via your Google Account Security Settings.</li>
+            <li className={styles.listItem}><strong>Sovereignty of Engagement &amp; Voluntary Participation:</strong> You retain complete freedom over whether to engage with or patronize any commercial advertiser. You are never obligated to make purchases, and any transaction entered into with an advertiser is solely between you and that third party.</li>
+          </ul>
         </section>
 
-        <section id="abuse">
-          <h2 className={styles.heading}>X. Abuse, Fraud, and Platform Integrity</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>The following activities constitute fraud on Paayh:
-              <ul className={styles.list}>
-                <li className={styles.listItem}>Click farming or coordinated fake engagement</li>
-                <li className={styles.listItem}>Automated ad viewing through bots or scripts</li>
-                <li className={styles.listItem}>Operating multiple accounts to inflate earnings</li>
-                <li className={styles.listItem}>Posting fabricated reviews or testimonials</li>
-                <li className={styles.listItem}>Submitting fraudulent, false, or illegal advertisements</li>
-              </ul>
-            </li>
-            <li className={styles.listItem}>Paayh employs both automated systems and human moderators to detect and prevent abuse.</li>
-            <li className={styles.listItem}>Violators will be permanently banned and may face legal action.</li>
-          </ol>
-        </section>
-
-        <section>
-          <h2 className={styles.heading}>XI. Suspension and Termination</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>Accounts may be suspended for policy violations, prolonged inactivity (7 or more consecutive days), or fraudulent activity.</li>
-            <li className={styles.listItem}>Users may appeal suspensions through the Help Center.</li>
-            <li className={styles.listItem}>Terminated accounts forfeit any pending or unclaimed earnings.</li>
-          </ol>
-        </section>
-
-        <section>
-  <h2 className={styles.heading}>XII. Limitation of Liability</h2>
-  <p>Paayh is <strong>not</strong> liable for the following:</p>
-  <ol className={styles.list}>
-    <li className={styles.listItem}>
-      <ul className={styles.list}>
-        <li className={styles.listItem}>Loss of earnings due to technical issues or service outages</li>
-        <li className={styles.listItem}>Account suspension resulting from user inactivity</li>
-        <li className={styles.listItem}>Payment failures caused by third-party service providers</li>
-        <li className={styles.listItem}>Advertiser misconduct or misrepresentation</li>
-        <li className={styles.listItem}>Any loss of earnings due to the above reasons or any other circumstances, which will not be refunded or paid out to users</li>
-      </ul>
-    </li>
-    <li className={styles.listItem}>
-      Payouts are strictly compensatory rewards for viewing advertisements. Paayh reserves the right to suspend, withdraw, or alter these rewards at any time at its sole discretion, and is not bound by any mandatory payment obligations.
-    </li>
-    {/* <li className={styles.listItem}>
-      Paayh&apos;s total liability to any user is limited to that user&apos;s last 30 days of verified earnings.
-    </li> */}
-  </ol>
-</section>
-
-
-        <section id="terms">
-          <h2 className={styles.heading}>XIII. Dispute Resolution</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>All disputes must first be reported to Paayh&apos;s support team through the Help Center.</li>
-            <li className={styles.listItem}>Disputes unresolved within 30 days may be report again via our Help Center.</li>
-            {/* <li className={styles.listItem}>These terms are governed by the laws of the Federal Republic of Nigeria, or the jurisdiction in which Paayh officially operates.</li> */}
-          </ol>
-        </section>
-
-        <section>
-          <h2 className={styles.heading}>XIV. Changes to These Terms</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}>Paayh reserves the right to update these terms at any time.</li>
-            <li className={styles.listItem}>Users may be notified of any material changes to the terms.</li>
-            <li className={styles.listItem}>Continued use of the platform after a change constitutes acceptance of the revised terms.</li>
-          </ol>
-        </section>
-
-        <section id="help-center">
-          <h2 className={styles.heading}>XV. Help Center Policy</h2>
-          <ol className={styles.list}>
-            <li className={styles.listItem}><strong>Support Tickets:</strong> Users can submit support tickets for account issues, ad or highlight problems, payment and earnings queries, suspensions, bug reports, or collaboration requests.</li>
-            <li className={styles.listItem}><strong>Response Times:</strong> Tickets are processed sequentially. We aim to respond to all valid support queries within 24 to 48 business hours.</li>
-            <li className={styles.listItem}><strong>Conduct:</strong> Users are expected to communicate honestly and respectfully. Spamming tickets, filing fraudulent complaints, or harassing support staff will result in account suspension.</li>
-          </ol>
-        </section>
-
-        <section id="arcon-compliance">
-  <h2 className={styles.heading}>XVI. Advertising Regulatory Compliance (ARCON)</h2>
-  <p>This section applies to advertising content directed at or exposed to the Nigerian market:</p>
-  <ol className={styles.list}>
-    <li className={styles.listItem}>
-      <strong>Regulatory Acknowledgment:</strong> Paayh recognises the Advertising Regulatory Council of Nigeria (ARCON), established under the ARCON Act 2022, as the apex regulatory body for advertising in Nigeria. All advertising activities conducted on Paayh that target the Nigerian market are subject to the ARCON Act 2022 and the Nigerian Code of Advertising Practice.
-    </li>
-    <li className={styles.listItem}>
-      <strong>Content Compliance and Takedowns:</strong> Paayh reserves the right to immediately remove, suspend, or reject any advertisement that is found to be non-compliant with ARCON regulations, is directed to be taken down by ARCON, or otherwise violates applicable advertising laws. No refund shall be issued for campaigns removed due to regulatory non-compliance by the advertiser.
-    </li>
-    <li className={styles.listItem}>
-      <strong>Reporting and Removal Protocol:</strong> In the event that an advertisement violates regulatory provisions or applicable laws, ARCON or any other authoritative regulatory body may report the violation and request removal. All such reports and takedown requests must be submitted formally to Paayh via our official email address. Upon receipt of a valid regulatory notice, Paayh will promptly review and remove the violating advertisement.
-    </li>
-    <li className={styles.listItem}>
-      <strong>Political Advertising:</strong> Political advertisements are available as a distinct advertiser category on Paayh. Users may opt in or out of viewing political ads through their interest preferences. All political advertisements must comply with ARCON regulations and applicable electoral advertising laws. The advertiser assumes sole responsibility for ensuring compliance of political ad content.
-    </li>
-  </ol>
-</section>
-
-        <section>
-          <h2 className={styles.heading}>XVII. Contact</h2>
+        {/* SECTION 7 */}
+        <section id="retention">
+          <h2 className={styles.heading}>VII. Data Retention &amp; Inactivity Policy</h2>
           <p>
-            For questions or clarifications, please visit our <a href="/help">Help Center</a>.
+            Personal data is retained only for as long as necessary to provide services and fulfill statutory accounting obligations. Inactivity resets and balance expirations are strictly enforced in accordance with our{" "}
+            <Link href="/terms#inactivity-guidelines" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+              Platform Inactivity Management Guidelines
+            </Link>:
           </p>
-          <p className={styles.acknowledgment}>
-            <strong>By using Paayh, you acknowledge that you have read, understood, and agree to be bound by these policies and terms.</strong>
+          <ul className={styles.list}>
+            <li className={styles.listItem}>
+              <strong>7 Day Inactivity:</strong> Inactivity for 7 consecutive days resets monetization status; personal account data and wallet balances remain intact.
+            </li>
+            <li className={styles.listItem}>
+              <strong>60 Day Dormant Account Expiration:</strong> Inactive accounts with zero engagement or login for 60 consecutive days forfeit unclaimed promotional incentive credits.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Deleted Accounts:</strong> When an account is deleted, personal data is permanently purged from active operational databases.
+            </li>
+          </ul>
+        </section>
+
+        {/* SECTION 8 */}
+        <section id="contact">
+          <h2 className={styles.heading}>VIII. Contact Our Data Protection Team</h2>
+          <p>
+            For questions, data access requests, or regulatory inquiries, contact our Data Protection and Compliance team:
+          </p>
+          <p>
+            Email: <code>privacy@paayh.com</code> or <code>legal@paayh.com</code>
+            <br />
+            Support Portal: <Link href="/help" className={styles.link}>Paayh Help Center</Link>
           </p>
         </section>
       </main>

@@ -9,18 +9,7 @@ export interface AtwTierDef {
 export const ATW_TIERS: AtwTierDef[] = [
   { code: "ATW1", minScore: 100, maxScore: 1000, name: "Entry", badgeColor: "#9ca3af" },
   { code: "ATW2", minScore: 1000, maxScore: 5000, name: "Bronze", badgeColor: "#d97706" },
-  { code: "ATW3", minScore: 5000, maxScore: 10000, name: "Silver", badgeColor: "#94a3b8" },
-  { code: "ATW4", minScore: 10000, maxScore: 20000, name: "Gold", badgeColor: "#eab308" },
-  { code: "ATW5", minScore: 20000, maxScore: 30000, name: "Platinum", badgeColor: "#38bdf8" },
-  { code: "ATW6", minScore: 30000, maxScore: 40000, name: "Diamond", badgeColor: "#a855f7" },
-  { code: "ATW7", minScore: 40000, maxScore: 50000, name: "Master", badgeColor: "#ec4899" },
-  { code: "ATW8", minScore: 50000, maxScore: 70000, name: "Grandmaster", badgeColor: "#f43f5e" },
-  { code: "ATW9", minScore: 70000, maxScore: 90000, name: "Elite", badgeColor: "#ef4444" },
-  { code: "ATW10", minScore: 90000, maxScore: 150000, name: "Champion", badgeColor: "#10b981" },
-  { code: "ATW11", minScore: 150000, maxScore: 250000, name: "Legend", badgeColor: "#06b6d4" },
-  { code: "ATW12", minScore: 250000, maxScore: 500000, name: "Mythic", badgeColor: "#6366f1" },
-  { code: "ATW13", minScore: 500000, maxScore: 1000000, name: "Titan", badgeColor: "#8b5cf6" },
-  { code: "ATW14", minScore: 1000000, maxScore: Infinity, name: "Sovereign", badgeColor: "#f59e0b" },
+  { code: "ATW3", minScore: 5000, maxScore: Infinity, name: "Silver", badgeColor: "#94a3b8" },
 ];
 
 export const STAR_RATING_INCREMENTS: Record<number, number> = {
@@ -46,14 +35,16 @@ export function getScoreIncrementForStars(stars: number): number {
 
 /**
  * Computes maximum wallet balance holding limit based on user's ATW tier level.
- * Each ATW level increases the account balance limit by ₦100,000.
- * Level 1 (ATW1) = ₦100,000, Level 2 (ATW2) = ₦200,000, ..., Level 14 (ATW14) = ₦1,400,000.
+ * NB: ATW is exclusively for wallet balance holding caps; users should always maintain low balances.
+ * Level 1 (ATW1) = ₦30,000 (~$20 USD)
+ * Level 2 (ATW2) = ₦60,000 (~$40 USD)
+ * Level 3 (ATW3) = ₦90,000 (~$60 USD) [Maximum Cap].
  */
 export function getAtwBalanceLimit(atwTier?: string | null, isAdmin?: boolean): number {
   if (isAdmin) return Infinity;
-  if (!atwTier) return 100000;
+  if (!atwTier) return 30000;
   const match = atwTier.match(/\d+/);
   const levelNum = match ? parseInt(match[0], 10) : 1;
-  const safeLevel = Math.max(1, levelNum);
-  return safeLevel * 100000;
+  const safeLevel = Math.min(3, Math.max(1, levelNum));
+  return safeLevel * 30000;
 }
