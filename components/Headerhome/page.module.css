@@ -447,21 +447,26 @@
 @media screen and (max-width: 768px) {
   .notificationDropdown {
     position: fixed !important;
-    top: 64px !important;
+    top: 2.5vh !important;
+    top: 2.5dvh !important;
     left: 12px !important;
     right: 12px !important;
     width: auto !important;
-    max-width: min(380px, calc(100vw - 24px)) !important;
+    max-width: min(420px, calc(100vw - 24px)) !important;
     margin: 0 auto !important;
     bottom: auto !important;
-    height: auto !important;
-    max-height: min(480px, calc(100dvh - 90px)) !important;
+    height: 95vh !important;
+    height: 95dvh !important;
+    max-height: 95dvh !important;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
     border-radius: 16px !important;
     z-index: 99999 !important;
   }
 
   .notificationList {
-    max-height: min(380px, calc(100dvh - 180px)) !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
   }
 }
