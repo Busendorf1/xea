@@ -40,7 +40,7 @@ export default function AdInteractionHandler({
   ad,
   userEmail: _userEmail,
   isPlatformPost,
-  isMutualTarget: _isMutualTarget,
+  isMutualTarget,
   isAlreadyMutual,
   viewerProfile,
   isProcessing,
@@ -459,8 +459,8 @@ export default function AdInteractionHandler({
                 )}
               </button>
 
-              {/* Earn+ Button — only visible when monetized */}
-              {viewerProfile?.monetized && (
+              {/* Earn+ Button — only visible when monetized and NOT a mutual ad (mutual attention is unbudgeted free attention) */}
+              {viewerProfile?.monetized && !isMutualTarget && !isAlreadyMutual && (
                 <button
                   className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
                   type="button"

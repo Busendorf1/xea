@@ -1,39 +1,54 @@
 /* about.module.css */
 
 .container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
+  max-width: 780px;
+  margin: 3rem auto 4.5rem;
+  padding: 2.75rem 2.25rem;
   font-family: var(--font-geist-sans), "Inter", sans-serif;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card, 22px);
+  box-shadow: var(--shadow-surface);
+  transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
 .title {
-  font-size: 2rem;
-  font-weight: bold;
-  margin-bottom: 1.5rem;
+  font-size: 2.4rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
   text-align: center;
+  color: var(--foreground);
+  letter-spacing: -0.03em;
 }
 
 .section {
-  margin-bottom: 2.5rem;
+  margin-bottom: 2.25rem;
 }
 
 .sectionTitle {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin-bottom: 0.85rem;
   color: var(--foreground);
+  letter-spacing: -0.02em;
 }
 
 .sectionText {
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: 0.98rem;
+  line-height: 1.65;
   margin-bottom: 1rem;
+  color: var(--foreground);
   text-align: justify;
   text-justify: inter-word;
 }
 
 .link {
-  color: var(--primary);
+  color: var(--foreground);
   text-decoration: underline;
   font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.link:hover {
+  color: var(--text-muted);
 }

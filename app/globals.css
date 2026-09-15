@@ -1,107 +1,122 @@
-/* Design System Tokens: Strict 6-Role Palette + Concentric Geometry */
+/* Design System Tokens: Unified Apple and Editorial Minimalist Palette */
 :root {
-  --blue-primary: #2563eb;
-  --blue-hover: #1d4ed8;
-  --black-color: #090a0f;
-  --white-color: #ffffff;
+  /* Global Brand Identity Tokens */
+  --ink-charcoal: #282826;
+  --paper-cream: #f9f9f7;
+  --obsidian-dark: #0b0c10;
+  --midnight-surface: #141721;
+  --emerald-status: #10b981;
 
-  /* Global Geometry & Animation Tokens */
-  --radius-card: 12px;
-  --radius-btn: 8px;
-  --radius-inner: 8px;
+  /* Global Geometry and Animation Tokens */
+  --radius-card: 22px;
+  --radius-btn: 9999px;
+  --radius-inner: 12px;
   --radius-pill: 9999px;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-dialog: cubic-bezier(0.175, 0.885, 0.32, 1.075);
 }
 
-/* Light Theme Variables (System Default when device is in Light Mode) */
+/* Light Theme Variables matching Modal standard */
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --primary: var(--blue-primary);
-  --primary-hover: var(--blue-hover);
-  --primary-glow: rgba(37, 99, 235, 0.1);
-  --secondary: #0f172a;
-  --secondary-glow: rgba(15, 23, 42, 0.05);
-  --card-bg: #f8fafc;
-  --card-border: #e2e8f0;
-  --card-border-hover: #cbd5e1;
+  --background: #f9f9f7;
+  --foreground: #282826;
+  --primary: #282826;
+  --primary-hover: #3d3d3a;
+  --primary-glow: rgba(40, 40, 38, 0.08);
+  --secondary: #282826;
+  --secondary-glow: rgba(40, 40, 38, 0.05);
+  --card-bg: #ffffff;
+  --card-border: #e6e5e1;
+  --card-border-hover: #d6d5cf;
   --card-rim: none;
-  --shadow-surface: none;
-  --text-muted: #64748b;
+  --shadow-surface: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
+  --text-muted: #7a7975;
   --input-bg: #ffffff;
-  --input-border: #e2e8f0;
-  --sidebar-bg: #f8fafc;
-  --success: #16a34a;
-  --danger: #dc2626;
+  --input-border: #e6e5e1;
+  --sidebar-bg: #f4f4f2;
+  --success: #10b981;
+  --danger: #ef4444;
+  --badge-gold: #d97706;
+  --badge-gold-bg: rgba(217, 119, 6, 0.08);
+  --badge-gold-border: rgba(217, 119, 6, 0.25);
 }
 
 /* Dark Theme Variables when device is in Dark Mode */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='white']):not([data-theme='light']) {
-    --background: #090a0f;
+    --background: #0b0c10;
     --foreground: #f8fafc;
-    --primary: #3b82f6;
-    --primary-hover: #60a5fa;
-    --primary-glow: rgba(59, 130, 246, 0.18);
+    --primary: #f8fafc;
+    --primary-hover: #e2e8f0;
+    --primary-glow: rgba(248, 250, 252, 0.12);
     --secondary: #f8fafc;
-    --secondary-glow: rgba(248, 250, 252, 0.1);
-    --card-bg: #12151d;
-    --card-border: rgba(255, 255, 255, 0.08);
-    --card-border-hover: rgba(255, 255, 255, 0.16);
+    --secondary-glow: rgba(248, 250, 252, 0.08);
+    --card-bg: #141721;
+    --card-border: #262c3b;
+    --card-border-hover: #343c50;
     --card-rim: none;
-    --shadow-surface: none;
+    --shadow-surface: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
     --text-muted: #94a3b8;
     --input-bg: #0f121a;
-    --input-border: rgba(255, 255, 255, 0.1);
-    --sidebar-bg: #0d0f15;
-    --success: #22c55e;
+    --input-border: #262c3b;
+    --sidebar-bg: #10131d;
+    --success: #10b981;
     --danger: #ef4444;
+    --badge-gold: #f59e0b;
+    --badge-gold-bg: rgba(245, 158, 11, 0.12);
+    --badge-gold-border: rgba(245, 158, 11, 0.3);
   }
 }
 
 /* Explicit Dark Theme */
 [data-theme='dark'] {
-  --background: #090a0f;
+  --background: #0b0c10;
   --foreground: #f8fafc;
-  --primary: #3b82f6;
-  --primary-hover: #60a5fa;
-  --primary-glow: rgba(59, 130, 246, 0.18);
+  --primary: #f8fafc;
+  --primary-hover: #e2e8f0;
+  --primary-glow: rgba(248, 250, 252, 0.12);
   --secondary: #f8fafc;
-  --secondary-glow: rgba(248, 250, 252, 0.1);
-  --card-bg: #12151d;
-  --card-border: rgba(255, 255, 255, 0.08);
-  --card-border-hover: rgba(255, 255, 255, 0.16);
+  --secondary-glow: rgba(248, 250, 252, 0.08);
+  --card-bg: #141721;
+  --card-border: #262c3b;
+  --card-border-hover: #343c50;
   --card-rim: none;
-  --shadow-surface: none;
+  --shadow-surface: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
   --text-muted: #94a3b8;
   --input-bg: #0f121a;
-  --input-border: rgba(255, 255, 255, 0.1);
-  --sidebar-bg: #0d0f15;
-  --success: #22c55e;
+  --input-border: #262c3b;
+  --sidebar-bg: #10131d;
+  --success: #10b981;
   --danger: #ef4444;
+  --badge-gold: #f59e0b;
+  --badge-gold-bg: rgba(245, 158, 11, 0.12);
+  --badge-gold-border: rgba(245, 158, 11, 0.3);
 }
 
-/* Explicit White / Light Theme */
+/* Explicit White and Light Theme */
 [data-theme='white'],
 [data-theme='light'] {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --primary: var(--blue-primary);
-  --primary-hover: var(--blue-hover);
-  --primary-glow: rgba(37, 99, 235, 0.1);
-  --secondary: #0f172a;
-  --secondary-glow: rgba(15, 23, 42, 0.05);
-  --card-bg: #f8fafc;
-  --card-border: #e2e8f0;
-  --card-border-hover: #cbd5e1;
+  --background: #f9f9f7;
+  --foreground: #282826;
+  --primary: #282826;
+  --primary-hover: #3d3d3a;
+  --primary-glow: rgba(40, 40, 38, 0.08);
+  --secondary: #282826;
+  --secondary-glow: rgba(40, 40, 38, 0.05);
+  --card-bg: #ffffff;
+  --card-border: #e6e5e1;
+  --card-border-hover: #d6d5cf;
   --card-rim: none;
-  --shadow-surface: none;
-  --text-muted: #64748b;
+  --shadow-surface: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
+  --text-muted: #7a7975;
   --input-bg: #ffffff;
-  --input-border: #e2e8f0;
-  --sidebar-bg: #f8fafc;
-  --success: #16a34a;
-  --danger: #dc2626;
+  --input-border: #e6e5e1;
+  --sidebar-bg: #f4f4f2;
+  --success: #10b981;
+  --danger: #ef4444;
+  --badge-gold: #d97706;
+  --badge-gold-bg: rgba(217, 119, 6, 0.08);
+  --badge-gold-border: rgba(217, 119, 6, 0.25);
 }
 
 h1, h2, h3 {
@@ -114,12 +129,12 @@ body {
   overflow-x: hidden;
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), "Geist", "Inter", sans-serif;
+  font-family: var(--font-geist-sans), "Geist", var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
-  scrollbar-width: none !important; /* Firefox */
-  -ms-overflow-style: none !important; /* IE and Edge */
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
@@ -148,15 +163,15 @@ a {
   text-decoration: none;
 }
 
-/* Clean Universal Button, Container, and Card System - Concentric Curve Law */
+/* Clean Universal Button, Container, and Card System with Concentric Curves */
 button, input[type="button"], input[type="submit"], .btn {
-  border-radius: var(--radius-btn, 8px);
+  border-radius: var(--radius-btn, 9999px);
   font-family: inherit;
   transition: all 0.2s var(--ease-spring);
 }
 
 input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"], input[type="date"], select, textarea {
-  border-radius: var(--radius-btn, 8px);
+  border-radius: var(--radius-inner, 12px);
 }
 
 /* Universal Floating Toast HUD */
@@ -193,7 +208,7 @@ input[type="text"], input[type="email"], input[type="password"], input[type="num
   }
 }
 
-/* Universal video controls suppression: hide native browser center play buttons and default overlay controls */
+/* Universal video controls suppression */
 video::-webkit-media-controls-start-playback-button,
 video::-webkit-media-controls-play-button,
 video::-webkit-media-controls-overlay-play-button,

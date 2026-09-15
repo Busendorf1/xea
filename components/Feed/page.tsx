@@ -46,6 +46,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         country?: string;
         monetized?: boolean;
         created_at?: string;
+        gender?: string;
       }
     >
   >(initialProfiles || {});

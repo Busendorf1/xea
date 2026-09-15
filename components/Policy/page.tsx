@@ -42,6 +42,9 @@ export default function PolicyPage() {
               <strong>Profile &amp; Demographic Preferences:</strong> Voluntary user details including country, state, gender, date of birth / age bracket, and selected interest categories used solely to deliver relevant feed content.
             </li>
             <li className={styles.listItem}>
+              <strong>Precise GPS Location Coordinates:</strong> During profile setup and onboarding, we request device location permissions to auto detect your country, state, and city via browser GPS coordinates. These geographic fields are locked as read only to prevent manual fabrication, ensuring advertisers connect with authentic residents in designated local campaigns.
+            </li>
+            <li className={styles.listItem}>
               <strong>Engagement &amp; Attention Metrics:</strong> Timestamps of verified ad interactions, verification challenge outcomes (swipe, hold, tap), dwell time, and ATW score progression.
             </li>
             <li className={styles.listItem}>
@@ -72,7 +75,7 @@ export default function PolicyPage() {
           <p>We process personal data strictly for legitimate operational purposes:</p>
           <ol className={styles.list}>
             <li className={styles.listItem}>To authenticate your account session and maintain account security.</li>
-            <li className={styles.listItem}>To deliver relevant sponsored content and calculate earned promotional incentive credits.</li>
+            <li className={styles.listItem}>To deliver relevant sponsored content and calculate earned promotional incentive credits. For clarity, cash credits accrue strictly on paid commercial campaigns where the sponsor allocated an impression budget; reciprocal mutual posts, platform updates, brand jingles, special offers, and business daily highlights carry zero cash incentive.</li>
             <li className={styles.listItem}>To audit transactions for fraud prevention, sybil prevention, and anti money laundering (AML) compliance under Nigerian law.</li>
             <li className={styles.listItem}>To disburse verified settlement payouts through licensed payment processors.</li>
             <li className={styles.listItem}>We do <strong>NOT</strong> sell, rent, or trade your personal information to third party data brokers.</li>

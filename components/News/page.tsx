@@ -315,7 +315,7 @@ export default function News({ session }: NewsProps) {
           </p>
           <a
             href="/help?category=Suspended%20Account&subject=Appeal%20Highlight%20Account%20Suspension"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", backgroundColor: "var(--primary)", color: "#ffffff", padding: "0.75rem 1.5rem", borderRadius: "8px", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" }}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", backgroundColor: "var(--primary)", color: "var(--background)", padding: "0.75rem 1.5rem", borderRadius: "8px", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" }}
           >
             Appeal via Help Center
           </a>
@@ -383,7 +383,7 @@ export default function News({ session }: NewsProps) {
                   <div style={{ textAlign: "center" }}>
                     <img src={mediaPreview} alt="Cover Preview" style={{ maxWidth: "100%", maxHeight: "280px", borderRadius: "12px", border: "1px solid var(--card-border)", objectFit: "contain" }} />
                     <div style={{ marginTop: "0.75rem" }}>
-                      <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid #ef4444", color: "#ef4444", background: "transparent", cursor: "pointer", fontWeight: 600 }}>Remove Image</button>
+                      <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid var(--danger)", color: "var(--danger)", background: "transparent", cursor: "pointer", fontWeight: 600 }}>Remove Image</button>
                     </div>
                   </div>
                 ) : (
@@ -394,7 +394,7 @@ export default function News({ session }: NewsProps) {
                   </label>
                 )}
                 <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end" }}>
-                  <button disabled={!mediaFile} onClick={() => setStep(1)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Title →</button>
+                  <button disabled={!mediaFile} onClick={() => setStep(1)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !mediaFile ? "var(--card-border)" : "var(--primary)", color: !mediaFile ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !mediaFile ? "not-allowed" : "pointer" }}>Continue to Title →</button>
                 </div>
               </div>
             )}
@@ -406,7 +406,7 @@ export default function News({ session }: NewsProps) {
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Grand Opening Sale 50% Off" className={styles.inputBox} maxLength={80} />
                 <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(0)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={!title.trim()} onClick={() => setStep(2)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Content →</button>
+                  <button disabled={!title.trim()} onClick={() => setStep(2)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !title.trim() ? "var(--card-border)" : "var(--primary)", color: !title.trim() ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !title.trim() ? "not-allowed" : "pointer" }}>Continue to Content →</button>
                 </div>
               </div>
             )}
@@ -418,7 +418,7 @@ export default function News({ session }: NewsProps) {
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Share full details of your highlight announcement..." className={styles.textareaBox} rows={6} maxLength={1000} />
                 <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(1)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={!content.trim()} onClick={() => setStep(3)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Targeting & Bidding →</button>
+                  <button disabled={!content.trim()} onClick={() => setStep(3)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !content.trim() ? "var(--card-border)" : "var(--primary)", color: !content.trim() ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !content.trim() ? "not-allowed" : "pointer" }}>Continue to Targeting & Bidding →</button>
                 </div>
               </div>
             )}
@@ -554,7 +554,7 @@ export default function News({ session }: NewsProps) {
 
                 <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(2)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={!interest} onClick={() => setStep(4)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue to Preview →</button>
+                  <button disabled={!interest} onClick={() => setStep(4)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !interest ? "var(--card-border)" : "var(--primary)", color: !interest ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !interest ? "not-allowed" : "pointer" }}>Continue to Preview →</button>
                 </div>
               </div>
             )}
@@ -625,7 +625,7 @@ export default function News({ session }: NewsProps) {
 
                 <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
                   <button onClick={() => setStep(3)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: "var(--primary)", color: "#fff", fontWeight: 700, cursor: "pointer", opacity: (!agreedToPolicy || isSubmitting) ? 0.6 : 1, display: "flex", alignItems: "center", gap: "6px" }}>
+                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: (!agreedToPolicy || isSubmitting) ? "var(--card-border)" : "var(--primary)", color: (!agreedToPolicy || isSubmitting) ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: (!agreedToPolicy || isSubmitting) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
                     {isSubmitting ? (
                       "Processing Submission..."
                     ) : isAdmin ? (

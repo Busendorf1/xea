@@ -92,6 +92,7 @@ interface AdCardProps {
       country?: string;
       monetized?: boolean;
       created_at?: string;
+      gender?: string | null;
     }
   >;
   viewerProfile: {
@@ -448,6 +449,7 @@ function AdCard({
               fallbackText={brandName}
               size={40}
               alt={brandName}
+              gender={advertiserProfile?.gender || (ad as any).gender || null}
               className={styles.avatarImg}
             />
           </div>
@@ -477,7 +479,7 @@ function AdCard({
           <div className={styles.headerRightContainer}>
             <span className={styles.sponsorLabel}>
               {(() => {
-                if (isMutualTarget) return "Mutual Ad";
+                if (isMutualTarget || isAlreadyMutual) return "Mutual Ad";
                 const category = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "").toLowerCase();
                 if (category === "politics") return "Politics Ad";
                 if (category === "religion") return "Religious Ad";

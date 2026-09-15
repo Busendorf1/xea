@@ -84,19 +84,19 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.7rem 1.4rem;
-  border-radius: 8px;
-  background-color: #f8fafc;
-  color: #090a0f;
+  border-radius: var(--radius-pill, 9999px);
+  background-color: var(--primary);
+  color: var(--background);
   font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--primary);
   transition: opacity 0.15s ease, transform 0.15s ease;
   cursor: pointer;
 }
 
 .homeButton:hover {
-  opacity: 0.9;
+  background-color: var(--primary-hover);
   transform: translateY(-1px);
 }
 
@@ -107,49 +107,49 @@
 /* Light / White Theme Support */
 :global([data-theme='white']) .container,
 :global([data-theme='light']) .container {
-  background-color: #ffffff;
-  color: #09090b;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 :global([data-theme='white']) .content,
 :global([data-theme='light']) .content {
-  background-color: #fafafa;
-  border-color: #e4e4e7;
+  background-color: var(--card-bg);
+  border-color: var(--card-border);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 :global([data-theme='white']) .iconCircle,
 :global([data-theme='light']) .iconCircle {
-  background-color: #f4f4f5;
-  border-color: #e4e4e7;
-  color: #18181b;
+  background-color: var(--sidebar-bg);
+  border-color: var(--card-border);
+  color: var(--foreground);
 }
 
 :global([data-theme='white']) .badge,
 :global([data-theme='light']) .badge {
-  background-color: #f4f4f5;
-  border-color: #e4e4e7;
-  color: #71717a;
+  background-color: var(--sidebar-bg);
+  border-color: var(--card-border);
+  color: var(--text-muted);
 }
 
 :global([data-theme='white']) .title,
 :global([data-theme='light']) .title {
-  color: #09090b;
+  color: var(--foreground);
 }
 
 :global([data-theme='white']) .subtitle,
 :global([data-theme='light']) .subtitle {
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 :global([data-theme='white']) .countdownNotice,
 :global([data-theme='light']) .countdownNotice {
-  color: #a1a1aa;
+  color: var(--text-muted);
 }
 
 :global([data-theme='white']) .homeButton,
 :global([data-theme='light']) .homeButton {
-  background-color: #18181b;
-  color: #ffffff;
-  border-color: #18181b;
+  background-color: var(--primary);
+  color: var(--background);
+  border-color: var(--primary);
 }

@@ -45,11 +45,19 @@
 .avatarCol {
   margin-right: 0.75rem;
   flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .avatar {
   width: 40px;
   height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  max-width: 40px;
+  max-height: 40px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   background-color: var(--sidebar-bg);
   color: var(--text-muted);
@@ -60,6 +68,20 @@
   font-weight: 700;
   border: 1px solid var(--card-border);
   overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.avatarImg {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  display: block !important;
+  flex-shrink: 0 !important;
 }
 
 .contentCol {
@@ -339,7 +361,7 @@
 
 .earnBtn {
   background-color: var(--success);
-  color: #ffffff;
+  color: var(--background);
   border: none;
   border-radius: 9999px;
   padding: 4px clamp(8px, 2.2vw, 14px);
@@ -372,23 +394,24 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background-color: var(--primary);
-  color: #ffffff;
-  border: none;
+  background-color: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
   border-radius: 9999px;
   padding: 4px clamp(10px, 2.5vw, 16px);
   font-size: clamp(0.72rem, 2.2vw, 0.8rem);
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.15s ease;
+  transition: all 0.15s ease;
   height: clamp(26px, 6vw, 30px);
   line-height: 1;
   white-space: nowrap;
 }
 
 .fromBrandBtn:hover {
-  background-color: var(--primary-hover);
+  background-color: var(--card-border);
+  color: var(--foreground);
   transform: translateY(-1px);
 }
 
@@ -396,21 +419,21 @@
   display: inline-flex;
   align-items: center;
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--primary);
   padding: 4px 10px;
 }
 
 .mutualBtn {
-  background-color: var(--primary);
-  color: #ffffff;
-  border: none;
+  background-color: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
   border-radius: 9999px;
   padding: 4px clamp(8px, 2.2vw, 14px);
   font-size: clamp(0.70rem, 2.2vw, 0.78rem);
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -421,7 +444,8 @@
 }
 
 .mutualBtn:hover {
-  background-color: var(--primary-hover);
+  background-color: var(--card-border);
+  color: var(--foreground);
   transform: translateY(-1px);
 }
 
@@ -524,7 +548,7 @@
 
 .successBtn {
   background-color: var(--success) !important;
-  color: #ffffff !important;
+  color: var(--background) !important;
   border: none !important;
   cursor: default !important;
   pointer-events: none !important;
@@ -560,7 +584,7 @@
 
 .visitBrandBtn {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   border: none;
   border-radius: 9999px;
   padding: 5px 14px;
@@ -789,7 +813,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
+  color: var(--background);
   font-size: 0.7rem;
   font-weight: 700;
   cursor: grab;
@@ -1012,7 +1036,7 @@
   align-items: center;
   justify-content: center;
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   padding: 0.4rem 1.2rem;
   border-radius: var(--radius-btn);
   font-size: 0.82rem;
@@ -1423,3 +1447,8 @@
   }
 }
 
+
+
+.earnBtn:active, .mutualBtn:active, .fromBrandBtn:active, .visitBrandBtn:active, .seenBtn:active {
+  transform: scale(0.96) !important;
+}

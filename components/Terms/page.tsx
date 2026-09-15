@@ -44,6 +44,12 @@ export default function TermsPage() {
             <strong>1.3 Non Transferability:</strong> Accounts, credentials, and accrued incentive balances are personal
             and non transferable without Paayh&apos;s express prior written consent.
           </p>
+          <p>
+            <strong>1.4 GPS Location Verification During Registration:</strong> To support authentic geographic audience
+            targeting for local businesses, Paayh requests browser device location permissions during profile setup.
+            Your coordinates auto detect your country, state, and city, locking these fields as read only so users cannot
+            manually type in arbitrary jurisdictions. This ensures verified location attribution for commercial campaigns.
+          </p>
         </section>
 
         {/* SECTION 2 */}
@@ -96,6 +102,12 @@ export default function TermsPage() {
             is rendered within your active viewport or scrolled past in the feed during regular human browsing.
           </p>
           <p>
+            <strong>3.1.1 Non Monetized Content Exclusions:</strong> Users cannot earn cash incentives from viewing mutual content,
+            official platform updates, platform jingles, special promotional offers, or business daily highlights. Mutual content represents
+            reciprocal, unbudgeted free attention slots arranged between members. Official platform announcements, system updates,
+            brand jingles, and business daily highlights carry zero advertiser impression budget, so no cash credits accrue from them.
+          </p>
+          <p>
             <strong>3.2 Legal Nature of Earnings: Discretionary Promotional Incentive Credits:</strong> All earnings,
             wallet figures, and monetary amounts displayed on your dashboard represent{" "}
             <strong>conditional, unvested promotional incentive credits</strong> granted solely at Paayh&apos;s discretion,
@@ -128,6 +140,13 @@ export default function TermsPage() {
               percentages are dynamic and not fixed; they may adjust based on platform liquidity, advertiser campaign budgets,
               and network health. Paayh retains the remainder to cover digital hosting infrastructure, payment processor gateway
               fees, and administrative operations.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Competitive Attention Bidding &amp; Dynamic Audience Delivery:</strong> Advertisers and promoters
+              may submit competitive bids for human attention to prioritize campaign queueing, outpace commercial rivals,
+              and reach targeted audience demographics faster. Listeners receiving higher bidded promotional campaigns
+              earn proportionately higher direct incentive rewards in their wallet for verified human focus. All bids
+              are subject to industry floor rates and platform capacity.
             </li>
             <li className={styles.listItem}>
               <strong>Prompt Redemption Mandate &amp; Anti Hoarding Directive:</strong> Paayh is NOT a bank, electronic wallet,

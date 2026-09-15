@@ -22,7 +22,7 @@
 }
 
 .faqItem {
-  border-radius: 0.5rem;
+  border-radius: var(--radius-inner, 14px);
   border: 1px solid var(--card-border);
   background-color: var(--card-bg);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
@@ -52,7 +52,7 @@
 }
 
 .question:hover {
-  color: var(--primary);
+  color: var(--foreground);
 }
 
 .icon {
@@ -63,7 +63,7 @@
 
 .faqItem.open .icon {
   transform: rotate(180deg);
-  color: var(--primary);
+  color: var(--foreground);
 }
 
 .answer {

@@ -355,7 +355,7 @@
   color: var(--foreground);
   padding: 0.9rem 1.5rem;
   border: 1px solid var(--card-border);
-  border-radius: 12px;
+  border-radius: var(--radius-pill, 9999px);
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
@@ -388,7 +388,7 @@
   color: var(--background);
   padding: 0.9rem 1.5rem;
   border: 1px solid var(--foreground);
-  border-radius: 12px;
+  border-radius: var(--radius-pill, 9999px);
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
@@ -410,6 +410,29 @@
 .appleIcon {
   flex-shrink: 0;
   fill: currentColor;
+}
+
+.loginBtnLoading {
+  opacity: 0.8 !important;
+  cursor: wait !important;
+  pointer-events: none !important;
+}
+
+.btnSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btnSpin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes btnSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .trustBadge {
@@ -578,9 +601,9 @@
     padding: 0.6rem 1.15rem;
     font-size: 0.85rem;
     font-weight: 700;
-    border-radius: 99px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-pill, 9999px);
+    background: var(--sidebar-bg);
+    border: 1px solid var(--card-border);
     color: var(--foreground);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -681,17 +704,17 @@
 /* Color Theme Switch Compliance for Web Homepage */
 [data-theme='white'] .googleLoginBtn,
 [data-theme='light'] .googleLoginBtn {
-  background: #ffffff !important;
-  color: #000000 !important;
-  border-color: #cbd5e1 !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+  background: var(--card-bg) !important;
+  color: var(--foreground) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
 }
 
 [data-theme='white'] .appleLoginBtn,
 [data-theme='light'] .appleLoginBtn {
-  background: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
+  background: var(--card-bg) !important;
+  color: var(--foreground) !important;
+  border-color: var(--card-border) !important;
 }
 
 [data-theme='white'] .orbitalStage,
@@ -751,20 +774,21 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   padding: 0.75rem 1.25rem;
-  border-radius: 12px;
+  border-radius: var(--radius-pill, 9999px);
   color: var(--foreground);
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
 
 .howItWorksBtn:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--card-bg);
+  border-color: var(--card-border-hover);
+  transform: translateY(-1px);
 }
 
 .arrowIcon {
@@ -805,7 +829,7 @@
 .modalDialog {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 20px;
+  border-radius: var(--radius-card, 22px);
   width: 100%;
   max-width: 560px;
   max-height: 85vh;

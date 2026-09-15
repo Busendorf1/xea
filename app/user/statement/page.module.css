@@ -2,6 +2,7 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 1rem 1.5rem 4rem 1.5rem;
+  background-color: var(--background);
 }
 
 .header {
@@ -46,7 +47,7 @@
   font-weight: 600;
   height: 36px;
   padding: 0 0.9rem;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   box-sizing: border-box;
   text-decoration: none;
   cursor: pointer;
@@ -55,16 +56,16 @@
 }
 
 .downloadBtn {
-  color: #ffffff;
-  background-color: #10b981;
-  border: 1px solid #10b981;
+  color: var(--background);
+  background-color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .downloadBtn:hover {
-  background-color: #059669;
-  border-color: #059669;
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 12px var(--primary-glow);
 }
 
 .refreshBtn,
@@ -102,7 +103,7 @@
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-card, 22px);
   padding: 0.75rem 0.85rem;
   display: flex;
   align-items: center;
@@ -120,7 +121,7 @@
 .statIconWrap {
   width: 36px;
   height: 36px;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   background-color: var(--sidebar-bg);
   border: 1px solid var(--card-border);
   display: flex;
@@ -171,7 +172,7 @@
   gap: 0.5rem;
   background-color: var(--sidebar-bg);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   border: 1px solid var(--card-border);
 }
 
@@ -182,7 +183,7 @@
   font-size: 0.82rem;
   font-weight: 600;
   padding: 0.55rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -235,7 +236,7 @@
 .searchInput {
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.55rem 0.85rem 0.55rem 2.3rem;
   font-size: 0.84rem;
   color: var(--foreground);
@@ -255,7 +256,7 @@
   -moz-appearance: none;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.55rem 2.2rem 0.55rem 2.4rem;
   font-size: 0.84rem;
   font-weight: 600;
@@ -284,7 +285,7 @@
 .tableWrapper {
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-card, 22px);
   overflow: hidden;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
@@ -313,7 +314,7 @@
 .tdAmount {
   padding: 1rem 1.25rem;
   font-size: 0.85rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--card-border);
   color: var(--foreground);
   vertical-align: middle;
 }
@@ -369,7 +370,7 @@
 }
 
 .amountCredit {
-  color: #10b981;
+  color: var(--success);
 }
 
 .amountDebit {
@@ -381,7 +382,7 @@
 }
 
 .row:hover {
-  background-color: rgba(255, 255, 255, 0.015);
+  background-color: var(--sidebar-bg);
 }
 
 /* ── Status Badges ── */
@@ -397,9 +398,9 @@
 }
 
 .statusSuccess {
-  background-color: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .statusPending {
@@ -410,14 +411,14 @@
 
 .statusFailed {
   background-color: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  color: var(--danger);
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .statusReversed {
-  background-color: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--card-border);
 }
 
 /* ── Type Badges ── */
@@ -435,25 +436,25 @@
 }
 
 .typeTransferSent {
-  color: #ef4444;
+  color: var(--danger);
   background-color: rgba(239, 68, 68, 0.06);
   border-color: rgba(239, 68, 68, 0.18);
 }
 
 .typeTransferReceived {
-  color: #6366f1;
-  background-color: rgba(99, 102, 241, 0.08);
-  border-color: rgba(99, 102, 241, 0.2);
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border-color: var(--primary);
 }
 
 .typeWithdrawal {
-  color: #3b82f6;
-  background-color: rgba(59, 130, 246, 0.08);
-  border-color: rgba(59, 130, 246, 0.2);
+  color: var(--primary);
+  background-color: var(--primary-glow);
+  border-color: var(--card-border);
 }
 
 .typeAd {
-  color: #10b981;
+  color: var(--success);
   background-color: rgba(16, 185, 129, 0.08);
   border-color: rgba(16, 185, 129, 0.2);
 }

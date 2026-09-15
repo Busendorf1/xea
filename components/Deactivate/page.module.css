@@ -41,7 +41,7 @@
 }
 
 .warningIcon {
-  color: #ef4444;
+  color: var(--danger);
   flex-shrink: 0;
 }
 
@@ -87,7 +87,7 @@
 .input {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-inner, 12px);
   border: 1px solid var(--input-border);
   background: var(--input-bg);
   color: var(--foreground);
@@ -105,7 +105,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.85rem;
   margin: 12px 0;
   font-weight: 600;
@@ -118,20 +118,30 @@
 }
 
 .danger {
-  background: #dc2626;
+  background: var(--danger);
   color: #ffffff;
   padding: 0.75rem 1.4rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-pill, 9999px);
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
   flex: 1;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .danger:hover {
-  background: #b91c1c;
+  filter: brightness(0.9);
+  transform: translateY(-1px);
+}
+
+.danger:active {
+  transform: scale(0.97);
+}
+
+.cancel:active {
+  transform: scale(0.97);
+  background: var(--card-border);
 }
 
 .cancel {
@@ -139,20 +149,25 @@
   color: var(--foreground);
   border: 1px solid var(--card-border);
   padding: 0.75rem 1.4rem;
-  border-radius: 8px;
+  border-radius: var(--radius-pill, 9999px);
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   flex: 1;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .cancel:hover {
-  background: var(--card-border-hover);
+  background: var(--sidebar-bg);
+  border-color: var(--card-border-hover);
 }
 
 .error {
-  color: #ef4444;
+  color: var(--danger, #ef4444);
   font-size: 0.85rem;
   margin: 0;
 }
@@ -161,11 +176,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #4b5e38;
+  color: var(--success, #10b981);
 }
 
 .doneIcon {
-  color: #4b5e38;
+  color: var(--success, #10b981);
 }
 
 .doneHeader h2 {

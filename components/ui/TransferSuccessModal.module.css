@@ -1,4 +1,4 @@
-﻿.overlay {
+.overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -201,8 +201,8 @@
   width: 100%;
   padding: 0.85rem;
   border-radius: var(--radius-btn, 10px);
-  background-color: var(--primary, #2563eb);
-  color: #ffffff;
+  background-color: var(--primary);
+  color: var(--background);
   font-size: 1rem;
   font-weight: 700;
   border: none;
@@ -211,14 +211,14 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  box-shadow: 0 4px 14px var(--primary-glow, rgba(37, 99, 235, 0.25));
+  box-shadow: 0 4px 14px var(--primary-glow);
   transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .doneBtn:hover {
-  background-color: var(--primary-hover, #1d4ed8);
+  background-color: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px var(--primary-glow, rgba(37, 99, 235, 0.35));
+  box-shadow: 0 6px 18px var(--primary-glow);
 }
 
 .doneBtn:active {

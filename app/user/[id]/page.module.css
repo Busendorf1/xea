@@ -78,21 +78,21 @@ padding: "2rem"
   display: block;
   padding: 0.75rem 1rem;
   background-color: var(--card-bg);
-  border: 1px solid #ff0000;
-  border-radius: 4px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-inner, 12px);
   text-decoration: none;
-  color: #cc0000;
+  color: var(--danger);
   font-weight: 500;
   transition: all 0.2s ease;
 }
 
 .menuButtonDanger:hover {
-  background-color: #ff0000;
-  color: #ffffff;
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: var(--danger);
 }
 
 .menuButtonDanger:active {
-  background-color: #cc0000;
+  transform: scale(0.98);
 }
 
 
@@ -104,7 +104,7 @@ padding: "2rem"
   max-width: 350px;
   padding: 1.5rem 1.25rem;
   background-color: var(--card-bg);
-  border-left: 1px solid #f1f5f9;
+  border-left: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -112,18 +112,20 @@ padding: "2rem"
   transition: all 0.3s ease;
 }
 
-/* Profile Card - Premium Redesign */
-
+.profileCard {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 
 .profileCard:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 35px -5px var(--primary-glow), 0 10px 20px -8px rgba(0, 242, 254, 0.04);
-  border-color: var(--primary-glow);
+  border: none !important;
 }
 
 .profileBanner {
   height: 95px;
-  background-color: var(--primary); /* Complete solid blue */
+  background: linear-gradient(135deg, var(--card-border) 0%, var(--card-bg) 50%, var(--sidebar-bg) 100%);
   width: 100%;
   position: relative;
   overflow: hidden;
@@ -156,7 +158,7 @@ padding: "2rem"
   height: 84px;
   border-radius: 50%;
   overflow: hidden;
-  border: 4px solid #ffffff;
+  border: 4px solid var(--sidebar-bg);
   background: var(--card-bg);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   display: flex;
@@ -187,8 +189,8 @@ padding: "2rem"
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
-  color: var(--text-muted);
+  background-color: var(--sidebar-bg);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -218,7 +220,7 @@ padding: "2rem"
 
 .editProfileBtn:hover {
   background-color: var(--foreground);
-  color: #ffffff;
+  color: var(--background);
   border-color: var(--foreground);
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(15, 20, 25, 0.15);
@@ -293,16 +295,14 @@ padding: "2rem"
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8rem;
-  color: #0284c7;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(14, 165, 233, 0.02) 100%);
-  border: 1px solid rgba(14, 165, 233, 0.2);
+  color: var(--badge-gold, #d97706);
+  background: var(--badge-gold-bg, rgba(217, 119, 6, 0.08));
+  border: 1px solid var(--badge-gold-border, rgba(217, 119, 6, 0.25));
   padding: 0.5rem 0.85rem;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   font-weight: 600;
   margin-top: 0.5rem;
   width: fit-content;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.05);
-  animation: pulseGlow 3s infinite ease-in-out;
 }
 
 @keyframes pulseGlow {
@@ -323,7 +323,7 @@ padding: "2rem"
 .verifiedIcon {
   width: 16px;
   height: 16px;
-  color: #0284c7;
+  color: var(--badge-gold, #d97706);
   flex-shrink: 0;
   filter: drop-shadow(0 0 1px rgba(14, 165, 233, 0.3));
 }
@@ -380,7 +380,7 @@ padding: "2rem"
 
 .withdrawBtn:hover {
   background-color: var(--primary);
-  color: white;
+  color: var(--background);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px var(--primary-glow);
 }
@@ -523,9 +523,9 @@ padding: "2rem"
 .monetizedCard {
   margin-top: 1rem;
   padding: 0.5rem 1rem;
-  background: rgba(0, 102, 204, 0.05);
-  border: 1px solid rgba(0, 102, 204, 0.1);
-  border-radius: 4px;
+  background: var(--badge-gold-bg, rgba(217, 119, 6, 0.08));
+  border: 1px solid var(--badge-gold-border, rgba(217, 119, 6, 0.25));
+  border-radius: var(--radius-inner, 12px);
   display: inline-flex;
   flex-direction: row;
   align-items: center;
@@ -536,14 +536,14 @@ padding: "2rem"
 
 .monetizedCard h4 {
   margin: 0;
-  color: #0066cc;
+  color: var(--badge-gold, #d97706);
   font-size: 0.75rem;
   font-weight: 600;
 }
 
 .monetizedCard p {
   margin: 0;
-  color: #0066cc;
+  color: var(--badge-gold, #d97706);
   font-size: 0.75rem;
   font-weight: 400;
   opacity: 0.8;

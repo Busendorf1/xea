@@ -13,7 +13,8 @@
   margin: 0.75rem auto 1.5rem auto;
   background-color: var(--card-bg);
   padding: 1.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-card, 22px);
+  box-shadow: var(--shadow-surface);
   border: 1px solid var(--card-border);
   box-shadow: none !important;
   color: var(--foreground);
@@ -79,7 +80,7 @@
 .stepItemActive .stepBadge {
   background-color: var(--primary);
   border-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   box-shadow: none !important;
 }
 
@@ -123,7 +124,7 @@
   padding: 0.75rem 1rem;
   font-size: 0.975rem;
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   width: 100%;
   background-color: var(--sidebar-bg);
   color: var(--foreground);
@@ -155,7 +156,7 @@
 
 .adTypeCard {
   border: 1.5px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   padding: 1.25rem;
   background-color: var(--sidebar-bg);
   cursor: pointer;
@@ -189,7 +190,7 @@
   color: var(--primary);
   background: var(--card-bg);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   align-self: flex-start;
   border: 1px solid var(--card-border);
 }
@@ -247,12 +248,17 @@
   font-size: 0.95rem;
   font-weight: 600;
   border: none;
-  border-radius: 4px !important;
+  border-radius: var(--radius-pill, 9999px) !important;
+  color: var(--background);
   cursor: pointer;
   background-color: var(--primary);
-  color: #ffffff;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.buttonGroup button:active:not(:disabled),
+.submitButton:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .buttonGroup button:hover:not(:disabled),
@@ -537,11 +543,11 @@
   display: inline-block;
   padding: 6px 12px;
   font-size: 0.78rem;
-  color: #ef4444;
+  color: var(--danger);
   font-weight: 600;
   background: rgba(239, 68, 68, 0.08);
   border-radius: 6px;
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  border: 1px solid var(--danger);
 }
 
 /* Stripe/Apple Payment Selector Card */
@@ -646,13 +652,13 @@
 
 .premiumLink {
   font-size: 0.78rem;
-  color: #38bdf8;
+  color: var(--primary);
   text-decoration: underline;
   font-weight: 600;
 }
 
 .premiumLink:hover {
-  color: #7dd3fc;
+  color: var(--primary-hover);
 }
 
 /* ── Ad Account Suspended / Error Page ── */
@@ -672,7 +678,7 @@
   height: 60px;
   border-radius: 50%;
   background-color: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  color: var(--danger);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -716,7 +722,7 @@
   justify-content: center;
   gap: 0.5rem;
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   padding: 0.75rem 1.5rem;
   border-radius: 4px;
   font-weight: 700;
@@ -926,12 +932,12 @@
 }
 
 .monetizeProgressValue {
-  color: #38bdf8;
+  color: var(--primary);
 }
 
 .monetizeProgressTrack {
   height: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--card-border);
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -939,7 +945,7 @@
 
 .monetizeProgressFill {
   height: 100%;
-  background: #3b82f6;
+  background: var(--primary);
   border-radius: 6px;
 }
 

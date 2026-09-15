@@ -416,7 +416,7 @@ export async function GET(req: NextRequest) {
       if (publisherEmails.length > 0) {
         const { data: profiles, error: profilesError } = await supabaseReadOnly
           .from("users")
-          .select('email, username, business_name, "firstName", "lastName", "profileImage", bio, location, country, created_at, monetized')
+          .select('email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized')
           .in("email", publisherEmails);
 
         if (!profilesError && profiles) {
@@ -429,6 +429,7 @@ export async function GET(req: NextRequest) {
                 firstName: p.firstName || "",
                 lastName: p.lastName || "",
                 profileImage: p.profileImage || "",
+                gender: p.gender || "",
                 bio: p.bio || "",
                 location: p.location || "",
                 country: p.country || "",

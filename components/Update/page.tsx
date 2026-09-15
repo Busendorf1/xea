@@ -231,7 +231,7 @@ export default function Update({ email }: Props) {
   const handleUpdate = async () => {
     if (!dbProfile) return;
 
-    // Location is required — must be detected via GPS toggle
+    // Location is required, must be detected via GPS toggle
     const resolvedCountry = formData.country ? formData.country : dbProfile.country;
     const resolvedState = formData.state ? formData.state : dbProfile.state;
     const resolvedLocation = formData.location ? formData.location : dbProfile.location;
@@ -240,7 +240,7 @@ export default function Update({ email }: Props) {
       return;
     }
 
-    // Interest and Industry are required — cannot be left empty
+    // Interest and Industry are required, cannot be left empty
     const resolvedInterest = Array.isArray(formData.interest) ? formData.interest : dbProfile.interest || [];
     const resolvedIndustry = Array.isArray(formData.industry) ? formData.industry : dbProfile.industry || [];
 
@@ -681,8 +681,9 @@ export default function Update({ email }: Props) {
             </div>
 
             <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
+              <label>Profile Picture / Brand Logo</label>
               <label className={styles.fileUpload} style={{ opacity: isFormDisabled ? 0.6 : 1, cursor: isFormDisabled ? "not-allowed" : "pointer" }}>
-                {imageFile ? `Selected: ${imageFile.name}` : "Upload Profile Picture"}
+                {imageFile ? `Selected: ${imageFile.name}` : "Choose Profile Picture or Brand Logo"}
                 <input
                   type="file"
                   accept="image/*"
@@ -693,9 +694,13 @@ export default function Update({ email }: Props) {
                   disabled={isFormDisabled}
                 />
               </label>
-              {dbProfile.profileImage && (
+              {dbProfile.profileImage ? (
                 <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                  Current profile photo is active. Select a new file above to replace it.
+                  Current profile photo/logo is active. Select a new file above to replace it.
+                </p>
+              ) : (
+                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                  If no photo or logo is uploaded, a default silhouette avatar will be displayed.
                 </p>
               )}
             </div>
@@ -745,23 +750,23 @@ export default function Update({ email }: Props) {
               <div className={styles.reviewCardTitle}>Personal</div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Username:</span>
-                <span className={styles.reviewValue}>{formData.username || dbProfile.username || "—"}</span>
+                <span className={styles.reviewValue}>{formData.username || dbProfile.username || "None"}</span>
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Name:</span>
-                <span className={styles.reviewValue}>{`${formData.firstName || dbProfile.firstName || ""} ${formData.lastName || dbProfile.lastName || ""}`.trim() || "—"}</span>
+                <span className={styles.reviewValue}>{`${formData.firstName || dbProfile.firstName || ""} ${formData.lastName || dbProfile.lastName || ""}`.trim() || "None"}</span>
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Email:</span>
-                <span className={styles.reviewValue}>{formData.email || dbProfile.email || "—"}</span>
+                <span className={styles.reviewValue}>{formData.email || dbProfile.email || "None"}</span>
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Phone:</span>
-                <span className={styles.reviewValue}>{formData.phone || dbProfile.phone || "—"}</span>
+                <span className={styles.reviewValue}>{formData.phone || dbProfile.phone || "None"}</span>
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Location:</span>
-                <span className={styles.reviewValue}>{formData.location || dbProfile.location ? `${formData.location || dbProfile.location}, ${formData.state || dbProfile.state}, ${formData.country || dbProfile.country}` : "—"}</span>
+                <span className={styles.reviewValue}>{formData.location || dbProfile.location ? `${formData.location || dbProfile.location}, ${formData.state || dbProfile.state}, ${formData.country || dbProfile.country}` : "None"}</span>
               </div>
             </div>
 
@@ -769,11 +774,11 @@ export default function Update({ email }: Props) {
               <div className={styles.reviewCardTitle}>Demographics</div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Gender:</span>
-                <span className={styles.reviewValue}>{formData.gender || dbProfile.gender || "—"}</span>
+                <span className={styles.reviewValue}>{formData.gender || dbProfile.gender || "None"}</span>
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Employment:</span>
-                <span className={styles.reviewValue}>{formData.employment || dbProfile.employment || "—"}</span>
+                <span className={styles.reviewValue}>{formData.employment || dbProfile.employment || "None"}</span>
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Intl Traveller:</span>
@@ -843,9 +848,10 @@ export default function Update({ email }: Props) {
             onClick={handleUpdate}
             disabled={loading || isFormDisabled}
             style={{
-              background: isFormDisabled ? "#374151" : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-              color: isFormDisabled ? "#9ca3af" : "#ffffff",
-              boxShadow: isFormDisabled ? "none" : "0 4px 14px rgba(16, 185, 129, 0.4)",
+              background: isFormDisabled ? "var(--sidebar-bg)" : "var(--primary)",
+              color: isFormDisabled ? "var(--text-muted)" : "var(--background)",
+              border: isFormDisabled ? "1px solid var(--card-border)" : "1px solid var(--primary)",
+              boxShadow: "none",
             }}
           >
             {loading ? "Saving Profile..." : isFormDisabled ? `Locked (Cooldown)` : "Save Profile"}

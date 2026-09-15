@@ -3,6 +3,7 @@
 import React, { useState, useRef, ReactNode } from "react";
 import styles from "./AdvertiserHoverCard.module.css";
 import UserAvatar from "./UserAvatar";
+import VerifiedBadge from "./VerifiedBadge";
 import { Calendar, MapPin } from "lucide-react";
 
 export interface AdvertiserProfileData {
@@ -17,6 +18,7 @@ export interface AdvertiserProfileData {
   country?: string;
   monetized?: boolean;
   created_at?: string;
+  gender?: string | null;
 }
 
 interface AdvertiserHoverCardProps {
@@ -159,17 +161,14 @@ export default function AdvertiserHoverCard({
                 fallbackText={displayName}
                 size={48}
                 alt={displayName}
+                gender={profile?.gender}
               />
             </div>
             <div className={styles.popoverNames}>
               <div className={styles.popoverDisplayNameRow}>
                 <span className={styles.popoverDisplayName}>{displayName}</span>
                 {isVerified && (
-                  <span className={styles.verifiedBadge} title="Verified Account">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
-                      <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" />
-                    </svg>
-                  </span>
+                  <VerifiedBadge size={16} title="Verified Account" />
                 )}
               </div>
               <div className={styles.popoverHandle}>{handleText}</div>

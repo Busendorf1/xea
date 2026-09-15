@@ -43,10 +43,25 @@ if (useTls) {
 function createRawRedisClient(): Redis {
   const client = new Redis(redisUrl, redisOptions);
 
+  let lastWarnTime = 0;
   client.on("error", (err: any) => {
-    // Only log actionable network errors, not transient expected closed states during reconnect
-    if (err?.code !== "ECONNREFUSED" && err?.message !== "Connection is closed.") {
+    // Only log actionable network errors, not transient expected closed states or DNS lookups during reconnect
+    const isTransient =
+      err?.code === "ECONNREFUSED" ||
+      err?.code === "ENOTFOUND" ||
+      err?.code === "EAI_AGAIN" ||
+      err?.message === "Connection is closed." ||
+      err?.message?.includes("ENOTFOUND");
+
+    if (!isTransient) {
       console.warn("⚠️ Redis Connection Alert:", err.message || err);
+    } else {
+      // Throttle transient warnings to once every 30 seconds
+      const now = Date.now();
+      if (now - lastWarnTime > 30000) {
+        lastWarnTime = now;
+        console.warn("⚠️ Redis offline / unreachable (transient):", err?.message || err?.code);
+      }
     }
   });
 

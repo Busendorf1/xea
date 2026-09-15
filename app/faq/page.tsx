@@ -18,6 +18,11 @@ const faqs = [
       "Yes. Users and businesses can post standard Adverts, Highlights, or both. Highlights are short flash promotions that appear every 10 minutes and are automatically removed after 24 hours. They are ideal for flash sales, quick updates, or time sensitive visibility."
   },
   {
+    question: "How does bidding for attention work?",
+    answer:
+      "Promoters and advertisers can submit competitive bids for attention to prioritize their campaigns, reach targeted audiences faster, and bypass queue wait times. For listeners, campaigns with higher bids pay out proportionately higher cash rewards directly into their Paayh wallet upon completing the 16 second focus countdown and clicking the Earn button."
+  },
+  {
     question: "How do I become monetized?",
     answer:
       "Monetization is completely free, with no subscriptions, fees, or charges. To qualify, your account must demonstrate clear and consistent activity, or you must accumulate at least 300 verified interactions (\"Seen\" or \"Mutual\"). Once you meet either condition, you become eligible to start earning."

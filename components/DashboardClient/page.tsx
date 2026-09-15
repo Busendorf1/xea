@@ -35,9 +35,11 @@ import Feed from "@/components/Feed/page";
 import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
 import Footer from "../Footers/page";
-import { resolveAtwTier } from "@/lib/attentionTierEngine";
+import { resolveAtwTier, getAtwBalanceLimit } from "@/lib/attentionTierEngine";
 import RollingCounter from "@/components/ui/RollingCounter";
 import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
+import UserAvatar from "@/components/ui/UserAvatar";
+import VerifiedBadge from "@/components/ui/VerifiedBadge";
 
 export interface UserProfile {
   id: string;
@@ -53,6 +55,7 @@ export interface UserProfile {
   behavior: string[] | string;
   lifestyle: string[] | string;
   personality: string[] | string;
+  gender?: string | null;
   monetized: boolean | string;
   monetized_at: string | null;
   created_at: string;
@@ -88,6 +91,36 @@ interface DashboardClientProps {
 
 import { formatCurrency as globalFormatCurrency, getCurrencyConfig } from "@/lib/utils/currency";
 
+const DEFAULT_NIGERIAN_BANKS = [
+  { name: "Access Bank", code: "044" },
+  { name: "Citibank Nigeria", code: "023" },
+  { name: "Ecobank Nigeria", code: "050" },
+  { name: "Fidelity Bank", code: "070" },
+  { name: "First Bank of Nigeria", code: "011" },
+  { name: "First City Monument Bank (FCMB)", code: "214" },
+  { name: "Guaranty Trust Bank (GTBank)", code: "058" },
+  { name: "Heritage Bank", code: "030" },
+  { name: "Jaiz Bank", code: "301" },
+  { name: "Keystone Bank", code: "082" },
+  { name: "Kuda Bank", code: "50211" },
+  { name: "Moniepoint MFB", code: "50515" },
+  { name: "Opay (Paycom)", code: "999992" },
+  { name: "Palmpay", code: "999991" },
+  { name: "Polaris Bank", code: "076" },
+  { name: "Providus Bank", code: "101" },
+  { name: "Stanbic IBTC Bank", code: "221" },
+  { name: "Standard Chartered Bank", code: "068" },
+  { name: "Sterling Bank", code: "232" },
+  { name: "Taj Bank", code: "302" },
+  { name: "Titan Trust Bank", code: "102" },
+  { name: "Union Bank of Nigeria", code: "032" },
+  { name: "United Bank for Africa (UBA)", code: "033" },
+  { name: "Unity Bank", code: "215" },
+  { name: "VFD Microfinance Bank", code: "566" },
+  { name: "Wema Bank", code: "035" },
+  { name: "Zenith Bank", code: "057" },
+];
+
 export default function DashboardClient({
   user: initialUser,
   parsedInterest,
@@ -107,7 +140,7 @@ export default function DashboardClient({
 
   // Withdrawal states
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [banks, setBanks] = useState<any[]>([]);
+  const [banks, setBanks] = useState<any[]>(DEFAULT_NIGERIAN_BANKS);
   const [selectedBank, setSelectedBank] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -124,6 +157,7 @@ export default function DashboardClient({
   const [submittingSend, setSubmittingSend] = useState(false);
   const [sendMoneyError, setSendMoneyError] = useState("");
   const [transferSuccessData, setTransferSuccessData] = useState<TransferSuccessData | null>(null);
+  const [showAtwTooltip, setShowAtwTooltip] = useState(false);
 
   const refreshProfileQuietly = async () => {
     try {
@@ -644,7 +678,7 @@ export default function DashboardClient({
               </div>
             </div>
 
-            {/* Selection and Deletion Controls - Only visible when in Selection Mode */}
+            {/* Selection and Deletion Controls: Only visible when in Selection Mode */}
             {isSelectionMode && notifications.length > 0 && (
               <div className={styles.notifSelectionBar}>
                 <button
@@ -737,13 +771,15 @@ export default function DashboardClient({
   }, [showWithdrawModal, user.balance]);
 
   useEffect(() => {
-    if (showWithdrawModal && banks.length === 0) {
+    if (showWithdrawModal) {
       const fetchBanks = async () => {
         try {
           const res = await fetch("/api/withdrawals/banks");
           if (res.ok) {
             const data = await res.json();
-            setBanks(data || []);
+            if (Array.isArray(data) && data.length > 0) {
+              setBanks(data);
+            }
           }
         } catch (e) {
           console.error("Failed to fetch banks:", e);
@@ -751,7 +787,7 @@ export default function DashboardClient({
       };
       fetchBanks();
     }
-  }, [showWithdrawModal, banks]);
+  }, [showWithdrawModal]);
 
   useEffect(() => {
     if (accountNumber.length === 10 && selectedBank) {
@@ -1087,7 +1123,7 @@ export default function DashboardClient({
             </div>
           </div>
 
-          {/* Minimalist Controls - Only visible on Mobile */}
+          {/* Minimalist Controls: Only visible on Mobile */}
           {isMobile ? (
             <div className={styles.mobileControls}>
               <button 
@@ -1170,7 +1206,7 @@ export default function DashboardClient({
             </div>
           );
         })()}
-        {/* Left Sidebar - Highlights Section */}
+        {/* Left Sidebar: Highlights Section */}
         {/* On tablet: hidden if profile is toggled. On mobile: hidden by default, slides in full screen. */}
         <aside className={`${styles.leftSidebar} ${
           isTablet && showProfileTablet ? styles.hiddenTablet : ""
@@ -1221,7 +1257,7 @@ export default function DashboardClient({
           <Footer />
         </main>
 
-        {/* Right Sidebar - Profile & Wallet details */}
+        {/* Right Sidebar: Profile and Wallet details */}
         {/* On tablet: hidden by default, slides in if profile is toggled. On mobile: hidden by default, slides in full screen. */}
         <aside className={`${styles.rightSidebar} ${
           isTablet && !showProfileTablet ? styles.hiddenTablet : ""
@@ -1234,20 +1270,14 @@ export default function DashboardClient({
               <div className={styles.profileBanner}></div>
               <div className={styles.avatarRow}>
                 <div className={styles.profileImgContainer}>
-                  {user.profileImage ? (
-                    <Image
-                      src={user.profileImage}
-                      alt="Profile picture"
-                      className={styles.profileImg}
-                      width={70}
-                      height={70}
-                      unoptimized
-                    />
-                  ) : (
-                    <div className={styles.profileAvatarPlaceholder}>
-                      {user.firstName ? user.firstName.slice(0, 2).toUpperCase() : "US"}
-                    </div>
-                  )}
+                  <UserAvatar
+                    src={user.profileImage}
+                    fallbackText={user.business_name || `${user.firstName || ""} ${user.lastName || ""}`.trim()}
+                    size={70}
+                    alt="Profile picture"
+                    gender={user.gender}
+                    className={styles.profileImg}
+                  />
                 </div>
                 <Link href="/user/logged-in" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
                   Edit profile
@@ -1255,8 +1285,11 @@ export default function DashboardClient({
               </div>
 
               <div className={styles.profileInfo}>
-                <h4 className={styles.profileName}>
-                  {user.business_name && user.business_name.trim() !== "" ? user.business_name : `${user.firstName} ${user.lastName}`}
+                <h4 className={styles.profileName} style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span>{user.business_name && user.business_name.trim() !== "" ? user.business_name : `${user.firstName} ${user.lastName}`}</span>
+                  {!!(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) && (
+                    <VerifiedBadge size={21} title="Verified Partner" />
+                  )}
                 </h4>
                 <p className={styles.usernameText}>@{user.username.split("@")[0]}</p>
 
@@ -1274,6 +1307,20 @@ export default function DashboardClient({
                     user.monetized === "yes" || user.monetized === "true" || user.monetized === true || clicksCount >= 300
                   );
                   const progressPct = Math.min(100, Math.round((clicksCount / 300) * 100));
+
+                  const ago = (() => {
+                    if (!user.lastUpdated) return "Recently";
+                    const diffMs = Date.now() - new Date(user.lastUpdated).getTime();
+                    if (isNaN(diffMs) || diffMs < 0) return "Recently";
+                    const mins = Math.floor(diffMs / 60000);
+                    if (mins < 1) return "Just now";
+                    if (mins < 60) return `${mins}m ago`;
+                    const hours = Math.floor(mins / 60);
+                    if (hours < 24) return `${hours}h ago`;
+                    const days = Math.floor(hours / 24);
+                    if (days < 30) return `${days}d ago`;
+                    return new Date(user.lastUpdated).toLocaleDateString();
+                  })();
 
                   return (
                     <>
@@ -1299,29 +1346,110 @@ export default function DashboardClient({
                           <span>Mutuals: {user.mutual_count} / 50</span>
                         </div>
 
-                        {/* ATW Level — shown between Mutuals and Monetized */}
+                        {/* ATW Level: shown between Mutuals and Monetized */}
                         {(() => {
                           const score = Number(user.attention_worth_score ?? 0);
                           const tier = resolveAtwTier(score);
+                          const balanceCap = getAtwBalanceLimit(tier.code);
+                          const currentBal = Number(user.balance ?? 0);
+                          const ratio = Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
+                          const pct = Math.round(ratio * 100);
+
+                          let stateWord = "Good";
+                          let stateColor = "#10b981";
+                          let stateClass = styles.atwStateGood;
+                          if (ratio >= 0.90) {
+                            stateWord = "Limit";
+                            stateColor = "#ef4444";
+                            stateClass = styles.atwStateLimit;
+                          } else if (ratio >= 0.60) {
+                            stateWord = "Better";
+                            stateColor = "#f59e0b";
+                            stateClass = styles.atwStateBetter;
+                          }
+
+                          // Circular gauge geometry
+                          const radius = 7;
+                          const circ = 2 * Math.PI * radius;
+                          const strokeOffset = circ - (ratio * circ);
+
                           return (
-                            <div className={styles.detailItem}>
+                            <div className={styles.detailItem} style={{ alignItems: "center", position: "relative" }}>
                               <svg viewBox="0 0 24 24" className={styles.detailIcon}>
                                 <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="currentColor"/>
                               </svg>
                               <span>
-                                
-                                <strong style={{ color: "var(--primary)" }}>
+                                <strong style={{ color: "var(--primary)", marginRight: "6px" }}>
                                   {tier.code}
-                                </strong></span>
+                                </strong>
+                              </span>
+
+                              {/* Circular Gauge & State Indicator with hover/touch interactive tooltip */}
+                              <div
+                                className={styles.atwGaugeContainer}
+                                onMouseEnter={() => setShowAtwTooltip(true)}
+                                onMouseLeave={() => setShowAtwTooltip(false)}
+                                onClick={() => setShowAtwTooltip((prev) => !prev)}
+                                title={`ATW Capacity: ${pct}% (${stateWord})`}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Withdrawal limit gauge: ${pct}% capacity, state ${stateWord}`}
+                              >
+                                <div className={styles.atwGaugeWrapper}>
+                                  <svg className={styles.atwGaugeSvg} width="20" height="20" viewBox="0 0 20 20">
+                                    <circle
+                                      className={styles.atwGaugeTrack}
+                                      cx="10"
+                                      cy="10"
+                                      r={radius}
+                                      strokeWidth="2.4"
+                                      fill="none"
+                                    />
+                                    <circle
+                                      className={styles.atwGaugeFill}
+                                      cx="10"
+                                      cy="10"
+                                      r={radius}
+                                      strokeWidth="2.4"
+                                      fill="none"
+                                      stroke={stateColor}
+                                      strokeDasharray={circ}
+                                      strokeDashoffset={strokeOffset}
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
+                                </div>
+
+                                <span className={`${styles.atwStateBadge} ${stateClass}`}>
+                                  {stateWord}
+                                </span>
+
+                                {showAtwTooltip && (
+                                  <div className={styles.atwTooltipBox} onClick={(e) => e.stopPropagation()}>
+                                    <div className={styles.atwTooltipHeader}>
+                                      <span>ATW Holding Capacity</span>
+                                      <span style={{ color: stateColor, fontWeight: 800 }}>{pct}%</span>
+                                    </div>
+                                    <p className={styles.atwTooltipText}>
+                                      Holding limit: {formatCurrency(balanceCap)} ({tier.code}). Current: {formatCurrency(currentBal)}.
+                                    </p>
+                                    <span className={styles.atwTooltipHint} style={{ color: stateColor }}>
+                                      {stateWord === "Limit"
+                                        ? "Max holding reached! Please withdraw your funds."
+                                        : stateWord === "Better"
+                                        ? "Balance is filling up. Prepare to withdraw soon."
+                                        : "Safe holding balance. All systems nominal."}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })()}
 
                         {isMonetized && (
                           <div className={styles.detailItem}>
-                            <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                              <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.48 0-.941.1-1.358.275C14.77 2.57 13.5 1.75 12 1.75s-2.77.82-3.412 2.035c-.417-.175-.878-.275-1.358-.275-2.108 0-3.818 1.78-3.818 3.99 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.48 0 .941-.1 1.358-.275C9.23 20.43 10.5 21.25 12 21.25s2.77-.82 3.412-2.035c.417.175.878.275 1.358.275 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6zm-12.72 3.39l-3.21-3.21 1.41-1.41 1.8 1.8 4.67-4.67 1.41 1.41-6.08 6.08z" fill="currentColor"/>
-                            </svg>
+                            <VerifiedBadge size={14} color="var(--text-muted)" title="Monetized Account" />
                             <span>Monetized</span>
                           </div>
                         )}
@@ -1421,17 +1549,17 @@ export default function DashboardClient({
           <div className={styles.modalOverlay}>
             <div className={styles.modalContent}>
               <div className={styles.modalHeader}>
-                <h3>Request Bank Withdrawal</h3>
-                <button onClick={() => setShowWithdrawModal(false)} className={styles.closeBtn}>
+                <div className={styles.modalTitleGroup}>
+                  <h3 className={styles.modalTitle}>Request Bank Withdrawal</h3>
+                  <div className={styles.modalSubtitle}>
+                    Available: <span className={styles.balanceHighlight}>{formatCurrency(user.balance ?? 0)}</span>
+                  </div>
+                </div>
+                <button onClick={() => setShowWithdrawModal(false)} className={styles.closeBtn} aria-label="Close">
                   <X size={18} />
                 </button>
               </div>
-              <form onSubmit={handleWithdrawSubmit} className={styles.modalBody}>
-                <div className={styles.balanceRow}>
-                  <span>Available Balance:</span>
-                  <span className={styles.balanceValue}>{formatCurrency(user.balance ?? 0)}</span>
-                </div>
-                
+              <form onSubmit={handleWithdrawSubmit} className={styles.modalBodyColumn}>
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Select Bank</label>
                   <select
@@ -1440,7 +1568,7 @@ export default function DashboardClient({
                     required
                     className={styles.formInput}
                   >
-                    <option value="">-- Choose Your Bank --</option>
+                    <option value="">Choose Your Bank</option>
                     {banks.map((b, index) => (
                       <option key={`${b.code}-${index}`} value={b.code}>
                         {b.name}
@@ -1454,7 +1582,7 @@ export default function DashboardClient({
                   <input
                     type="text"
                     maxLength={10}
-                    placeholder="10-digit Account Number"
+                    placeholder="10 digit Account Number"
                     value={accountNumber}
                     onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
                     required
@@ -1463,40 +1591,37 @@ export default function DashboardClient({
                 </div>
 
                 {resolvingAccount && (
-                  <div className={styles.resolvingText}>
+                  <div className={styles.resolvingPill}>
                     Verifying account details with bank...
                   </div>
                 )}
 
                 {resolvedAccountName && (
-                  <div className={styles.formGroup}>
-                    <label className={styles.formLabel}>Account Name</label>
-                    <div className={styles.resolvedName}>{resolvedAccountName}</div>
+                  <div className={styles.resolvedPill}>
+                    <span className={styles.resolvedNameCheck}>✓</span>
+                    <span className={styles.resolvedName}>{resolvedAccountName}</span>
                   </div>
                 )}
 
-                   <div className={styles.formGroup}>
+                <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Withdrawal Amount ({getCurrencyConfig(user?.country).symbol})</label>
                   <input
                     type="number"
                     min={10000}
                     max={user.balance}
-                    placeholder={`Enter amount (min ${formatCurrency(10000)} up to ${formatCurrency(user.balance)})`}
+                    placeholder={`Min ${formatCurrency(10000)}`}
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                     required
                     className={styles.formInput}
                   />
-                  <span className={styles.formHintSmall}>
-                    Min: {formatCurrency(10000)} • Max: {formatCurrency(user.balance)}
-                  </span>
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Registered Phone Number</label>
+                  <label className={styles.formLabel}>Registered Phone</label>
                   <input
                     type="text"
-                    placeholder="Enter registered phone number"
+                    placeholder="Enter registered phone"
                     value={withdrawPhone}
                     onChange={(e) => setWithdrawPhone(e.target.value)}
                     required

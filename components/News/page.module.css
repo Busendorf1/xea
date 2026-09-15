@@ -111,7 +111,7 @@
 /* Active & Completed Step Styling */
 .activeStep .stepNumber {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   border-color: var(--primary);
   box-shadow: none !important;
 }
@@ -128,7 +128,7 @@
 .completedStep .stepNumber {
   background-color: var(--primary);
   border-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
 }
 
 .completedStep .stepLine {
@@ -336,7 +336,7 @@
 .buttonGroup button:last-child,
 .submitButton {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   border: none;
   box-shadow: 0 4px 12px var(--primary-glow);
 }

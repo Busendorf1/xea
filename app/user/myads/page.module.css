@@ -53,5 +53,5 @@
 .authMessage {
   font-size: 1.1rem;
   font-weight: 500;
-  color: #ef4444; /* Slate red */
+  color: var(--danger);
 }

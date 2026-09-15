@@ -63,7 +63,7 @@
 .copyBtn {
   padding: 0.5rem 1.25rem;
   background-color: var(--primary);
-  color: white;
+  color: var(--background);
   border: none;
   border-radius: 980px;
   font-size: 0.78rem;

@@ -71,7 +71,7 @@
 .iconButton:hover {
   background: var(--primary);
   border-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   transform: translateY(-2px);
   box-shadow: 0 4px 10px var(--primary-glow);
 }
@@ -88,7 +88,7 @@
 
 .mutualPreviewBtn {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   border: none;
   border-radius: 9999px;
   padding: 4px 14px;
@@ -176,15 +176,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--primary, #6366f1);
-  color: #ffffff;
+  background-color: var(--primary);
+  color: var(--background);
   padding: 0.4rem 1rem;
   border-radius: 9999px;
   font-size: 0.85rem;
   font-weight: 700;
   text-decoration: none;
-  transition: background-color 0.2s ease;
+  transition: opacity 0.2s ease;
   cursor: default;
+}
+
+.productCtaButton:hover {
+  opacity: 0.88;
 }
 
 .productMiddleGroup {
@@ -241,9 +245,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background-color: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background-color: var(--sidebar-bg);
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
   border-radius: 9999px;
   padding: 0.35rem 0.75rem;
   font-size: 0.75rem;

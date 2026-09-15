@@ -1,10 +1,10 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
 import { NextResponse } from "next/server";
-
 const rawDomain =
   process.env.AUTH0_DOMAIN ||
-  process.env.AUTH0_ISSUER_BASE_URL ||
-  "dev-43c1fflhle3lv7jj.us.auth0.com";
+  (process.env.AUTH0_ISSUER_BASE_URL && !process.env.AUTH0_ISSUER_BASE_URL.includes("auth.paayh.com")
+    ? process.env.AUTH0_ISSUER_BASE_URL
+    : "dev-43c1fflhle3lv7jj.us.auth0.com");
 
 const cleanDomain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
 

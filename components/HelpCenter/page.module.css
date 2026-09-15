@@ -12,8 +12,8 @@
 .heroIcon {
   width: 60px;
   height: 60px;
-  background: linear-gradient(135deg, var(--primary), #4facfe);
-  border-radius: 16px;
+  background: var(--primary);
+  border-radius: var(--radius-inner, 12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,7 +41,8 @@
 .formCard {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 20px;
+  border-radius: var(--radius-card, 22px);
+  box-shadow: var(--shadow-surface);
   padding: 2rem;
   margin-bottom: 2rem;
 }
@@ -93,7 +94,7 @@
 .selectField {
   background: var(--sidebar-bg);
   border: 1px solid var(--card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.65rem 0.9rem;
   font-size: 0.9rem;
   color: var(--foreground);
@@ -110,7 +111,7 @@
 .textareaField {
   background: var(--sidebar-bg);
   border: 1px solid var(--card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.65rem 0.9rem;
   font-size: 0.9rem;
   color: var(--foreground);
@@ -127,10 +128,16 @@
 }
 
 .submitBtn {
-  background: linear-gradient(135deg, var(--primary), #4facfe);
-  color: #fff;
+  background: var(--primary);
+  color: var(--background);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-pill, 9999px);
+  padding: 0.75rem 1.75rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-top: 0.5rem;
   padding: 0.75rem 1.75rem;
   font-size: 0.9rem;
   font-weight: 700;
@@ -144,17 +151,21 @@
   transform: translateY(-1px);
 }
 
+.submitBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 .submitBtn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 .successBanner {
-  background: rgba(52, 211, 153, 0.1);
-  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 10px;
   padding: 0.75rem 1rem;
-  color: #34d399;
+  color: var(--success);
   font-size: 0.9rem;
   font-weight: 500;
   margin-top: 1rem;
@@ -165,7 +176,7 @@
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 10px;
   padding: 0.75rem 1rem;
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.9rem;
   font-weight: 500;
   margin-top: 1rem;
@@ -175,7 +186,8 @@
 .ticketsCard {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 20px;
+  border-radius: var(--radius-card, 22px);
+  box-shadow: var(--shadow-surface);
   padding: 2rem;
 }
 
@@ -241,18 +253,18 @@
 }
 
 .badgeOpen {
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
+  background: var(--badge-gold-bg);
+  color: var(--badge-gold);
 }
 
 .badgeReplied {
-  background: rgba(52, 211, 153, 0.15);
-  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
 }
 
 .badgeClosed {
-  background: rgba(156, 163, 175, 0.15);
-  color: #9ca3af;
+  background: var(--sidebar-bg);
+  color: var(--text-muted);
 }
 
 .ticketDate {
@@ -310,6 +322,6 @@
   display: block;
   margin-top: 4px;
   font-size: 0.75rem;
-  color: #ef4444;
+  color: var(--danger);
   font-weight: 500;
 }

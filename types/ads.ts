@@ -67,6 +67,7 @@ export interface AdvertiserProfile {
   lastName?: string;
   username?: string;
   profileImage?: string;
+  gender?: string | null;
   bio?: string;
   location?: string;
   country?: string;

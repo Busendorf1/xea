@@ -157,7 +157,7 @@ interface ProfileFormData {
       return false;
     }
 
-    // Location is required — GPS toggle must be enabled and detected
+    // Location is required, GPS toggle must be enabled and detected
     if (!formData.country || !formData.state || !formData.location) {
       const msg = "Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.";
       setErrorMessage(msg);

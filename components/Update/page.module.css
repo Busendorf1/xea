@@ -1,12 +1,16 @@
 .profileContainer {
   background: var(--card-bg);
-  /* border: 1px solid var(--card-border); */
+  border: 1px solid var(--card-border);
   padding: 3rem;
   max-width: 800px;
   margin: auto;
   margin-top: 1.5rem;
   margin-bottom: 2rem;
-  border-radius: 4px;
+  border-radius: var(--radius-card, 22px);
+  box-shadow: var(--shadow-surface);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "Inter", sans-serif;
+  box-sizing: border-box;
   color: var(--foreground);
   font-family: var(--font-geist-sans), "Inter", sans-serif;
   /* box-shadow: 0 20px 45px rgba(0, 0, 0, 0.15); */
@@ -57,13 +61,39 @@
   letter-spacing: 0.05em;
 }
 
+.fileUpload {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.25rem !important;
+  background-color: var(--input-bg) !important;
+  border: 1.5px dashed var(--card-border) !important;
+  border-radius: var(--radius-inner, 12px) !important;
+  color: var(--foreground) !important;
+  font-size: 0.92rem !important;
+  font-weight: 600 !important;
+  text-align: center;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fileUpload:hover {
+  border-color: var(--primary) !important;
+  background-color: var(--sidebar-bg) !important;
+}
+
+.fileUpload input[type="file"] {
+  display: none;
+}
+
 .formGrid input,
 .formGrid select,
 .formGrid textarea,
 .textbo {
   background-color: var(--input-bg) !important;
   border: 1px solid var(--input-border) !important;
-  border-radius: 4px !important;
+  border-radius: var(--radius-inner, 12px) !important;
   padding: 0.8rem 1rem !important;
   color: var(--foreground) !important;
   font-size: 1rem !important; /* 16px to prevent iOS auto-zoom */
@@ -108,7 +138,7 @@
   border: 1px solid var(--input-border);
   color: var(--foreground);
   padding: 0.8rem 1.25rem;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   font-size: 1rem; /* 16px to prevent iOS auto-zoom */
   font-weight: 500;
   transition: all 0.2s ease;
@@ -124,7 +154,7 @@
   border: 1px solid var(--card-border);
   padding: 0.75rem;
   margin-top: 0.25rem;
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   max-height: 180px;
   overflow-y: auto;
   display: flex;
@@ -148,7 +178,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.4rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
   color: var(--text-muted);
@@ -193,7 +223,7 @@
   border-radius: 4px !important;
   cursor: pointer;
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%) !important;
-  color: white !important;
+  color: var(--background) !important;
   transition: transform 0.2s ease, box-shadow 0.2s ease !important;
   box-shadow: 0 4px 15px var(--primary-glow) !important;
   text-align: center;
@@ -206,7 +236,7 @@
 }
 
 .buttonGroup:active {
-  transform: translateY(0);
+  transform: scale(0.97) !important;
 }
 
 .buttonGroup:disabled {
@@ -273,7 +303,7 @@
 
 .activeStep .stepNumber {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   border-color: var(--primary);
   box-shadow: 0 0 10px var(--primary-glow);
 }
@@ -289,7 +319,7 @@
 
 .completedStep .stepNumber {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--background);
   border-color: var(--primary);
 }
 
@@ -309,7 +339,7 @@
   gap: 0.5rem;
   background-color: var(--card-bg);
   border: 1px solid var(--primary);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.5rem 0.85rem;
   margin-bottom: 1.25rem;
   color: var(--primary);
@@ -342,7 +372,7 @@
   padding: 0.8rem 1.6rem;
   font-size: 0.92rem;
   font-weight: 600;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   border: 1px solid var(--card-border);
   background-color: var(--input-bg);
   color: var(--foreground);
@@ -355,6 +385,10 @@
   border-color: var(--primary);
 }
 
+.prevBtn:active {
+  transform: scale(0.97);
+}
+
 .nextBtn {
   display: inline-flex;
   align-items: center;
@@ -363,10 +397,10 @@
   padding: 0.8rem 2rem;
   font-size: 0.95rem;
   font-weight: 700;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   border: none;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: white;
+  background: var(--primary);
+  color: var(--background);
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 4px 14px var(--primary-glow);
@@ -375,7 +409,10 @@
 
 .nextBtn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px var(--primary-glow);
+}
+
+.nextBtn:active {
+  transform: scale(0.97);
 }
 
 .nextBtn:disabled,
@@ -397,7 +434,7 @@
 .reviewCard {
   background-color: var(--input-bg);
   border: 1px solid var(--card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-inner, 12px);
   padding: 1.2rem;
 }
 
@@ -431,6 +468,75 @@
   font-weight: 600;
   text-align: right;
   word-break: break-word;
+}
+
+/* Step Navigation Controls */
+.stepNavigationRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.25rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.prevBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: var(--sidebar-bg);
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 0.85rem 1.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.prevBtn:hover:not(:disabled) {
+  background-color: var(--card-border-hover);
+  border-color: var(--card-border-hover);
+}
+
+.prevBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nextBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-left: auto;
+  background-color: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 0.85rem 2.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.nextBtn:hover:not(:disabled) {
+  background-color: var(--card-border);
+  color: var(--foreground);
+  transform: translateY(-1px);
+}
+
+.nextBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.nextBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Responsiveness */

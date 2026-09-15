@@ -2,6 +2,7 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 1rem 1.5rem 4rem 1.5rem;
+  background-color: var(--background);
 }
 
 .header {
@@ -46,7 +47,7 @@
   font-weight: 600;
   height: 36px;
   padding: 0 0.9rem;
-  border-radius: var(--radius-inner, 8px);
+  border-radius: var(--radius-pill, 9999px);
   box-sizing: border-box;
   text-decoration: none;
   cursor: pointer;
@@ -55,7 +56,7 @@
 }
 
 .downloadBtn {
-  color: #ffffff;
+  color: var(--background);
   background-color: var(--primary);
   border: 1px solid var(--primary);
 }
@@ -99,7 +100,7 @@
 .statCard {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-card, 12px);
+  border-radius: var(--radius-card, 22px);
   box-shadow: none !important;
   padding: 0.85rem 1rem;
   display: flex;
@@ -118,7 +119,7 @@
 .statIconWrap {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-inner, 8px);
+  border-radius: var(--radius-inner, 12px);
   background-color: var(--sidebar-bg);
   border: 1px solid var(--card-border);
   display: flex;
@@ -168,7 +169,7 @@
   gap: 0.5rem;
   background-color: var(--sidebar-bg);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   border: 1px solid var(--card-border);
 }
 
@@ -179,7 +180,7 @@
   font-size: 0.82rem;
   font-weight: 600;
   padding: 0.55rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 9999px);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -232,7 +233,7 @@
 .searchInput {
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.55rem 0.85rem 0.55rem 2.3rem;
   font-size: 0.84rem;
   color: var(--foreground);
@@ -252,7 +253,7 @@
   -moz-appearance: none;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-inner, 12px);
   padding: 0.55rem 2.2rem 0.55rem 2.4rem;
   font-size: 0.84rem;
   font-weight: 600;
@@ -280,7 +281,7 @@
 .tableWrapper {
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-card, 12px);
+  border-radius: var(--radius-card, 22px);
   overflow: hidden;
   box-shadow: none !important;
   width: 100%;
@@ -327,7 +328,7 @@
 .tdAmount {
   padding: 0.95rem 1rem;
   font-size: 0.84rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--card-border);
   color: var(--foreground);
   vertical-align: middle;
 }
@@ -407,7 +408,7 @@
 }
 
 .row:hover {
-  background-color: rgba(255, 255, 255, 0.015);
+  background-color: var(--sidebar-bg);
 }
 
 .status {
@@ -816,7 +817,7 @@
 
 .pageBtnActive {
   background-color: var(--primary) !important;
-  color: #ffffff !important;
+  color: var(--background) !important;
   border-color: var(--primary) !important;
   box-shadow: none !important;
 }

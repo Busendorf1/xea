@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
 
     console.log(`🔄 Profile cache miss in /api/profile for: ${email}. Fetching from Supabase...`);
 
-    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at`;
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier`;
+    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier`;
 
     // Fetch user profile from Supabase with retries (resilience to flaky hotspot networks)
     let error = null;

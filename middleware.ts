@@ -8,10 +8,22 @@ export async function middleware(request: NextRequest) {
   // For public static or informative pages, bypass Auth0 middleware to eliminate discovery timeouts
   const isPublicPage = 
     pathname === "/" || 
+    pathname === "/modal" || 
+    pathname.startsWith("/modal/") ||
+    pathname === "/ubiai" || 
+    pathname.startsWith("/ubiai/") ||
     pathname === "/about" || 
     pathname === "/help" || 
     pathname === "/advert" || 
+    pathname === "/advertiser-guidelines" ||
+    pathname === "/terms" || 
     pathname === "/privacy" ||
+    pathname === "/faq" ||
+    pathname === "/cookies" ||
+    pathname === "/careers" ||
+    pathname === "/join" ||
+    pathname.startsWith("/auth/login") ||
+    pathname.startsWith("/auth/logout") ||
     pathname.startsWith("/api/feed") ||
     pathname.startsWith("/api/highlights");
 

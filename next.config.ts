@@ -1,6 +1,13 @@
 import { withSentryConfig } from "@sentry/nextjs";
+try {
+  const dns = require("dns");
+  if (dns && typeof dns.setDefaultResultOrder === "function") {
+    dns.setDefaultResultOrder("ipv4first");
+  }
+} catch {}
 
 const nextConfig = {
+  serverExternalPackages: ["ioredis", "bullmq", "@clickhouse/client"],
   compress: true,
   images: {
     formats: ["image/avif", "image/webp"],
@@ -66,20 +73,23 @@ const nextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
-  org: "paayh",
-  project: "javascript-nextjs",
+const isSentryConfigured = Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN || process.env.SENTRY_DSN);
 
-  silent: !process.env.CI,
-  widenClientFileUpload: true,
-  tunnelRoute: "/monitoring",
-  webpack: {
-    treeshake: {
-      removeDebugLogging: true,
-    },
-    automaticVercelMonitors: true,
-  },
-  sourcemaps: {
-    deleteSourcemapsAfterUpload: true,
-  },
-});
+export default isSentryConfigured
+  ? withSentryConfig(nextConfig, {
+      org: "paayh",
+      project: "javascript-nextjs",
+      silent: !process.env.CI,
+      widenClientFileUpload: true,
+      tunnelRoute: "/monitoring",
+      webpack: {
+        treeshake: {
+          removeDebugLogging: true,
+        },
+        automaticVercelMonitors: true,
+      },
+      sourcemaps: {
+        deleteSourcemapsAfterUpload: true,
+      },
+    })
+  : nextConfig;

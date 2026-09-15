@@ -42,7 +42,7 @@
   width: 36px;
   height: 36px;
   background-color: var(--primary);
-  color: white;
+  color: var(--background);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -59,8 +59,8 @@
 }
 
 .badgeAdmin {
-  background-color: #ef4444;
-  color: #fff;
+  background-color: var(--danger);
+  color: var(--background);
   font-size: 0.65rem;
   font-weight: 700;
   padding: 2px 8px;
@@ -350,14 +350,14 @@
 
 .btnAction:hover {
   background-color: var(--sidebar-bg);
-  border-color: #1f6feb;
-  color: #1f6feb;
+  border-color: var(--primary);
+  color: var(--primary);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(31, 111, 235, 0.2);
+  box-shadow: 0 3px 8px var(--primary-glow);
 }
 
 .btnAction:focus-visible {
-  outline: 2px solid #58a6ff;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -366,41 +366,41 @@
 }
 
 .btnPrimary {
-  background-color: #1f6feb !important;
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  background-color: var(--primary) !important;
+  color: var(--background) !important;
+  border-color: var(--primary) !important;
 }
 
 .btnPrimary:hover {
-  background-color: #388bfd !important;
-  border-color: #388bfd !important;
-  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.4) !important;
+  background-color: var(--primary-hover) !important;
+  border-color: var(--primary-hover) !important;
+  box-shadow: 0 2px 8px var(--primary-glow) !important;
 }
 
 .btnDanger {
-  color: #f85149 !important;
-  border-color: rgba(248, 81, 73, 0.3) !important;
-  background-color: rgba(248, 81, 73, 0.05) !important;
+  color: var(--danger) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  background-color: rgba(239, 68, 68, 0.05) !important;
 }
 
 .btnDanger:hover {
-  background-color: #da3633 !important;
+  background-color: var(--danger) !important;
   color: #ffffff !important;
-  border-color: #da3633 !important;
-  box-shadow: 0 2px 8px rgba(218, 54, 51, 0.3) !important;
+  border-color: var(--danger) !important;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
 }
 
 .btnSuccess {
-  color: #3fb950 !important;
-  border-color: rgba(63, 185, 80, 0.3) !important;
-  background-color: rgba(63, 185, 80, 0.05) !important;
+  color: var(--success) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  background-color: rgba(16, 185, 129, 0.05) !important;
 }
 
 .btnSuccess:hover {
-  background-color: #238636 !important;
+  background-color: var(--success) !important;
   color: #ffffff !important;
-  border-color: #238636 !important;
-  box-shadow: 0 2px 8px rgba(35, 134, 54, 0.3) !important;
+  border-color: var(--success) !important;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3) !important;
 }
 
 /* User Profile modal details styling - GitHub Dialog Aesthetic */
@@ -549,8 +549,8 @@
 }
 
 .inputField:focus {
-  border-color: #1f6feb;
-  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.3);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 .modalSectionCard {
@@ -610,7 +610,7 @@
   background-color: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 8px;
-  color: #f85149;
+  color: var(--danger);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -677,8 +677,8 @@
 }
 
 .selectField:focus {
-  border-color: #1f6feb;
-  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 .textareaField {
@@ -696,8 +696,8 @@
 }
 
 .textareaField:focus {
-  border-color: #1f6feb;
-  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 /* GitHub Style Pagination Bar */
@@ -741,8 +741,8 @@
 }
 
 .selectLimit:focus {
-  border-color: #1f6feb;
-  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 .paginationInfo {
@@ -773,9 +773,9 @@
 }
 
 .paginationNumActive {
-  background-color: #1f6feb !important;
-  color: #ffffff !important;
-  border-color: #1f6feb !important;
+  background-color: var(--primary) !important;
+  color: var(--background) !important;
+  border-color: var(--primary) !important;
   font-weight: 700 !important;
 }
 
@@ -980,7 +980,7 @@
 .btnSubmit {
   padding: 0.85rem;
   background-color: var(--primary);
-  color: #fff;
+  color: var(--background);
   border: none;
   border-radius: 12px;
   font-size: 0.95rem;

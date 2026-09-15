@@ -29,17 +29,17 @@
 
 /* Variants */
 .primary {
-  background-color: var(--primary, #2563eb);
-  color: #ffffff;
-  border-color: var(--primary, #2563eb);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  background-color: var(--primary);
+  color: var(--background);
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px var(--primary-glow);
 }
 
 .primary:hover:not(:disabled) {
-  background-color: var(--primary-hover, #1d4ed8);
-  border-color: var(--primary-hover, #1d4ed8);
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 4px 14px var(--primary-glow);
 }
 
 .secondary {
@@ -78,14 +78,14 @@
 
 .danger {
   background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--danger);
   border-color: rgba(239, 68, 68, 0.3);
 }
 
 .danger:hover:not(:disabled) {
-  background-color: #ef4444;
+  background-color: var(--danger);
   color: #ffffff;
-  border-color: #ef4444;
+  border-color: var(--danger);
   transform: translateY(-1px);
 }
 

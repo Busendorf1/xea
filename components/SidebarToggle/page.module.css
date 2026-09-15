@@ -19,12 +19,8 @@
 
 .toggleBtn:hover {
   transform: rotate(45deg);
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--sidebar-bg);
   color: var(--primary);
-}
-
-[data-theme='white'] .toggleBtn:hover {
-  background-color: rgba(0, 0, 0, 0.06);
 }
 
 .menuButtonGroup {
@@ -32,11 +28,11 @@
   top: calc(100% + 8px);
   right: 0;
   min-width: 200px;
-  background-color: var(--card-bg, #18181b);
-  border: 1px solid var(--card-border, #27272a);
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 0.5rem;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-surface);
   z-index: 1100;
   display: flex;
   flex-direction: column;
@@ -76,12 +72,10 @@
 }
 
 .menuButtonDanger {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .menuButtonDanger:hover {
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #f87171;
+  background-color: var(--sidebar-bg);
+  color: var(--danger);
 }
-
-

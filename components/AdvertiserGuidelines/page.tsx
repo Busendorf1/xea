@@ -49,7 +49,28 @@ export default function AdvertiserGuidelinesPage() {
 
         {/* SECTION 2 */}
         <section>
-          <h2 className={styles.heading}>2. Regulatory Standards &amp; ARCON Compliance</h2>
+          <h2 className={styles.heading}>2. Attention Bidding Engine &amp; Placement Priority</h2>
+          <p>
+            Paayh provides a dynamic attention auction engine. Advertisers and promoters may bid competitively above
+            baseline industry floor rates to prioritize campaign distribution, bypass queues, and present their promotions
+            to target audiences ahead of competing initiatives.
+          </p>
+          <ul className={styles.list}>
+            <li className={styles.listItem}>
+              <strong>Competitive Queue Delivery:</strong> Higher bids receive preferential delivery weight within active user feeds and flash highlight rotations.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Listener Reward Alignment:</strong> A variable portion of your attention bid (up to 60%) is disbursed directly to verified monetized listeners who complete the required engagement countdown, ensuring genuine interest and high recall.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Consumable Bid Fees:</strong> All funds committed to attention bids are consumable infrastructure fees governed strictly by our non-refundable policy once impressions are queued or delivered.
+            </li>
+          </ul>
+        </section>
+
+        {/* SECTION 3 */}
+        <section>
+          <h2 className={styles.heading}>3. Regulatory Standards &amp; ARCON Compliance</h2>
           <p>
             All promotional content directed at users in Nigeria must strictly conform to:
           </p>
@@ -66,9 +87,9 @@ export default function AdvertiserGuidelinesPage() {
           </p>
         </section>
 
-        {/* SECTION 3 */}
+        {/* SECTION 4 */}
         <section>
-          <h2 className={styles.heading}>3. Strictly Prohibited Content Categories</h2>
+          <h2 className={styles.heading}>4. Strictly Prohibited Content Categories</h2>
           <p>
             Paayh maintains a zero-tolerance policy toward harmful, unlawful, or deceptive content. The following
             categories are <strong>strictly prohibited</strong>:
@@ -110,9 +131,9 @@ export default function AdvertiserGuidelinesPage() {
           </ul>
         </section>
 
-        {/* SECTION 4 */}
+        {/* SECTION 5 */}
         <section>
-          <h2 className={styles.heading}>4. Restricted &amp; Regulated Categories</h2>
+          <h2 className={styles.heading}>5. Restricted &amp; Regulated Categories</h2>
           <p>
             The following categories may be run on Paayh only if the advertiser holds valid statutory licenses and
             provides verifiable proof of compliance:
@@ -133,9 +154,9 @@ export default function AdvertiserGuidelinesPage() {
           </ul>
         </section>
 
-        {/* SECTION 5 */}
+        {/* SECTION 6 */}
         <section>
-          <h2 className={styles.heading}>5. Fast Notice-and-Takedown Protocol</h2>
+          <h2 className={styles.heading}>6. Fast Notice-and-Takedown Protocol</h2>
           <p>
             Paayh acts swiftly upon receiving formal notice from ARCON, consumer protection agencies (FCCPC), law
             enforcement, or intellectual property rights holders:
@@ -153,9 +174,9 @@ export default function AdvertiserGuidelinesPage() {
           </ul>
         </section>
 
-        {/* SECTION 6 */}
+        {/* SECTION 7 */}
         <section>
-          <h2 className={styles.heading}>6. Non-Refundable Infrastructure Compensation Policy</h2>
+          <h2 className={styles.heading}>7. Non-Refundable Infrastructure Compensation Policy</h2>
           <div className={styles.warningBox}>
             <strong>STRICT NO-REFUND POLICY:</strong> All payments made to Paayh for interactive feed campaigns, clicks,
             impressions, or 24-hour Highlights represent consumable service fees for digital infrastructure
@@ -168,9 +189,9 @@ export default function AdvertiserGuidelinesPage() {
           </div>
         </section>
 
-        {/* SECTION 7 */}
+        {/* SECTION 8 */}
         <section>
-          <h2 className={styles.heading}>7. Advertiser Indemnification</h2>
+          <h2 className={styles.heading}>8. Advertiser Indemnification</h2>
           <p>
             Advertisers agree to defend, indemnify, and hold harmless Paayh, its founders, and affiliates from and against
             all claims, damages, liabilities, and expenses (including reasonable legal fees and regulatory fines levied
@@ -178,9 +199,9 @@ export default function AdvertiserGuidelinesPage() {
           </p>
         </section>
 
-        {/* SECTION 8 */}
+        {/* SECTION 9 */}
         <section>
-          <h2 className={styles.heading}>8. Reporting Non-Compliant Ads</h2>
+          <h2 className={styles.heading}>9. Reporting Non-Compliant Ads</h2>
           <p>
             Users and regulatory bodies can report violating campaigns directly to:
           </p>
