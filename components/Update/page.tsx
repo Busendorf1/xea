@@ -16,6 +16,7 @@ import {
   ALL_PERSONALITY_TRAITS as personalityTraits,
 } from "@/lib/categoryTargetingMap";
 import { isAdminEmail } from "@/lib/adminHelper";
+import { hasManualAvatar } from "@/lib/utils/avatar";
 
 
 interface Props {
@@ -694,7 +695,7 @@ export default function Update({ email }: Props) {
                   disabled={isFormDisabled}
                 />
               </label>
-              {dbProfile.profileImage ? (
+              {hasManualAvatar(dbProfile.profileImage) ? (
                 <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
                   Current profile photo/logo is active. Select a new file above to replace it.
                 </p>
@@ -790,7 +791,7 @@ export default function Update({ email }: Props) {
               </div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Profile Picture:</span>
-                <span className={styles.reviewValue}>{imageFile ? `New file (${imageFile.name})` : dbProfile.profileImage ? "Active" : "None"}</span>
+                <span className={styles.reviewValue}>{imageFile ? `New file (${imageFile.name})` : hasManualAvatar(dbProfile.profileImage) ? "Active" : "None"}</span>
               </div>
             </div>
 

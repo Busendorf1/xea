@@ -85,6 +85,12 @@ export default function PolicyPage() {
         {/* SECTION 5 */}
         <section id="cookies">
           <h2 className={styles.heading}>V. Cookies &amp; Tracking Technologies</h2>
+          <p style={{ marginBottom: "0.75rem" }}>
+            For a comprehensive breakdown of our storage mechanisms, token lifecycle, and category disclosures, please inspect our standalone{" "}
+            <Link href="/cookies" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+              Cookie Policy
+            </Link>.
+          </p>
           <ol className={styles.list}>
             <li className={styles.listItem}>
               <strong>Essential Session Cookies:</strong> We utilize encrypted HTTP only session cookies to authenticate logged in users, prevent cross site request forgery (CSRF), and maintain UI preferences (dark or light theme).

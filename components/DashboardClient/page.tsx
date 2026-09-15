@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useTheme } from "../ThemeProvider";
@@ -12,26 +12,27 @@ import {
   User, 
   Settings, 
   Compass, 
-  LogOut,
-  UserCheck,
-  TrendingUp,
-  FileText,
-  Trash2,
-  X,
-  Bell,
-  Plus,
-  Coins,
-  Send,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Wallet,
-  ShieldAlert,
-  CheckCircle2,
-  AlertTriangle
+  LogOut, 
+  UserCheck, 
+  TrendingUp, 
+  FileText, 
+  Trash2, 
+  X, 
+  Bell, 
+  Plus, 
+  Coins, 
+  Send, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  Wallet, 
+  ShieldAlert, 
+  CheckCircle2, 
+  AlertTriangle 
 } from "lucide-react";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
 import Feed from "@/components/Feed/page";
+import FeedSkeleton from "@/components/ui/FeedSkeleton";
 import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
 import Footer from "../Footers/page";
@@ -182,7 +183,7 @@ export default function DashboardClient({
             monetization_clicks: Math.max(prev.monetization_clicks || 0, liveClicks),
             mutual_count: Math.max(prev.mutual_count || 0, Number(data.mutual_count) || 0),
             monetized: isMonetized ?? prev.monetized,
-            balance: typeof data.balance !== "undefined" && !isNaN(Number(data.balance)) ? Number(data.balance) : (prev.balance || 0),
+            balance: typeof data.balance !== "undefined" && !isNaN(Number(data.balance)) ? Math.max(prev.balance || 0, Number(data.balance)) : (prev.balance || 0),
           }));
         }
       }
@@ -1246,14 +1247,16 @@ export default function DashboardClient({
             isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
           }`}
         >
-          <Feed 
-            userEmail={email} 
-            initialProfile={user} 
-            initialAds={initialAds}
-            initialProfiles={initialProfiles}
-            onEarnSuccess={handleEarnSuccess} 
-            onMutualSuccess={handleMutualSuccess} 
-          />
+          <Suspense fallback={<FeedSkeleton count={3} />}>
+            <Feed 
+              userEmail={email} 
+              initialProfile={user} 
+              initialAds={initialAds}
+              initialProfiles={initialProfiles}
+              onEarnSuccess={handleEarnSuccess} 
+              onMutualSuccess={handleMutualSuccess} 
+            />
+          </Suspense>
           <Footer />
         </main>
 

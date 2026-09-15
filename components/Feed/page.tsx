@@ -6,6 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import dynamic from "next/dynamic";
 import { type Ad } from "../ui/AdCard";
 import Skeleton from "../ui/Skeleton";
+import FeedSkeleton from "../ui/FeedSkeleton";
 import NewPostsPill from "../ui/NewPostsPill";
 import { useViewerProfile, InitialProfileInput } from "@/lib/hooks/useViewerProfile";
 import { useFeedHighlights } from "@/lib/hooks/useFeedHighlights";
@@ -298,21 +299,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
   return (
     <div ref={parentRef} className={styles.feedContainer}>
       <NewPostsPill count={pendingCount} onClick={handlePillClick} />
-      {loading && (
-        <div className={styles.skeletonContainer}>
-          {[1, 2, 3].map((n) => (
-            <div key={n} className={styles.skeletonRow}>
-              <Skeleton variant="avatar" width={40} height={40} />
-              <div className={styles.skeletonContent}>
-                <Skeleton variant="title" width="40%" height={16} />
-                <Skeleton variant="text" width="90%" height={12} />
-                <Skeleton variant="text" width="85%" height={12} />
-                <Skeleton variant="rect" width="100%" height={220} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {loading && <FeedSkeleton count={3} />}
       {!loading && error && (
         <div className={styles.errorContainer || styles.error} style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
           <p className={styles.error} style={{ marginBottom: "1rem" }}>Unable to load ads right now.</p>

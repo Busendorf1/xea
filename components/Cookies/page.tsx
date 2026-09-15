@@ -15,7 +15,7 @@ export default function CookiesPage() {
 
         <div className={styles.noticeBox}>
           This Cookie Policy explains how Paayh uses cookies, local storage, and similar web technologies to provide,
-          secure, and improve our Services. For broader information regarding our data protection standards, please read
+          secure, and improve our Services. For broader information regarding our data protection standards and user agreements, please read
           our{" "}
           <Link href="/privacy" className={styles.link}>
             Privacy Policy
@@ -23,6 +23,10 @@ export default function CookiesPage() {
           and{" "}
           <Link href="/terms" className={styles.link}>
             Terms of Service
+          </Link>
+          . You can also review our interactive onboarding terms via the{" "}
+          <Link href="/modal" className={styles.link}>
+            Paayh Concierge Modal
           </Link>
           .
         </div>

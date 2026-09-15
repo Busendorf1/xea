@@ -5,7 +5,7 @@ import Link from "next/link";
 import styles from "./modal.module.css";
 import { flowNodes, initialNodeId, FlowNode, FlowChoice } from "./flowData";
 import { useTheme } from "@/components/ThemeProvider";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, ArrowRight, RotateCcw } from "lucide-react";
 
 interface DialogueMessage {
   id: string;
@@ -158,7 +158,7 @@ export default function ModalLandingPage() {
       setPendingAuth(null);
       setTermsAgreed(false);
       setIsRedirecting(false);
-    }, 220);
+    }, 280);
   };
 
   const handleResetConversation = () => {
@@ -282,28 +282,28 @@ export default function ModalLandingPage() {
           {savedSession && savedSession.stepCount >= 1 ? (
             <div className={styles.resumeCard}>
               <div className={styles.resumeHeader}>
+                <span className={styles.resumePulseDot} aria-hidden="true" />
                 <span className={styles.resumeBadge}>
-                  Active session · Step {savedSession.stepCount}
+                  Step {savedSession.stepCount} in progress
                 </span>
               </div>
-              <p className={styles.resumePrompt}>
-                Would you like to continue?
-              </p>
               <div className={styles.resumeBtnGroup}>
                 <button
                   type="button"
                   autoFocus
                   onClick={handleResumeSession}
-                  className={styles.primaryBtn}
+                  className={styles.resumeContinueBtn}
                 >
-                  Continue journey
+                  <span>Continue journey</span>
+                  <ArrowRight size={14} className={styles.resumeBtnIcon} />
                 </button>
                 <button
                   type="button"
                   onClick={() => handleOpenModal(initialNodeId, true)}
-                  className={styles.secondaryBtn}
+                  className={styles.resumeFreshBtn}
                 >
-                  Start fresh
+                  <RotateCcw size={12} />
+                  <span>Start fresh</span>
                 </button>
               </div>
             </div>
@@ -324,6 +324,9 @@ export default function ModalLandingPage() {
             </Link>
             <Link href="/privacy" className={styles.linkBtn}>
               Privacy Policy
+            </Link>
+            <Link href="/cookies" className={styles.linkBtn}>
+              Cookie Policy
             </Link>
           </div>
         </div>
@@ -449,6 +452,9 @@ export default function ModalLandingPage() {
                       <Link href="/privacy" target="_blank" className={styles.termsLegalLink}>
                         Privacy Policy
                       </Link>
+                      <Link href="/cookies" target="_blank" className={styles.termsLegalLink}>
+                        Cookie Policy
+                      </Link>
                     </div>
                   </div>
 
@@ -461,7 +467,7 @@ export default function ModalLandingPage() {
                       className={styles.termsCheckboxInput}
                     />
                     <span className={styles.termsCheckboxText}>
-                      I confirm that I am at least 18 years old and I agree to the Terms of Service and Privacy Policy.
+                      I confirm that I am at least 18 years old and I agree to the Terms of Service, Privacy Policy, and Cookie Policy.
                     </span>
                   </label>
 

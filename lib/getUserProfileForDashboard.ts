@@ -6,6 +6,7 @@ import redisConnection from "@/lib/redis";
 import crypto from "crypto";
 import { isAdminEmail } from "@/lib/authHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
+import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
 
 export interface DashboardProfileResult {
   user?: UserProfile;
@@ -169,7 +170,8 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     console.log(`👤 User not found in database. Auto-provisioning profile for: ${email}`);
     const givenName = String(session.user.given_name || session.user.name || email.split("@")[0] || "User").trim();
     const familyName = String(session.user.family_name || "").trim();
-    const profileImage = typeof session.user.picture === "string" ? session.user.picture : "";
+    const rawPicture = typeof session.user.picture === "string" ? session.user.picture : "";
+    const profileImage = isDefaultProviderAvatar(rawPicture) ? "" : rawPicture;
     const business_name = typeof session.user.business_name === "string" ? session.user.business_name : "";
 
     const timestamp = Date.now();

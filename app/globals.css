@@ -3,8 +3,8 @@
   /* Global Brand Identity Tokens */
   --ink-charcoal: #282826;
   --paper-cream: #f9f9f7;
-  --obsidian-dark: #0b0c10;
-  --midnight-surface: #141721;
+  --obsidian-dark: #000000;
+  --midnight-surface: #0a0a0a;
   --emerald-status: #10b981;
 
   /* Global Geometry and Animation Tokens */
@@ -44,22 +44,22 @@
 /* Dark Theme Variables when device is in Dark Mode */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='white']):not([data-theme='light']) {
-    --background: #0b0c10;
+    --background: var(--obsidian-dark);
     --foreground: #f8fafc;
     --primary: #f8fafc;
     --primary-hover: #e2e8f0;
     --primary-glow: rgba(248, 250, 252, 0.12);
     --secondary: #f8fafc;
     --secondary-glow: rgba(248, 250, 252, 0.08);
-    --card-bg: #141721;
-    --card-border: #262c3b;
-    --card-border-hover: #343c50;
+    --card-bg: var(--obsidian-dark);
+    --card-border: #1f1f1f;
+    --card-border-hover: #2e2e2e;
     --card-rim: none;
-    --shadow-surface: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
+    --shadow-surface: 0 4px 24px -4px rgba(0, 0, 0, 0.65);
     --text-muted: #94a3b8;
-    --input-bg: #0f121a;
-    --input-border: #262c3b;
-    --sidebar-bg: #10131d;
+    --input-bg: #0a0a0a;
+    --input-border: #222222;
+    --sidebar-bg: var(--obsidian-dark);
     --success: #10b981;
     --danger: #ef4444;
     --badge-gold: #f59e0b;
@@ -70,22 +70,22 @@
 
 /* Explicit Dark Theme */
 [data-theme='dark'] {
-  --background: #0b0c10;
+  --background: var(--obsidian-dark);
   --foreground: #f8fafc;
   --primary: #f8fafc;
   --primary-hover: #e2e8f0;
   --primary-glow: rgba(248, 250, 252, 0.12);
   --secondary: #f8fafc;
   --secondary-glow: rgba(248, 250, 252, 0.08);
-  --card-bg: #141721;
-  --card-border: #262c3b;
-  --card-border-hover: #343c50;
+  --card-bg: var(--obsidian-dark);
+  --card-border: #1f1f1f;
+  --card-border-hover: #2e2e2e;
   --card-rim: none;
-  --shadow-surface: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
+  --shadow-surface: 0 4px 24px -4px rgba(0, 0, 0, 0.65);
   --text-muted: #94a3b8;
-  --input-bg: #0f121a;
-  --input-border: #262c3b;
-  --sidebar-bg: #10131d;
+  --input-bg: #0a0a0a;
+  --input-border: #222222;
+  --sidebar-bg: var(--obsidian-dark);
   --success: #10b981;
   --danger: #ef4444;
   --badge-gold: #f59e0b;
@@ -117,6 +117,29 @@
   --badge-gold: #d97706;
   --badge-gold-bg: rgba(217, 119, 6, 0.08);
   --badge-gold-border: rgba(217, 119, 6, 0.25);
+}
+
+/* Fluid Responsive Typography & Screen Scaling */
+html {
+  font-size: clamp(15px, 0.35vw + 13.8px, 18.5px);
+}
+
+@media screen and (min-width: 1440px) {
+  html {
+    font-size: clamp(16px, 0.45vw + 11px, 20px);
+  }
+}
+
+@media screen and (min-width: 1920px) {
+  html {
+    font-size: 19px;
+  }
+}
+
+@media screen and (min-width: 2560px) {
+  html {
+    font-size: 21px;
+  }
 }
 
 h1, h2, h3 {

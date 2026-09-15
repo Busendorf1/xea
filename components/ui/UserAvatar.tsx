@@ -20,18 +20,18 @@ export function DefaultAvatarPlaceholder({
 
   // Male: Gentle slate blue tone
   // Female: Gentle warm rose tone
-  // Neutral: Refined subtle surface with prominent silhouette
+  // Neutral: Subtle neutral slate surface with crisp, visible silhouette
   const bg = isMale
-    ? "rgba(59, 130, 246, 0.14)"
+    ? "rgba(59, 130, 246, 0.16)"
     : isFemale
-    ? "rgba(244, 63, 94, 0.14)"
-    : "var(--sidebar-bg, #f4f4f2)";
+    ? "rgba(244, 63, 94, 0.16)"
+    : "rgba(148, 163, 184, 0.22)";
 
   const ink = isMale
     ? "#2563eb"
     : isFemale
     ? "#e11d48"
-    : "var(--foreground, #282826)";
+    : "var(--text-muted, #64748b)";
 
   const baseStyle: React.CSSProperties = {
     width: size,
@@ -56,8 +56,8 @@ export function DefaultAvatarPlaceholder({
   if (isMale) {
     return (
       <svg
-        width={size}
-        height={size}
+        width="100%"
+        height="100%"
         viewBox="0 0 100 100"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
@@ -65,19 +65,18 @@ export function DefaultAvatarPlaceholder({
         style={baseStyle}
         aria-label="Male profile placeholder"
       >
-        <circle cx="50" cy="50" r="50" fill={bg} />
+        <circle cx="50" cy="50" r="50" style={{ fill: bg }} />
         {/* Male head */}
-        <circle cx="50" cy="38" r="16" fill={ink} fillOpacity="0.85" />
+        <circle cx="50" cy="38" r="16" style={{ fill: ink, fillOpacity: 0.88 }} />
         {/* Short cropped hair */}
         <path
           d="M34 38c0-9 7.2-16.5 16-16.5s16 7.5 16 16.5c-3-2.5-7.5-4-16-4s-13 1.5-16 4z"
-          fill={ink}
+          style={{ fill: ink }}
         />
         {/* Male shoulders */}
         <path
           d="M50 60c-18 0-33 9.5-35.5 22.5 5 10 18 17.5 35.5 17.5s30.5-7.5 35.5-17.5C83 69.5 68 60 50 60z"
-          fill={ink}
-          fillOpacity="0.85"
+          style={{ fill: ink, fillOpacity: 0.88 }}
         />
       </svg>
     );
@@ -86,8 +85,8 @@ export function DefaultAvatarPlaceholder({
   if (isFemale) {
     return (
       <svg
-        width={size}
-        height={size}
+        width="100%"
+        height="100%"
         viewBox="0 0 100 100"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
@@ -95,21 +94,19 @@ export function DefaultAvatarPlaceholder({
         style={baseStyle}
         aria-label="Female profile placeholder"
       >
-        <circle cx="50" cy="50" r="50" fill={bg} />
+        <circle cx="50" cy="50" r="50" style={{ fill: bg }} />
         {/* Soft flowing hair silhouette */}
         <path
           d="M31 40c0-11 8.5-20 19-20s19 9 19 20c0 14-3.5 24-7 27-2-6-4.5-9-12-9s-10 3-12 9c-3.5-3-7-13-7-27z"
-          fill={ink}
-          fillOpacity="0.95"
+          style={{ fill: ink, fillOpacity: 0.95 }}
         />
         {/* Female face/head */}
-        <circle cx="50" cy="39" r="12" fill={bg} />
-        <circle cx="50" cy="39" r="10.5" fill={ink} fillOpacity="0.8" />
+        <circle cx="50" cy="39" r="12" style={{ fill: bg }} />
+        <circle cx="50" cy="39" r="10.5" style={{ fill: ink, fillOpacity: 0.85 }} />
         {/* Female graceful shoulders */}
         <path
           d="M50 62c-15 0-27.5 8-31.5 19 5.5 11 17.5 19 31.5 19s26-8 31.5-19C77.5 70 65 62 50 62z"
-          fill={ink}
-          fillOpacity="0.85"
+          style={{ fill: ink, fillOpacity: 0.88 }}
         />
       </svg>
     );
@@ -118,8 +115,8 @@ export function DefaultAvatarPlaceholder({
   // Neutral / default placeholder
   return (
     <svg
-      width={size}
-      height={size}
+      width="100%"
+      height="100%"
       viewBox="0 0 100 100"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -127,12 +124,11 @@ export function DefaultAvatarPlaceholder({
       style={baseStyle}
       aria-label="Profile placeholder"
     >
-      <circle cx="50" cy="50" r="50" fill={bg} />
-      <circle cx="50" cy="38" r="17" fill={ink} fillOpacity="0.75" />
+      <circle cx="50" cy="50" r="50" style={{ fill: bg }} />
+      <circle cx="50" cy="38" r="17" style={{ fill: ink, fillOpacity: 0.82 }} />
       <path
         d="M50 61c-17 0-31 9.5-34 22 4.5 10 16.5 17 34 17s29.5-7 34-17c-3-12.5-17-22-34-22z"
-        fill={ink}
-        fillOpacity="0.75"
+        style={{ fill: ink, fillOpacity: 0.82 }}
       />
     </svg>
   );
@@ -140,6 +136,10 @@ export function DefaultAvatarPlaceholder({
 
 export const DEFAULT_AVATAR_SVG =
   "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBmaWxsPSJub25lIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI1MCIgZmlsbD0iIzFlMjkzYiIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iMzgiIHI9IjE4IiBmaWxsPSIjOTRhM2I4Ii8+PHBhdGggZD0iTTUwIDYyYy0xOCAwLTMyIDEwLTM0IDIyIDQgMTAgMTYgMTYgMzQgMTZzMzAtNiAzNC0xNmMtMi0xMi0xNi0yMi0zNC0yMnoiIGZpbGw9IiM5NGEzYjgiLz48L3N2Zz4=";
+
+import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
+
+export { isDefaultProviderAvatar };
 
 interface UserAvatarProps {
   src?: string | null;
@@ -170,10 +170,7 @@ export default function UserAvatar({
     !error &&
     src &&
     typeof src === "string" &&
-    src.trim() !== "" &&
-    src !== "undefined" &&
-    src !== "null" &&
-    src !== "PLACEHOLDER";
+    !isDefaultProviderAvatar(src);
 
   if (!isValidSrc) {
     return (

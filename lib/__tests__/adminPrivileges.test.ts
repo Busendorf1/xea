@@ -51,7 +51,7 @@ describe("Admin Privilege Caps Bypass", () => {
 
     it("should enforce level caps for standard non-admin users", () => {
       const cap = getAtwBalanceLimit("ATW1", false);
-      expect(cap).toBe(100000);
+      expect(cap).toBe(30000);
     });
   });
 

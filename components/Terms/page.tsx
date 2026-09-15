@@ -19,6 +19,10 @@ export default function TermsPage() {
           Terms of Service and all incorporated policies, including our{" "}
           <Link href="/privacy" className={styles.link}>
             Privacy Policy
+          </Link>{" "}
+          and{" "}
+          <Link href="/cookies" className={styles.link}>
+            Cookie Policy
           </Link>
           . If you do not agree to these Terms, you must not access or use our Services.
         </div>
@@ -495,6 +499,10 @@ export default function TermsPage() {
             <strong>13.2 Entire Agreement:</strong> These Terms, along with our{" "}
             <Link href="/privacy" className={styles.link}>
               Privacy Policy
+            </Link>{" "}
+            and{" "}
+            <Link href="/cookies" className={styles.link}>
+              Cookie Policy
             </Link>
             , constitute the entire, exclusive agreement between you and Paayh regarding the Services.
           </p>
