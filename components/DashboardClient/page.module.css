@@ -183,11 +183,10 @@
   margin-right: auto;
   padding-left: 1%;
   padding-right: 1%;
-  transition: padding-top 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dashboardContainerHeaderHidden {
-  padding-top: 0px;
+  /* Keep container padding stable to prevent layout jumps during scrolling */
 }
 
 /* Sidebar layouts - Ratio: 3.1 (Account Menu & Daily Highlights) / 5 (Feed) / 3.3 (Profile & Wallet) */
@@ -219,6 +218,9 @@
   -ms-overflow-style: none; /* IE and Edge */
   box-sizing: border-box;
   background-color: var(--background);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  overflow-anchor: none;
 }
 
 .feedArea::-webkit-scrollbar {
@@ -1078,7 +1080,7 @@
   }
 
   .dashboardContainerHeaderHidden {
-    padding-top: 0px !important;
+    /* Keep container padding stable to prevent layout jumps during scrolling */
   }
 
   .leftSidebar {
@@ -1130,7 +1132,7 @@
   }
 
   .dashboardContainerHeaderHidden {
-    padding-top: 0px !important;
+    /* Keep container padding stable to prevent layout jumps during scrolling */
   }
 
   /* Only Center Feed shows by default - take 100% full width of screen */
@@ -1139,6 +1141,9 @@
     width: 100% !important;
     max-width: 100% !important;
     padding: 0.5rem 0.25rem;
+    overflow-anchor: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
   }
 
   /* Slideable Sidebars on Mobile: take 100% viewport width, hidden off-screen by default */

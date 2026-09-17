@@ -26,37 +26,45 @@ const SimpleLoader = () => (
   </div>
 );
 
-// Dynamic Code Splitting with clean loading state
+// Dynamic Code Splitting with clean loading state (client-rendered to avoid missing SSR chunk errors)
 const MultiStepAdForm = dynamic(() => import("@/components/Ad/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const Monetize = dynamic(() => import("@/components/Monetize/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const MyNews = dynamic(() => import("@/components/MyNews/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const MyAds = dynamic(() => import("@/components/MyAds/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const UpdateProfile = dynamic(() => import("@/components/Update/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const NewsComponent = dynamic(() => import("@/components/News/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const DeactivateAccount = dynamic(() => import("@/components/Deactivate/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 const StatementPageContent = dynamic(() => import("@/components/Statement/page"), {
   loading: () => <SimpleLoader />,
+  ssr: false,
 });
 
 export type TabKey = 
@@ -73,55 +81,64 @@ interface Props {
   initialMonetized?: boolean;
   initialClicks?: number;
   initialAtwTier?: string;
+  initialTab?: TabKey;
 }
 
 const VALID_TABS: TabKey[] = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
 
-function getInitialTab(): TabKey {
-  if (typeof window === "undefined") return "monetize";
-
-  // 1. Check query param first (e.g. ?view=monetize)
-  const urlParams = new URLSearchParams(window.location.search);
-  const viewParam = urlParams.get("view") as TabKey;
-  if (viewParam && VALID_TABS.includes(viewParam)) {
-    return viewParam;
-  }
-
-  // 2. Check for cookie set by server redirects
-  const cookies = document.cookie.split("; ");
-  const tabCookie = cookies.find((c) => c.startsWith("paayh_active_tab="));
-  if (tabCookie) {
-    const cookieTab = tabCookie.split("=")[1] as TabKey;
-    if (VALID_TABS.includes(cookieTab)) return cookieTab;
-  }
-
-  // 3. Check sessionStorage
-  const storedTab = sessionStorage.getItem("paayh_active_tab") as TabKey;
-  if (storedTab && VALID_TABS.includes(storedTab)) {
-    return storedTab;
-  }
-
-  return "adPage";
-}
-
-export default function LoggedInClientContainer({ session, initialMonetized, initialClicks, initialAtwTier }: Props) {
-  const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
-  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([getInitialTab()]));
+export default function LoggedInClientContainer({ 
+  session, 
+  initialMonetized, 
+  initialClicks, 
+  initialAtwTier,
+  initialTab = "monetize" 
+}: Props) {
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTab]));
 
   const checkAndSetTab = () => {
-    const finalTab = getInitialTab();
+    if (typeof window === "undefined") return;
+
+    let finalTab: TabKey = initialTab;
+
+    // 1. Check query param first (e.g. ?view=monetize)
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewParam = urlParams.get("view") as TabKey;
+    const editIdParam = urlParams.get("id");
+
+    if (editIdParam) {
+      sessionStorage.setItem("paayh_edit_ad_id", editIdParam);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("paayh_edit_ad", { detail: { adId: editIdParam } }));
+      }, 50);
+    }
+
+    const boostRef = urlParams.get("boost_ref") || urlParams.get("reference") || urlParams.get("trxref");
+    if (boostRef && boostRef.startsWith("BOOST-")) {
+      sessionStorage.setItem("paayh_boost_ref", boostRef);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("paayh_boost_ref", { detail: { reference: boostRef } }));
+      }, 100);
+    }
 
     // Clean cookie if it was present
     document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const editIdParam = urlParams.get("id");
-    if (editIdParam) {
-      sessionStorage.setItem("paayh_edit_ad_id", editIdParam);
-      if (typeof window !== "undefined") {
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("paayh_edit_ad", { detail: { adId: editIdParam } }));
-        }, 50);
+    if (viewParam && VALID_TABS.includes(viewParam)) {
+      finalTab = viewParam;
+    } else {
+      // 2. Check for cookie set by server redirects
+      const cookies = document.cookie.split("; ");
+      const tabCookie = cookies.find((c) => c.startsWith("paayh_active_tab="));
+      if (tabCookie) {
+        const cookieTab = tabCookie.split("=")[1] as TabKey;
+        if (VALID_TABS.includes(cookieTab)) finalTab = cookieTab;
+      } else {
+        // 3. Check sessionStorage
+        const storedTab = sessionStorage.getItem("paayh_active_tab") as TabKey;
+        if (storedTab && VALID_TABS.includes(storedTab)) {
+          finalTab = storedTab;
+        }
       }
     }
 

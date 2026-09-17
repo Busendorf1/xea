@@ -1,14 +1,24 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import LoggedInClientContainer from "./LoggedInClientContainer";
+import LoggedInClientContainer, { TabKey } from "./LoggedInClientContainer";
 
-export default async function LoggedInPage() {
+interface PageProps {
+  searchParams?: Promise<{ view?: string; id?: string }>;
+}
+
+const VALID_TABS = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
+
+export default async function LoggedInPage({ searchParams }: PageProps) {
   const session = await auth0.getSession();
 
   if (!session || !session.user?.email) {
     redirect("/");
   }
+
+  const resolvedParams = searchParams ? await searchParams : {};
+  const requestedView = resolvedParams?.view as TabKey | undefined;
+  const initialTab: TabKey = (requestedView && VALID_TABS.includes(requestedView)) ? requestedView : "monetize";
 
   const email = session.user.email.toLowerCase().trim();
   let initialMonetized = true; // Default to true as requested: show monetized first
@@ -45,6 +55,7 @@ export default async function LoggedInPage() {
       initialMonetized={initialMonetized}
       initialClicks={initialClicks}
       initialAtwTier={initialAtwTier}
+      initialTab={initialTab}
     />
   );
 }

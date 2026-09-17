@@ -362,7 +362,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   // Active aspect ratio clamped to X/Twitter feed standards (min 0.8 / 4:5 to max 1.777 / 16:9)
   const isCurrentVideo = isVideoUrl(mediaUrls[currentMediaIndex]) || (currentMediaIndex === 0 && !!hlsUrl);
-  const fallbackRatio = isCurrentVideo ? 16 / 9 : 1.0;
+  const fallbackRatio = 16 / 9;
   const rawRatio = aspectRatios[currentMediaIndex] || aspectRatios[0] || fallbackRatio;
   const clampedRatio = Math.min(Math.max(rawRatio, 0.8), 1.777);
 

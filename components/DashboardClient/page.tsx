@@ -29,10 +29,15 @@ import {
   CheckCircle2, 
   AlertTriangle 
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
-import Feed from "@/components/Feed/page";
 import FeedSkeleton from "@/components/ui/FeedSkeleton";
+
+const Feed = dynamic(() => import("@/components/Feed/page"), {
+  loading: () => <FeedSkeleton count={3} />,
+  ssr: false,
+});
 import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
 import Footer from "../Footers/page";
@@ -939,47 +944,10 @@ export default function DashboardClient({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Handle header scroll show/hide behavior on mobile (with delta threshold hysteresis)
+  // Keep header steadily visible across mobile and desktop to prevent layout shifts and scroll jumps
   useEffect(() => {
-    if (!isMobile) {
-      setShowHeader(true);
-      return;
-    }
-
-    let lastScrollPos = 0;
-    const SCROLL_THRESHOLD = 15; // Minimum scroll distance to trigger state change
-    const feedEl = feedAreaRef.current;
-
-    const handleScrollEvent = (scrollTop: number) => {
-      const delta = scrollTop - lastScrollPos;
-
-      if (scrollTop <= 15) {
-        // At or near top -> always show header
-        setShowHeader(true);
-      } else if (delta > SCROLL_THRESHOLD && scrollTop > 40) {
-        // Scrolling down -> hide header
-        setShowHeader(false);
-      } else if (delta < -SCROLL_THRESHOLD) {
-        // Scrolling up -> show header
-        setShowHeader(true);
-      }
-      lastScrollPos = scrollTop;
-    };
-
-    const onFeedScroll = () => {
-      if (feedEl) handleScrollEvent(feedEl.scrollTop);
-    };
-
-    if (feedEl) {
-      feedEl.addEventListener("scroll", onFeedScroll, { passive: true });
-    }
-
-    return () => {
-      if (feedEl) {
-        feedEl.removeEventListener("scroll", onFeedScroll);
-      }
-    };
-  }, [isMobile]);
+    setShowHeader(true);
+  }, []);
 
   // Lock body scroll when mobile side menu is open
   useEffect(() => {
@@ -1070,23 +1038,23 @@ export default function DashboardClient({
 
   const renderAccountLinks = () => (
     <div className={styles.menuButtonGroup}>
-      <Link href="/user/logged-in" onClick={() => selectTab("profile")} className={styles.menuButton}>
+      <Link href="/user/logged-in?view=profile" onClick={() => selectTab("profile")} className={styles.menuButton}>
         <User size={16} />
         <span>Profile</span>
       </Link>
-      <Link href="/user/logged-in" onClick={() => selectTab("myads")} className={styles.menuButton}>
+      <Link href="/user/logged-in?view=myads" onClick={() => selectTab("myads")} className={styles.menuButton}>
         <TrendingUp size={16} />
         <span>My Ads</span>
       </Link>
-      <Link href="/user/logged-in" onClick={() => selectTab("news")} className={styles.menuButton}>
+      <Link href="/user/logged-in?view=news" onClick={() => selectTab("news")} className={styles.menuButton}>
         <Compass size={16} />
         <span>Create Highlight</span>
       </Link>
-      <Link href="/user/logged-in" onClick={() => selectTab("adPage")} className={styles.menuButton}>
+      <Link href="/user/logged-in?view=adPage" onClick={() => selectTab("adPage")} className={styles.menuButton}>
         <FileText size={16} />
         <span>Create Ad</span>
       </Link>
-      <Link href="/user/logged-in" onClick={() => selectTab("monetize")} className={styles.menuButton}>
+      <Link href="/user/logged-in?view=monetize" onClick={() => selectTab("monetize")} className={styles.menuButton}>
         <UserCheck size={16} />
         <span>Monetization</span>
       </Link>
@@ -1094,7 +1062,7 @@ export default function DashboardClient({
         <LogOut size={16} />
         <span>Logout</span>
       </Link>
-      <Link href="/user/logged-in" onClick={() => selectTab("deactivate")} className={styles.menuButtonDanger}>
+      <Link href="/user/logged-in?view=deactivate" onClick={() => selectTab("deactivate")} className={styles.menuButtonDanger}>
         <Trash2 size={16} />
         <span>Deactivate Account</span>
       </Link>
@@ -1282,7 +1250,7 @@ export default function DashboardClient({
                     className={styles.profileImg}
                   />
                 </div>
-                <Link href="/user/logged-in" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
+                <Link href="/user/logged-in?view=profile" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
                   Edit profile
                 </Link>
               </div>
@@ -1358,17 +1326,11 @@ export default function DashboardClient({
                           const ratio = Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
                           const pct = Math.round(ratio * 100);
 
-                          let stateWord = "Good";
                           let stateColor = "#10b981";
-                          let stateClass = styles.atwStateGood;
                           if (ratio >= 0.90) {
-                            stateWord = "Limit";
                             stateColor = "#ef4444";
-                            stateClass = styles.atwStateLimit;
                           } else if (ratio >= 0.60) {
-                            stateWord = "Better";
                             stateColor = "#f59e0b";
-                            stateClass = styles.atwStateBetter;
                           }
 
                           // Circular gauge geometry
@@ -1393,10 +1355,10 @@ export default function DashboardClient({
                                 onMouseEnter={() => setShowAtwTooltip(true)}
                                 onMouseLeave={() => setShowAtwTooltip(false)}
                                 onClick={() => setShowAtwTooltip((prev) => !prev)}
-                                title={`ATW Capacity: ${pct}% (${stateWord})`}
+                                title={`ATW Capacity: ${pct}%`}
                                 role="button"
                                 tabIndex={0}
-                                aria-label={`Withdrawal limit gauge: ${pct}% capacity, state ${stateWord}`}
+                                aria-label={`Withdrawal limit gauge: ${pct}% capacity`}
                               >
                                 <div className={styles.atwGaugeWrapper}>
                                   <svg className={styles.atwGaugeSvg} width="20" height="20" viewBox="0 0 20 20">
@@ -1423,10 +1385,6 @@ export default function DashboardClient({
                                   </svg>
                                 </div>
 
-                                <span className={`${styles.atwStateBadge} ${stateClass}`}>
-                                  {stateWord}
-                                </span>
-
                                 {showAtwTooltip && (
                                   <div className={styles.atwTooltipBox} onClick={(e) => e.stopPropagation()}>
                                     <div className={styles.atwTooltipHeader}>
@@ -1437,9 +1395,9 @@ export default function DashboardClient({
                                       Holding limit: {formatCurrency(balanceCap)} ({tier.code}). Current: {formatCurrency(currentBal)}.
                                     </p>
                                     <span className={styles.atwTooltipHint} style={{ color: stateColor }}>
-                                      {stateWord === "Limit"
+                                      {ratio >= 0.90
                                         ? "Max holding reached! Please withdraw your funds."
-                                        : stateWord === "Better"
+                                        : ratio >= 0.60
                                         ? "Balance is filling up. Prepare to withdraw soon."
                                         : "Safe holding balance. All systems nominal."}
                                     </span>
@@ -1471,7 +1429,7 @@ export default function DashboardClient({
                             {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
                           </p>
                           <Link
-                            href="/user/logged-in"
+                            href="/user/logged-in?view=monetize"
                             onClick={() => selectTab("monetize")}
                             className={`${styles.renewBtn} ${styles.monetizeProgressLink}`}
                           >
@@ -1520,7 +1478,7 @@ export default function DashboardClient({
                   <span>Send Money</span>
                 </button>
               </div>
-              <Link href="/user/logged-in" onClick={() => selectTab("statement")} className={styles.statementLink}>
+              <Link href="/user/logged-in?view=statement" onClick={() => selectTab("statement")} className={styles.statementLink}>
                 View Account Statement
               </Link>
             </div>

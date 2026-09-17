@@ -14,6 +14,8 @@
   overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .feedContainer::-webkit-scrollbar {
@@ -27,6 +29,7 @@
   flex-direction: column;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  overflow-anchor: none;
 }
 
 .adGrid::-webkit-scrollbar {

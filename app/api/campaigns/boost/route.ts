@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       const isMobile = !!req.headers.get("x-user-email") && !req.headers.get("origin")?.includes("http");
       const callbackUrl = isMobile 
         ? "xea-auth://payment-callback"
-        : `${origin}/user/myAds?boost_ref=${reference}`;
+        : `${origin}/user/myads?boost_ref=${reference}`;
 
       // Insert pending payment record so verify endpoint and webhooks recognize it
       await supabaseAdmin.from("payments").insert({
@@ -220,6 +220,7 @@ export async function POST(req: NextRequest) {
         type: "boost_campaign",
         description: `Card payment boost top-up for Ad #${adId.substring(0, 8)}`,
         metadata: {
+          user_email: emailLower,
           ad_id: adId,
           type: "boost_campaign",
           additional_impressions: additionalImpressions,
@@ -250,6 +251,7 @@ export async function POST(req: NextRequest) {
               reference,
               callback_url: callbackUrl,
               metadata: {
+                user_email: emailLower,
                 ad_id: adId,
                 type: "boost_campaign",
                 additional_impressions: additionalImpressions,

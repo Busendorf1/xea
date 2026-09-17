@@ -3,8 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import styles from "../Feed/page.module.css";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import dynamic from "next/dynamic";
-import { type Ad } from "../ui/AdCard";
+import AdCard, { type Ad } from "../ui/AdCard";
 import Skeleton from "../ui/Skeleton";
 import FeedSkeleton from "../ui/FeedSkeleton";
 import NewPostsPill from "../ui/NewPostsPill";
@@ -12,10 +11,6 @@ import { useViewerProfile, InitialProfileInput } from "@/lib/hooks/useViewerProf
 import { useFeedHighlights } from "@/lib/hooks/useFeedHighlights";
 import { useFeedActions } from "@/lib/hooks/useFeedActions";
 import { useLiveFeedUpdates } from "@/lib/hooks/useLiveFeedUpdates";
-
-const AdCard = dynamic(() => import("../ui/AdCard"), {
-  loading: () => <Skeleton />,
-});
 
 interface FeedProps {
   userEmail: string;
@@ -232,7 +227,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     getScrollElement: () => parentRef.current?.parentElement || null,
     estimateSize: () => 500,
     getItemKey: useCallback((index: number) => displayFeed[index]?.id || `feed-item-${index}`, [displayFeed]),
-    overscan: 8,
+    overscan: 5,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -338,7 +333,8 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
                   top: 0,
                   left: 0,
                   width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
+                  transform: `translate3d(0, ${Math.round(virtualRow.start)}px, 0)`,
+                  willChange: "transform",
                   zIndex: displayFeed.length - virtualRow.index,
                 }}
               >

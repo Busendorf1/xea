@@ -382,9 +382,73 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
   };
 
+  const verifyBoostPayment = async (reference: string) => {
+    if (!reference) return;
+    setNoticeModal({
+      title: "Verifying Boost Payment",
+      message: "Confirming your boost top-up with payment gateway... ⚡",
+    });
+
+    try {
+      const res = await fetch(`/api/payments/verify?reference=${encodeURIComponent(reference)}`);
+      const data = await res.json();
+      if (data.success || data.status === "success") {
+        setNoticeModal({
+          title: "Campaign Boosted! ⚡",
+          message: "Your campaign priority and impressions have been updated successfully!",
+        });
+        clearUserCampaignsCache(session?.user?.email || "");
+        fetchAds(true);
+      } else {
+        setNoticeModal({
+          title: "Boost Verification Notice",
+          message: data.message || "Payment has not yet settled or was not completed. If debited, your campaign will update shortly once confirmed.",
+        });
+      }
+    } catch (err: any) {
+      setNoticeModal({
+        title: "Boost Verification Notice",
+        message: err.message || "Unable to verify payment at this time.",
+      });
+    }
+  };
+
   useEffect(() => {
     if (session?.user?.email) fetchAds();
   }, [session]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkPendingBoost = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      let ref = urlParams.get("boost_ref") || urlParams.get("reference") || urlParams.get("trxref");
+
+      if (!ref) {
+        ref = sessionStorage.getItem("paayh_boost_ref");
+      }
+
+      if (ref && ref.startsWith("BOOST-")) {
+        sessionStorage.removeItem("paayh_boost_ref");
+        verifyBoostPayment(ref);
+      }
+    };
+
+    checkPendingBoost();
+
+    const handleCustomBoostEvent = (e: any) => {
+      const ref = e.detail?.reference;
+      if (ref && ref.startsWith("BOOST-")) {
+        sessionStorage.removeItem("paayh_boost_ref");
+        verifyBoostPayment(ref);
+      }
+    };
+
+    window.addEventListener("paayh_boost_ref", handleCustomBoostEvent);
+    return () => {
+      window.removeEventListener("paayh_boost_ref", handleCustomBoostEvent);
+    };
+  }, [session?.user?.email]);
 
   const handleTogglePause = async (adId: string, currentPausedState: boolean, adminStatement?: string | null) => {
     if (currentPausedState && adminStatement) {

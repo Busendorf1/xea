@@ -32,7 +32,7 @@ export async function processSuccessfulPayment(
   // 1. Check if the payment has already been processed successfully
   const { data: existingPayment, error: fetchError } = await supabaseAdmin
     .from("payments")
-    .select("status")
+    .select("status, user_email, type, metadata")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -46,8 +46,9 @@ export async function processSuccessfulPayment(
     return { alreadyProcessed: true };
   }
 
-  const type = metadata.type as string | undefined;
-  const user_email = metadata.user_email as string | undefined;
+  const mergedMetadata = { ...(existingPayment?.metadata || {}), ...(metadata || {}) };
+  const type = (mergedMetadata.type || existingPayment?.type) as string | undefined;
+  const user_email = (mergedMetadata.user_email || mergedMetadata.userEmail || mergedMetadata.email || existingPayment?.user_email) as string | undefined;
   if (!type || !user_email) {
     throw new Error("Invalid payment metadata: missing type or user_email");
   }
@@ -117,7 +118,7 @@ export async function processSuccessfulPayment(
       province,
       industry,
       interest
-    } = metadata as any;
+    } = (mergedMetadata || metadata) as any;
 
     if (ad_id) {
       let { data: ad } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).maybeSingle();
@@ -158,6 +159,22 @@ export async function processSuccessfulPayment(
           supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
           supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id),
         ]);
+
+        if (effectiveCost > 25) {
+          try {
+            const adIndustry = Array.isArray(ad.industry) ? ad.industry[0] : (ad.industry || "business");
+            await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", ad_id);
+            await supabaseAdmin.from("bidded_ads").insert({
+              ad_id,
+              user_email: user_email.toLowerCase().trim(),
+              industry: (adIndustry || "business").toLowerCase(),
+              bid_price: effectiveCost,
+              is_active: true,
+            });
+          } catch (bidErr) {
+            console.warn("⚠️ bidded_ads update notice in boost:", bidErr);
+          }
+        }
 
         await sendIdempotentNotification(
           user_email,

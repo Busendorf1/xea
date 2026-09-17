@@ -1,4 +1,4 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- FIX: Safe get_user_feed RPC with Bulletproof Date & Placeholder Guards
 -- (dob is of type DATE in public.users, so comparison must cast to ::text)
 -- ==============================================================================
@@ -85,7 +85,7 @@ BEGIN
     NULLIF(u.state, 'PLACEHOLDER'),
     NULLIF(u.location, 'PLACEHOLDER'),
     u.gender,
-    COALESCE(u.employment, u.employment_status),
+    u.employment,
     u.interest,
     u.lifestyle,
     u.personality,
@@ -140,18 +140,18 @@ BEGIN
       a.action_android,
       a.action_watch_now,
       a.display_mutual_button,
-      a.product_name,
-      a.product_price,
-      a.product_cta_type,
-      a.product_cta_link,
-      a.ad_media,
-      a.user_email,
-      a.created_at,
-      a.completed_at,
-      COALESCE(a.impression_count, 0) AS impression_count,
-      COALESCE(a.cost_per_impression, 25.0) AS cost_per_impression,
-      (b.id IS NOT NULL) AS is_bidded,
-      COALESCE(b.bid_price, a.cost_per_impression, 25.0) AS bid_price,
+      a.product_name::TEXT AS product_name,
+      a.product_price::NUMERIC(12,2) AS product_price,
+      a.product_cta_type::TEXT AS product_cta_type,
+      a.product_cta_link::TEXT AS product_cta_link,
+      a.ad_media::TEXT AS ad_media,
+      a.user_email::TEXT AS user_email,
+      a.created_at::TIMESTAMPTZ AS created_at,
+      a.completed_at::TIMESTAMPTZ AS completed_at,
+      COALESCE(a.impression_count, 0)::INT AS impression_count,
+      COALESCE(a.cost_per_impression, 25.0)::NUMERIC(12,2) AS cost_per_impression,
+      (b.id IS NOT NULL)::BOOLEAN AS is_bidded,
+      COALESCE(b.bid_price, a.cost_per_impression, 25.0)::NUMERIC(12,2) AS bid_price,
 
       -- Check Rollover state
       CASE 
@@ -290,18 +290,18 @@ BEGIN
     ca.action_android,
     ca.action_watch_now,
     ca.display_mutual_button,
-    ca.product_name,
-    ca.product_price,
-    ca.product_cta_type,
-    ca.product_cta_link,
-    ca.ad_media,
-    ca.user_email,
-    ca.created_at,
-    ca.completed_at,
-    ca.impression_count,
-    ca.cost_per_impression,
-    ca.is_bidded,
-    ca.bid_price
+    ca.product_name::TEXT,
+    ca.product_price::NUMERIC(12,2),
+    ca.product_cta_type::TEXT,
+    ca.product_cta_link::TEXT,
+    ca.ad_media::TEXT,
+    ca.user_email::TEXT,
+    ca.created_at::TIMESTAMPTZ,
+    ca.completed_at::TIMESTAMPTZ,
+    ca.impression_count::INT,
+    ca.cost_per_impression::NUMERIC(12,2),
+    ca.is_bidded::BOOLEAN,
+    ca.bid_price::NUMERIC(12,2)
   FROM candidate_ads ca
   ORDER BY (
     ca.auction_base_score 
