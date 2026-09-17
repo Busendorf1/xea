@@ -160,6 +160,12 @@
 }
 
 @media (max-width: 640px) {
+  .card {
+    padding: 0.85rem 0.65rem 1rem 0.65rem;
+  }
+  .avatarCol {
+    margin-right: 0.55rem;
+  }
   .sponsorName {
     max-width: 130px;
   }

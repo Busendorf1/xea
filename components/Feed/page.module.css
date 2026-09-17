@@ -427,13 +427,13 @@
   }
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 768px) {
   .feedContainer {
     border-left: none;
     border-right: none;
     padding: 0;
     width: 100%;
-    margin-top: 3rem;
+    margin-top: 0;
     max-width: 100%;
   }
   .card {
@@ -443,7 +443,7 @@
     font-size: 0.9rem;
   }
   .fixedFooterContainer {
-    max-width: 50%;
+    max-width: 100%;
   }
 }
 
