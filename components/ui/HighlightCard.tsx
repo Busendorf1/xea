@@ -50,6 +50,14 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
             <span className={styles.adTime}>
               {formatTimestamp(ad.created_at)}
             </span>
+            {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
+              <>
+                <span className={styles.dot}>·</span>
+                <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
+                  AI Content
+                </span>
+              </>
+            )}
           </div>
           <span
             className={styles.sponsorLabel}

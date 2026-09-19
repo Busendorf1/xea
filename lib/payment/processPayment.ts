@@ -70,8 +70,12 @@ export async function processSuccessfulPayment(
       bid_price,
       is_admin_post,
       custom_sponsor_name,
-      custom_sponsor_handle
+      custom_sponsor_handle,
+      is_ai_content: rawAiContent,
+      isAiContent: rawAiContentAlt,
     } = metadata as any;
+
+    const isAiContent = !!(rawAiContent ?? rawAiContentAlt);
 
     // All submitted user highlights strictly go to 'news' review queue for admin moderation
     const targetTable = "news";
@@ -91,6 +95,7 @@ export async function processSuccessfulPayment(
         custom_sponsor_name: custom_sponsor_name || null,
         custom_sponsor_handle: custom_sponsor_handle || null,
         user_email,
+        is_ai_content: isAiContent,
       },
     ]);
 
@@ -236,6 +241,14 @@ export async function processSuccessfulPayment(
 
     // Ensure newly submitted ad is only in 'adds' review queue and not in addsactive
     await supabaseAdmin.from("addsactive").delete().eq("id", adData.id);
+
+    if (adData.isAiContent || adData.is_ai_content) {
+      try {
+        await supabaseAdmin.from("adds").update({
+          is_ai_content: true,
+        }).eq("id", adData.id);
+      } catch {}
+    }
 
     // If ad is bidded, record in bidded_ads table for instant priority auction inclusion
     const isBidded = !!adData.isBidded;

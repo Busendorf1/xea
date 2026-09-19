@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
     // Primary Query: Active highlights with targeting & bidding metadata (ordered via DB B-Tree Index)
     let query = supabaseReadOnly
       .from("newsactive")
-      .select("id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement")
+      .select("id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement, is_ai_content")
       .or("is_paused.eq.false,is_paused.is.null")
       .gte("created_at", fiveDaysAgo)
       .order("is_bidded", { ascending: false })
@@ -233,6 +233,7 @@ export async function GET(req: NextRequest) {
         campaign_days: h.campaign_days || 1,
         is_paused: h.is_paused || false,
         admin_statement: h.admin_statement || null,
+        is_ai_content: !!h.is_ai_content,
         is_highest_bidder: isHighestBidder,
         user_render_count: renderCount,
         guaranteed_hold_mins: holdMins

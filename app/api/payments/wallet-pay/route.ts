@@ -133,8 +133,12 @@ export async function POST(req: NextRequest) {
         bid_price,
         custom_sponsor_name,
         custom_sponsor_handle,
+        is_ai_content: rawAiContent,
+        isAiContent: rawAiContentAlt,
         editingId
       } = metadata;
+
+      const isAiContent = !!(rawAiContent ?? rawAiContentAlt);
 
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers if editing
       if (editingId) {
@@ -160,6 +164,7 @@ export async function POST(req: NextRequest) {
             bid_price: bid_price ? parseFloat(bid_price) : null,
             custom_sponsor_name: custom_sponsor_name || null,
             custom_sponsor_handle: custom_sponsor_handle || null,
+            is_ai_content: isAiContent,
           }).eq("id", editingId),
           supabaseAdmin.from("newsactive").update({
             title,
@@ -174,6 +179,7 @@ export async function POST(req: NextRequest) {
             bid_price: bid_price ? parseFloat(bid_price) : null,
             custom_sponsor_name: custom_sponsor_name || null,
             custom_sponsor_handle: custom_sponsor_handle || null,
+            is_ai_content: isAiContent,
           }).eq("id", editingId)
         ]);
       } else {
@@ -192,6 +198,7 @@ export async function POST(req: NextRequest) {
             custom_sponsor_name: custom_sponsor_name || null,
             custom_sponsor_handle: custom_sponsor_handle || null,
             user_email: email,
+            is_ai_content: isAiContent,
           },
         ]);
 
@@ -302,6 +309,14 @@ export async function POST(req: NextRequest) {
           custom_sponsor_logo: adData.customSponsorLogo || null,
           cost_per_impression: 0,
         }).eq("id", adData.id);
+      }
+
+      if (adData.isAiContent || adData.is_ai_content) {
+        try {
+          await supabaseAdmin.from("adds").update({
+            is_ai_content: true,
+          }).eq("id", adData.id);
+        } catch {}
       }
 
       // If ad is bidded, record in bidded_ads table and update Redis ZSET

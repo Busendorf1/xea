@@ -74,6 +74,7 @@ export interface Ad {
   product_cta_type?: string | null;
   product_cta_link?: string | null;
   clicks_product_cta?: number | null;
+  is_ai_content?: boolean;
 }
 
 interface AdCardProps {
@@ -474,6 +475,14 @@ function AdCard({
             </AdvertiserHoverCard>
             <span className={styles.dot}></span>
             <span className={styles.adTime}>{formatTimestamp(ad.created_at)}</span>
+            {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
+              <>
+                <span className={styles.dot}></span>
+                <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
+                  AI Content
+                </span>
+              </>
+            )}
           </div>
 
           <div className={styles.headerRightContainer}>

@@ -58,6 +58,7 @@ export interface Ad {
   custom_sponsor_name?: string;
   custom_sponsor_handle?: string;
   custom_sponsor_logo?: string;
+  is_ai_content?: boolean;
 }
 
 export interface AdvertiserProfile {

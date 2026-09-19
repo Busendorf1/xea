@@ -461,7 +461,7 @@ interface ProfileFormData {
                       type="text"
                       id="businessName"
                       name="businessName"
-                      placeholder="e.g. Acme Corp"
+                      placeholder="e.g. ABC Ltd"
                       maxLength={25}
                       value={formData.businessName}
                       onChange={handleInputChange}

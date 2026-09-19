@@ -84,6 +84,7 @@ type Ad = {
   behavior?: string[] | string;
   personality?: string[] | string;
   ad_type?: string;
+  is_ai_content?: boolean | null;
 };
 
 function getHref(type: string, value: string): string {
@@ -167,44 +168,70 @@ function MultimediaCarousel({ rawMedia, adMediaType }: { rawMedia?: string | nul
   };
 
   return (
-    <div className={styles.carouselWrapper}>
-      {isVideo ? (
-        <video
-          key={currentUrl}
-          src={currentUrl}
-          controls
-          playsInline
-          preload="metadata"
-          className={styles.mediaVideo}
-          onError={() => setImgError(true)}
-        />
-      ) : (
-        <img
-          key={currentUrl}
-          src={currentUrl}
-          alt={`Slide ${currentIndex + 1}`}
-          className={styles.adImgElement}
-          onError={() => setImgError(true)}
-        />
-      )}
+    <div className={styles.carouselContainer}>
+      <div className={styles.carouselWrapper}>
+        <div
+          className={styles.carouselTrack}
+          style={{
+            transform: `translate3d(calc(-${currentIndex} * (100% + 10px)), 0, 0)`,
+          }}
+        >
+          {mediaList.map((url: string, idx: number) => {
+            const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(url);
+            return (
+              <div key={idx} className={styles.carouselSlide}>
+                {isVid ? (
+                  <video
+                    src={url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className={styles.mediaVideo}
+                    onError={() => setImgError(true)}
+                  />
+                ) : (
+                  <img
+                    src={url}
+                    alt={`Slide ${idx + 1}`}
+                    className={styles.adImgElement}
+                    onError={() => setImgError(true)}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {mediaList.length > 1 && (
+          <>
+            {currentIndex > 0 && (
+              <button type="button" onClick={handlePrev} className={`${styles.carouselBtn} ${styles.carouselBtnLeft}`} aria-label="Previous">
+                ‹
+              </button>
+            )}
+            {currentIndex < mediaList.length - 1 && (
+              <button type="button" onClick={handleNext} className={`${styles.carouselBtn} ${styles.carouselBtnRight}`} aria-label="Next">
+                ›
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {mediaList.length > 1 && (
-        <>
-          <button type="button" onClick={handlePrev} className={`${styles.carouselBtn} ${styles.carouselBtnLeft}`}>
-            ‹
-          </button>
-          <button type="button" onClick={handleNext} className={`${styles.carouselBtn} ${styles.carouselBtnRight}`}>
-            ›
-          </button>
-          <div className={styles.carouselDotsContainer}>
-            {mediaList.map((_: string, idx: number) => (
-              <span
-                key={idx}
-                className={`${styles.carouselDot} ${idx === currentIndex ? styles.carouselDotActive : ""}`}
-              />
-            ))}
-          </div>
-        </>
+        <div className={styles.carouselDotsOutside}>
+          {mediaList.map((_: string, idx: number) => (
+            <span
+              key={idx}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentIndex(idx);
+              }}
+              style={{ cursor: "pointer" }}
+              className={`${styles.carouselDot} ${idx === currentIndex ? styles.carouselDotActive : ""}`}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -834,6 +861,12 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               {Number(ad.cost_per_impression || 25) > 25 && (
                 <span className={`${styles.tagPill} ${styles.tagPillBidded}`} title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds. You can boost priority anytime.">
                   <Zap size={13} color="var(--primary)" /> Bidded Priority Ad ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
+                </span>
+              )}
+
+              {(ad.is_ai_content || (ad as any).isAiContent) && (
+                <span className={`${styles.tagPill} ${styles.tagPillAi}`} title="AI-generated content">
+                  AI Content
                 </span>
               )}
             </div>

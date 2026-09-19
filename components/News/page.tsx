@@ -48,6 +48,7 @@ export default function News({ session }: NewsProps) {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
+  const [isAiContent, setIsAiContent] = useState(false);
   const [balance, setBalance] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [stepError, setStepError] = useState<string | null>(null);
@@ -242,6 +243,8 @@ export default function News({ session }: NewsProps) {
             is_admin_post: false,
             custom_sponsor_name: customSponsorName || null,
             custom_sponsor_handle: customSponsorHandle || null,
+            is_ai_content: isAiContent,
+            isAiContent: isAiContent,
           },
           callbackUrl: `${window.location.origin}/user/statement`
         })
@@ -435,7 +438,7 @@ export default function News({ session }: NewsProps) {
                       <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Sponsor Name (Optional)</label>
                       <input
                         type="text"
-                        placeholder="e.g. Acme News (defaults to Sponsored)"
+                        placeholder="e.g. ABC News (defaults to Sponsored)"
                         value={customSponsorName}
                         onChange={(e) => setCustomSponsorName(e.target.value)}
                         className={styles.inputBox}
@@ -445,7 +448,7 @@ export default function News({ session }: NewsProps) {
                       <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Handle (Optional)</label>
                       <input
                         type="text"
-                        placeholder="e.g. @acme_news (defaults to @Sponsored)"
+                        placeholder="e.g. @abc_news (defaults to @Sponsored)"
                         value={customSponsorHandle}
                         onChange={(e) => setCustomSponsorHandle(e.target.value)}
                         className={styles.inputBox}
@@ -601,7 +604,77 @@ export default function News({ session }: NewsProps) {
                   </div>
                 )}
 
-                <div style={{ marginTop: "1.25rem", display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px 14px", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
+                {/* AI Content Disclosure Toggle */}
+                <div
+                  style={{
+                    marginTop: "1.25rem",
+                    marginBottom: "0.75rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "14px",
+                    padding: "14px 16px",
+                    backgroundColor: "var(--sidebar-bg)",
+                    borderRadius: "10px",
+                    border: "1px solid var(--card-border)",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                    <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--foreground)" }}>
+                      AI-generated content
+                    </span>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", lineHeight: 1.35 }}>
+                      Turn this on if your highlight contains media or text generated or altered using AI tools.
+                    </span>
+                  </div>
+                  <label
+                    style={{
+                      position: "relative",
+                      display: "inline-block",
+                      width: "44px",
+                      height: "24px",
+                      flexShrink: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isAiContent}
+                      onChange={(e) => setIsAiContent(e.target.checked)}
+                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
+                    />
+                    <span
+                      style={{
+                        position: "absolute",
+                        cursor: "pointer",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: isAiContent ? "var(--primary)" : "var(--card-border)",
+                        transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+                        borderRadius: "24px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          content: '""',
+                          height: "18px",
+                          width: "18px",
+                          left: isAiContent ? "23px" : "3px",
+                          bottom: "3px",
+                          backgroundColor: "#ffffff",
+                          transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+                          borderRadius: "50%",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                        }}
+                      />
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ marginTop: "0.75rem", display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px 14px", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
                   <input
                     type="checkbox"
                     id="newsTermsPolicyCheckbox"
