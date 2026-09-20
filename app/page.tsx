@@ -1,8 +1,6 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
-import FrontText from "@/components/FrontText/page";
-import Header from "@/components/Headerhome/page";
-import styles from "./page.module.css";
+import ModalLandingPage from "@/components/ModalLanding/page";
 import DashboardClient from "@/components/DashboardClient/page";
 import { getUserProfileForDashboard } from "@/lib/getUserProfileForDashboard";
 
@@ -30,11 +28,6 @@ export default async function Home() {
     }
   }
 
-  // Guest users visiting https://paayh.com see the public landing page
-  return (
-    <div className={styles.page}>
-      <Header />
-      <FrontText />
-    </div>
-  );
+  // Guest users visiting https://paayh.com see the dialogue concierge landing experience
+  return <ModalLandingPage />;
 }

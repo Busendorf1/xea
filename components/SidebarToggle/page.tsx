@@ -3,10 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Settings } from "lucide-react";
+import { useUser } from "@auth0/nextjs-auth0";
 
 import styles from "./page.module.css";
 
 export default function SidebarMenu() {
+  const { user, isLoading } = useUser();
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -31,6 +33,10 @@ export default function SidebarMenu() {
     }
     setShowMenu(false);
   };
+
+  if (isLoading || !user) {
+    return null;
+  }
 
   return (
     <div className={styles.accountMenuContainer} ref={menuRef}>

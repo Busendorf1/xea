@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useUser } from "@auth0/nextjs-auth0";
 import styles from "../HeaderJoin/page.module.css";
 import { useTheme } from "../ThemeProvider";
 import { Sun, Moon } from "lucide-react";
@@ -10,6 +11,7 @@ import SidebarMenu from "../SidebarToggle/page";
 export default function HeaderJoin() {
   const [menuActive, setMenuActive] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const { user, isLoading } = useUser();
   const { theme, setTheme } = useTheme();
   const [showHeader, setShowHeader] = useState(true);
   const headerRef = useRef<HTMLHeadingElement>(null);
@@ -124,7 +126,7 @@ export default function HeaderJoin() {
         <>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", order: 3 }}>
             {renderThemeSwitcher()}
-            <SidebarMenu />
+            {!isLoading && user && <SidebarMenu />}
             <div className={styles.menu}>
               <div
                 className={styles.hamburger}
@@ -164,7 +166,7 @@ export default function HeaderJoin() {
           <div className={styles.create}>
             <Link href={"/../faq"}>Faq</Link>
           </div>
-          <SidebarMenu />
+          {!isLoading && user && <SidebarMenu />}
           {renderThemeSwitcher()}
         </div>
       )}

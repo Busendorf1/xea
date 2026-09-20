@@ -10,12 +10,12 @@ const faqs = [
   {
     question: "Know More About Us",
     answer:
-      "Paayh is a platform that turns your attention into income. We deliver ads with 100% deliverability and transparency, and you earn for engaging with content you actually care about.",
+      "Paayh is a platform that turns your attention into earnings. We deliver ads with 99.99% deliverability and transparency, and you earn for engaging with content you actually care about.",
   },
   {
     question: "What is UBI?",
     answer:
-      "UBI (Universal Basic Income) is a consistent income provided to all individuals regardless of status. At Paayh, we simulate this by rewarding users for their time and attention.",
+      "UBI (Universal Basic Income) is a consistent income provided to all individuals regardless of status. At Paayh, we contribute to this by rewarding users for their time and attention.",
   },
   {
     question: "Why Shared Revenue?",
