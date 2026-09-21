@@ -352,8 +352,10 @@ export async function POST(req: NextRequest) {
           : `Your ad campaign with ${adData.impressions} attentions was paid using your wallet balance and submitted for review.`,
       });
     }
-    // Invalidate cached profile in Redis
+    // Invalidate cached profile and user campaigns in Redis
     await invalidateCachedProfile(email);
+    const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
+    await invalidateCachedUserCampaigns(email).catch(() => {});
 
     return NextResponse.json({
       success: true,

@@ -29,7 +29,7 @@ export default function Careers() {
 
         <div className={styles.emailSection}>
           <div className={styles.emailLabel}>How to Apply</div>
-          <p className={styles.text} style={{ marginBottom: "1rem", color: "var(--foreground)" }}>
+          <p className={`${styles.text} ${styles.applyText}`}>
             All interested candidates should send their resume, cover letter, or portfolio directly to our recruiting inbox:
           </p>
           <a href="mailto:xea@paayh.com" className={styles.emailAddress}>

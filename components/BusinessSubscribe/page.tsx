@@ -187,7 +187,7 @@ export default function BusinessSubscribeComponent() {
   if (authLoading || fetchingSub) {
     return (
       <div className={styles.loadingContainer}>
-        <RefreshCw size={24} className="spin" style={{ marginRight: 10 }} />
+        <RefreshCw size={24} className={`spin ${styles.spinIcon}`} />
         <p>Loading brand subscription status...</p>
       </div>
     );
@@ -218,9 +218,9 @@ export default function BusinessSubscribeComponent() {
         </h1>
         <p className={styles.heroSubtitle}>
           Register your website domain as a{" "}
-          <strong style={{ color: "#38bdf8" }}>Paayh Premium Subscriber</strong>. Whenever any
+          <strong className={styles.accent}>Paayh Premium Subscriber</strong>. Whenever any
           merchant advertises a product link from your domain on Paayh, they instantly unlock a{" "}
-          <strong style={{ color: "#10b981" }}>30% ad discount!</strong>
+          <strong className={styles.green}>30% ad discount!</strong>
         </p>
       </div>
 
@@ -261,108 +261,107 @@ export default function BusinessSubscribeComponent() {
 
       {/* Alerts */}
       {successMsg && (
-        <div className={styles.successAlert} style={{ maxWidth: "680px", margin: "0 auto 1.5rem auto" }}>
+        <div className={`${styles.successAlert} ${styles.alertBox}`}>
           <CheckCircle2 size={22} color="#34d399" className={styles.successIcon} />
           <span>{successMsg}</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className={styles.errorAlert} style={{ maxWidth: "680px", margin: "0 auto 1.5rem auto" }}>
-          <AlertCircle size={20} color="#ef4444" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div className={`${styles.errorAlert} ${styles.alertBox}`}>
+          <AlertCircle size={20} color="#ef4444" className={styles.alertIcon} />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* SECTION 1: PENDING APPLICATION STATUS */}
       {subscriber && subscriber.status === "pending" && !showReapplyForm && (
-        <div className={styles.formCard} style={{ borderColor: "var(--card-border)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "var(--sidebar-bg)", margin: "0 auto 1.25rem auto" }}>
+        <div className={styles.formCard}>
+          <div className={styles.statusIconCircle}>
             <Clock size={28} color="var(--primary)" />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: "0.5rem" }}>
+          <h2 className={`${styles.formTitle} ${styles.formTitleMargin}`}>
             Application Under Review
           </h2>
-          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-            Your brand application for <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong> ({subscriber.business_name}) has been submitted to platform administrators for review.
+          <p className={styles.statusText}>
+            Your brand application for <strong className={styles.textPrimary}>{subscriber.domain}</strong> ({subscriber.business_name}) has been submitted to platform administrators for review.
           </p>
 
-          <div style={{ backgroundColor: "var(--background)", borderRadius: 8, padding: "1.25rem", border: "1px solid var(--card-border)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Registered Domain:</span>
-              <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong>
+          <div className={styles.statusSummaryBox}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Registered Domain:</span>
+              <strong className={styles.textPrimary}>{subscriber.domain}</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Business / Platform Name:</span>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Business / Platform Name:</span>
               <strong>{subscriber.business_name}</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Review Status:</span>
-              <span style={{ color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", fontSize: "0.8rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 8px", borderRadius: 4, border: "1px solid var(--card-border)" }}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Review Status:</span>
+              <span className={styles.badgePending}>
                 Pending Admin Approval
               </span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--text-muted)" }}>Activation Fee Upon Approval:</span>
-              <strong style={{ color: "var(--success)" }}>{subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`}</strong>
+            <div className={styles.summaryRowLast}>
+              <span className={styles.textMuted}>Activation Fee Upon Approval:</span>
+              <strong className={styles.textSuccess}>{subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`}</strong>
             </div>
           </div>
 
-          <p style={{ textAlign: "center", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Once approved, you will be able to complete payment right here to activate your brand's 30% ad subsidy.
+          <p className={styles.statusHint}>
+            Once approved, you will be able to complete payment right here to activate your brand&apos;s 30% ad subsidy.
           </p>
         </div>
       )}
 
       {/* SECTION 2: APPROVED APPLICATION - COMPLETE PAYMENT IN THIS SAME SECTION */}
       {subscriber && subscriber.status === "approved" && subscriber.payment_status !== "paid" && (
-        <div className={styles.formCard} style={{ borderColor: "var(--success)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "var(--sidebar-bg)", margin: "0 auto 1.25rem auto" }}>
+        <div className={`${styles.formCard} ${styles.formCardSuccess}`}>
+          <div className={styles.statusIconCircle}>
             <CheckCircle2 size={28} color="var(--success)" />
           </div>
-          <h2 className={styles.formTitle} style={{ color: "var(--success)", marginBottom: "0.5rem" }}>
+          <h2 className={`${styles.formTitle} ${styles.formTitleSuccess}`}>
             Application Approved!
           </h2>
-          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-            Your application for <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong> has been approved by administrators. Complete payment to activate your brand's 30% discount subsidy.
+          <p className={styles.statusText}>
+            Your application for <strong className={styles.textPrimary}>{subscriber.domain}</strong> has been approved by administrators. Complete payment to activate your brand&apos;s 30% discount subsidy.
           </p>
 
-          <div style={{ backgroundColor: "var(--background)", borderRadius: 8, padding: "1.25rem", border: "1px solid var(--card-border)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Domain:</span>
-              <strong style={{ color: "var(--primary)" }}>{subscriber.domain}</strong>
+          <div className={styles.statusSummaryBox}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Domain:</span>
+              <strong className={styles.textPrimary}>{subscriber.domain}</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Business Name:</span>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Business Name:</span>
               <strong>{subscriber.business_name}</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Status:</span>
-              <span style={{ color: "var(--success)", fontWeight: 700, fontSize: "0.8rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 8px", borderRadius: 4, border: "1px solid var(--card-border)" }}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Status:</span>
+              <span className={styles.badgeApproved}>
                 APPROVED (AWAITING PAYMENT)
               </span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Subscription Amount:</span>
-              <strong style={{ color: "var(--success)", fontSize: "1.1rem" }}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Subscription Amount:</span>
+              <strong className={`${styles.textSuccess} ${styles.textLarge}`}>
                 {subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`}
               </strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--text-muted)" }}>Your Wallet Balance:</span>
-              <strong style={{ color: walletBalance >= Number(subscriber.amount || 150000) ? "var(--success)" : "var(--danger)" }}>
+            <div className={styles.summaryRowLast}>
+              <span className={styles.textMuted}>Your Wallet Balance:</span>
+              <strong className={walletBalance >= Number(subscriber.amount || 150000) ? styles.textSuccess : styles.textDanger}>
                 {currency === "NGN" ? `₦${walletBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}` : `$${walletBalance.toFixed(2)}`}
               </strong>
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div className={styles.paymentButtons}>
             <button
               type="button"
               onClick={handleWalletPayment}
               disabled={paymentLoading}
-              className={styles.submitBtn}
-              style={{ backgroundColor: "#10b981" }}
+              className={`${styles.submitBtn} ${styles.payWalletBtn}`}
             >
               <Wallet size={18} />
               {paymentLoading ? "Processing Payment..." : `Pay ${subscriber.currency === "NGN" ? `₦${Number(subscriber.amount || 150000).toLocaleString()}` : `$${subscriber.amount || 100}`} from Wallet Balance`}
@@ -372,8 +371,7 @@ export default function BusinessSubscribeComponent() {
               type="button"
               onClick={handleCardPayment}
               disabled={paymentLoading}
-              className={styles.submitBtn}
-              style={{ backgroundColor: "rgba(255,255,255,0.06)", color: "var(--foreground)", border: "1px solid var(--card-border)" }}
+              className={`${styles.submitBtn} ${styles.payCardBtn}`}
             >
               <CreditCard size={18} />
               Pay with Card / Bank (Paystack)
@@ -384,35 +382,35 @@ export default function BusinessSubscribeComponent() {
 
       {/* SECTION 3: ACTIVE VERIFIED SUBSCRIBER */}
       {subscriber && subscriber.status === "active" && (
-        <div className={styles.formCard} style={{ borderColor: "#10b981", backgroundColor: "rgba(16,185,129,0.04)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "rgba(16,185,129,0.2)", margin: "0 auto 1.25rem auto" }}>
+        <div className={`${styles.formCard} ${styles.formCardActive}`}>
+          <div className={`${styles.statusIconCircle} ${styles.statusIconCircleSuccess}`}>
             <ShieldCheck size={32} color="#10b981" />
           </div>
-          <h2 className={styles.formTitle} style={{ color: "#10b981", marginBottom: "0.5rem" }}>
+          <h2 className={`${styles.formTitle} ${styles.formTitleActive}`}>
             Verified Premium Subscriber Brand
           </h2>
-          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-            <strong style={{ color: "#38bdf8" }}>{subscriber.domain}</strong> ({subscriber.business_name}) is actively verified. Whenever any merchant promotes a link with your domain, they automatically receive a <strong style={{ color: "#10b981" }}>30% ad creation discount</strong>.
+          <p className={styles.statusText}>
+            <strong className={styles.accentText}>{subscriber.domain}</strong> ({subscriber.business_name}) is actively verified. Whenever any merchant promotes a link with your domain, they automatically receive a <strong className={styles.greenText}>30% ad creation discount</strong>.
           </p>
 
-          <div style={{ backgroundColor: "var(--background)", borderRadius: 8, padding: "1.25rem", border: "1px solid var(--card-border)", fontSize: "0.9rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Brand Domain:</span>
-              <strong style={{ color: "#38bdf8" }}>{subscriber.domain}</strong>
+          <div className={`${styles.statusSummaryBox} ${styles.statusSummaryBoxNoMargin}`}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Brand Domain:</span>
+              <strong className={styles.accentText}>{subscriber.domain}</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Discount Subsidy:</span>
-              <strong style={{ color: "#10b981" }}>{subscriber.discount_percentage || 30}% OFF on every ad</strong>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Discount Subsidy:</span>
+              <strong className={styles.greenText}>{subscriber.discount_percentage || 30}% OFF on every ad</strong>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ color: "var(--text-muted)" }}>Standing:</span>
-              <span style={{ color: "#10b981", fontWeight: 700, fontSize: "0.8rem", backgroundColor: "rgba(16,185,129,0.15)", padding: "2px 8px", borderRadius: 4 }}>
+            <div className={styles.summaryRow}>
+              <span className={styles.textMuted}>Standing:</span>
+              <span className={styles.badgeActivePaid}>
                 ACTIVE &amp; PAID
               </span>
             </div>
             {subscriber.payment_reference && (
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Reference:</span>
+              <div className={styles.summaryRowLast}>
+                <span className={styles.textMuted}>Reference:</span>
                 <code>{subscriber.payment_reference}</code>
               </div>
             )}
@@ -422,18 +420,18 @@ export default function BusinessSubscribeComponent() {
 
       {/* SECTION 4: REJECTED APPLICATION */}
       {subscriber && subscriber.status === "rejected" && !showReapplyForm && (
-        <div className={styles.formCard} style={{ borderColor: "#ef4444" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: 12, backgroundColor: "rgba(239,68,68,0.15)", margin: "0 auto 1.25rem auto" }}>
+        <div className={`${styles.formCard} ${styles.formCardDanger}`}>
+          <div className={`${styles.statusIconCircle} ${styles.statusIconCircleDanger}`}>
             <AlertCircle size={28} color="#ef4444" />
           </div>
-          <h2 className={styles.formTitle} style={{ color: "#ef4444", marginBottom: "0.5rem" }}>
+          <h2 className={`${styles.formTitle} ${styles.formTitleDanger}`}>
             Application Not Approved
           </h2>
-          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: "1rem" }}>
+          <p className={`${styles.statusText} ${styles.statusTextCompact}`}>
             Your application for <strong>{subscriber.domain}</strong> was reviewed and not approved at this time.
           </p>
           {subscriber.rejection_reason && (
-            <div style={{ backgroundColor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 6, padding: "10px 14px", fontSize: "0.9rem", color: "#f87171", marginBottom: "1.5rem" }}>
+            <div className={styles.rejectionFeedbackBox}>
               <strong>Admin Feedback:</strong> {subscriber.rejection_reason}
             </div>
           )}
@@ -441,7 +439,6 @@ export default function BusinessSubscribeComponent() {
             type="button"
             onClick={() => setShowReapplyForm(true)}
             className={styles.submitBtn}
-            style={{ backgroundColor: "var(--primary)" }}
           >
             Submit Corrected Application <ArrowRight size={18} />
           </button>
@@ -453,9 +450,9 @@ export default function BusinessSubscribeComponent() {
         <div className={styles.formCard}>
           <h2 className={styles.formTitle}>Register Your Business Domain</h2>
 
-          <div style={{ backgroundColor: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 8, padding: "12px 16px", marginBottom: "1.5rem", fontSize: "0.88rem", color: "var(--foreground)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className={styles.feeNoticeBanner}>
             <span>Annual Subscription Fee:</span>
-            <strong style={{ color: "#10b981", fontSize: "1.05rem" }}>{formattedSubPrice}</strong>
+            <strong className={styles.feePrice}>{formattedSubPrice}</strong>
           </div>
 
           <form onSubmit={handleSubmit} className={styles.form}>

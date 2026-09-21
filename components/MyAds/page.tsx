@@ -29,6 +29,8 @@ import {
   CreditCard,
   Star,
   XCircle,
+  RotateCw,
+  Tag,
 } from "lucide-react";
 interface Session {
   user?: {
@@ -54,6 +56,10 @@ type Ad = {
   action_whatsapp?: string;
   action_email?: string;
   action_website?: string;
+  action_ios?: string;
+  action_android?: string;
+  action_watch_now?: string;
+  ad_action_buttons?: string[];
   created_at: string | null;
   impression_count: number | null;
   impressions: number;
@@ -64,6 +70,9 @@ type Ad = {
   state?: string | null;
   province?: string | null;
   gender?: string | null;
+  age_range?: number[] | string[] | string | null;
+  employment_status?: string[] | string | null;
+  targeting_all?: boolean | null;
   admin_statement?: string | null;
   is_bidded?: boolean | null;
   display_mutual_button?: boolean | null;
@@ -78,14 +87,58 @@ type Ad = {
   cost_per_impression?: number;
   total_cost?: number;
   daily_budget?: number;
-  industry?: string[] | string;
-  interest?: string[] | string;
-  lifestyle?: string[] | string;
-  behavior?: string[] | string;
-  personality?: string[] | string;
+  industry?: string[] | string | null;
+  interest?: string[] | string | null;
+  lifestyle?: string[] | string | null;
+  behavior?: string[] | string | null;
+  personality?: string[] | string | null;
   ad_type?: string;
   is_ai_content?: boolean | null;
 };
+
+function parseTargetingList(val: any): string[] {
+  if (!val) return [];
+  if (Array.isArray(val)) {
+    return val.map((s) => String(s).trim()).filter(Boolean);
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === "[]" || trimmed === "null" || trimmed === "undefined") return [];
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((s) => String(s).trim()).filter(Boolean);
+        }
+      } catch {}
+    }
+    return trimmed
+      .split(/[,;]/)
+      .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function formatAgeRange(val: any): string {
+  if (!val) return "18 - 65 yrs";
+  if (Array.isArray(val) && val.length >= 2) {
+    return `${val[0]} - ${val[1]} yrs`;
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed) && parsed.length >= 2) {
+          return `${parsed[0]} - ${parsed[1]} yrs`;
+        }
+      } catch {}
+    }
+    return trimmed;
+  }
+  return "18 - 65 yrs";
+}
 
 function getHref(type: string, value: string): string {
   switch (type) {
@@ -227,7 +280,6 @@ function MultimediaCarousel({ rawMedia, adMediaType }: { rawMedia?: string | nul
                 e.stopPropagation();
                 setCurrentIndex(idx);
               }}
-              style={{ cursor: "pointer" }}
               className={`${styles.carouselDot} ${idx === currentIndex ? styles.carouselDotActive : ""}`}
             />
           ))}
@@ -271,7 +323,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     return pages.map((pg, idx) => {
       if (typeof pg === "string") {
         return (
-          <span key={`el-${idx}`} style={{ padding: "0 4px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+          <span key={`el-${idx}`} className={styles.paginationEllipsis}>
             …
           </span>
         );
@@ -334,14 +386,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     if (!email) return;
 
     const cacheKey = `my_ads_cache_${email.toLowerCase()}`;
-    const TEN_MINUTES = 10 * 60 * 1000;
+    const THIRTY_SECONDS = 30 * 1000;
 
     if (!bypassCache && typeof window !== "undefined") {
       try {
         const cachedRaw = sessionStorage.getItem(cacheKey);
         if (cachedRaw) {
           const cached = JSON.parse(cachedRaw);
-          if (cached && cached.timestamp && Date.now() - cached.timestamp < TEN_MINUTES) {
+          if (cached && cached.timestamp && Date.now() - cached.timestamp < THIRTY_SECONDS) {
             setReviewAds(cached.reviewAds || []);
             setActiveAds(cached.activeAds || []);
             setReportsMap(cached.reportsMap || {});
@@ -824,6 +876,17 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productCtaClicks;
     const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
     
+    // Parse all targeting dimensions for rich targeting display
+    const industryList = parseTargetingList(ad.industry);
+    const interestList = parseTargetingList(ad.interest);
+    const lifestyleList = parseTargetingList(ad.lifestyle);
+    const behaviorList = parseTargetingList(ad.behavior);
+    const personalityList = parseTargetingList(ad.personality);
+    const employmentList = parseTargetingList(ad.employment_status);
+    const ageRangeText = formatAgeRange(ad.age_range);
+    const geoText = [ad.province, ad.state, ad.country].filter(Boolean).join(" • ") || (ad.country ? ad.country : "Global");
+    const totalCategoriesCount = industryList.length + interestList.length + lifestyleList.length + behaviorList.length + personalityList.length;
+
     const targetImpressions = ad.impressions ?? 1000;
     const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
     
@@ -890,15 +953,46 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 </span>
               )}
               <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Users size={13} /> Target: {ad.gender || "All Genders"}
+                <Globe size={13} /> Geo: {geoText}
               </span>
               <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Target size={13} /> Categories: {
-                  Array.isArray(ad.industry) ? ad.industry.join(", ") :
-                  Array.isArray(ad.interest) ? ad.interest.join(", ") :
-                  ad.industry || ad.interest || "General"
-                }
+                <Users size={13} /> {ad.gender ? (ad.gender.toLowerCase() === "both" ? "All Genders" : ad.gender.charAt(0).toUpperCase() + ad.gender.slice(1)) : "All Genders"} • {ageRangeText}
               </span>
+              {industryList.length > 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <Target size={13} /> Industry ({industryList.length}): {industryList.join(", ")}
+                </span>
+              )}
+              {interestList.length > 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <Tag size={13} /> Interests ({interestList.length}): {interestList.join(", ")}
+                </span>
+              )}
+              {lifestyleList.length > 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <SlidersHorizontal size={13} /> Lifestyle ({lifestyleList.length}): {lifestyleList.join(", ")}
+                </span>
+              )}
+              {behaviorList.length > 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <Target size={13} /> Behavior ({behaviorList.length}): {behaviorList.join(", ")}
+                </span>
+              )}
+              {personalityList.length > 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <Users size={13} /> Personality ({personalityList.length}): {personalityList.join(", ")}
+                </span>
+              )}
+              {employmentList.length > 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <Users size={13} /> Employment: {employmentList.join(", ")}
+                </span>
+              )}
+              {totalCategoriesCount === 0 && (
+                <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                  <Target size={13} /> Targeting: Broad Delivery
+                </span>
+              )}
               <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
                 <Zap size={13} /> {ad.user_frequency_cap || 1} View/Viewer/Day
               </span>
@@ -971,18 +1065,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               </span>
             ) : daysInfo.isRollover ? (
               <span
-                style={{
-                  backgroundColor: "var(--primary-glow)",
-                  color: "var(--primary)",
-                  border: "1px solid var(--primary)",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  fontSize: "0.75rem",
-                  fontWeight: "800",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}
+                className={styles.badgeRollover}
                 title="Campaign schedule passed but impressions remain unfulfilled. Actively delivering in Rollover mode."
               >
                 ROLLOVER (+{daysInfo.rolloverDays}d)
@@ -1109,7 +1192,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   Share
                 </button>
                 <a
-                  href={`/user/adPage?id=${ad.id}`}
+                  href="/logged-in"
                   className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
                   onClick={(e) => {
                     e.preventDefault();
@@ -1198,14 +1281,21 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <div className={styles.specItem}>
                 <span className={styles.specLabel}>Target Location</span>
                 <span className={styles.specVal}>
-                  {ad.country || "Global"} {ad.state ? `(${ad.state})` : ""}
+                  {geoText}
                 </span>
               </div>
 
               <div className={styles.specItem}>
                 <span className={styles.specLabel}>Target Gender & Age</span>
                 <span className={styles.specVal}>
-                  {ad.gender || "All Genders"} • 18 - 65 yrs
+                  {ad.gender ? (ad.gender.toLowerCase() === "both" ? "All Genders" : ad.gender.charAt(0).toUpperCase() + ad.gender.slice(1)) : "All Genders"} • {ageRangeText}
+                </span>
+              </div>
+
+              <div className={styles.specItem}>
+                <span className={styles.specLabel}>Targeting Scope</span>
+                <span className={styles.specVal}>
+                  {totalCategoriesCount > 0 ? `${totalCategoriesCount} Categories Configured` : "Broad Delivery"}
                 </span>
               </div>
 
@@ -1220,6 +1310,138 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                     "Disabled"
                   )}
                 </span>
+              </div>
+            </div>
+
+            {/* Complete Audience Targeting Specifications Matrix */}
+            <div className={styles.targetingMatrixBox}>
+              <span className={styles.targetingMatrixTitle}>
+                <Target size={14} color="var(--primary)" /> Complete Audience Targeting Specifications
+              </span>
+              
+              <div className={styles.targetingMatrixGrid}>
+                {/* Industry Categories */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Industry Categories</span>
+                    <span className={styles.targetingCardCount}>{industryList.length} selected</span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    {industryList.length > 0 ? (
+                      industryList.map((item, idx) => (
+                        <span key={idx} className={styles.targetingChip}>{item}</span>
+                      ))
+                    ) : (
+                      <span className={styles.targetingEmpty}>Broad (All Industries)</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Interest Categories */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Interest Categories</span>
+                    <span className={styles.targetingCardCount}>{interestList.length} selected</span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    {interestList.length > 0 ? (
+                      interestList.map((item, idx) => (
+                        <span key={idx} className={styles.targetingChip}>{item}</span>
+                      ))
+                    ) : (
+                      <span className={styles.targetingEmpty}>Broad (All Interests)</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Lifestyle Profiles */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Lifestyle Profiles</span>
+                    <span className={styles.targetingCardCount}>{lifestyleList.length} selected</span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    {lifestyleList.length > 0 ? (
+                      lifestyleList.map((item, idx) => (
+                        <span key={idx} className={styles.targetingChip}>{item}</span>
+                      ))
+                    ) : (
+                      <span className={styles.targetingEmpty}>Broad (All Lifestyles)</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Consumer Behaviors */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Consumer Behaviors</span>
+                    <span className={styles.targetingCardCount}>{behaviorList.length} selected</span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    {behaviorList.length > 0 ? (
+                      behaviorList.map((item, idx) => (
+                        <span key={idx} className={styles.targetingChip}>{item}</span>
+                      ))
+                    ) : (
+                      <span className={styles.targetingEmpty}>Broad (All Behaviors)</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Personality Types */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Personality Types</span>
+                    <span className={styles.targetingCardCount}>{personalityList.length} selected</span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    {personalityList.length > 0 ? (
+                      personalityList.map((item, idx) => (
+                        <span key={idx} className={styles.targetingChip}>{item}</span>
+                      ))
+                    ) : (
+                      <span className={styles.targetingEmpty}>Broad (All Personalities)</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Demographics & Employment */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Demographics & Employment</span>
+                    <span className={styles.targetingCardCount}>
+                      {[ad.gender, ageRangeText, employmentList.length > 0 ? `${employmentList.length} status` : null].filter(Boolean).length} configured
+                    </span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    <span className={styles.targetingChip}>
+                      Gender: {ad.gender ? (ad.gender.toLowerCase() === "both" ? "All Genders" : ad.gender.charAt(0).toUpperCase() + ad.gender.slice(1)) : "All Genders"}
+                    </span>
+                    <span className={styles.targetingChip}>
+                      Age: {ageRangeText}
+                    </span>
+                    {employmentList.length > 0 ? (
+                      employmentList.map((emp, idx) => (
+                        <span key={idx} className={styles.targetingChip}>{emp}</span>
+                      ))
+                    ) : (
+                      <span className={styles.targetingChip}>Employment: All</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Geographic Delivery */}
+                <div className={styles.targetingCard}>
+                  <div className={styles.targetingCardHeader}>
+                    <span className={styles.targetingCardLabel}>Geographic Delivery</span>
+                    <span className={styles.targetingCardCount}>{ad.country || "Global"}</span>
+                  </div>
+                  <div className={styles.targetingChipsRow}>
+                    <span className={styles.targetingChip}>Country: {ad.country || "All / Global"}</span>
+                    {ad.state && <span className={styles.targetingChip}>State: {ad.state}</span>}
+                    {ad.province && <span className={styles.targetingChip}>Locations: {ad.province}</span>}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1247,6 +1469,18 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
   return (
     <div className={styles.feedContainer}>
+      <div className={styles.headerBar}>
+        <h2 className={styles.headerTitle}>My Ad Campaigns</h2>
+        <button
+          type="button"
+          onClick={() => fetchAds(true)}
+          className={styles.refreshAdsBtn}
+          title="Force-fetch latest ad campaigns and metrics from database"
+        >
+          <RotateCw size={13} /> Refresh Ads
+        </button>
+      </div>
+
       {loading && <p className={styles.loading}>Loading ads…</p>}
       {!loading && error && <p className={styles.error}>Error loading ads.</p>}
       
@@ -1260,8 +1494,8 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           </div>
           <div className={styles.kpiCard}>
             <span className={styles.kpiLabel}>Ads in Review</span>
-            <span className={styles.kpiValue} style={{ color: "var(--text-muted)" }}>{reviewAds.length}</span>
-            <span className={styles.kpiSub} style={{ color: "var(--text-muted)" }}>Pending approval</span>
+            <span className={`${styles.kpiValue} ${styles.kpiValueMuted}`}>{reviewAds.length}</span>
+            <span className={`${styles.kpiSub} ${styles.kpiSubMuted}`}>Pending approval</span>
           </div>
           <div className={styles.kpiCard}>
             <span className={styles.kpiLabel}>Impressions Delivered</span>
@@ -1323,7 +1557,13 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             You do not have any active ads. Post one now!
           </p>
           <div className={styles.postButtonContainer}>
-            <Link href="/user/adPage">
+            <Link 
+              href="/logged-in"
+              onClick={() => {
+                sessionStorage.setItem("paayh_active_tab", "adPage");
+                window.dispatchEvent(new Event("paayh_tab_change"));
+              }}
+            >
               <button className={styles.postButton}>Post an Ad</button>
             </Link>
           </div>

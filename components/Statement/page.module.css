@@ -827,3 +827,8 @@
   cursor: not-allowed;
 }
 
+.pageEllipsis {
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+

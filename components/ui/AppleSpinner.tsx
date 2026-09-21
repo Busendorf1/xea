@@ -1,32 +1,18 @@
 "use client";
 
 import React from "react";
+import styles from "./AppleSpinner.module.css";
 
 export default function AppleSpinner({ size = 36, color }: { size?: number; color?: string }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
-        height: "100%",
-        minHeight: "120px",
-      }}
-    >
+    <div className={styles.spinnerContainer}>
       <svg
         width={size}
         height={size}
         viewBox="0 0 38 38"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ animation: "appleSpin 0.8s linear infinite" }}
+        className={styles.spinnerSvg}
       >
-        <style>{`
-          @keyframes appleSpin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
         <defs>
           <linearGradient x1="8.042%" y1="0%" x2="65.682%" y2="23.865%" id="appleSpinnerGrad">
             <stop stopColor={color || "var(--primary, #2563eb)"} stopOpacity="0" offset="0%" />

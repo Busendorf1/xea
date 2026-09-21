@@ -13,10 +13,10 @@ export default function PolicyPage() {
           <em>Last Updated: September 12, 2026 | Effective Date: September 12, 2026</em>
         </p>
 
-        <div style={{ backgroundColor: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", borderLeft: "4px solid var(--primary)", borderRadius: "8px", padding: "1.25rem", color: "var(--foreground)", fontSize: "0.95rem" }}>
+        <div className={styles.policyBanner}>
           This Privacy Policy explains how Paayh collects, uses, encrypts, and protects your personal data in compliance with the
           <strong> Nigeria Data Protection Act (NDPA 2023)</strong> and global privacy frameworks (including GDPR). For contractual terms governing platform access, content posting, and attention monetization, please review our dedicated{" "}
-          <Link href="/terms" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+          <Link href="/terms" className={styles.policyLink}>
             Terms of Service
           </Link>.
         </div>
@@ -85,9 +85,9 @@ export default function PolicyPage() {
         {/* SECTION 5 */}
         <section id="cookies">
           <h2 className={styles.heading}>V. Cookies &amp; Tracking Technologies</h2>
-          <p style={{ marginBottom: "0.75rem" }}>
+          <p className={styles.subParagraph}>
             For a comprehensive breakdown of our storage mechanisms, token lifecycle, and category disclosures, please inspect our standalone{" "}
-            <Link href="/cookies" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+            <Link href="/cookies" className={styles.policyLink}>
               Cookie Policy
             </Link>.
           </p>
@@ -122,7 +122,7 @@ export default function PolicyPage() {
           <h2 className={styles.heading}>VII. Data Retention &amp; Inactivity Policy</h2>
           <p>
             Personal data is retained only for as long as necessary to provide services and fulfill statutory accounting obligations. Inactivity resets and balance expirations are strictly enforced in accordance with our{" "}
-            <Link href="/terms#inactivity-guidelines" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+            <Link href="/terms#inactivity-guidelines" className={styles.policyLink}>
               Platform Inactivity Management Guidelines
             </Link>:
           </p>

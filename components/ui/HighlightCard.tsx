@@ -29,14 +29,7 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
     <div key={`hl-${ad.id}`} className={styles.card} style={style}>
       {/* Left Column: Avatar Icon */}
       <div className={styles.avatarCol}>
-        <div
-          className={styles.avatar}
-          style={{
-            backgroundColor: "var(--primary)",
-            color: "#ffffff",
-            fontWeight: "800",
-          }}
-        >
+        <div className={`${styles.avatar} ${styles.highlightAvatar}`}>
           HL
         </div>
       </div>
@@ -59,10 +52,7 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
               </>
             )}
           </div>
-          <span
-            className={styles.sponsorLabel}
-            style={{ color: "var(--primary)", fontWeight: "700" }}
-          >
+          <span className={`${styles.sponsorLabel} ${styles.highlightLabel}`}>
             Highlight
           </span>
         </div>

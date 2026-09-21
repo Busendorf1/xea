@@ -226,7 +226,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
       {/* Submit Form */}
       <div className={styles.formCard}>
         <h2>
-          <Send size={18} style={{ color: "var(--primary)" }} />
+          <Send size={18} className={styles.headerPrimaryIcon} />
           Submit a Request
         </h2>
         <form onSubmit={handleSubmit}>
@@ -316,7 +316,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
       {/* My Tickets */}
       <div className={styles.ticketsCard}>
         <h2>
-          <Inbox size={18} style={{ color: "var(--primary)" }} />
+          <Inbox size={18} className={styles.headerPrimaryIcon} />
           My Submitted Requests
         </h2>
 
@@ -351,14 +351,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
                   </span>
                 </div>
               </div>
-              <span
-                style={{
-                  fontSize: "0.72rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                }}
-              >
+              <span className={styles.ticketCategory}>
                 {ticket.category}
               </span>
               <p className={styles.ticketMessage}>{ticket.message}</p>
@@ -368,13 +361,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
                   <div className={styles.responseLabel}>⚡ Admin Response</div>
                   <p className={styles.responseText}>{ticket.admin_reply}</p>
                   {ticket.replied_at && (
-                    <p
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "var(--text-muted)",
-                        marginTop: "0.5rem",
-                      }}
-                    >
+                    <p className={styles.ticketRepliedAt}>
                       Replied{" "}
                       {new Date(ticket.replied_at).toLocaleDateString("en-GB", {
                         day: "numeric",

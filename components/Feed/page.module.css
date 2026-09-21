@@ -27,6 +27,8 @@
 .adGrid {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  position: relative;
   scrollbar-width: none;
   -ms-overflow-style: none;
   overflow-anchor: none;
@@ -508,6 +510,69 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.pullIndicator {
+  position: absolute;
+  top: -45px;
+  left: 50%;
+  z-index: 1000;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, opacity;
+}
+
+.pullBubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--card-border, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary, #1d9bf0);
+  transition: transform 0.15s ease;
+}
+
+.pullSpinner {
+  width: 18px;
+  height: 18px;
+  border: 2.2px solid rgba(29, 155, 240, 0.25);
+  border-top-color: var(--primary, #1d9bf0);
+  border-radius: 50%;
+  animation: feedSpin 0.75s linear infinite;
+}
+
+@keyframes feedSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorContainer {
+  text-align: center;
+  padding: 2.5rem 1rem;
+}
+
+.errorMessage {
+  margin-bottom: 1rem;
+}
+
+.errorRetryBtn {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.85rem;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  will-change: transform;
 }
 
 

@@ -35,20 +35,17 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   productCtaLink = "",
 }) => {
   const [mediaURLs, setMediaURLs] = useState<string[]>([]);
-  const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
 
   useEffect(() => {
     if (mediaFiles && mediaFiles.length > 0) {
       const urls = mediaFiles.map((file) => URL.createObjectURL(file));
       setMediaURLs(urls);
-      setCurrentMediaIndex(0);
 
       return () => {
         urls.forEach((url) => URL.revokeObjectURL(url));
       };
     } else if (existingMedia && existingMedia.trim() && existingMedia.toLowerCase() !== "text") {
       setMediaURLs(existingMedia.split(",").map((s) => s.trim()).filter(Boolean));
-      setCurrentMediaIndex(0);
     } else {
       setMediaURLs([]);
     }
@@ -100,10 +97,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
     return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const currentFile = mediaFiles[currentMediaIndex];
-  const isVideo = currentFile
-    ? currentFile.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(currentFile.name)
-    : false;
+  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(16 / 9);
 
   return (
     <div className={styles.card}>
@@ -112,7 +106,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
         <>
           <h4 className={styles.productNameTitle}>{productName || "Product Name"}</h4>
           {adContent && (
-            <p className={styles.productDescriptionText} style={{ marginTop: "4px", marginBottom: "12px", fontSize: "0.92rem", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+            <p className={styles.productDescriptionText}>
               {adContent}
             </p>
           )}
@@ -121,26 +115,55 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
 
       {/* Media Preview (only if there are media URLs) */}
       {mediaURLs.length > 0 && (
-        <div className={styles.mediaBox}>
-          {isVideo ? (
-            <video key={mediaURLs[currentMediaIndex]} src={mediaURLs[currentMediaIndex]} controls playsInline />
-          ) : (
-            <img src={mediaURLs[currentMediaIndex]} alt={adContent || "Ad Preview"} />
-          )}
+        <div
+          className={styles.mediaRowContainer}
+          style={{
+            aspectRatio: `${baseAspectRatio}`,
+          }}
+        >
+          {mediaURLs.map((url, index) => {
+            const file = mediaFiles[index];
+            const isItemVideo = file
+              ? file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name)
+              : /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(url);
 
-          {mediaURLs.length > 1 && (
-            <button
-              type="button"
-              className={styles.arrowBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentMediaIndex((prev) => (prev + 1) % mediaURLs.length);
-              }}
-              title="Next Media"
-            >
-              &gt;
-            </button>
-          )}
+            return (
+              <div key={`${url}-${index}`} className={styles.mediaRowItem}>
+                {isItemVideo ? (
+                  <video
+                    src={url}
+                    controls
+                    playsInline
+                    onLoadedMetadata={(e) => {
+                      if (index === 0) {
+                        const v = e.currentTarget;
+                        if (v.videoWidth && v.videoHeight) {
+                          const rawRatio = v.videoWidth / v.videoHeight;
+                          const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+                          setBaseAspectRatio(clamped);
+                        }
+                      }
+                    }}
+                  />
+                ) : (
+                  <img
+                    src={url}
+                    alt={adContent || "Ad Preview"}
+                    onLoad={(e) => {
+                      if (index === 0) {
+                        const img = e.currentTarget;
+                        if (img.naturalWidth && img.naturalHeight) {
+                          const rawRatio = img.naturalWidth / img.naturalHeight;
+                          const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+                          setBaseAspectRatio(clamped);
+                        }
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -186,16 +209,16 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
 
           {/* Right Group: Live Preview interaction buttons */}
           <div className={styles.productRightGroup}>
-            <button className={styles.seenBtn} type="button" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            <button className={styles.seenBtn} type="button">
               <Eye size={11} strokeWidth={2} />
               <span>Seen</span>
             </button>
-            <button className={styles.earnBtn} type="button" style={{ display: "flex", alignItems: "center", gap: "4px" }} disabled>
+            <button className={styles.earnBtn} type="button" disabled>
               <Coins size={11} strokeWidth={2} />
               <span>Earn+</span>
             </button>
             {displayMutualButton && (
-              <button className={styles.mutualBtn} type="button" style={{ display: "flex", alignItems: "center", gap: "4px" }} disabled>
+              <button className={styles.mutualBtn} type="button" disabled>
                 <UserPlus size={11} strokeWidth={2} />
                 <span>Mutual+</span>
               </button>
@@ -210,8 +233,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
                 href={productCtaLink.startsWith("http") ? productCtaLink : `https://${productCtaLink}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={styles.productCtaButton}
-                style={{ marginRight: "8px" }}
+                className={`${styles.productCtaButton} ${styles.productCtaButtonMargin}`}
               >
                 {productCtaType || "Comment"}
               </a>

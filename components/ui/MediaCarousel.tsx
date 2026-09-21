@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Play, ChevronLeft, ChevronRight } from "lucide-react";
 import styles from "./AdCard.module.css";
 import HlsVideoPlayer from "./HlsVideoPlayer";
 import VideoControlBar from "./VideoControlBar";
@@ -36,178 +35,35 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   isMuted,
   onToggleMute,
 }) => {
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [mediaError, setMediaError] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [videoDuration, setVideoDuration] = useState(0);
-  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [playingStates, setPlayingStates] = useState<Record<number, boolean>>({});
+  const [videoDurations, setVideoDurations] = useState<Record<number, number>>({});
+  const [videoCurrentTimes, setVideoCurrentTimes] = useState<Record<number, number>>({});
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  const [controlsVisible, setControlsVisible] = useState<Record<number, boolean>>({});
+  const hideControlsTimers = useRef<Record<number, NodeJS.Timeout>>({});
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const dragStartX = useRef<number | null>(null);
-  const dragStartY = useRef<number | null>(null);
-  const isSwiping = useRef<boolean>(false);
-  const isScrollLocked = useRef<boolean>(false);
-  const isDragging = useRef<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const rawMediaUrls = useMemo(() => {
-    return adMedia
-      ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
-      : [];
-  }, [adMedia]);
-
-  const mediaUrls = React.useMemo(() => {
-    return [...rawMediaUrls].sort((a, b) => {
-      const aIsVideo = isVideoUrl(a);
-      const bIsVideo = isVideoUrl(b);
-      if (aIsVideo && !bIsVideo) return -1; // Videos come FIRST so they autoplay immediately in feed!
-      if (!aIsVideo && bIsVideo) return 1;
-      return 0;
-    });
-  }, [rawMediaUrls]);
-
-  const initialAspectRatios = useMemo(() => {
-    const map: Record<number, number> = {};
-    mediaUrls.forEach((url, i) => {
-      if (mediaAspectRatioCache.has(url)) {
-        map[i] = mediaAspectRatioCache.get(url)!;
-      }
-    });
-    return map;
-  }, [mediaUrls]);
-
-  const [aspectRatios, setAspectRatios] = useState<Record<number, number>>(initialAspectRatios);
-
-  useEffect(() => {
-    setMediaError(false);
-  }, [currentMediaIndex]);
-
-  const resetControlsTimeout = useCallback(() => {
-    setShowControls(true);
-    if (hideControlsTimerRef.current) {
-      clearTimeout(hideControlsTimerRef.current);
-    }
-    if (isPlaying) {
-      hideControlsTimerRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 2800);
-    }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    if (isPlaying) {
-      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-      hideControlsTimerRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 2800);
-    } else {
-      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-      setShowControls(true);
-    }
-    return () => {
-      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-    };
-  }, [isPlaying]);
-
-  // Helper to attempt playing a video safely when ready
-  const attemptPlay = useCallback((idx: number) => {
-    const video = videoRefs.current[idx];
-    if (!video) return;
-
-    video.muted = isMuted;
-    video.defaultMuted = isMuted;
-    
-    const tryPlay = () => {
-      video.muted = isMuted;
-      video.defaultMuted = isMuted;
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            if (idx === currentMediaIndex) {
-              setIsPlaying(true);
-              if (video.duration && !isNaN(video.duration)) {
-                setVideoDuration(video.duration);
-              }
-            }
-          })
-          .catch((err) => {
-            console.warn("⚠️ Autoplay attempt notice:", err);
-            if (idx === currentMediaIndex) {
-              setIsPlaying(false);
-            }
-          });
-      }
-    };
-
-    if (video.readyState >= 2) {
-      tryPlay();
-    } else {
-      const handleReady = () => {
-        video.removeEventListener("canplay", handleReady);
-        video.removeEventListener("loadeddata", handleReady);
-        tryPlay();
-      };
-      video.addEventListener("canplay", handleReady);
-      video.addEventListener("loadeddata", handleReady);
-    }
-  }, [currentMediaIndex, isMuted]);
-
-  // Keep React isFullscreen state in sync with native fullscreen changes
-  useEffect(() => {
-    const handleFSChange = () => {
-      const isFS = !!(
-        document.fullscreenElement ||
-        (document as any).webkitFullscreenElement ||
-        (document as any).mozFullScreenElement ||
-        (document as any).msFullscreenElement
-      );
-      setIsFullscreen(isFS);
-    };
-
-    document.addEventListener("fullscreenchange", handleFSChange);
-    document.addEventListener("webkitfullscreenchange", handleFSChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFSChange);
-      document.removeEventListener("webkitfullscreenchange", handleFSChange);
-    };
+  const formatVideoTime = useCallback((seconds: number) => {
+    if (isNaN(seconds) || seconds <= 0) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }, []);
 
-  // Robust Autoplay handler when card is in view or when swiped to
-  useEffect(() => {
-    videoRefs.current.forEach((video, idx) => {
-      if (!video) return;
-      if (idx === currentMediaIndex && isCardVisible) {
-        attemptPlay(idx);
-      } else {
-        video.pause();
-        if (idx === currentMediaIndex) {
-          setIsPlaying(false);
-        }
-      }
-    });
-  }, [currentMediaIndex, isCardVisible, isMuted, attemptPlay]);
-
-  const togglePlay = useCallback(() => {
-    const activeVideo = videoRefs.current[currentMediaIndex];
-    if (activeVideo) {
-      if (activeVideo.paused) {
-        activeVideo.muted = isMuted;
-        activeVideo.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-      } else {
-        activeVideo.pause();
-        setIsPlaying(false);
-      }
+  const showControlsTemporarily = useCallback((idx: number) => {
+    setControlsVisible((prev) => ({ ...prev, [idx]: true }));
+    if (hideControlsTimers.current[idx]) {
+      clearTimeout(hideControlsTimers.current[idx]);
     }
-  }, [currentMediaIndex, isMuted]);
-
-  const handleVideoClick = useCallback((e: React.MouseEvent) => {
-    resetControlsTimeout();
-    togglePlay();
-  }, [resetControlsTimeout, togglePlay]);
+    hideControlsTimers.current[idx] = setTimeout(() => {
+      const video = videoRefs.current[idx];
+      if (video && !video.paused) {
+        setControlsVisible((prev) => ({ ...prev, [idx]: false }));
+      }
+    }, 2800);
+  }, []);
 
   const toggleFullscreen = useCallback((index: number) => {
     const video = videoRefs.current[index];
@@ -236,11 +92,9 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         video.requestFullscreen().catch(() => {
           if ((video as any).webkitEnterFullscreen) {
             (video as any).webkitEnterFullscreen();
+            setIsFullscreen(true);
           }
         });
-        setIsFullscreen(true);
-      } else if ((video as any).webkitRequestFullscreen) {
-        (video as any).webkitRequestFullscreen();
         setIsFullscreen(true);
       } else if ((video as any).webkitEnterFullscreen) {
         (video as any).webkitEnterFullscreen();
@@ -252,314 +106,232 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     }
   }, []);
 
-  const formatVideoTime = useCallback((seconds: number) => {
-    if (isNaN(seconds) || seconds <= 0) return "0:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  useEffect(() => {
+    const handleFSChange = () => {
+      const isFS = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isFS);
+    };
+    document.addEventListener("fullscreenchange", handleFSChange);
+    document.addEventListener("webkitfullscreenchange", handleFSChange);
+    document.addEventListener("mozfullscreenchange", handleFSChange);
+    document.addEventListener("MSFullscreenChange", handleFSChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFSChange);
+      document.removeEventListener("webkitfullscreenchange", handleFSChange);
+      document.removeEventListener("mozfullscreenchange", handleFSChange);
+      document.removeEventListener("MSFullscreenChange", handleFSChange);
+    };
   }, []);
 
-  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (mediaUrls.length <= 1) return;
+  const mediaUrls = useMemo(() => {
+    return adMedia
+      ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
+      : [];
+  }, [adMedia]);
 
-    const targetEl = e.target as HTMLElement;
-    if (
-      targetEl.closest("button") ||
-      targetEl.closest(`.${styles.videoControlBar}`) ||
-      targetEl.closest(`.${styles.dotsContainer}`)
-    ) {
-      return;
+  const firstUrl = mediaUrls[0];
+  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => {
+    if (firstUrl && mediaAspectRatioCache.has(firstUrl)) {
+      return mediaAspectRatioCache.get(firstUrl)!;
     }
+    return 16 / 9;
+  });
 
-    dragStartX.current = e.clientX;
-    dragStartY.current = e.clientY;
-    isSwiping.current = false;
-    isScrollLocked.current = false;
-    isDragging.current = true;
+  // Keep first video playing when card is in view
+  useEffect(() => {
+    videoRefs.current.forEach((video, idx) => {
+      if (!video) return;
+      if (isCardVisible) {
+        video.muted = isMuted;
+        video.defaultMuted = isMuted;
+        const p = video.play();
+        if (p !== undefined) {
+          p.then(() => {
+            setPlayingStates((prev) => ({ ...prev, [idx]: true }));
+            showControlsTemporarily(idx);
+          }).catch(() => {
+            setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+          });
+        }
+      } else {
+        video.pause();
+        setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+      }
+    });
+  }, [isCardVisible, isMuted, showControlsTemporarily]);
 
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Fallback
+  const togglePlayVideo = useCallback((idx: number) => {
+    const video = videoRefs.current[idx];
+    if (!video) return;
+    showControlsTemporarily(idx);
+    if (video.paused) {
+      video.muted = isMuted;
+      video.play().then(() => {
+        setPlayingStates((prev) => ({ ...prev, [idx]: true }));
+      }).catch(() => {});
+    } else {
+      video.pause();
+      setPlayingStates((prev) => ({ ...prev, [idx]: false }));
     }
-  }, [mediaUrls.length]);
+  }, [isMuted, showControlsTemporarily]);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging.current || dragStartX.current === null || dragStartY.current === null) return;
+  // Desktop mouse drag-to-scroll support without interfering with vertical feed scroll
+  const isMouseDown = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
 
-    const deltaX = e.clientX - dragStartX.current;
-    const deltaY = e.clientY - dragStartY.current;
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current || mediaUrls.length <= 1) return;
+    isMouseDown.current = true;
+    startX.current = e.pageX - containerRef.current.offsetLeft;
+    scrollLeft.current = containerRef.current.scrollLeft;
+  };
 
-    if (!isSwiping.current && !isScrollLocked.current) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
-        isScrollLocked.current = true;
-        return;
-      }
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 5) {
-        isSwiping.current = true;
-      }
-    }
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMouseDown.current || !containerRef.current) return;
+    const x = e.pageX - containerRef.current.offsetLeft;
+    const walk = (x - startX.current) * 1.2;
+    containerRef.current.scrollLeft = scrollLeft.current - walk;
+  };
 
-    if (isScrollLocked.current) return;
-
-    if (isSwiping.current && trackRef.current) {
-      trackRef.current.style.transition = "none";
-      const containerWidth = trackRef.current.offsetWidth || 1;
-      let adjustedDeltaX = deltaX;
-      if (
-        (currentMediaIndex === 0 && deltaX > 0) ||
-        (currentMediaIndex === mediaUrls.length - 1 && deltaX < 0)
-      ) {
-        adjustedDeltaX = deltaX * 0.25;
-      }
-      const basePx = -currentMediaIndex * (containerWidth + 12);
-      trackRef.current.style.transform = `translate3d(${basePx + adjustedDeltaX}px, 0, 0)`;
-    }
-  }, [currentMediaIndex, mediaUrls.length]);
-
-  const handlePointerEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-
-    try {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (isSwiping.current && dragStartX.current !== null && trackRef.current) {
-      const deltaX = e.clientX - dragStartX.current;
-      const threshold = 35;
-
-      let targetIndex = currentMediaIndex;
-      if (deltaX < -threshold && currentMediaIndex < mediaUrls.length - 1) {
-        targetIndex = currentMediaIndex + 1;
-      } else if (deltaX > threshold && currentMediaIndex > 0) {
-        targetIndex = currentMediaIndex - 1;
-      }
-
-      const containerWidth = trackRef.current.offsetWidth || 1;
-      trackRef.current.style.transition = "transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)";
-      trackRef.current.style.transform = `translate3d(-${targetIndex * (containerWidth + 12)}px, 0, 0)`;
-
-      if (targetIndex !== currentMediaIndex) {
-        setCurrentMediaIndex(targetIndex);
-      }
-    } else if (trackRef.current) {
-      const containerWidth = trackRef.current.offsetWidth || 1;
-      trackRef.current.style.transition = "transform 0.2s ease-out";
-      trackRef.current.style.transform = `translate3d(-${currentMediaIndex * (containerWidth + 12)}px, 0, 0)`;
-    }
-
-    dragStartX.current = null;
-    dragStartY.current = null;
-    isSwiping.current = false;
-    isScrollLocked.current = false;
-  }, [currentMediaIndex, mediaUrls.length]);
-
-  const goToPrev = useCallback(() => {
-    setCurrentMediaIndex((prev) => Math.max(0, prev - 1));
-  }, []);
-
-  const goToNext = useCallback(() => {
-    setCurrentMediaIndex((prev) => Math.min(mediaUrls.length - 1, prev + 1));
-  }, [mediaUrls.length]);
+  const handleMouseUpOrLeave = () => {
+    isMouseDown.current = false;
+  };
 
   if (mediaUrls.length === 0 || mediaError) return null;
-
-  // Active aspect ratio clamped to X/Twitter feed standards (min 0.8 / 4:5 to max 1.777 / 16:9)
-  const isCurrentVideo = isVideoUrl(mediaUrls[currentMediaIndex]) || (currentMediaIndex === 0 && !!hlsUrl);
-  const fallbackRatio = 16 / 9;
-  const rawRatio = aspectRatios[currentMediaIndex] || aspectRatios[0] || fallbackRatio;
-  const clampedRatio = Math.min(Math.max(rawRatio, 0.8), 1.777);
 
   return (
     <div className={styles.carouselOuterWrapper}>
       <div
-        className={styles.mediaBox}
-        style={{
-          aspectRatio: `${clampedRatio}`,
-          maxHeight: "540px",
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
+        ref={containerRef}
+        className={styles.mediaRowContainer}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUpOrLeave}
+        onMouseLeave={handleMouseUpOrLeave}
       >
-        {/* Media Counter Badge */}
-        {mediaUrls.length > 1 && (
-          <div className={styles.mediaBadge}>
-            {currentMediaIndex + 1} / {mediaUrls.length}
-          </div>
-        )}
+        {mediaUrls.map((url, index) => {
+          const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
+          const itemHlsSrc = url.includes(".m3u8") ? url : (index === 0 && hlsUrl ? hlsUrl : undefined);
 
-        <div
-          ref={trackRef}
-          className={styles.mediaTrack}
-          style={{
-            transform: `translate3d(calc(-${currentMediaIndex} * (100% + 12px)), 0, 0)`,
-          }}
-        >
-          {mediaUrls.map((url, index) => {
-            const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
-            const itemHlsSrc = url.includes(".m3u8") ? url : (index === 0 && hlsUrl ? hlsUrl : undefined);
-            return (
-              <div key={index} className={styles.mediaWrapper}>
-                {isVideo ? (
-                  <div
-                    className={styles.webVideoContainer}
-                    onClick={handleVideoClick}
-                    onPointerMove={resetControlsTimeout}
-                    onTouchStart={resetControlsTimeout}
-                    onMouseEnter={resetControlsTimeout}
-                    style={{ cursor: "pointer", position: "relative" }}
-                  >
-                    <HlsVideoPlayer
-                      ref={(el) => {
-                        if (el) {
-                          videoRefs.current[index] = el;
-                        } else {
-                          delete videoRefs.current[index];
-                        }
-                      }}
-                      key={url}
-                      src={url}
-                      hlsSrc={itemHlsSrc}
-                      loop
-                      autoPlay={index === currentMediaIndex && isCardVisible}
-                      preload={isPreloadWarm ? "auto" : "metadata"}
-                      muted={isMuted}
-                      controls={false}
-                      className={styles.mediaVideo}
-                      onCanPlay={() => {
-                        if (index === currentMediaIndex && isCardVisible) {
-                          attemptPlay(index);
-                        }
-                      }}
-                      onLoadedData={() => {
-                        if (index === currentMediaIndex && isCardVisible) {
-                          attemptPlay(index);
-                        }
-                      }}
-                      onPlay={() => {
-                        if (index === currentMediaIndex) setIsPlaying(true);
-                      }}
-                      onPause={() => {
-                        if (index === currentMediaIndex) setIsPlaying(false);
-                      }}
-                      onTimeUpdate={(e) => {
-                        if (index === currentMediaIndex) {
-                          const cur = e.currentTarget.currentTime || 0;
-                          if (Math.abs(cur - videoCurrentTime) >= 0.5) {
-                            setVideoCurrentTime(cur);
-                          }
-                        }
-                      }}
-                      onLoadedMetadata={(e) => {
-                        const v = e.currentTarget;
-                        if (v.duration && !isNaN(v.duration)) {
-                          setVideoDuration(v.duration);
-                        }
-                        if (v.videoWidth && v.videoHeight) {
-                          const rawRatio = v.videoWidth / v.videoHeight;
-                          const clamped = Math.min(Math.max(rawRatio, 0.8), 2.39);
-                          mediaAspectRatioCache.set(url, clamped);
-                          setAspectRatios((prev) => (prev[index] === clamped ? prev : { ...prev, [index]: clamped }));
-                        }
-                      }}
-                      onDurationChange={(e) => {
-                        if (e.currentTarget.duration && !isNaN(e.currentTarget.duration)) {
-                          setVideoDuration(e.currentTarget.duration);
-                        }
-                      }}
-                    />
-
-                    {/* Sleek Bottom Control Bar (Play/Pause, Mute, Fullscreen, Timer) */}
-                    <VideoControlBar
-                      index={index}
-                      isPlaying={isPlaying}
-                      isMuted={isMuted}
-                      isFullscreen={isFullscreen}
-                      showControls={showControls}
-                      videoDuration={videoDuration}
-                      videoCurrentTime={videoCurrentTime}
-                      onTogglePlay={togglePlay}
-                      onToggleMute={onToggleMute}
-                      onToggleFullscreen={toggleFullscreen}
-                      formatVideoTime={formatVideoTime}
-                    />
-                  </div>
-                ) : (
-                  <img
+          return (
+            <div
+              key={`${url}-${index}`}
+              className={`${styles.mediaRowItem} ${mediaUrls.length === 1 ? styles.mediaRowItemSingle : styles.mediaRowItemMulti}`}
+              style={{
+                aspectRatio: `${baseAspectRatio}`,
+              }}
+            >
+              {isVideo ? (
+                <div
+                  className={styles.webVideoContainer}
+                  onClick={() => togglePlayVideo(index)}
+                  onPointerMove={() => showControlsTemporarily(index)}
+                  onTouchStart={() => showControlsTemporarily(index)}
+                  onMouseEnter={() => showControlsTemporarily(index)}
+                >
+                  <HlsVideoPlayer
+                    ref={(el) => {
+                      if (el) {
+                        videoRefs.current[index] = el;
+                      } else {
+                        delete videoRefs.current[index];
+                      }
+                    }}
+                    key={url}
                     src={url}
-                    alt="Ad Media"
-                    className={styles.adImgElement}
-                    draggable={false}
-                    onLoad={(e) => {
+                    hlsSrc={itemHlsSrc}
+                    loop
+                    playsInline
+                    autoPlay={isCardVisible && index === 0}
+                    preload={isPreloadWarm ? "auto" : "metadata"}
+                    muted={isMuted}
+                    controls={false}
+                    className={styles.mediaVideo}
+                    onPlay={() => {
+                      setPlayingStates((prev) => ({ ...prev, [index]: true }));
+                      showControlsTemporarily(index);
+                    }}
+                    onPause={() => {
+                      setPlayingStates((prev) => ({ ...prev, [index]: false }));
+                      setControlsVisible((prev) => ({ ...prev, [index]: true }));
+                    }}
+                    onTimeUpdate={(e) => {
+                      const cur = e.currentTarget.currentTime || 0;
+                      setVideoCurrentTimes((prev) => {
+                        if (Math.abs((prev[index] || 0) - cur) >= 0.5) {
+                          return { ...prev, [index]: cur };
+                        }
+                        return prev;
+                      });
+                    }}
+                    onLoadedMetadata={(e) => {
+                      const v = e.currentTarget;
+                      if (v.duration && !isNaN(v.duration)) {
+                        setVideoDurations((prev) => ({ ...prev, [index]: v.duration }));
+                      }
+                      if (index === 0 && v.videoWidth && v.videoHeight) {
+                        const rawRatio = v.videoWidth / v.videoHeight;
+                        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+                        if (firstUrl) mediaAspectRatioCache.set(firstUrl, clamped);
+                        setBaseAspectRatio(clamped);
+                      }
+                    }}
+                    onDurationChange={(e) => {
+                      const d = e.currentTarget.duration;
+                      if (d && !isNaN(d)) {
+                        setVideoDurations((prev) => ({ ...prev, [index]: d }));
+                      }
+                    }}
+                  />
+
+                  {/* Video Control Bar: duration display, pause/play, mute, fullscreen */}
+                  <VideoControlBar
+                    index={index}
+                    isPlaying={playingStates[index] ?? (isCardVisible && index === 0)}
+                    isMuted={isMuted}
+                    isFullscreen={isFullscreen}
+                    showControls={controlsVisible[index] ?? true}
+                    videoDuration={videoDurations[index] || 0}
+                    videoCurrentTime={videoCurrentTimes[index] || 0}
+                    onTogglePlay={() => togglePlayVideo(index)}
+                    onToggleMute={onToggleMute}
+                    onToggleFullscreen={toggleFullscreen}
+                    formatVideoTime={formatVideoTime}
+                  />
+                </div>
+              ) : (
+                <img
+                  src={url}
+                  alt="Ad Media"
+                  className={styles.adImgElement}
+                  draggable={false}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  onLoad={(e) => {
+                    if (index === 0) {
                       const img = e.currentTarget;
                       if (img.naturalWidth && img.naturalHeight) {
                         const rawRatio = img.naturalWidth / img.naturalHeight;
-                        const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
-                        mediaAspectRatioCache.set(url, clamped);
-                        setAspectRatios((prev) => (prev[index] === clamped ? prev : { ...prev, [index]: clamped }));
+                        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+                        if (firstUrl) mediaAspectRatioCache.set(firstUrl, clamped);
+                        setBaseAspectRatio(clamped);
                       }
-                    }}
-                    onError={() => setMediaError(true)}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Desktop Nav Arrows (Prev/Next) */}
-        {mediaUrls.length > 1 && currentMediaIndex > 0 && (
-          <button
-            type="button"
-            className={`${styles.carouselNavBtn} ${styles.carouselNavBtnPrev}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              goToPrev();
-            }}
-            aria-label="Previous media"
-          >
-            <ChevronLeft size={18} />
-          </button>
-        )}
-        {mediaUrls.length > 1 && currentMediaIndex < mediaUrls.length - 1 && (
-          <button
-            type="button"
-            className={`${styles.carouselNavBtn} ${styles.carouselNavBtnNext}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              goToNext();
-            }}
-            aria-label="Next media"
-          >
-            <ChevronRight size={18} />
-          </button>
-        )}
+                    }
+                  }}
+                  onError={() => {
+                    if (mediaUrls.length === 1) setMediaError(true);
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
-
-      {/* Slide Indicator Dots - Positioned cleanly OUTSIDE the media container */}
-      {mediaUrls.length > 1 && (
-        <div className={styles.dotsOutsideContainer} onClick={(e) => e.stopPropagation()}>
-          {mediaUrls.map((_, index) => (
-            <button
-              key={index}
-              type="button"
-              className={`${styles.dot} ${index === currentMediaIndex ? styles.dotActive : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentMediaIndex(index);
-              }}
-              aria-label={`Go to media ${index + 1}`}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 };

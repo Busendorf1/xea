@@ -56,7 +56,7 @@ export default function Footer() {
           <ul className={styles.linkList}>
             <li>
               <Link
-                href="/user/logged-in"
+                href="/logged-in"
                 className={styles.link}
                 onClick={() => {
                   sessionStorage.setItem("paayh_active_tab", "adPage");
@@ -68,7 +68,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="/user/logged-in"
+                href="/logged-in"
                 className={styles.link}
                 onClick={() => {
                   sessionStorage.setItem("paayh_active_tab", "monetize");
@@ -135,7 +135,7 @@ export default function Footer() {
         {/* NEWSLETTER SIGNUP */}
         <div className={styles.section}>
           <h4 className={styles.heading}>Newsletter</h4>
-          <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "10px", lineHeight: "1.3" }}>
+          <p className={styles.newsletterText}>
             Subscribe to receive product updates, earning opportunities, and platform announcements.
           </p>
           <form
@@ -172,7 +172,7 @@ export default function Footer() {
                 setNewsletterSubmitting(false);
               }
             }}
-            style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+            className={styles.newsletterForm}
           >
             <input
               type="email"
@@ -180,49 +180,18 @@ export default function Footer() {
               placeholder="Enter your email"
               required
               disabled={newsletterSubmitting}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "6px",
-                border: "1px solid var(--border-color, rgba(255,255,255,0.15))",
-                background: "rgba(0,0,0,0.2)",
-                color: "#fff",
-                fontSize: "0.82rem",
-                outline: "none",
-                opacity: newsletterSubmitting ? 0.6 : 1,
-              }}
+              className={styles.newsletterInput}
             />
             <button
               type="submit"
               disabled={newsletterSubmitting}
-              style={{
-                padding: "8px 14px",
-                borderRadius: "6px",
-                background: newsletterSubmitting ? "#4b5563" : "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: "0.82rem",
-                border: "none",
-                cursor: newsletterSubmitting ? "not-allowed" : "pointer",
-                opacity: newsletterSubmitting ? 0.7 : 1,
-              }}
+              className={styles.newsletterBtn}
             >
               {newsletterSubmitting ? "Subscribing..." : "Subscribe"}
             </button>
 
-            <div style={{
-              marginTop: "8px",
-              padding: "6px 10px",
-              borderRadius: "6px",
-              backgroundColor: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              fontSize: "0.75rem",
-              color: "var(--text-muted)",
-              lineHeight: "1.35",
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "6px"
-            }}>
-              <Info size={14} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+            <div className={styles.newsletterPrivacy}>
+              <Info size={14} color="#6366f1" className={styles.newsletterPrivacyIcon} />
               <span>
                 <strong>Privacy Notice:</strong> Subscribing constitutes sharing your email.
                 </span>
@@ -231,7 +200,7 @@ export default function Footer() {
         </div>
       </div>
 
-      <div style={{ textAlign: "center", padding: "10px 0", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", opacity: 0.55 }}>
+      <div className={styles.madeForHumans}>
         Made on earth for humans
       </div>
 

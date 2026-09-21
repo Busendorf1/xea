@@ -647,7 +647,7 @@ export default function StatementComponent() {
                     .map((p, idx, arr) => (
                       <React.Fragment key={p}>
                         {idx > 0 && arr[idx - 1] !== p - 1 && (
-                          <span style={{ color: "var(--text-muted)", padding: "0 2px" }}>…</span>
+                          <span className={styles.pageEllipsis}>…</span>
                         )}
                         <button
                           onClick={() => setCurrentPage(p)}

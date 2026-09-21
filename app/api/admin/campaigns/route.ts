@@ -3,6 +3,7 @@ import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { invalidateCachedUserCampaigns } from "@/lib/utils/cache";
+import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -43,43 +44,56 @@ async function invalidateAdminCampaignCache(
   details?: any,
   targetUserEmail?: string
 ): Promise<void> {
+  const tasks: Promise<any>[] = [];
+
   if (adminEmail && action) {
-    await logAdminAudit(adminEmail, action, targetId, reason, details);
+    tasks.push(logAdminAudit(adminEmail, action, targetId, reason, details).catch((e) => console.warn("Audit log error:", e)));
   }
   if (targetUserEmail) {
-    await invalidateCachedUserCampaigns(targetUserEmail).catch(() => {});
+    tasks.push(invalidateCachedUserCampaigns(targetUserEmail).catch(() => {}));
   }
-  if (!isRedisReady()) return;
-  try {
-    const keys = await redisConnection.keys(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}*`);
-    if (keys && keys.length > 0) {
-      await redisConnection.del(keys);
-    }
-    // Also invalidate overview stats so pending/active counts update immediately
-    await redisConnection.del("admin:overview:stats").catch(() => {});
-    await redisConnection.del("admin:overview_stats").catch(() => {});
 
-    // If campaign ad is approved, paused, resumed, or deleted, evict ad detail & feed caches
-    if (action?.includes("ad")) {
-      if (targetId) {
-        await redisConnection.del(`ad:detail:${targetId}`).catch(() => {});
-      }
-      const feedKeys = await redisConnection.keys("feed:ads:*");
-      if (feedKeys && feedKeys.length > 0) {
-        await redisConnection.del(feedKeys);
-      }
-    }
+  if (isRedisReady()) {
+    tasks.push((async () => {
+      try {
+        const pipeline = redisConnection.pipeline();
+        pipeline.del("admin:overview:stats");
+        pipeline.del("admin:overview_stats");
+        if (targetId) {
+          pipeline.del(`ad:detail:${targetId}`);
+        }
+        await pipeline.exec().catch(() => {});
 
-    // If highlight is approved, paused, resumed, or deleted, evict highlights feed caches
-    if (action?.includes("highlight")) {
-      const highlightKeys = await redisConnection.keys("highlights:*");
-      if (highlightKeys && highlightKeys.length > 0) {
-        await redisConnection.del(highlightKeys);
+        // Evict admin campaigns tab caches
+        const keys = await redisConnection.keys(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}*`).catch(() => []);
+        if (keys && keys.length > 0) {
+          await redisConnection.del(keys).catch(() => {});
+        }
+
+        // Evict feed & highlights keys
+        if (action?.includes("ad")) {
+          const feedKeys = await redisConnection.keys("feed:ads:*").catch(() => []);
+          if (feedKeys && feedKeys.length > 0) {
+            await redisConnection.del(feedKeys).catch(() => {});
+          }
+        }
+        if (action?.includes("highlight")) {
+          const highlightKeys = await redisConnection.keys("highlights:*").catch(() => []);
+          if (highlightKeys && highlightKeys.length > 0) {
+            await redisConnection.del(highlightKeys).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to invalidate admin campaign cache:", err);
       }
-    }
-  } catch (err) {
-    console.warn("⚠️ Failed to invalidate admin campaign cache:", err);
+    })());
   }
+
+  // Allow up to 80ms for critical in-memory evictions, then release response immediately
+  await Promise.race([
+    Promise.all(tasks),
+    new Promise((resolve) => setTimeout(resolve, 80)),
+  ]);
 }
 
 /**
@@ -274,10 +288,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Ad not found in pending review queue" }, { status: 404 });
       }
 
+      // Clean pending ad and avoid non-existent approved_at column
+      const { approved_at: _, ...cleanPendingAd } = pendingAd;
       const activeAd = {
-        ...pendingAd,
+        ...cleanPendingAd,
         is_paused: false,
-        approved_at: now,
+        created_at: now,
       };
 
       // Insert into active ads
@@ -295,8 +311,20 @@ export async function POST(req: NextRequest) {
     if (action === "reject_ad") {
       if (!id) return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
 
-      // Optional refund & notification
-      const { data: adToDelete } = await supabaseAdmin.from("adds").select("user_email, total_cost").eq("id", id).maybeSingle();
+      // Optional refund & notification & storage purge
+      const { data: adToDelete } = await supabaseAdmin
+        .from("adds")
+        .select("user_email, total_cost, ad_media, ad_media_url")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (adToDelete) {
+        const mediaUrls = adToDelete.ad_media || adToDelete.ad_media_url;
+        if (mediaUrls) {
+          await purgeStorageMedia(mediaUrls, "ad-media");
+        }
+      }
+
       if (adToDelete?.user_email && payload?.refund) {
         const refundAmount = Number(adToDelete.total_cost || 0);
         if (refundAmount > 0) {
@@ -358,6 +386,17 @@ export async function POST(req: NextRequest) {
     if (action === "delete_ad") {
       if (!id) return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
 
+      // Purge uploaded media from ad-media bucket
+      const [{ data: activeAd }, { data: pendingAd }] = await Promise.all([
+        supabaseAdmin.from("addsactive").select("ad_media, ad_media_url").eq("id", id).maybeSingle(),
+        supabaseAdmin.from("adds").select("ad_media, ad_media_url").eq("id", id).maybeSingle(),
+      ]);
+
+      const mediaUrls = activeAd?.ad_media || activeAd?.ad_media_url || pendingAd?.ad_media || pendingAd?.ad_media_url;
+      if (mediaUrls) {
+        await purgeStorageMedia(mediaUrls, "ad-media");
+      }
+
       await Promise.all([
         supabaseAdmin.from("addsactive").delete().eq("id", id),
         supabaseAdmin.from("adds").delete().eq("id", id),
@@ -413,7 +452,16 @@ export async function POST(req: NextRequest) {
     if (action === "reject_highlight") {
       if (!id) return NextResponse.json({ error: "Highlight ID is required" }, { status: 400 });
 
-      const { data: hlToDelete } = await supabaseAdmin.from("news").select("user_email").eq("id", id).maybeSingle();
+      const { data: hlToDelete } = await supabaseAdmin
+        .from("news")
+        .select("user_email, image_url")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (hlToDelete?.image_url) {
+        await purgeStorageMedia(hlToDelete.image_url, "news");
+      }
+
       await supabaseAdmin.from("news").delete().eq("id", id);
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, hlToDelete?.user_email);
       return NextResponse.json({ success: true, message: "Highlight rejected and deleted." });
@@ -434,13 +482,22 @@ export async function POST(req: NextRequest) {
     if (action === "delete_highlight") {
       if (!id) return NextResponse.json({ error: "Highlight ID is required" }, { status: 400 });
 
+      const [{ data: activeHl }, { data: pendingHl }] = await Promise.all([
+        supabaseAdmin.from("newsactive").select("image_url").eq("id", id).maybeSingle(),
+        supabaseAdmin.from("news").select("image_url").eq("id", id).maybeSingle(),
+      ]);
+
+      const imgUrl = activeHl?.image_url || pendingHl?.image_url;
+      if (imgUrl) {
+        await purgeStorageMedia(imgUrl, "news");
+      }
+
       await Promise.all([
         supabaseAdmin.from("newsactive").delete().eq("id", id),
         supabaseAdmin.from("news").delete().eq("id", id),
       ]);
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
-      return NextResponse.json({ success: true, message: "Highlight deleted successfully." });
     }
 
     // 10b. SAVE HIGHLIGHT EDIT

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
 
 export async function GET(req: NextRequest) {
   return handleCron(req);
@@ -44,6 +45,23 @@ async function handleCron(req: NextRequest) {
       }
       // Direct cleanup fallback: delete from completed_ads, addsactive, and adds where completed_at is older than 48 hours
       const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+      // Purge storage media for expired completed ads
+      const { data: expiredAds } = await supabaseAdmin
+        .from("adds")
+        .select("ad_media, ad_media_url")
+        .not("completed_at", "is", null)
+        .lt("completed_at", fortyEightHoursAgo);
+
+      if (expiredAds && expiredAds.length > 0) {
+        const mediaList: string[] = [];
+        expiredAds.forEach((ad: any) => {
+          if (ad.ad_media) mediaList.push(ad.ad_media);
+          if (ad.ad_media_url) mediaList.push(ad.ad_media_url);
+        });
+        await purgeStorageMedia(mediaList, "ad-media");
+      }
+
       await Promise.all([
         supabaseAdmin.from("addsactive").delete().not("completed_at", "is", null).lt("completed_at", fortyEightHoursAgo),
         supabaseAdmin.from("adds").delete().not("completed_at", "is", null).lt("completed_at", fortyEightHoursAgo),
@@ -62,6 +80,18 @@ async function handleCron(req: NextRequest) {
         console.warn("⚠️ Cron: RPC delete_expired_news failed, executing direct fallback deletion:", errNews.message);
         // Fallback: direct delete for highlights older than 24 hours
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        // Purge storage media for expired highlights
+        const { data: expiredNews } = await supabaseAdmin
+          .from("newsactive")
+          .select("image_url")
+          .lt("created_at", twentyFourHoursAgo);
+
+        if (expiredNews && expiredNews.length > 0) {
+          const imgList = expiredNews.map((n: any) => n.image_url).filter(Boolean);
+          await purgeStorageMedia(imgList, "news");
+        }
+
         await supabaseAdmin.from("newsactive").delete().lt("created_at", twentyFourHoursAgo);
       } else {
         console.log("✅ Cron: Expired highlights purged successfully.");

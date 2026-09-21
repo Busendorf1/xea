@@ -151,7 +151,7 @@ export const flowNodes: Record<string, FlowNode> = {
   listener_l3: {
     id: 'listener_l3',
     aiMessage:
-      'At an average ₦500 payout and 50 views per hour, 8 daily hours yields ₦200,000 daily, ₦1.4M weekly or ₦5.6M monthly or USD equivalent. Payouts fluctuate with advertiser bidding, making each session rewarding and unpredictable.',
+    'At an average ₦100 payout per view and 50 views per hour, 8 hours of attention yields ₦40,000 per day, ₦280,000 weekly or ₦1.12M monthly or USD equivalent. Payouts fluctuate with advertiser bidding, making each session rewarding and unpredictable.',
     referralLink: {
       label: 'Read Payout Rules in Terms',
       url: '/terms',

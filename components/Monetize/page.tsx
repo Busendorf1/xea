@@ -210,7 +210,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                   </p>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div className={styles.statusActionsRow}>
                 <span className={isMonetized ? styles.badgeActive : styles.badgeProgress}>
                   {isMonetized ? "Monetized" : `${clicksPercent}% Complete`}
                 </span>
@@ -323,11 +323,11 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
           )}
 
           {/* QUALIFICATION PROGRESS CARD */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1.25rem" }}>
+          <div className={styles.progressGrid}>
             {/* 300 Ad Clicks */}
             <div className={styles.progressCard}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-                <h3 className={styles.cardSectionTitle} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div className={styles.progressHeaderRow}>
+                <h3 className={`${styles.cardSectionTitle} ${styles.cardSectionTitleFlex}`}>
                   <div className={styles.titleIconBox}>
                     <Award size={18} color="var(--primary)" />
                   </div>
@@ -338,19 +338,19 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 </span>
               </div>
 
-              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.5 }}>
+              <p className={styles.cardInstructionText}>
                 Click <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> on ads to increment your progress.
               </p>
 
               <div className={styles.metricsGrid}>
                 <div className={styles.metricBox}>
-                  <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span className={`${styles.metricLabel} ${styles.metricLabelFlex}`}>
                     <MousePointer size={13} color="var(--primary)" /> Completed
                   </span>
                   <strong className={styles.metricValue}>{clicksCount} / 300</strong>
                 </div>
                 <div className={styles.metricBox}>
-                  <span className={styles.metricLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span className={`${styles.metricLabel} ${styles.metricLabelFlex}`}>
                     <Clock size={13} color="var(--primary)" /> Remaining
                   </span>
                   <strong className={styles.metricValueRemaining}>{clicksRemaining} clicks</strong>
@@ -363,7 +363,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 </div>
               </div>
 
-              <div style={{ marginTop: "1rem" }}>
+              <div className={styles.feedBtnMargin}>
                 <Link href="/" className={styles.feedBtn}>
                   <span>Go to Feed</span>
                   <ArrowRight size={15} />
@@ -378,13 +378,13 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
               <div className={styles.policyIconBox}>
                 <Calendar size={18} color="var(--primary)" />
               </div>
-              <h4 style={{ color: "var(--foreground)" }}>7-Day Activity Policy</h4>
+              <h4 className={styles.policyTitle}>7-Day Activity Policy</h4>
             </div>
             <p className={styles.policyDesc}>
               Log in at least once every 7 days. After 7 days of zero activity, monetization pauses and click progress resets.
             </p>
             {daysInactive > 0 && (
-              <p style={{ marginTop: "10px", fontSize: "0.85rem", color: "var(--danger)", fontWeight: 700 }}>
+              <p className={styles.inactivityAlertText}>
                 Current Inactivity: {daysInactive} day{daysInactive > 1 ? "s" : ""} / 7 days
               </p>
             )}

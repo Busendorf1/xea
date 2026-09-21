@@ -6,7 +6,7 @@ let inFlightEmail: string | null = null;
 export async function fetchUserCampaignsShared(email: string, bypassCache: boolean = false): Promise<any> {
   const emailLower = email.toLowerCase().trim();
   const cacheKey = `my_campaigns_data_${emailLower}`;
-  const TWO_MINUTES = 2 * 60 * 1000;
+  const THIRTY_SECONDS = 30 * 1000;
 
   // 1. Check client sessionStorage cache unless explicitly bypassing
   if (!bypassCache && typeof window !== "undefined") {
@@ -14,7 +14,7 @@ export async function fetchUserCampaignsShared(email: string, bypassCache: boole
       const cachedRaw = sessionStorage.getItem(cacheKey);
       if (cachedRaw) {
         const cached = JSON.parse(cachedRaw);
-        if (cached && cached.timestamp && Date.now() - cached.timestamp < TWO_MINUTES) {
+        if (cached && cached.timestamp && Date.now() - cached.timestamp < THIRTY_SECONDS) {
           return cached.data;
         }
       }
@@ -31,7 +31,8 @@ export async function fetchUserCampaignsShared(email: string, bypassCache: boole
   inFlightEmail = emailLower;
   inFlightCampaignsPromise = (async () => {
     try {
-      const res = await fetch("/api/campaigns");
+      const fetchUrl = bypassCache ? "/api/campaigns?refresh=true" : "/api/campaigns";
+      const res = await fetch(fetchUrl);
       if (!res.ok) throw new Error(`Campaigns API error: ${res.status}`);
       const data = await res.json();
 

@@ -1,0 +1,11 @@
+.counterWrapper {
+  display: inline-flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.prefix {
+  margin-right: 2px;
+  opacity: 0.9;
+}

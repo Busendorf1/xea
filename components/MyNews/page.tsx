@@ -70,7 +70,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
     return pages.map((pg, idx) => {
       if (typeof pg === "string") {
         return (
-          <span key={`el-news-${idx}`} style={{ padding: "0 4px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+          <span key={`el-news-${idx}`} className={styles.paginationEllipsis}>
             …
           </span>
         );
@@ -172,14 +172,13 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   }
 
   const renderAdCard = (item: HighlightItem, status: "review" | "active") => (
-    <div key={item.id} className={styles.card} style={{ opacity: item.is_paused ? 0.85 : 1 }}>
+    <div key={item.id} className={`${styles.card} ${item.is_paused ? styles.cardPaused : ""}`}>
       <div className={styles.mediaBox}>
         {/\.(mp4|webm)/i.test(item.image_url || "") ? (
           <video
             src={item.image_url || ""}
             controls
-            className={styles.adImgElement}
-            style={{ maxHeight: "240px", background: "#000" }}
+            className={`${styles.adImgElement} ${styles.videoElement}`}
           />
         ) : (
           <img
@@ -197,11 +196,19 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
       </div>
 
       <div className={styles.cardContent}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+        <div className={styles.tagActionRow}>
           <span className={styles.interestTag}>{item.interest}</span>
-          <div style={{ display: "flex", gap: "0.4rem" }}>
-            <Link href={`/user/news?editingId=${item.id}`}>
-              <button style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: "var(--foreground)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "3px", fontWeight: 600 }}>
+          <div className={styles.actionButtonGroup}>
+            <Link 
+              href="/logged-in"
+              onClick={() => {
+                sessionStorage.setItem("paayh_active_tab", "news");
+                sessionStorage.setItem("paayh_edit_news_id", item.id);
+                window.dispatchEvent(new CustomEvent("paayh_edit_news", { detail: { newsId: item.id } }));
+                window.dispatchEvent(new Event("paayh_tab_change"));
+              }}
+            >
+              <button className={styles.actionBtn}>
                 <Edit3 size={12} /> Edit
               </button>
             </Link>
@@ -209,7 +216,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
               <button
                 onClick={() => handleTogglePause(item)}
                 disabled={actionLoading === item.id}
-                style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: item.is_paused ? "var(--success)" : "var(--text-muted)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "3px", fontWeight: 600 }}
+                className={`${styles.actionBtn} ${item.is_paused ? styles.resumeBtn : styles.pauseBtn}`}
               >
                 {item.is_paused ? <Play size={12} /> : <Pause size={12} />}
                 {item.is_paused ? "Resume" : "Pause"}
@@ -223,23 +230,23 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
         {/* Admin Statement */}
         {item.admin_statement && (
-          <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "6px", border: "1px solid var(--card-border)", color: "var(--text-muted)", fontSize: "0.78rem", marginTop: "0.5rem" }}>
-            <strong style={{ display: "flex", alignItems: "center", gap: "4px", color: "var(--foreground)" }}><AlertTriangle size={13} color="var(--primary)" /> Important Notice / Reason:</strong>
+          <div className={styles.adminStatementBox}>
+            <strong className={styles.adminStatementTitle}><AlertTriangle size={13} color="var(--primary)" /> Important Notice / Reason:</strong>
             {item.admin_statement}
           </div>
         )}
 
         {/* Bidded & Location Badges */}
-        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+        <div className={styles.metaBadgesRow}>
           {(!!item.is_bidded || Number(item.bid_price || 0) > 1000) && (
-            <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--primary-glow)", color: "var(--primary)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+            <span className={styles.biddedBadge}>
               <Zap size={11} color="var(--primary)" /> Bidded (₦{item.bid_price || 1500}/day)
             </span>
           )}
-          <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--sidebar-bg)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+          <span className={styles.metaBadge}>
             <MapPin size={11} /> {item.country || "Global"} {item.state ? `(${item.state}${item.province ? `, ${item.province}` : ""})` : ""}
           </span>
-          <span style={{ fontSize: "0.72rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "var(--sidebar-bg)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+          <span className={styles.metaBadge}>
             <Calendar size={11} /> {item.campaign_days || 1} {(item.campaign_days || 1) === 1 ? "Day" : "Days"}
           </span>
         </div>
@@ -259,16 +266,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   return (
     <div className={styles.feedContainer}>
       {noticeMessage && (
-        <div style={{
-          backgroundColor: "var(--primary-glow)",
-          border: "1px solid var(--primary)",
-          color: "var(--primary)",
-          padding: "10px 14px",
-          borderRadius: "8px",
-          marginBottom: "1rem",
-          fontSize: "0.85rem",
-          fontWeight: 600,
-        }}>
+        <div className={styles.noticeBanner}>
           {noticeMessage}
         </div>
       )}
@@ -315,7 +313,13 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
             You do not have any active Highlights. Post one now!
           </p>
           <div className={styles.postButtonContainer}>
-            <Link href="/user/news">
+            <Link 
+              href="/logged-in"
+              onClick={() => {
+                sessionStorage.setItem("paayh_active_tab", "news");
+                window.dispatchEvent(new Event("paayh_tab_change"));
+              }}
+            >
               <button className={styles.postButton}>Post a Highlight</button>
             </Link>
           </div>

@@ -51,14 +51,14 @@ export default function SidebarMenu() {
       </button>
       {showMenu && (
         <div className={styles.menuButtonGroup}>
-          <Link href="/user/logged-in?view=profile" className={styles.menuButton} onClick={() => selectTab("profile")}>Profile</Link>
-          <Link href="/user/logged-in?view=myads" className={styles.menuButton} onClick={() => selectTab("myads")}>My Ads</Link>
-          <Link href="/user/logged-in?view=news" className={styles.menuButton} onClick={() => selectTab("news")}>Create Highlight</Link>
-          <Link href="/user/logged-in?view=adPage" className={styles.menuButton} onClick={() => selectTab("adPage")}>Create Ad</Link>
-          <Link href="/user/logged-in?view=monetize" className={styles.menuButton} onClick={() => selectTab("monetize")}>Monetization</Link>
-          <Link href="/user/logged-in?view=statement" className={styles.menuButton} onClick={() => selectTab("statement")}>Statement</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("profile")}>Profile</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("myads")}>My Ads</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("news")}>Create Highlight</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("adPage")}>Create Ad</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("monetize")}>Monetization</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("statement")}>Statement</Link>
           <Link href="/user/logout" className={styles.menuButton} onClick={() => setShowMenu(false)}>Logout</Link>
-          <Link href="/user/logged-in?view=deactivate" className={styles.menuButtonDanger} onClick={() => selectTab("deactivate")}>Deactivate Account</Link>
+          <Link href="/logged-in" className={styles.menuButtonDanger} onClick={() => selectTab("deactivate")}>Deactivate Account</Link>
         </div>
       )}
     </div>

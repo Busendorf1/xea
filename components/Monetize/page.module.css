@@ -575,3 +575,57 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.statusActionsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+.progressHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.cardSectionTitleFlex {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cardInstructionText {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.metricLabelFlex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feedBtnMargin {
+  margin-top: 1rem;
+}
+
+.policyTitle {
+  color: var(--foreground);
+}
+
+.inactivityAlertText {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--danger);
+  font-weight: 700;
+}
+

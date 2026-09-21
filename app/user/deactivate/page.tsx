@@ -1,5 +1,8 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export default async function DeactivatePage() {
-  redirect("/user/logged-in?view=deactivate");
+  const cookieStore = await cookies();
+  cookieStore.set("paayh_active_tab", "deactivate", { path: "/", maxAge: 60 });
+  redirect("/logged-in");
 }

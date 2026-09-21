@@ -10,6 +10,7 @@ import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 import { newsSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
+import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 
 interface Session {
   user?: {
@@ -28,7 +29,9 @@ import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 const steps = ["Media", "Title", "Content", "Targeting & Bidding", "Preview"];
 
 export default function News({ session }: NewsProps) {
-  const isAdmin = useMemo(() => isAdminEmail(session?.user?.email), [session?.user?.email]);
+  const isAdmin = useMemo(() => {
+    return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(session?.user?.email));
+  }, [session?.user]);
   const [customSponsorName, setCustomSponsorName] = useState("");
   const [customSponsorHandle, setCustomSponsorHandle] = useState("");
 
@@ -246,23 +249,29 @@ export default function News({ session }: NewsProps) {
             is_ai_content: isAiContent,
             isAiContent: isAiContent,
           },
-          callbackUrl: `${window.location.origin}/user/statement`
+          callbackUrl: `${window.location.origin}/logged-in`
         })
       });
 
       const paymentData = await paymentResponse.json();
-      if (!paymentResponse.ok || !paymentData.success) {
+      if (!paymentResponse.ok || (!paymentData.success && !paymentData.status)) {
         throw new Error(paymentData.error || "Failed to process payment");
       }
 
-      if (paymentMethod === "wallet") {
-        setStatusNotice("Your Daily Highlight has been paid using your wallet balance and submitted for review. Redirecting to your statement...");
+      sessionStorage.setItem("paayh_active_tab", "statement");
+      clearUserCampaignsCache(session?.user?.email || "");
+
+      const authUrl = paymentData.authorization_url || paymentData.data?.authorization_url;
+      if (isAdmin || paymentMethod === "wallet") {
+        setStatusNotice("Your Daily Highlight has been submitted for review. Redirecting to your statement...");
         setTimeout(() => {
-          window.location.href = "/user/statement";
+          window.location.href = "/logged-in";
         }, 800);
-      } else {
+      } else if (authUrl) {
         setStatusNotice("Redirecting to Paystack to complete payment for your Highlight...");
-        window.location.href = paymentData.authorization_url;
+        window.location.href = authUrl;
+      } else {
+        window.location.href = "/logged-in";
       }
       
       setStep(0);
@@ -292,14 +301,14 @@ export default function News({ session }: NewsProps) {
     };
 
     return (
-      <div style={{ maxWidth: "620px", margin: "4rem auto", padding: "2.25rem 1.75rem", backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "16px", textAlign: "center", boxShadow: "0 15px 35px rgba(0,0,0,0.25)" }}>
-          <div style={{ width: "60px", height: "60px", borderRadius: "50%", backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
+      <div className={styles.disabledAccountCard}>
+          <div className={styles.disabledAccountIcon}>
             <ShieldAlert size={32} />
           </div>
-          <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--foreground)", marginBottom: "0.5rem" }}>
+          <h2 className={styles.disabledAccountTitle}>
             Advertising & Highlight Account Disabled
           </h2>
-          <p style={{ fontSize: "0.92rem", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "1rem" }}>
+          <p className={styles.disabledAccountDesc}>
             {adAccountRestriction.status === "temp_banned" ? (
               <>Your highlight account is temporarily suspended for <strong>{getCountdownStr(adAccountRestriction.until)}</strong>.</>
             ) : adAccountRestriction.status === "perm_banned" ? (
@@ -309,16 +318,16 @@ export default function News({ session }: NewsProps) {
             )}
           </p>
           {adAccountRestriction.reason && (
-            <div style={{ padding: "0.85rem 1rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)", fontSize: "0.85rem", color: "var(--foreground)", marginBottom: "1.5rem", textAlign: "left" }}>
+            <div className={styles.disabledAccountReason}>
               <strong>Reason for decision:</strong> {adAccountRestriction.reason}
             </div>
           )}
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1.5rem" }}>
+          <p className={styles.disabledAccountNote}>
             If you believe this restriction is an error, you may submit an appeal to our Help Center support team.
           </p>
           <a
             href="/help?category=Suspended%20Account&subject=Appeal%20Highlight%20Account%20Suspension"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", backgroundColor: "var(--primary)", color: "var(--background)", padding: "0.75rem 1.5rem", borderRadius: "8px", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" }}
+            className={styles.disabledAccountBtn}
           >
             Appeal via Help Center
           </a>
@@ -348,31 +357,13 @@ export default function News({ session }: NewsProps) {
           <h1>Post Daily Highlight</h1>
 
           {stepError && (
-            <div style={{
-              padding: "10px 14px",
-              backgroundColor: "rgba(239, 68, 68, 0.15)",
-              border: "1px solid #ef4444",
-              borderRadius: "8px",
-              color: "#ef4444",
-              fontSize: "0.88rem",
-              fontWeight: 600,
-              marginBottom: "1rem",
-            }}>
+            <div className={styles.errorAlert}>
               {stepError}
             </div>
           )}
 
           {statusNotice && (
-            <div style={{
-              padding: "10px 14px",
-              backgroundColor: "var(--primary-glow)",
-              border: "1px solid var(--primary)",
-              borderRadius: "8px",
-              color: "var(--primary)",
-              fontSize: "0.88rem",
-              fontWeight: 600,
-              marginBottom: "1rem",
-            }}>
+            <div className={styles.statusAlert}>
               {statusNotice}
             </div>
           )}
@@ -383,21 +374,21 @@ export default function News({ session }: NewsProps) {
               <div className={styles.formGroup}>
                 <label className={styles.fieldLabel}>Cover Image (Required)</label>
                 {mediaPreview ? (
-                  <div style={{ textAlign: "center" }}>
-                    <img src={mediaPreview} alt="Cover Preview" style={{ maxWidth: "100%", maxHeight: "280px", borderRadius: "12px", border: "1px solid var(--card-border)", objectFit: "contain" }} />
-                    <div style={{ marginTop: "0.75rem" }}>
-                      <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid var(--danger)", color: "var(--danger)", background: "transparent", cursor: "pointer", fontWeight: 600 }}>Remove Image</button>
+                  <div className={styles.mediaPreviewContainer}>
+                    <img src={mediaPreview} alt="Cover Preview" className={styles.mediaPreviewImage} />
+                    <div className={styles.removeBtnContainer}>
+                      <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className={styles.removeBtn}>Remove Image</button>
                     </div>
                   </div>
                 ) : (
                   <label className={styles.uploadZone}>
                     <input type="file" accept="image/*" onChange={handleMediaChange} hidden />
-                    <p style={{ fontWeight: 600, color: "var(--primary)" }}>Click to select cover image file</p>
-                    <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Supports PNG, JPG, WEBP (Max 5MB)</p>
+                    <p className={styles.uploadTitle}>Click to select cover image file</p>
+                    <p className={styles.uploadSubtext}>Supports PNG, JPG, WEBP (Max 5MB)</p>
                   </label>
                 )}
-                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end" }}>
-                  <button disabled={!mediaFile} onClick={() => setStep(1)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !mediaFile ? "var(--card-border)" : "var(--primary)", color: !mediaFile ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !mediaFile ? "not-allowed" : "pointer" }}>Continue to Title →</button>
+                <div className={styles.stepActionsEnd}>
+                  <button disabled={!mediaFile} onClick={() => setStep(1)} className={styles.primaryNavBtn}>Continue to Title →</button>
                 </div>
               </div>
             )}
@@ -407,9 +398,9 @@ export default function News({ session }: NewsProps) {
               <div className={styles.formGroup}>
                 <label className={styles.fieldLabel}>Highlight Title</label>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Grand Opening Sale 50% Off" className={styles.inputBox} maxLength={80} />
-                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
-                  <button onClick={() => setStep(0)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={!title.trim()} onClick={() => setStep(2)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !title.trim() ? "var(--card-border)" : "var(--primary)", color: !title.trim() ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !title.trim() ? "not-allowed" : "pointer" }}>Continue to Content →</button>
+                <div className={styles.stepActionsBetween}>
+                  <button onClick={() => setStep(0)} className={styles.secondaryNavBtn}>Back</button>
+                  <button disabled={!title.trim()} onClick={() => setStep(2)} className={styles.primaryNavBtn}>Continue to Content →</button>
                 </div>
               </div>
             )}
@@ -419,145 +410,181 @@ export default function News({ session }: NewsProps) {
               <div className={styles.formGroup}>
                 <label className={styles.fieldLabel}>Highlight Details & Story</label>
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Share full details of your highlight announcement..." className={styles.textareaBox} rows={6} maxLength={1000} />
-                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
-                  <button onClick={() => setStep(1)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={!content.trim()} onClick={() => setStep(3)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !content.trim() ? "var(--card-border)" : "var(--primary)", color: !content.trim() ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !content.trim() ? "not-allowed" : "pointer" }}>Continue to Targeting & Bidding →</button>
+                <div className={styles.stepActionsBetween}>
+                  <button onClick={() => setStep(1)} className={styles.secondaryNavBtn}>Back</button>
+                  <button disabled={!content.trim()} onClick={() => setStep(3)} className={styles.primaryNavBtn}>Continue to Targeting & Bidding →</button>
                 </div>
               </div>
             )}
 
             {/* STEP 3: TARGETING, LOCATION & BIDDING */}
             {step === 3 && (
-              <div className={styles.formGroup} style={{ gap: "1.5rem" }}>
+              <div className={`${styles.formGroup} ${styles.targetingGroup}`}>
                 {isAdmin && (
-                  <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--card-bg)", borderRadius: "14px", border: "1px solid var(--primary)", marginBottom: "1.25rem" }}>
-                    <h4 style={{ color: "var(--primary)", fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding & Free Publishing
-                    </h4>
-                    <div style={{ marginBottom: "0.75rem" }}>
-                      <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Sponsor Name (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. ABC News (defaults to Sponsored)"
-                        value={customSponsorName}
-                        onChange={(e) => setCustomSponsorName(e.target.value)}
-                        className={styles.inputBox}
-                      />
+                  <div className={`${styles.modernSectionCard} ${styles.adminSectionCard}`}>
+                    <div className={`${styles.modernSectionHeader} ${styles.adminSectionHeader}`}>
+                      <span className={`${styles.modernSectionTitle} ${styles.adminSectionTitle}`}>
+                        <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding
+                      </span>
+                      <span className={`${styles.modernSectionBadge} ${styles.adminSectionBadge}`}>
+                        Free Publishing Active
+                      </span>
                     </div>
-                    <div>
-                      <label className={styles.fieldLabel} style={{ display: "block", marginBottom: "0.25rem" }}>Custom Handle (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. @abc_news (defaults to @Sponsored)"
-                        value={customSponsorHandle}
-                        onChange={(e) => setCustomSponsorHandle(e.target.value)}
-                        className={styles.inputBox}
-                      />
+                    <div className={styles.modernSectionBody}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.adminFieldLabel}>Custom Sponsor Name (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. ABC News (defaults to Sponsored)"
+                          value={customSponsorName}
+                          onChange={(e) => setCustomSponsorName(e.target.value)}
+                          className={styles.inputBox}
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.adminFieldLabel}>Custom Handle (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. @abc_news (defaults to @Sponsored)"
+                          value={customSponsorHandle}
+                          onChange={(e) => setCustomSponsorHandle(e.target.value)}
+                          className={styles.inputBox}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
+
                 {/* Category Card */}
-                <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
-                  <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Category and Interest</label>
-                  <div className={styles.selectWrapper}>
-                    <select value={interest} onChange={(e) => setInterest(e.target.value)} className={styles.selectBox}>
-                      <option value="">-- Select Target Category --</option>
-                      {interests.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Category and Interest</span>
+                    <span className={styles.modernSectionBadge}>
+                      {interest || "Select Category"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <p className={styles.sectionDescription}>
+                      Choose the specific topic or interest sector for your sponsored news piece.
+                    </p>
+                    <div className={styles.selectWrapper}>
+                      <select value={interest} onChange={(e) => setInterest(e.target.value)} className={styles.selectBox}>
+                        <option value="">-- Select Target Category --</option>
+                        {interests.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
                 {/* Target Location Card */}
-                <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
-                  <label className={styles.fieldLabel} style={{ marginBottom: "0.75rem", display: "block", fontSize: "0.9rem", fontWeight: 700 }}>
-                    Target Location
-                  </label>
-                  <LocationSelector
-                    country={country}
-                    state={state}
-                    location={province}
-                    inputClass={styles.inputBox}
-                    labelClass={styles.fieldLabel}
-                    groupClass={styles.formGroup}
-                    cityLabel="Province"
-                    onChange={({ country: c, state: s, location: loc }) => {
-                      setCountry(c);
-                      setState(s);
-                      setProvince(loc);
-                    }}
-                  />
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Target Location &amp; Coverage</span>
+                    <span className={styles.modernSectionBadge}>
+                      {province || state || country || "All Locations"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <LocationSelector
+                      country={country}
+                      state={state}
+                      location={province}
+                      inputClass={styles.inputBox}
+                      labelClass={styles.fieldLabel}
+                      groupClass={styles.formGroup}
+                      cityLabel="Province"
+                      onChange={({ country: c, state: s, location: loc }) => {
+                        setCountry(c);
+                        setState(s);
+                        setProvince(loc);
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {/* Duration Selector Card */}
-                <div style={{ padding: "1.25rem 1.5rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
-                  <label className={styles.fieldLabel} style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "0.75rem" }}>
-                    <Calendar size={16} color="var(--primary)" /> Duration (Max 5 Days)
-                  </label>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                    {[1, 2, 3, 4, 5].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setCampaignDays(num)}
-                        style={{
-                          padding: "10px 20px",
-                          borderRadius: "10px",
-                          border: `1px solid ${campaignDays === num ? "var(--primary)" : "var(--card-border)"}`,
-                          backgroundColor: campaignDays === num ? "var(--primary)" : "var(--background)",
-                          color: campaignDays === num ? "#fff" : "var(--foreground)",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          transition: "all 0.2s ease"
-                        }}
-                      >
-                        {num} {num === 1 ? "Day" : "Days"}
-                      </button>
-                    ))}
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>
+                      <Calendar size={16} color="var(--primary)" /> Campaign Duration
+                    </span>
+                    <span className={styles.modernSectionBadge}>
+                      {campaignDays} {campaignDays === 1 ? "Day" : "Days"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <p className={styles.sectionDescription}>
+                      Select how long your news article should remain live and actively highlighted (up to 5 days).
+                    </p>
+                    <div className={styles.durationContainer}>
+                      {[1, 2, 3, 4, 5].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setCampaignDays(num)}
+                          className={`${styles.durationBtn} ${campaignDays === num ? styles.durationBtnActive : ""}`}
+                        >
+                          {num} {num === 1 ? "Day" : "Days"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 {/* Bidding Card */}
-                <div style={{ padding: "1.5rem", backgroundColor: "var(--primary-glow)", borderRadius: "14px", border: "1px solid var(--card-border)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                    <div>
-                      <strong style={{ fontSize: "0.95rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <Zap size={16} color="var(--primary)" /> Contest for Top Highlight Position (Bidding)
-                      </strong>
-                      <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.4 }}>
-                        Highest bids stay at the top of the highlights carousel. Current top bid for {interest || "this category"}: <strong>{formatCurrency(highestBid)}/day</strong>.
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={isBiddingEnabled}
-                      onChange={(e) => setIsBiddingEnabled(e.target.checked)}
-                      style={{ width: 22, height: 22, cursor: "pointer", flexShrink: 0 }}
-                    />
+                <div className={`${styles.modernSectionCard} ${isBiddingEnabled ? styles.biddingCardActive : ""}`}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>
+                      <Zap size={16} color="var(--primary)" /> Top Highlight Position (Bidding)
+                    </span>
+                    <span className={`${styles.modernSectionBadge} ${isBiddingEnabled ? styles.biddingBadgeActive : ""}`}>
+                      {isBiddingEnabled ? "Bidding Active" : "Standard Placement"}
+                    </span>
                   </div>
-
-                  {isBiddingEnabled && (
-                    <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px dashed var(--card-border)" }}>
-                      <label className={styles.fieldLabel} style={{ marginBottom: "0.5rem", display: "block" }}>Your Bid Price Per Day (₦)</label>
+                  <div className={styles.modernSectionBody}>
+                    <div className={styles.biddingHeaderRow}>
+                      <div>
+                        <p className={styles.biddingTitle}>
+                          Contest for the #1 Top Highlight Carousel
+                        </p>
+                        <p className={styles.biddingSubtitle}>
+                          Highest bids stay at the top of the news highlights carousel. Current top bid for {interest || "this category"}: <strong>{formatCurrency(highestBid)}/day</strong>.
+                        </p>
+                      </div>
                       <input
-                        type="number"
-                        min={highestBid + 100}
-                        step={100}
-                        value={bidPrice}
-                        onChange={(e) => setBidPrice(parseFloat(e.target.value) || 1000)}
-                        className={styles.inputBox}
+                        type="checkbox"
+                        checked={isBiddingEnabled}
+                        onChange={(e) => setIsBiddingEnabled(e.target.checked)}
+                        className={styles.biddingCheckbox}
                       />
-                      <p style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "6px", fontWeight: 600 }}>
-                        Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} {campaignDays === 1 ? "day" : "days"}. Higher bids overtake lower bids at top position.
-                      </p>
                     </div>
-                  )}
+
+                    {isBiddingEnabled && (
+                      <div className={styles.biddingContent}>
+                        <div className={styles.formGroup}>
+                          <label className={styles.fieldLabelSub}>Your Bid Price Per Day (₦)</label>
+                          <input
+                            type="number"
+                            min={highestBid + 100}
+                            step={100}
+                            value={bidPrice}
+                            onChange={(e) => setBidPrice(parseFloat(e.target.value) || 1000)}
+                            className={styles.inputBox}
+                          />
+                          <p className={styles.biddingCostNote}>
+                            Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} {campaignDays === 1 ? "day" : "days"}. Higher bids overtake lower bids at top position.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between" }}>
-                  <button onClick={() => setStep(2)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={!interest} onClick={() => setStep(4)} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: !interest ? "var(--card-border)" : "var(--primary)", color: !interest ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: !interest ? "not-allowed" : "pointer" }}>Continue to Preview →</button>
+                <div className={styles.stepActionsBetweenTight}>
+                  <button onClick={() => setStep(2)} className={styles.secondaryNavBtn}>Back</button>
+                  <button disabled={!interest} onClick={() => setStep(4)} className={styles.primaryNavBtn}>Continue to Preview →</button>
                 </div>
               </div>
             )}
@@ -565,13 +592,13 @@ export default function News({ session }: NewsProps) {
             {/* STEP 4: PREVIEW & PAYMENT */}
             {step === 4 && (
               <div className={styles.formGroup}>
-                <div style={{ borderRadius: "16px", border: "1px solid var(--card-border)", overflow: "hidden", backgroundColor: "var(--card-bg)" }}>
-                  {mediaPreview && <img src={mediaPreview} alt="Preview" style={{ width: "100%", maxHeight: "240px", objectFit: "contain", background: "#000" }} />}
-                  <div style={{ padding: "1.25rem" }}>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--primary)", backgroundColor: "var(--sidebar-bg)", padding: "3px 8px", borderRadius: "6px" }}>{interest}</span>
-                    <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginTop: "0.5rem", color: "var(--foreground)" }}>{capitalizeFirst(title)}</h3>
-                    <p style={{ fontSize: "0.9rem", color: "var(--foreground)", lineHeight: 1.5, marginTop: "0.5rem" }}>{content}</p>
-                    <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                <div className={styles.previewCard}>
+                  {mediaPreview && <img src={mediaPreview} alt="Preview" className={styles.previewImage} />}
+                  <div className={styles.previewContent}>
+                    <span className={styles.previewBadge}>{interest}</span>
+                    <h3 className={styles.previewTitle}>{capitalizeFirst(title)}</h3>
+                    <p className={styles.previewText}>{content}</p>
+                    <div className={styles.previewTargeting}>
                       Targeting: {country} {state ? `· ${state}` : ""} · {campaignDays} {campaignDays === 1 ? "Day" : "Days"} {isBiddingEnabled ? `· Bidded (₦${bidPrice}/day)` : ""}
                     </div>
                   </div>
@@ -579,126 +606,79 @@ export default function News({ session }: NewsProps) {
 
                 {/* Payment selector */}
                 {isAdmin ? (
-                  <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "rgba(234, 179, 8, 0.12)", borderRadius: "12px", border: "1px solid rgba(234, 179, 8, 0.35)", textAlign: "center" }}>
-                    <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                  <div className={styles.adminPrivilegeBox}>
+                    <h4 className={styles.adminPrivilegeHeading}>
                       <Crown size={18} color="var(--primary)" /> Admin Privilege: 100% Free Highlight Publishing (₦0.00 Total)
                     </h4>
-                    <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "4px", margin: 0 }}>
+                    <p className={styles.adminPrivilegeSubtext}>
                       No payment gateway or wallet balance deduction required.
                     </p>
                   </div>
                 ) : (
-                  <div style={{ marginTop: "1.5rem", padding: "1.25rem", backgroundColor: "var(--sidebar-bg)", borderRadius: "12px", border: "1px solid var(--card-border)" }}>
-                    <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem", color: "var(--foreground)" }}>Select Payment Method</h4>
-                    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+                  <div className={styles.paymentBox}>
+                    <h4 className={styles.paymentBoxHeading}>Select Payment Method</h4>
+                    <div className={styles.paymentMethodOptions}>
+                      <label className={styles.paymentOptionLabel}>
                         <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Paystack (Card/Bank/Transfer)
                       </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+                      <label className={styles.paymentOptionLabel}>
                         <input type="radio" name="pay" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} /> Pay from Wallet Balance ({formatCurrency(balance)})
                       </label>
                     </div>
-                    <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
+                    <div className={styles.paymentTotalCost}>
                       Total Payment: {formatCurrency(totalCost)}
                     </div>
                   </div>
                 )}
 
                 {/* AI Content Disclosure Toggle */}
-                <div
-                  style={{
-                    marginTop: "1.25rem",
-                    marginBottom: "0.75rem",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "14px",
-                    padding: "14px 16px",
-                    backgroundColor: "var(--sidebar-bg)",
-                    borderRadius: "10px",
-                    border: "1px solid var(--card-border)",
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                    <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--foreground)" }}>
+                <div className={styles.aiDisclosureBox}>
+                  <div className={styles.aiDisclosureTextContainer}>
+                    <span className={styles.aiDisclosureTitle}>
                       AI-generated content
                     </span>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", lineHeight: 1.35 }}>
+                    <span className={styles.aiDisclosureDesc}>
                       Turn this on if your highlight contains media or text generated or altered using AI tools.
                     </span>
                   </div>
-                  <label
-                    style={{
-                      position: "relative",
-                      display: "inline-block",
-                      width: "44px",
-                      height: "24px",
-                      flexShrink: 0,
-                      cursor: "pointer",
-                    }}
-                  >
+                  <label className={styles.aiSwitch}>
                     <input
                       type="checkbox"
                       checked={isAiContent}
                       onChange={(e) => setIsAiContent(e.target.checked)}
-                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
+                      className={styles.aiSwitchInput}
                     />
-                    <span
-                      style={{
-                        position: "absolute",
-                        cursor: "pointer",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: isAiContent ? "var(--primary)" : "var(--card-border)",
-                        transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
-                        borderRadius: "24px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: "absolute",
-                          content: '""',
-                          height: "18px",
-                          width: "18px",
-                          left: isAiContent ? "23px" : "3px",
-                          bottom: "3px",
-                          backgroundColor: "#ffffff",
-                          transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
-                          borderRadius: "50%",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                        }}
-                      />
+                    <span className={`${styles.aiSwitchSlider} ${isAiContent ? styles.aiSwitchSliderActive : ""}`}>
+                      <span className={`${styles.aiSwitchThumb} ${isAiContent ? styles.aiSwitchThumbActive : ""}`} />
                     </span>
                   </label>
                 </div>
 
-                <div style={{ marginTop: "0.75rem", display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px 14px", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
+                <div className={styles.termsPolicyBox}>
                   <input
                     type="checkbox"
                     id="newsTermsPolicyCheckbox"
                     checked={agreedToPolicy}
                     onChange={(e) => setAgreedToPolicy(e.target.checked)}
-                    style={{ marginTop: "3px", width: "16px", height: "16px", cursor: "pointer", flexShrink: 0 }}
+                    className={styles.termsCheckbox}
                   />
-                  <label htmlFor="newsTermsPolicyCheckbox" style={{ fontSize: "0.85rem", color: "var(--foreground)", cursor: "pointer", lineHeight: 1.4 }}>
+                  <label htmlFor="newsTermsPolicyCheckbox" className={styles.termsLabel}>
                     I have reviewed my highlight details and agree to Paayh&apos;s{" "}
-                    <Link href="/terms" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/terms" target="_blank" className={styles.termsLink}>
                       Terms of Service
                     </Link>,{" "}
-                    <Link href="/advertiser-guidelines" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/advertiser-guidelines" target="_blank" className={styles.termsLink}>
                       Advertising Guidelines
                     </Link>, and{" "}
-                    <Link href="/privacy" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/privacy" target="_blank" className={styles.termsLink}>
                       Privacy Policy
                     </Link>.
                   </label>
                 </div>
 
-                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "space-between" }}>
-                  <button onClick={() => setStep(3)} style={{ padding: "0.85rem 1.5rem", borderRadius: "12px", border: "1px solid var(--card-border)", background: "transparent", color: "var(--foreground)", fontWeight: 600, cursor: "pointer" }}>← Back</button>
-                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleSubmit} style={{ padding: "0.85rem 1.75rem", borderRadius: "12px", border: "none", backgroundColor: (!agreedToPolicy || isSubmitting) ? "var(--card-border)" : "var(--primary)", color: (!agreedToPolicy || isSubmitting) ? "var(--text-muted)" : "var(--background)", fontWeight: 700, cursor: (!agreedToPolicy || isSubmitting) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+                <div className={styles.stepActionsBetween}>
+                  <button onClick={() => setStep(3)} className={styles.secondaryNavBtn}>Back</button>
+                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleSubmit} className={styles.primaryNavBtn}>
                     {isSubmitting ? (
                       "Processing Submission..."
                     ) : isAdmin ? (

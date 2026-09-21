@@ -253,55 +253,130 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     fetchRelevantAds(0, false);
   }, [clearPending, fetchRelevantAds]);
 
-  // Jump-Free Scroll-to-Top Auto-Reveal:
-  // If the user scrolls naturally back to the very top (scrollTop === 0) and rests there,
-  // automatically flush pending oncoming ads without any layout shift or UI jump.
-  useEffect(() => {
-    if (pendingCount <= 0) return;
+  // Drag Pull-to-Refresh
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const pullStartY = useRef(0);
+  const isPullingRef = useRef(false);
+  const isPullRefreshingRef = useRef(false);
+  isPullRefreshingRef.current = isPullRefreshing;
 
-    let settleTimeout: NodeJS.Timeout | null = null;
-    const scrollEl = parentRef.current?.parentElement || (typeof window !== "undefined" ? window : null);
+  useEffect(() => {
+    const scrollEl = parentRef.current?.parentElement || parentRef.current;
     if (!scrollEl) return;
 
-    const handleScrollCheck = () => {
-      const currentScrollTop =
-        scrollEl instanceof Window ? window.scrollY : (scrollEl as HTMLElement).scrollTop;
-
-      // Strictly ensure user has fully arrived at the top (0px)
-      if (currentScrollTop <= 0) {
-        if (settleTimeout) clearTimeout(settleTimeout);
-        settleTimeout = setTimeout(() => {
-          const finalCheck =
-            scrollEl instanceof Window ? window.scrollY : (scrollEl as HTMLElement).scrollTop;
-          if (finalCheck <= 0) {
-            clearPending();
-            if (typeof window !== "undefined") {
-              (window as any).__xea_force_refresh = true;
-            }
-            fetchRelevantAds(0, false);
-          }
-        }, 180); // 180ms settling threshold to guarantee zero scroll momentum jump
+    const onTouchStart = (e: TouchEvent) => {
+      if (scrollEl.scrollTop <= 2 && !isPullRefreshingRef.current) {
+        pullStartY.current = e.touches[0].clientY;
+        isPullingRef.current = true;
+      } else {
+        isPullingRef.current = false;
       }
     };
 
-    scrollEl.addEventListener("scroll", handleScrollCheck as EventListener, { passive: true });
-    return () => {
-      if (settleTimeout) clearTimeout(settleTimeout);
-      scrollEl.removeEventListener("scroll", handleScrollCheck as EventListener);
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isPullingRef.current || isPullRefreshingRef.current) return;
+      if (scrollEl.scrollTop > 2) {
+        isPullingRef.current = false;
+        setPullDistance(0);
+        return;
+      }
+
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - pullStartY.current;
+
+      if (deltaY > 0) {
+        // Damped logarithmic curve for smooth native elastic resistance
+        const pull = Math.min(Math.pow(deltaY, 0.82) * 2.2, 90);
+        setPullDistance(pull);
+        if (deltaY > 10 && e.cancelable) {
+          e.preventDefault();
+        }
+      } else {
+        setPullDistance(0);
+      }
     };
-  }, [pendingCount, clearPending, fetchRelevantAds]);
+
+    const onTouchEnd = async () => {
+      if (!isPullingRef.current) return;
+      isPullingRef.current = false;
+
+      setPullDistance((currentPull) => {
+        if (currentPull >= 55 && !isPullRefreshingRef.current) {
+          setIsPullRefreshing(true);
+          if (typeof window !== "undefined") {
+            (window as any).__xea_force_refresh = true;
+          }
+          fetchRelevantAds(0, false).finally(() => {
+            setIsPullRefreshing(false);
+            setPullDistance(0);
+          });
+          return 45; // Hold at active spinner position
+        }
+        return 0;
+      });
+    };
+
+    scrollEl.addEventListener("touchstart", onTouchStart, { passive: true });
+    scrollEl.addEventListener("touchmove", onTouchMove, { passive: false });
+    scrollEl.addEventListener("touchend", onTouchEnd, { passive: true });
+    scrollEl.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+    return () => {
+      scrollEl.removeEventListener("touchstart", onTouchStart);
+      scrollEl.removeEventListener("touchmove", onTouchMove);
+      scrollEl.removeEventListener("touchend", onTouchEnd);
+      scrollEl.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [fetchRelevantAds]);
 
   return (
     <div ref={parentRef} className={styles.feedContainer}>
+      {/* Pull-to-refresh indicator */}
+      {(pullDistance > 0 || isPullRefreshing) && (
+        <div
+          className={styles.pullIndicator}
+          style={{
+            transform: `translate3d(-50%, ${Math.min(pullDistance, 70)}px, 0)`,
+            opacity: isPullRefreshing ? 1 : Math.min(pullDistance / 35, 1),
+            transition: isPullingRef.current
+              ? "none"
+              : "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
+          }}
+          aria-hidden="true"
+        >
+          <div className={styles.pullBubble}>
+            {isPullRefreshing ? (
+              <div className={styles.pullSpinner} />
+            ) : (
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{
+                  transform: `rotate(${Math.min(pullDistance * 4.5, 360)}deg)`,
+                  transition: isPullingRef.current ? "none" : "transform 0.2s ease",
+                }}
+              >
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
       <NewPostsPill count={pendingCount} onClick={handlePillClick} />
       {loading && <FeedSkeleton count={3} />}
       {!loading && error && (
-        <div className={styles.errorContainer || styles.error} style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
-          <p className={styles.error} style={{ marginBottom: "1rem" }}>Unable to load ads right now.</p>
+        <div className={styles.errorContainer}>
+          <p className={`${styles.error} ${styles.errorMessage}`}>Unable to load ads right now.</p>
           <button
             onClick={() => fetchRelevantAds(0, false)}
-            className={styles.loadMoreBtn}
-            style={{ padding: "0.5rem 1.5rem", fontSize: "0.85rem" }}
+            className={`${styles.loadMoreBtn} ${styles.errorRetryBtn}`}
           >
             Try Again
           </button>
@@ -316,8 +391,6 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
           className={styles.adGrid}
           style={{
             height: `${virtualizer.getTotalSize()}px`,
-            width: "100%",
-            position: "relative",
           }}
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -328,13 +401,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
                 key={virtualRow.key || ad.id || virtualRow.index}
                 ref={virtualizer.measureElement}
                 data-index={virtualRow.index}
+                className={styles.virtualRow}
                 style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
                   transform: `translate3d(0, ${Math.round(virtualRow.start)}px, 0)`,
-                  willChange: "transform",
                   zIndex: displayFeed.length - virtualRow.index,
                 }}
               >

@@ -940,6 +940,11 @@
   color: var(--modal-ink);
 }
 
+.termsBackBtnDisabled {
+  opacity: 0.35 !important;
+  pointer-events: none !important;
+}
+
 .termsSubmitBtn {
   background-color: var(--modal-ink);
   color: var(--modal-paper);

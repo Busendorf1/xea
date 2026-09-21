@@ -128,3 +128,25 @@
     font-size: 1.15rem;
   }
 }
+
+.noticeBoxMargin {
+  margin: 1rem 0;
+}
+
+.inactivitySection {
+  scroll-margin-top: 2rem;
+}
+
+.inactivitySubheading {
+  font-size: 1.25rem;
+  color: var(--primary);
+}
+
+.noticeBoxSmallMargin {
+  margin: 0.75rem 0;
+}
+
+.paragraphTopMargin {
+  margin-top: 1rem;
+}
+

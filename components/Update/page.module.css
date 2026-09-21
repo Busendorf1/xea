@@ -577,3 +577,136 @@
     border-radius: 4px !important;
   }
 }
+
+.loadingContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--background);
+}
+
+.flexShrink0 {
+  flex-shrink: 0;
+}
+
+.cooldownBanner {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid #10b981;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.cooldownCountdown {
+  font-family: monospace;
+  font-size: 1.1rem;
+}
+
+.statusBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  margin: 14px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.statusBannerSuccess {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.statusBannerError {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.statusBannerInfo {
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.colSpanFull {
+  grid-column: 1 / -1;
+}
+
+.privacyNoticeBox {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background-color: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.privacyNoticeIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.fileUploadDisabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+.uploadHelperText {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.stepSectionIntro {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.bioGroup {
+  margin-top: 1.25rem;
+}
+
+.bioLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.cooldownWarningNote {
+  font-size: 0.82rem;
+  color: #d97706;
+  margin-top: 1.25rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.submitBtnDisabled {
+  background: var(--sidebar-bg) !important;
+  color: var(--text-muted) !important;
+  border: 1px solid var(--card-border) !important;
+  box-shadow: none !important;
+}
+
+.submitBtnActive {
+  background: var(--primary) !important;
+  color: var(--background) !important;
+  border: 1px solid var(--primary) !important;
+  box-shadow: none !important;
+}

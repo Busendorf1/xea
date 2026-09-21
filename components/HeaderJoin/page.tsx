@@ -116,7 +116,17 @@ export default function HeaderJoin() {
 
   return (
     <header ref={headerRef} className={`${styles.header} ${showHeader ? "" : styles.headerHidden}`}>
-      <Link href={"/"}>
+      <Link 
+        href={user ? "/logged-in" : "/"}
+        onClick={() => {
+          if (user) {
+            sessionStorage.setItem("paayh_active_tab", "feed");
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event("paayh_tab_change"));
+            }
+          }
+        }}
+      >
         <div className={styles.name}>
           <p className={styles.baggyt}>Paayh</p>
           <span className={styles.bag}>Your feeds are ads</span>
@@ -124,7 +134,7 @@ export default function HeaderJoin() {
       </Link>
       {isSmallScreen ? (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", order: 3 }}>
+          <div className={styles.mobileActions}>
             {renderThemeSwitcher()}
             {!isLoading && user && <SidebarMenu />}
             <div className={styles.menu}>
@@ -141,8 +151,7 @@ export default function HeaderJoin() {
           <div
             className={`${styles.end} ${
               menuActive ? styles.showMenu : ""
-            }`}
-            style={{ order: 4 }}
+            } ${styles.mobileDropdown}`}
           >
             <div className={styles.create}>
               <Link href={"/"} onClick={() => setMenuActive(false)}>Home</Link>

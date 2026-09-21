@@ -177,6 +177,11 @@
   white-space: nowrap;
 }
 
+.receiptValueSuccess {
+  color: var(--success, #16a34a);
+}
+
+
 .refTag {
   font-family: monospace;
   font-size: 0.78rem;

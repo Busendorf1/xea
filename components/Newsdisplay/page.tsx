@@ -152,11 +152,11 @@ export default function AdDisplay({
 
   if (loading && page === 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <div className={styles.skeletonContainer}>
         {[1, 2].map((n) => (
-          <div key={n} className={styles.adCard} style={{ padding: "1rem" }}>
+          <div key={n} className={`${styles.adCard} ${styles.skeletonCard}`}>
             <Skeleton variant="rect" width="100%" height={150} />
-            <Skeleton variant="title" width="60%" height={18} style={{ marginTop: "10px" }} />
+            <Skeleton variant="title" width="60%" height={18} className={styles.skeletonTitle} />
             <Skeleton variant="text" width="90%" height={12} />
             <Skeleton variant="text" width="80%" height={12} />
           </div>
@@ -167,12 +167,12 @@ export default function AdDisplay({
 
   if (error) {
     return (
-      <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(220, 38, 38, 0.08)", borderRadius: "8px", border: "1px solid var(--danger)", marginBottom: "1.5rem" }}>
-        <p style={{ color: "var(--danger)", marginBottom: "10px", fontSize: "14px", fontWeight: "600" }}>Failed to load highlights.</p>
+      <div className={styles.errorContainer}>
+        <p className={styles.errorMessage}>Failed to load highlights.</p>
         <button 
           type="button" 
           onClick={() => fetchAll(0, false)} 
-          style={{ padding: "6px 12px", background: "var(--danger)", color: "#fff", border: "none", borderRadius: "var(--radius-btn)", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
+          className={styles.retryButton}
         >
           Try Again
         </button>
@@ -192,8 +192,7 @@ export default function AdDisplay({
               controls
               playsInline
               preload="metadata"
-              className={styles.adImage}
-              style={{ width: "100%", height: "auto", maxHeight: "400px", objectFit: "contain", background: "#000", borderRadius: "8px" }}
+              className={`${styles.adImage} ${styles.adVideo}`}
             />
           ) : (
             <Image

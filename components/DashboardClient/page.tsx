@@ -44,7 +44,7 @@ import Footer from "../Footers/page";
 import { resolveAtwTier, getAtwBalanceLimit } from "@/lib/attentionTierEngine";
 import RollingCounter from "@/components/ui/RollingCounter";
 import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
-import UserAvatar from "@/components/ui/UserAvatar";
+import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
 
 export interface UserProfile {
@@ -164,6 +164,19 @@ export default function DashboardClient({
   const [sendMoneyError, setSendMoneyError] = useState("");
   const [transferSuccessData, setTransferSuccessData] = useState<TransferSuccessData | null>(null);
   const [showAtwTooltip, setShowAtwTooltip] = useState(false);
+  const [inactivityDismissed, setInactivityDismissed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("paayh_inactivity_dismissed") === "true";
+    }
+    return false;
+  });
+
+  const handleDismissInactivity = () => {
+    setInactivityDismissed(true);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("paayh_inactivity_dismissed", "true");
+    }
+  };
 
   const refreshProfileQuietly = async () => {
     try {
@@ -1038,31 +1051,35 @@ export default function DashboardClient({
 
   const renderAccountLinks = () => (
     <div className={styles.menuButtonGroup}>
-      <Link href="/user/logged-in?view=profile" onClick={() => selectTab("profile")} className={styles.menuButton}>
+      <Link href="/logged-in" onClick={() => selectTab("profile")} className={styles.menuButton}>
         <User size={16} />
         <span>Profile</span>
       </Link>
-      <Link href="/user/logged-in?view=myads" onClick={() => selectTab("myads")} className={styles.menuButton}>
+      <Link href="/logged-in" onClick={() => selectTab("myads")} className={styles.menuButton}>
         <TrendingUp size={16} />
         <span>My Ads</span>
       </Link>
-      <Link href="/user/logged-in?view=news" onClick={() => selectTab("news")} className={styles.menuButton}>
+      <Link href="/logged-in" onClick={() => selectTab("news")} className={styles.menuButton}>
         <Compass size={16} />
         <span>Create Highlight</span>
       </Link>
-      <Link href="/user/logged-in?view=adPage" onClick={() => selectTab("adPage")} className={styles.menuButton}>
+      <Link href="/logged-in" onClick={() => selectTab("adPage")} className={styles.menuButton}>
         <FileText size={16} />
         <span>Create Ad</span>
       </Link>
-      <Link href="/user/logged-in?view=monetize" onClick={() => selectTab("monetize")} className={styles.menuButton}>
+      <Link href="/logged-in" onClick={() => selectTab("monetize")} className={styles.menuButton}>
         <UserCheck size={16} />
         <span>Monetization</span>
+      </Link>
+      <Link href="/logged-in" onClick={() => selectTab("statement")} className={styles.menuButton}>
+        <Wallet size={16} />
+        <span>Statement</span>
       </Link>
       <Link href="/user/logout" className={styles.menuButton}>
         <LogOut size={16} />
         <span>Logout</span>
       </Link>
-      <Link href="/user/logged-in?view=deactivate" onClick={() => selectTab("deactivate")} className={styles.menuButtonDanger}>
+      <Link href="/logged-in" onClick={() => selectTab("deactivate")} className={styles.menuButtonDanger}>
         <Trash2 size={16} />
         <span>Deactivate Account</span>
       </Link>
@@ -1147,34 +1164,36 @@ export default function DashboardClient({
 
       {/* 2. Main Dashboard Layout Area */}
       <div className={`${styles.dashboardContainer} ${showHeader ? "" : styles.dashboardContainerHeaderHidden}`}>
-        {/* 30-Day Inactive Account Warning Banner */}
-        {(() => {
-          const daysInactive = user.daysInactive ?? (user.last_active_at ? Math.floor((Date.now() - new Date(user.last_active_at).getTime()) / (86400 * 1000)) : 0);
-          if (daysInactive < 30) return null;
-          return (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                background: "rgba(220, 38, 38, 0.08)",
-                border: "1px solid var(--danger)",
-                borderRadius: "var(--radius-card)",
-                padding: "12px 16px",
-                marginBottom: "16px",
-                color: "var(--danger)",
-                fontSize: "0.85rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                lineHeight: "1.4",
-              }}
-            >
-              <AlertTriangle size={20} style={{ flexShrink: 0 }} />
-              <div>
-                <strong>Inactive Account ({daysInactive} Days):</strong> Withdraw balance or view feed ads to keep your wallet active. Unclaimed balances forfeit after 60 days of inactivity.
+      {/* Centered 30-Day Inactive Account Warning Modal */}
+      {(() => {
+        if (inactivityDismissed) return null;
+        const daysInactive = user.daysInactive ?? (user.last_active_at ? Math.floor((Date.now() - new Date(user.last_active_at).getTime()) / (86400 * 1000)) : 0);
+        if (daysInactive < 30) return null;
+        return (
+          <div className={styles.inactivityModalBackdrop}>
+            <div className={styles.inactivityModalCard}>
+              <div className={styles.inactivityModalIcon}>
+                <AlertTriangle size={28} />
               </div>
+              <div>
+                <h3 className={styles.inactivityModalTitle}>
+                  Inactive Account ({daysInactive} Days)
+                </h3>
+                <p className={styles.inactivityModalText}>
+                  Withdraw balance or view feed ads to keep your wallet active. Unclaimed balances forfeit after 60 days of inactivity.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissInactivity}
+                className={styles.inactivityModalBtn}
+              >
+                Got it
+              </button>
             </div>
-          );
-        })()}
+          </div>
+        );
+      })()}
         {/* Left Sidebar: Highlights Section */}
         {/* On tablet: hidden if profile is toggled. On mobile: hidden by default, slides in full screen. */}
         <aside className={`${styles.leftSidebar} ${
@@ -1241,22 +1260,22 @@ export default function DashboardClient({
               <div className={styles.profileBanner}></div>
               <div className={styles.avatarRow}>
                 <div className={styles.profileImgContainer}>
-                  <UserAvatar
+                  <Avatar
                     src={user.profileImage}
-                    fallbackText={user.business_name || `${user.firstName || ""} ${user.lastName || ""}`.trim()}
+                    name={user.business_name || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username}
+                    email={user.email}
                     size={70}
                     alt="Profile picture"
                     gender={user.gender}
-                    className={styles.profileImg}
                   />
                 </div>
-                <Link href="/user/logged-in?view=profile" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
+                <Link href="/logged-in" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
                   Edit profile
                 </Link>
               </div>
 
               <div className={styles.profileInfo}>
-                <h4 className={styles.profileName} style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                <h4 className={styles.profileName}>
                   <span>{user.business_name && user.business_name.trim() !== "" ? user.business_name : `${user.firstName} ${user.lastName}`}</span>
                   {!!(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) && (
                     <VerifiedBadge size={21} title="Verified Partner" />
@@ -1339,12 +1358,12 @@ export default function DashboardClient({
                           const strokeOffset = circ - (ratio * circ);
 
                           return (
-                            <div className={styles.detailItem} style={{ alignItems: "center", position: "relative" }}>
+                            <div className={`${styles.detailItem} ${styles.detailItemCenter}`}>
                               <svg viewBox="0 0 24 24" className={styles.detailIcon}>
                                 <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="currentColor"/>
                               </svg>
                               <span>
-                                <strong style={{ color: "var(--primary)", marginRight: "6px" }}>
+                                <strong className={styles.atwTierCode}>
                                   {tier.code}
                                 </strong>
                               </span>
@@ -1389,7 +1408,7 @@ export default function DashboardClient({
                                   <div className={styles.atwTooltipBox} onClick={(e) => e.stopPropagation()}>
                                     <div className={styles.atwTooltipHeader}>
                                       <span>ATW Holding Capacity</span>
-                                      <span style={{ color: stateColor, fontWeight: 800 }}>{pct}%</span>
+                                      <span className={styles.atwPct} style={{ color: stateColor }}>{pct}%</span>
                                     </div>
                                     <p className={styles.atwTooltipText}>
                                       Holding limit: {formatCurrency(balanceCap)} ({tier.code}). Current: {formatCurrency(currentBal)}.
@@ -1429,7 +1448,7 @@ export default function DashboardClient({
                             {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
                           </p>
                           <Link
-                            href="/user/logged-in?view=monetize"
+                            href="/logged-in"
                             onClick={() => selectTab("monetize")}
                             className={`${styles.renewBtn} ${styles.monetizeProgressLink}`}
                           >
@@ -1478,7 +1497,7 @@ export default function DashboardClient({
                   <span>Send Money</span>
                 </button>
               </div>
-              <Link href="/user/logged-in?view=statement" onClick={() => selectTab("statement")} className={styles.statementLink}>
+              <Link href="/logged-in" onClick={() => selectTab("statement")} className={styles.statementLink}>
                 View Account Statement
               </Link>
             </div>

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { MapPin, X, AlertCircle, Plus } from "lucide-react";
 import { countryList, locationData } from "@/lib/utils/locations";
 import { detectGpsLocation } from "@/lib/utils/locationHelper";
+import styles from "./LocationSelector.module.css";
 
 interface LocationSelectorProps {
   country: string;
@@ -112,24 +113,19 @@ export default function LocationSelector({
   return (
     <>
       {gpsEnforced && (
-        <div style={{ gridColumn: "1 / -1", marginBottom: "0.75rem" }}>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: "0.65rem", cursor: disabled || gpsLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "0.95rem" }}>
+        <div className={styles.gpsToggleWrapper}>
+          <label className={`${styles.gpsToggleLabel} ${disabled || gpsLoading ? styles.gpsToggleLabelDisabled : ""}`}>
             <input
               type="checkbox"
               checked={isToggled}
               onChange={handleToggle}
               disabled={disabled || gpsLoading}
-              style={{ width: "1.1rem", height: "1.1rem", cursor: "pointer" }}
+              className={styles.gpsCheckbox}
             />
             <span>Auto-detect location</span>
           </label>
           {gpsStatus && (
-            <p style={{
-              fontSize: "0.83rem",
-              marginTop: "0.4rem",
-              fontWeight: 500,
-              color: gpsStatus.startsWith("✓") ? "#16a34a" : gpsStatus.startsWith("⚠️") ? "#dc2626" : "#475569"
-            }}>
+            <p className={`${styles.gpsStatusText} ${gpsStatus.startsWith("✓") ? styles.gpsStatusSuccess : gpsStatus.startsWith("⚠️") ? styles.gpsStatusError : ""}`}>
               {gpsStatus}
             </p>
           )}
@@ -149,8 +145,7 @@ export default function LocationSelector({
                   value={country}
                   readOnly
                   disabled
-                  className={inputClass}
-                  style={{ width: "100%", opacity: 0.85, cursor: "not-allowed" }}
+                  className={`${inputClass} ${styles.readOnlyInput}`}
                   required
                 />
               </div>
@@ -163,8 +158,7 @@ export default function LocationSelector({
                   value={state}
                   readOnly
                   disabled
-                  className={inputClass}
-                  style={{ width: "100%", opacity: 0.85, cursor: "not-allowed" }}
+                  className={`${inputClass} ${styles.readOnlyInput}`}
                   required
                 />
               </div>
@@ -177,8 +171,7 @@ export default function LocationSelector({
                   value={location}
                   readOnly
                   disabled
-                  className={inputClass}
-                  style={{ width: "100%", opacity: 0.85, cursor: "not-allowed" }}
+                  className={`${inputClass} ${styles.readOnlyInput}`}
                   required
                 />
               </div>
@@ -188,12 +181,11 @@ export default function LocationSelector({
             <>
               {/* Country Select */}
               <div className={groupClass}>
-                {showLabels && <label className={labelClass} style={{ display: "block", marginBottom: "0.35rem" }}>Country</label>}
+                {showLabels && <label className={`${labelClass} ${styles.labelBlock}`}>Country</label>}
                 <select
                   value={selectedCountryOption}
                   onChange={handleCountryChange}
-                  className={inputClass}
-                  style={{ width: "100%" }}
+                  className={`${inputClass} ${styles.fullWidth}`}
                   disabled={disabled}
                   required={!multiLocation}
                 >
@@ -213,8 +205,7 @@ export default function LocationSelector({
                     onChange={(e) =>
                       onChange({ country: e.target.value, state: "", location: "", multiLocations })
                     }
-                    className={inputClass}
-                    style={{ width: "100%", marginTop: "0.5rem" }}
+                    className={`${inputClass} ${styles.customInput}`}
                     disabled={disabled}
                     required={!multiLocation}
                   />
@@ -222,15 +213,14 @@ export default function LocationSelector({
               </div>
 
               {/* State Select */}
-              <div className={groupClass} style={{ marginTop: "1rem" }}>
-                {showLabels && <label className={labelClass} style={{ display: "block", marginBottom: "0.35rem" }}>State</label>}
+              <div className={`${groupClass} ${styles.groupTopMargin}`}>
+                {showLabels && <label className={`${labelClass} ${styles.labelBlock}`}>State</label>}
                 {isPredefinedCountry && selectedCountryOption !== "Other" ? (
                   <>
                     <select
                       value={selectedStateOption}
                       onChange={handleStateChange}
-                      className={inputClass}
-                      style={{ width: "100%" }}
+                      className={`${inputClass} ${styles.fullWidth}`}
                       disabled={disabled}
                       required={!multiLocation}
                     >
@@ -250,8 +240,7 @@ export default function LocationSelector({
                         onChange={(e) =>
                           onChange({ country, state: e.target.value, location: "", multiLocations })
                         }
-                        className={inputClass}
-                        style={{ width: "100%", marginTop: "0.5rem" }}
+                        className={`${inputClass} ${styles.customInput}`}
                         disabled={disabled}
                         required={!multiLocation}
                       />
@@ -265,8 +254,7 @@ export default function LocationSelector({
                     onChange={(e) =>
                       onChange({ country, state: e.target.value, location: "", multiLocations })
                     }
-                    className={inputClass}
-                    style={{ width: "100%" }}
+                    className={`${inputClass} ${styles.fullWidth}`}
                     disabled={disabled}
                     required={!multiLocation}
                   />
@@ -274,15 +262,14 @@ export default function LocationSelector({
               </div>
 
               {/* City/Location Select */}
-              <div className={cityGroupClass || groupClass} style={{ marginTop: "1rem" }}>
-                {showLabels && <label className={labelClass} style={{ display: "block", marginBottom: "0.35rem" }}>{cityLabel}</label>}
+              <div className={`${cityGroupClass || groupClass} ${styles.groupTopMargin}`}>
+                {showLabels && <label className={`${labelClass} ${styles.labelBlock}`}>{cityLabel}</label>}
                 {isPredefinedState && selectedStateOption !== "Other" ? (
                   <>
                     <select
                       value={selectedCityOption}
                       onChange={handleCityChange}
-                      className={inputClass}
-                      style={{ width: "100%" }}
+                      className={`${inputClass} ${styles.fullWidth}`}
                       disabled={disabled}
                       required={!multiLocation}
                     >
@@ -302,8 +289,7 @@ export default function LocationSelector({
                         onChange={(e) =>
                           onChange({ country, state, location: e.target.value, multiLocations })
                         }
-                        className={inputClass}
-                        style={{ width: "100%", marginTop: "0.5rem" }}
+                        className={`${inputClass} ${styles.customInput}`}
                         disabled={disabled}
                         required={!multiLocation}
                       />
@@ -317,8 +303,7 @@ export default function LocationSelector({
                     onChange={(e) =>
                       onChange({ country, state, location: e.target.value, multiLocations })
                     }
-                    className={inputClass}
-                    style={{ width: "100%" }}
+                    className={`${inputClass} ${styles.fullWidth}`}
                     disabled={disabled}
                     required={!multiLocation}
                   />
@@ -327,7 +312,7 @@ export default function LocationSelector({
 
               {/* Multi-Location Add Button & Selected Pills */}
               {multiLocation && (
-                <div style={{ gridColumn: "1 / -1", marginTop: "0.5rem" }}>
+                <div className={styles.multiLocationWrapper}>
                   <button
                     type="button"
                     onClick={() => {
@@ -345,46 +330,23 @@ export default function LocationSelector({
                         onChange({ country, state, location: "", multiLocations: updated });
                       }
                     }}
-                    style={{
-                      backgroundColor: (multiLocations?.length || 0) >= 30 ? "rgba(148, 163, 184, 0.2)" : "rgba(29, 155, 240, 0.12)",
-                      border: `1px solid ${(multiLocations?.length || 0) >= 30 ? "#64748b" : "rgba(29, 155, 240, 0.3)"}`,
-                      color: (multiLocations?.length || 0) >= 30 ? "#94a3b8" : "#1d9bf0",
-                      padding: "6px 14px",
-                      borderRadius: "4px",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      cursor: (multiLocations?.length || 0) >= 30 ? "not-allowed" : "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px"
-                    }}
+                    className={`${styles.addLocationBtn} ${(multiLocations?.length || 0) >= 30 ? styles.addLocationBtnDisabled : ""}`}
                   >
                     <Plus size={14} /> Add Target Location
                   </button>
 
                   {(multiLocations?.length || 0) >= 30 && (
-                    <p style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "0.4rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                    <p className={styles.maxLocationWarning}>
                       <AlertCircle size={14} /> Maximum 30 target locations reached. For broader audience reach across multiple regions, we recommend targeting by Country or State instead.
                     </p>
                   )}
 
                   {multiLocations && multiLocations.length > 0 && (
-                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "0.6rem" }}>
+                    <div className={styles.pillsContainer}>
                       {multiLocations.map((loc, idx) => (
                         <span
                           key={`${loc}-${idx}`}
-                          style={{
-                            backgroundColor: "var(--sidebar-bg)",
-                            border: "1px solid var(--card-border)",
-                            padding: "4px 10px",
-                            borderRadius: "4px",
-                            fontSize: "0.78rem",
-                            fontWeight: 600,
-                            color: "var(--foreground)",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px"
-                          }}
+                          className={styles.locationPill}
                         >
                           <MapPin size={12} color="#1d9bf0" /> {loc}
                           <button
@@ -393,7 +355,7 @@ export default function LocationSelector({
                               const updated = multiLocations.filter((_, i) => i !== idx);
                               onChange({ country, state, location, multiLocations: updated });
                             }}
-                            style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", display: "inline-flex", alignItems: "center", padding: 0 }}
+                            className={styles.removePillBtn}
                           >
                             <X size={12} />
                           </button>

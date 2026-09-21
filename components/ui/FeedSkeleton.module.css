@@ -89,3 +89,24 @@
     max-width: 760px;
   }
 }
+
+.noMarginBottom {
+  margin-bottom: 0 !important;
+}
+
+.marginSmallBottom {
+  margin-bottom: 6px !important;
+}
+
+.roundedPill {
+  border-radius: 9999px !important;
+}
+
+.mediaRadius {
+  border-radius: 14px !important;
+}
+
+.iconRadius {
+  border-radius: 6px !important;
+}
+

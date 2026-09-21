@@ -286,10 +286,11 @@ export async function processSuccessfulPayment(
     throw updateError;
   }
 
-  // 4. Invalidate cached profile, statement payments, and monetize status in Redis
+  // 4. Invalidate cached profile, user campaigns, statement payments, and monetize status in Redis
   try {
-    const { invalidateCachedProfile } = await import("@/lib/utils/cache");
+    const { invalidateCachedProfile, invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
     await invalidateCachedProfile(String(user_email));
+    await invalidateCachedUserCampaigns(String(user_email)).catch(() => {});
   } catch (cacheErr) {
     console.warn("⚠️ Cache invalidation notice in processPayment:", cacheErr);
   }

@@ -325,3 +325,21 @@
   color: var(--danger);
   font-weight: 500;
 }
+
+.headerPrimaryIcon {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.ticketCategory {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.ticketRepliedAt {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}

@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       const isMobile = !!req.headers.get("x-user-email") && !req.headers.get("origin")?.includes("http");
       const callbackUrl = isMobile 
         ? "xea-auth://payment-callback"
-        : `${origin}/user/myads?boost_ref=${reference}`;
+        : `${origin}/logged-in?boost_ref=${reference}`;
 
       // Insert pending payment record so verify endpoint and webhooks recognize it
       await supabaseAdmin.from("payments").insert({

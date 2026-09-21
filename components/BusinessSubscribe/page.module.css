@@ -270,3 +270,213 @@
     margin-bottom: 2.5rem;
   }
 }
+
+.spinIcon {
+  margin-right: 10px;
+}
+
+.alertBox {
+  max-width: 680px;
+  margin: 0 auto 1.5rem auto;
+}
+
+.alertIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.statusIconCircle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background-color: var(--sidebar-bg);
+  margin: 0 auto 1.25rem auto;
+}
+
+.statusIconCircleSuccess {
+  background-color: rgba(16, 185, 129, 0.2);
+}
+
+.statusIconCircleDanger {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+.formCardSuccess {
+  border-color: var(--success);
+}
+
+.formCardActive {
+  border-color: #10b981;
+  background-color: rgba(16, 185, 129, 0.04);
+}
+
+.formCardDanger {
+  border-color: #ef4444;
+}
+
+.formTitleMargin {
+  margin-bottom: 0.5rem;
+}
+
+.formTitleSuccess {
+  color: var(--success);
+  margin-bottom: 0.5rem;
+}
+
+.formTitleDanger {
+  color: #ef4444;
+  margin-bottom: 0.5rem;
+}
+
+.formTitleActive {
+  color: #10b981;
+  margin-bottom: 0.5rem;
+}
+
+.greenText {
+  color: #10b981;
+}
+
+.accentText {
+  color: #38bdf8;
+}
+
+
+.statusText {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+.statusTextCompact {
+  margin-bottom: 1rem;
+}
+
+.statusSummaryBox {
+  background-color: var(--background);
+  border-radius: 8px;
+  padding: 1.25rem;
+  border: 1px solid var(--card-border);
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.statusSummaryBoxNoMargin {
+  margin-bottom: 0;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.summaryRowLast {
+  display: flex;
+  justify-content: space-between;
+}
+
+.textMuted {
+  color: var(--text-muted);
+}
+
+.textPrimary {
+  color: var(--primary);
+}
+
+.textSuccess {
+  color: var(--success);
+}
+
+.textDanger {
+  color: var(--danger);
+}
+
+.textLarge {
+  font-size: 1.1rem;
+}
+
+.badgePending {
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  background-color: var(--sidebar-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--card-border);
+}
+
+.badgeApproved {
+  color: var(--success);
+  font-weight: 700;
+  font-size: 0.8rem;
+  background-color: var(--sidebar-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--card-border);
+}
+
+.badgeActivePaid {
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.8rem;
+  background-color: rgba(16, 185, 129, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.statusHint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.paymentButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.payWalletBtn {
+  background-color: #10b981;
+}
+
+.payCardBtn {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+}
+
+.rejectionFeedbackBox {
+  background-color: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  color: #f87171;
+  margin-bottom: 1.5rem;
+}
+
+.feeNoticeBanner {
+  background-color: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 1.5rem;
+  font-size: 0.88rem;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feePrice {
+  color: #10b981;
+  font-size: 1.05rem;
+}

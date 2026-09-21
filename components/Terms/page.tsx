@@ -128,7 +128,7 @@ export default function TermsPage() {
             or terms violations. Paayh is under no legal obligation to disclose internal forensics, proprietary fraud detection
             algorithms, or investigation details to users.
           </p>
-          <div className={styles.noticeBox} style={{ margin: "1rem 0" }}>
+          <div className={`${styles.noticeBox} ${styles.noticeBoxMargin}`}>
             <strong>MANDATORY PARTICIPATION CONDITION:</strong> The accrual, holding, and redemption of promotional incentive
             credits is entirely conditional and subject to platform solvency and verification. IF YOU DO NOT AGREE TO THESE
             TERMS, INCLUDING PAAYH&apos;S UNILATERAL DISCRETION REGARDING PROMOTIONAL INCENTIVE CREDITS, YOU MAY NOT USE OR
@@ -204,11 +204,11 @@ export default function TermsPage() {
             </li>
           </ul>
         {/* PLATFORM INACTIVITY MANAGEMENT GUIDELINES */}
-        <section id="inactivity-guidelines" style={{ scrollMarginTop: "2rem" }}>
-          <h3 className={styles.subheading} style={{ fontSize: "1.25rem", color: "var(--primary)" }}>
+        <section id="inactivity-guidelines" className={styles.inactivitySection}>
+          <h3 className={`${styles.subheading} ${styles.inactivitySubheading}`}>
             3.5 Platform Inactivity Management Guidelines &amp; Dormant Credit Expiration
           </h3>
-          <div className={styles.noticeBox} style={{ margin: "0.75rem 0" }}>
+          <div className={`${styles.noticeBox} ${styles.noticeBoxSmallMargin}`}>
             <strong>OFFICIAL GUIDELINE:</strong> Paayh enforces automated platform inactivity management protocols to
             maintain active listener pools for advertisers, prevent stale ledger buildup, and reallocate unserved ad
             queues to verified active users.
@@ -271,7 +271,7 @@ export default function TermsPage() {
             OR ACCOUNT SUSPENSION. USERS AND ADVERTISERS ARE EXPRESSLY ADVISED TO TEST PROMOTIONS WITH SMALL AMOUNTS
             THEY CAN COMFORTABLY AFFORD BEFORE COMMITTING LARGER BUDGETS.
           </div>
-          <p style={{ marginTop: "1rem" }}>
+          <p className={styles.paragraphTopMargin}>
             <strong>4.5 Prohibited Content Categories:</strong> You agree not to upload, promote, or link to deceptive
             schemes, counterfeit goods, adult/pornographic content, firearms/weapons, illegal substances, unapproved
             pharmaceuticals, unlicensed betting solicitations, malware, phishing links, or hate speech.
@@ -460,7 +460,7 @@ export default function TermsPage() {
             micro structuring, capital laundering, and illicit fund layering, funds paid for promotions can NEVER be
             withdrawn as cash or refunded to bank accounts under any circumstance.
           </div>
-          <p style={{ marginTop: "1rem" }}>
+          <p className={styles.paragraphTopMargin}>
             <strong>12.3 Separation of Payouts &amp; Transfer Restrictions:</strong>
           </p>
           <ul className={styles.list}>

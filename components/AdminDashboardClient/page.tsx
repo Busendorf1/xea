@@ -86,17 +86,7 @@ function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaTyp
   const mediaUrls = adMedia ? adMedia.split(",").map(u => u.trim()).filter(Boolean) : [];
   if (mediaUrls.length === 0) {
     return (
-      <div style={{
-        width: "100%",
-        height: "150px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "var(--sidebar-bg)",
-        color: "var(--text-muted)",
-        fontSize: "0.85rem",
-        borderBottom: "1px solid var(--card-border)"
-      }}>
+      <div className={styles.adminCls_1}>
         Text Only Ad
       </div>
     );
@@ -106,11 +96,11 @@ function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaTyp
   const isVideo = adMediaType === "video" || /\.(mp4|webm)$/i.test(currentUrl);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "200px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--sidebar-bg)" }}>
+    <div className={styles.adminCls_2}>
       {isVideo ? (
-        <video key={currentUrl} src={currentUrl} controls style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+        <video key={currentUrl} src={currentUrl} controls className={styles.adminCls_3} />
       ) : (
-        <img src={currentUrl} alt="Campaign cover" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+        <img src={currentUrl} alt="Campaign cover" className={styles.adminCls_3} />
       )}
       
       {mediaUrls.length > 1 && (
@@ -120,24 +110,7 @@ function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaTyp
             e.stopPropagation();
             setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
           }}
-          style={{
-            position: "absolute",
-            right: "8px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            background: "rgba(0, 0, 0, 0.6)",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
-            borderRadius: "50%",
-            color: "#fff",
-            width: "28px",
-            height: "28px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            fontSize: "0.85rem",
-            zIndex: 10
-          }}
+          className={styles.adminCls_4}
           title="Next Media"
         >
           &gt;
@@ -2021,96 +1994,89 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         }}
       >
         {/* Left Column: Media Box */}
-        <div style={{ flex: "0 0 240px", width: "240px", minWidth: "240px", borderRadius: "10px", overflow: "hidden", border: "1px solid var(--card-border)" }}>
+        <div className={styles.adminCls_5}>
           <AdminAdMediaBox adMedia={ad.ad_media} adMediaType={ad.ad_media_type} />
         </div>
 
         {/* Right Main Column: Info, Analytics & Controls */}
-        <div style={{ flex: "1 1 320px", minWidth: "280px", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        <div className={styles.adminCls_6}>
           
           {/* Top Tag Pills Row */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+          <div className={styles.adminCls_7}>
             {/* Media Type Tag Pill */}
-            <span style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <span className={styles.adminCls_8}>
               {hasMedia ? (isVideo ? <Video size={13} /> : <ImageIcon size={13} />) : <Megaphone size={13} />}
               {hasMedia ? (isVideo ? "Video Ad" : "Image Ad") : "Text Only Ad"}
             </span>
 
             {/* Status Tag Pill */}
             {isQueue ? (
-              <span style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <span className={styles.adminCls_9}>
                 <Clock size={13} /> Pending Review
               </span>
             ) : isCompleted ? (
-              <span style={{ backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700" }}>
+              <span className={styles.adminCls_10}>
                 Completed
               </span>
             ) : ad.is_paused ? (
-              <span style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700" }}>
+              <span className={styles.adminCls_11}>
                 Paused
               </span>
             ) : (
-              <span style={{ backgroundColor: "rgba(37, 99, 235, 0.15)", color: "#3b82f6", border: "1px solid rgba(37, 99, 235, 0.4)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700" }}>
+              <span className={styles.adminCls_12}>
                 Live
               </span>
             )}
 
             {/* Category Tag Pill */}
-            <span style={{ backgroundColor: "var(--sidebar-bg)", border: "1px solid var(--card-border)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "600", color: "var(--foreground)" }}>
+            <span className={styles.adminCls_13}>
               {ad.ad_type}
             </span>
 
             {/* Priority Bidded / Boosted Tag Pill */}
             {(!!ad.is_bidded || Number(ad.cost_per_impression || 0) > 25) && (
-              <span style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <span className={styles.adminCls_14}>
                 <Zap size={13} color="#f59e0b" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} (₦{ad.cost_per_impression || ad.impression || 25}/view)
               </span>
             )}
           </div>
 
           {/* Ad Content */}
-          <p style={{ fontWeight: "700", color: "var(--foreground)", fontSize: "0.95rem", margin: 0, lineHeight: "1.4" }}>
+          <p className={styles.adminCls_15}>
             {ad.ad_content}
           </p>
 
           {/* Publisher Metadata */}
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "flex", gap: "14px", flexWrap: "wrap" }}>
+          <div className={styles.adminCls_16}>
             <span>
-              Publisher: <strong style={{ color: "var(--foreground)" }}>
+              Publisher: <strong className={styles.textForeground}>
                 {ad.publisher_name ? `${ad.publisher_name} (` : ""}
                 {ad.publisher_handle || ad.custom_sponsor_handle || (ad.user_email ? `@${ad.user_email.split('@')[0]}` : "@user")}
                 {ad.publisher_name ? ")" : ""}
               </strong>
               {ad.user_email && (
-                <span style={{ marginLeft: "4px", color: "var(--text-muted)" }}>• {ad.user_email}</span>
+                <span className={styles.adminCls_17}>• {ad.user_email}</span>
               )}
             </span>
-            <span>ID: <code style={{ fontSize: "0.72rem", backgroundColor: "var(--sidebar-bg)", padding: "2px 6px", borderRadius: "4px" }}>{ad.id}</code></span>
+            <span>ID: <code className={styles.adminCls_18}>{ad.id}</code></span>
             <span>Created: {ad.created_at ? new Date(ad.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}</span>
           </div>
 
           {/* Delivery Progress Bar */}
-          <div style={{ marginTop: "0.2rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "600" }}>
+          <div className={styles.adminCls_19}>
+            <div className={styles.adminCls_20}>
               <span>Delivery Progress</span>
               <span>{deliveryPercent}% ({seenCount} / {targetImpressions} views)</span>
             </div>
-            <div style={{ height: "6px", width: "100%", backgroundColor: "var(--sidebar-bg)", borderRadius: "3px", overflow: "hidden", border: "1px solid var(--card-border)" }}>
+            <div className={styles.adminCls_21}>
               <div style={{ height: "100%", backgroundColor: "#1d9bf0", width: `${deliveryPercent}%`, borderRadius: "3px" }} />
             </div>
           </div>
 
           {/* Admin Statement / Reason Callout Banner if present */}
           {ad.admin_statement && (
-            <div style={{
-              backgroundColor: "rgba(245, 158, 11, 0.12)",
-              border: "1px solid rgba(245, 158, 11, 0.4)",
-              borderRadius: "8px",
-              padding: "0.5rem 0.75rem",
-              color: "#f59e0b",
-              fontSize: "0.82rem"
-            }}>
-              <strong style={{ display: "flex", alignItems: "center", gap: "4px", color: "#fbbf24", marginBottom: "2px" }}>
+            <div className={styles.adminCls_22}>
+              <strong className={styles.adminCls_23}>
                 <AlertTriangle size={14} /> Admin Statement / Reason:
               </strong>
               {ad.admin_statement}
@@ -2121,7 +2087,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           {renderAdDetails(ad)}
 
           {/* Action Control Panel */}
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "0.5rem", paddingTop: "0.75rem", borderTop: "1px solid var(--card-border)" }}>
+          <div className={styles.adminCls_24}>
             {isQueue ? (
               <>
                 <button
@@ -2166,13 +2132,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   <span>{campaignActionLoading === `deactivate-ad-${ad.id}` ? "Deactivating..." : "Deactivate Ad"}</span>
                 </button>
 
-                <button
-                  onClick={() => setEditAdData(ad)}
-                  disabled={!!campaignActionLoading}
-                  className={styles.btnAction}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
-                  title="Edit campaign settings"
-                >
+                <button onClick={() => setEditAdData(ad)} disabled={!!campaignActionLoading} className={`${styles.btnAction} ${styles.adminCls_25}`} title="Edit campaign settings" >
                   <Edit3 size={14} />
                   <span>Edit</span>
                 </button>
@@ -2210,41 +2170,41 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           <span className={styles.badgeCategory}>{highlight.interest}</span>
           
           {isQueue ? (
-            <span className={styles.badgeStatus} style={{ backgroundColor: "#ef4444", color: "#fff" }}>In Review</span>
+            <span className={`${styles.badgeStatus} ${styles.adminCls_26}`} >In Review</span>
           ) : highlight.is_paused ? (
-            <span className={styles.badgeStatus} style={{ backgroundColor: "#f59e0b", color: "#fff" }}>Paused</span>
+            <span className={`${styles.badgeStatus} ${styles.adminCls_27}`} >Paused</span>
           ) : (
-            <span className={styles.badgeStatus} style={{ backgroundColor: "#2563eb", color: "#fff" }}>Live</span>
+            <span className={`${styles.badgeStatus} ${styles.adminCls_28}`} >Live</span>
           )}
         </div>
 
         <div className={styles.cardBody}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-            <h4 className={styles.cardTitle} style={{ margin: 0 }}>{highlight.title}</h4>
+          <div className={styles.adminCls_29}>
+            <h4 className={`${styles.cardTitle} ${styles.mZero}`} >{highlight.title}</h4>
             {(!!highlight.is_bidded || Number(highlight.bid_price || 0) > 1000) && (
-              <span style={{ fontSize: "0.7rem", padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "2px" }}>
+              <span className={styles.adminCls_30}>
                 <Zap size={10} color="#f59e0b" /> ₦{highlight.bid_price || 1500}/day
               </span>
             )}
           </div>
-          <p className={styles.cardText} style={{ fontSize: "0.9rem" }}>{highlight.content}</p>
+          <p className={`${styles.cardText} ${styles.adminCls_31}`} >{highlight.content}</p>
 
           {/* Admin Statement */}
           {highlight.admin_statement && (
-            <div style={{ padding: "0.4rem 0.6rem", backgroundColor: "rgba(245, 158, 11, 0.12)", borderRadius: "6px", border: "1px solid rgba(245, 158, 11, 0.4)", color: "#f59e0b", fontSize: "0.78rem", marginTop: "0.4rem" }}>
+            <div className={styles.adminCls_32}>
               <strong>Important Notice:</strong> {highlight.admin_statement}
             </div>
           )}
 
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.5rem", borderTop: "1px solid var(--card-border)", paddingTop: "0.5rem", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+          <div className={styles.adminCls_33}>
             <span>
-              Publisher: <strong style={{ color: "var(--foreground)" }}>
+              Publisher: <strong className={styles.textForeground}>
                 {highlight.publisher_name ? `${highlight.publisher_name} (` : ""}
                 {highlight.publisher_handle || highlight.custom_sponsor_handle || (highlight.user_email ? `@${highlight.user_email.split('@')[0]}` : "@user")}
                 {highlight.publisher_name ? ")" : ""}
               </strong>
               {highlight.user_email && (
-                <span style={{ marginLeft: "4px", color: "var(--text-muted)" }}>• {highlight.user_email}</span>
+                <span className={styles.adminCls_17}>• {highlight.user_email}</span>
               )}
             </span>
             <span>{highlight.created_at ? `Created: ${new Date(highlight.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""} · {highlight.country || "Global"} {highlight.state ? `(${highlight.state}${highlight.province ? `, ${highlight.province}` : ""})` : ""}</span>
@@ -2282,13 +2242,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 {highlight.is_paused ? <Play size={14} /> : <Pause size={14} />}
                 <span>{campaignActionLoading === `pause-hl-${highlight.id}` ? "Updating..." : (highlight.is_paused ? "Resume" : "Pause")}</span>
               </button>
-              <button
-                onClick={() => setEditHighlightData(highlight)}
-                disabled={!!campaignActionLoading}
-                className={styles.btnAction}
-                style={{ padding: "0.5rem" }}
-                title="Edit highlight"
-              >
+              <button onClick={() => setEditHighlightData(highlight)} disabled={!!campaignActionLoading} className={`${styles.btnAction} ${styles.adminCls_34}`} title="Edit highlight" >
                 <Edit3 size={14} />
               </button>
               <button
@@ -2315,40 +2269,31 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     };
 
     return (
-      <div style={{
-        marginTop: "1rem", 
-        borderTop: "1px solid var(--card-border)", 
-        paddingTop: "1rem",
-        fontSize: "0.8rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.6rem",
-        color: "var(--text-muted)"
-      }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-          <div><strong>Category Type:</strong> <span style={{ color: "var(--foreground)" }}>{ad.ad_type}</span></div>
-          <div><strong>Frequency Cap:</strong> <span style={{ color: "var(--foreground)" }}>{ad.user_frequency_cap || 1} view(s)/user</span></div>
-          <div><strong>Target Views:</strong> <span style={{ color: "var(--foreground)" }}>{ad.impressions}</span></div>
-          <div><strong>Views Delivered:</strong> <span style={{ color: "var(--foreground)" }}>{ad.impression_count ?? 0}</span></div>
-          <div><strong>Campaign Duration:</strong> <span style={{ color: "var(--foreground)" }}>{ad.campaign_days || 5} Days</span></div>
-          <div><strong>Cost/Impression:</strong> <span style={{ color: "var(--foreground)" }}>{formatCurrency(ad.cost_per_impression || ad.impression || 0)}</span></div>
-          <div><strong>Total Budget:</strong> <span style={{ color: "var(--foreground)" }}>{formatCurrency(ad.total_cost || ad.cost || 0)}</span></div>
-          <div><strong>Gained Mutuals:</strong> <span style={{ color: "var(--foreground)" }}>{ad.mutual_adds_count ?? 0}</span></div>
+      <div className={styles.adminCls_35}>
+        <div className={styles.adminCls_36}>
+          <div><strong>Category Type:</strong> <span className={styles.textForeground}>{ad.ad_type}</span></div>
+          <div><strong>Frequency Cap:</strong> <span className={styles.textForeground}>{ad.user_frequency_cap || 1} view(s)/user</span></div>
+          <div><strong>Target Views:</strong> <span className={styles.textForeground}>{ad.impressions}</span></div>
+          <div><strong>Views Delivered:</strong> <span className={styles.textForeground}>{ad.impression_count ?? 0}</span></div>
+          <div><strong>Campaign Duration:</strong> <span className={styles.textForeground}>{ad.campaign_days || 5} Days</span></div>
+          <div><strong>Cost/Impression:</strong> <span className={styles.textForeground}>{formatCurrency(ad.cost_per_impression || ad.impression || 0)}</span></div>
+          <div><strong>Total Budget:</strong> <span className={styles.textForeground}>{formatCurrency(ad.total_cost || ad.cost || 0)}</span></div>
+          <div><strong>Gained Mutuals:</strong> <span className={styles.textForeground}>{ad.mutual_adds_count ?? 0}</span></div>
           <div><strong>Display Mutual+:</strong> <span style={{ color: ad.display_mutual_button ? "#10b981" : "#ef4444" }}>{ad.display_mutual_button ? "Enabled" : "Disabled"}</span></div>
-          <div><strong>Target Gender:</strong> <span style={{ color: "var(--foreground)" }}>{ad.gender || "Both"}</span></div>
+          <div><strong>Target Gender:</strong> <span className={styles.textForeground}>{ad.gender || "Both"}</span></div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", borderTop: "1px dashed var(--card-border)", paddingTop: "0.5rem" }}>
-          <div><strong>Targeting Age:</strong> <span style={{ color: "var(--foreground)" }}>{ad.age_range ? `${ad.age_range[0]} - ${ad.age_range[1]} years` : "18 - 65 years"}</span></div>
-          <div><strong>Targeting Geo:</strong> <span style={{ color: "var(--foreground)" }}>{[ad.province, ad.state, ad.country].filter(Boolean).join(", ") || "Global"}</span></div>
-          <div><strong>Targeting Employment:</strong> <span style={{ color: "var(--foreground)" }}>{formatList(ad.employment_status)}</span></div>
-          <div><strong>Targeting Industries:</strong> <span style={{ color: "var(--foreground)" }}>{formatList(ad.industry)}</span></div>
-          <div><strong>Targeting Interests:</strong> <span style={{ color: "var(--foreground)" }}>{formatList(ad.interest)}</span></div>
-          <div><strong>Targeting Lifestyle:</strong> <span style={{ color: "var(--foreground)" }}>{formatList(ad.lifestyle)}</span></div>
-          <div><strong>Targeting Behavior:</strong> <span style={{ color: "var(--foreground)" }}>{formatList(ad.behavior)}</span></div>
-          <div><strong>Targeting Personality:</strong> <span style={{ color: "var(--foreground)" }}>{formatList(ad.personality)}</span></div>
+        <div className={styles.adminCls_37}>
+          <div><strong>Targeting Age:</strong> <span className={styles.textForeground}>{ad.age_range ? `${ad.age_range[0]} - ${ad.age_range[1]} years` : "18 - 65 years"}</span></div>
+          <div><strong>Targeting Geo:</strong> <span className={styles.textForeground}>{[ad.province, ad.state, ad.country].filter(Boolean).join(", ") || "Global"}</span></div>
+          <div><strong>Targeting Employment:</strong> <span className={styles.textForeground}>{formatList(ad.employment_status)}</span></div>
+          <div><strong>Targeting Industries:</strong> <span className={styles.textForeground}>{formatList(ad.industry)}</span></div>
+          <div><strong>Targeting Interests:</strong> <span className={styles.textForeground}>{formatList(ad.interest)}</span></div>
+          <div><strong>Targeting Lifestyle:</strong> <span className={styles.textForeground}>{formatList(ad.lifestyle)}</span></div>
+          <div><strong>Targeting Behavior:</strong> <span className={styles.textForeground}>{formatList(ad.behavior)}</span></div>
+          <div><strong>Targeting Personality:</strong> <span className={styles.textForeground}>{formatList(ad.personality)}</span></div>
           {ad.mutual_targets && ad.mutual_targets.length > 0 && (
-            <div><strong>Mutual Targets:</strong> <span style={{ color: "var(--foreground)" }}>{ad.mutual_targets.join(", ")}</span></div>
+            <div><strong>Mutual Targets:</strong> <span className={styles.textForeground}>{ad.mutual_targets.join(", ")}</span></div>
           )}
         </div>
       </div>
@@ -2376,22 +2321,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               onClick={() => setTheme(theme === "white" ? "dark" : "white")}
               title={theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
               aria-label="Toggle Theme"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "36px",
-                height: "36px",
-                borderRadius: "50%",
-                background: "var(--primary)",
-                border: "1px solid var(--card-border)",
-                color: "#ffffff",
-                cursor: "pointer",
-                boxShadow: "0 0 10px var(--primary-glow)",
-                transition: "all 0.2s ease",
-                padding: 0,
-                flexShrink: 0,
-              }}
+              className={styles.adminCls_38}
             >
               {theme === "white" ? <Sun size={15} /> : <Moon size={15} />}
             </button>
@@ -2475,8 +2405,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <span>Brand Subscribers {subscribersMetrics.pending > 0 ? `(${subscribersMetrics.pending})` : ""}</span>
           </button>
 
-          <div style={{ marginTop: "auto", padding: "1rem", borderTop: "1px solid var(--card-border)" }}>
-            <button onClick={handleRefresh} disabled={refreshing || loading} className={styles.btnAction} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+          <div className={styles.adminCls_39}>
+            <button onClick={handleRefresh} disabled={refreshing || loading} className={`${styles.btnAction} ${styles.adminCls_40}`} >
               <RefreshCw size={14} className={refreshing ? "spin" : ""} />
               <span>{refreshing ? "Syncing..." : "Sync Database"}</span>
             </button>
@@ -2648,22 +2578,22 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               <td className={styles.td}>
                                 {hasBusiness ? (
                                   <>
-                                    <div style={{ fontWeight: "800", color: "var(--primary)" }}>{user.business_name}</div>
-                                    <div style={{ fontSize: "0.85rem", fontWeight: "600" }}>{user.firstName} {user.lastName}</div>
+                                    <div className={styles.adminCls_41}>{user.business_name}</div>
+                                    <div className={styles.adminCls_42}>{user.firstName} {user.lastName}</div>
                                   </>
                                 ) : (
-                                  <div style={{ fontWeight: "700" }}>{user.firstName} {user.lastName}</div>
+                                  <div className={styles.fw700}>{user.firstName} {user.lastName}</div>
                                 )}
-                                <div style={{ fontSize: "0.82rem", fontWeight: "700", color: "var(--primary)" }}>@{user.username?.replace(/^@/, "") || "user"}</div>
+                                <div className={styles.adminCls_43}>@{user.username?.replace(/^@/, "") || "user"}</div>
                                 {user.created_at && (
-                                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                  <div className={styles.adminCls_44}>
                                     Joined: {new Date(user.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                                   </div>
                                 )}
                               </td>
                               <td className={styles.td}>
-                                <div style={{ fontWeight: "800" }}>{formatCurrency(user.balance || 0)}</div>
-                                <div style={{ fontSize: "0.75rem", color: "#3b82f6" }}>Pending: {formatCurrency(user.withdrawal || 0)}</div>
+                                <div className={styles.fw800}>{formatCurrency(user.balance || 0)}</div>
+                                <div className={styles.adminCls_45}>Pending: {formatCurrency(user.withdrawal || 0)}</div>
                               </td>
                               <td className={styles.td}>
                                 <div><strong>Ads:</strong> {user.activeAdsCount} active / {user.reviewAdsCount} review</div>
@@ -2681,27 +2611,27 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               <td className={styles.td}>
                                 {isAdTempBanned ? (
                                   <div>
-                                    <span className={styles.userBadge} style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)" }}>
+                                    <span className={`${styles.userBadge} ${styles.adminCls_46}`} >
                                       TEMP BANNED ({getAdBanCountdown(user.ad_ban_until)})
                                     </span>
-                                    {user.ad_ban_reason && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "3px" }}>Reason: {user.ad_ban_reason}</div>}
+                                    {user.ad_ban_reason && <div className={styles.adminCls_47}>Reason: {user.ad_ban_reason}</div>}
                                   </div>
                                 ) : isAdPermBanned ? (
                                   <div>
-                                    <span className={styles.userBadge} style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>
+                                    <span className={`${styles.userBadge} ${styles.adminCls_48}`} >
                                       PERM BANNED
                                     </span>
-                                    {user.ad_ban_reason && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "3px" }}>Reason: {user.ad_ban_reason}</div>}
+                                    {user.ad_ban_reason && <div className={styles.adminCls_47}>Reason: {user.ad_ban_reason}</div>}
                                   </div>
                                 ) : isAdDeactivated ? (
                                   <div>
-                                    <span className={styles.userBadge} style={{ background: "rgba(156,163,175,0.15)", color: "#9ca3af", border: "1px solid rgba(156,163,175,0.3)" }}>
+                                    <span className={`${styles.userBadge} ${styles.adminCls_49}`} >
                                       DEACTIVATED
                                     </span>
-                                    {user.ad_ban_reason && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "3px" }}>Reason: {user.ad_ban_reason}</div>}
+                                    {user.ad_ban_reason && <div className={styles.adminCls_47}>Reason: {user.ad_ban_reason}</div>}
                                   </div>
                                 ) : (
-                                  <span className={styles.userBadge} style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                                  <span className={`${styles.userBadge} ${styles.adminCls_50}`} >
                                     ACTIVE
                                   </span>
                                 )}
@@ -2726,15 +2656,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                   >
                                     {isMonetized ? "Disable Earn" : "Enable Earn"}
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      setBanModalUser(user);
-                                      setBanModalStatus(user.ad_account_status || "temp_banned");
-                                      setBanModalReason(user.ad_ban_reason || "");
-                                    }}
-                                    className={styles.btnAction}
-                                    style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.4)" }}
-                                  >
+                                  <button onClick={() => { setBanModalUser(user); setBanModalStatus(user.ad_account_status || "temp_banned"); setBanModalReason(user.ad_ban_reason || ""); }} className={`${styles.btnAction} ${styles.adminCls_51}`} >
                                     Ad Ban / Restrict
                                   </button>
                                 </div>
@@ -2763,12 +2685,12 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <div className={styles.loadingText}>Syncing review queue...</div>
               ) : pendingAds.length === 0 ? (
                 <div className={styles.emptyText}>
-                  <CheckCircle size={32} style={{ color: "#10b981", marginBottom: "0.5rem" }} />
+                  <CheckCircle size={32} className={styles.adminCls_52} />
                   <span>No campaigns in the review queue. All caught up!</span>
                 </div>
               ) : (
                 <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div className={styles.adminCls_53}>
                     {pendingAds.map(ad => renderAdminAdCard(ad, true))}
                   </div>
                   {renderPagination(pendingAdsPage, setPendingAdsPage, pendingAdsCount)}
@@ -2789,7 +2711,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <div className={styles.loadingText}>Syncing news queue...</div>
               ) : pendingHighlights.length === 0 ? (
                 <div className={styles.emptyText}>
-                  <CheckCircle size={32} style={{ color: "#10b981", marginBottom: "0.5rem" }} />
+                  <CheckCircle size={32} className={styles.adminCls_52} />
                   <span>No highlights in the review queue. All caught up!</span>
                 </div>
               ) : (
@@ -2830,7 +2752,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 <div className={styles.emptyText}>No active campaigns found matching filters.</div>
               ) : (
                 <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div className={styles.adminCls_53}>
                     {activeAds.map(ad => renderAdminAdCard(ad, false))}
                   </div>
                   {renderPagination(activeAdsPage, setActiveAdsPage, activeAdsCount)}
@@ -2877,14 +2799,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
           {/* 7. DIRECT POST TAB */}
           {activeTab === "direct-post" && (
-            <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
+            <div className={styles.adminCls_54}>
               {/* Direct Ad Form */}
-              <form onSubmit={handlePostAdDirect} className={styles.form} style={{ flex: "1 1 45%" }}>
-                <h2 style={{ fontSize: "1.2rem", fontWeight: "800", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <PlusCircle size={20} style={{ color: "var(--primary)" }} />
+              <form onSubmit={handlePostAdDirect} className={`${styles.form} ${styles.adminCls_55}`} >
+                <h2 className={styles.adminCls_56}>
+                  <PlusCircle size={20} className={styles.textPrimary} />
                   <span>Directly Post approved Ad</span>
                 </h2>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "-0.5rem" }}>Upload file and set parameters. Posted ads bypass the review queues.</p>
+                <p className={styles.adminCls_57}>Upload file and set parameters. Posted ads bypass the review queues.</p>
                 
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Publisher Email</label>
@@ -2985,13 +2907,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
                         setAdFormFiles(fileArray);
                       }}
-                      style={{
-                        padding: "0.5rem 0",
-                        fontSize: "0.88rem"
-                      }}
+                      className={styles.adminCls_58}
                     />
                     {adFormFiles.length > 0 && (
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                      <div className={styles.adminCls_59}>
                         Selected: {adFormFiles.map(f => f.name).join(", ")}
                       </div>
                     )}
@@ -3072,13 +2991,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>Cost per Impression (₦)</label>
-                    <input 
-                      type="number" 
-                      disabled
-                      value="0"
-                      className={styles.inputField} 
-                      style={{ opacity: 0.7, cursor: "not-allowed" }}
-                    />
+                    <input type="number" disabled value="0" className={`${styles.inputField} ${styles.adminCls_60}`} />
                   </div>
                 </div>
 
@@ -3147,12 +3060,12 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </form>
 
               {/* Direct Highlight Form */}
-              <form onSubmit={handlePostHighlightDirect} className={styles.form} style={{ flex: "1 1 45%", height: "fit-content" }}>
-                <h2 style={{ fontSize: "1.2rem", fontWeight: "800", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <PlusCircle size={20} style={{ color: "var(--primary)" }} />
+              <form onSubmit={handlePostHighlightDirect} className={`${styles.form} ${styles.adminCls_61}`} >
+                <h2 className={styles.adminCls_56}>
+                  <PlusCircle size={20} className={styles.textPrimary} />
                   <span>Directly Post approved Highlight</span>
                 </h2>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "-0.5rem" }}>Upload cover image and post highlight directly to live feeds.</p>
+                <p className={styles.adminCls_57}>Upload cover image and post highlight directly to live feeds.</p>
 
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Publisher Email</label>
@@ -3196,10 +3109,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                       const file = e.target.files?.[0];
                       if (file) setHighlightFormFile(file);
                     }}
-                    style={{
-                      padding: "0.5rem 0",
-                      fontSize: "0.88rem"
-                    }}
+                    className={styles.adminCls_58}
                   />
                 </div>
 
@@ -3228,46 +3138,30 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               <p className={styles.sectionSubtitle}>View and reply to user-submitted support requests.</p>
 
               {/* Search */}
-              <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-                <div style={{ position: "relative", flex: 1, minWidth: "220px" }}>
-                  <Search size={15} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-                  <input
-                    type="text"
-                    placeholder="Search by email, subject, or category..."
-                    value={helpTicketSearch}
-                    onChange={(e) => {
-                      setHelpTicketSearch(e.target.value);
-                      setHelpTicketsPage(0);
-                    }}
-                    className={styles.inputField}
-                    style={{ paddingLeft: "2rem", width: "100%" }}
-                  />
+              <div className={styles.adminCls_62}>
+                <div className={styles.adminCls_63}>
+                  <Search size={15} className={styles.adminCls_64} />
+                  <input type="text" placeholder="Search by email, subject, or category..." value={helpTicketSearch} onChange={(e) => { setHelpTicketSearch(e.target.value); setHelpTicketsPage(0); }} className={`${styles.inputField} ${styles.adminCls_65}`} />
                 </div>
               </div>
 
               {loading ? (
-                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading tickets...</p>
+                <p className={styles.adminCls_66}>Loading tickets...</p>
               ) : helpTickets.length === 0 ? (
-                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No tickets found.</p>
+                <p className={styles.adminCls_66}>No tickets found.</p>
               ) : (
                 <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div className={styles.adminCls_53}>
                     {helpTickets.map((ticket) => (
                       <div
                         key={ticket.id}
-                        style={{
-                          background: "var(--card-bg)",
-                          border: "1px solid var(--card-border)",
-                          borderRadius: "14px",
-                          padding: "1.25rem",
-                          transition: "border-color 0.2s"
-                        }}
+                        className={styles.adminCls_67}
                       >
                         {/* Ticket header */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+                        <div className={styles.adminCls_68}>
                           <div>
-                            <span style={{ fontSize: "1rem", fontWeight: 700, color: "var(--foreground)" }}>{ticket.subject}</span>
-                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                            <span className={styles.adminCls_69}>{ticket.subject}</span>
+                            <div className={styles.adminCls_70}>
                               <span style={{
                                 fontSize: "0.72rem",
                                 fontWeight: 700,
@@ -3279,55 +3173,45 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               }}>
                                 {ticket.status === "closed" || ticket.status === "resolved" ? "CLOSED (Deletes in 24h)" : ticket.status.toUpperCase()}
                               </span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" as const }}>{ticket.category}</span>
-                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                              <span className={styles.adminCls_71}>{ticket.category}</span>
+                              <span className={styles.adminCls_72}>
                                 {new Date(ticket.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                               </span>
                             </div>
                           </div>
                           {/* Actions */}
-                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                            <button
-                              onClick={() => { setReplyingTicket(ticket); setReplyText(ticket.admin_reply || ""); }}
-                              className={styles.btnAction}
-                              style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-                            >
+                          <div className={styles.adminCls_73}>
+                            <button onClick={() => { setReplyingTicket(ticket); setReplyText(ticket.admin_reply || ""); }} className={`${styles.btnAction} ${styles.adminCls_74}`} >
                               <Reply size={13} /> Reply
                             </button>
                             {ticket.status !== "resolved" && ticket.status !== "closed" && (
-                              <button onClick={() => handleCloseTicket(ticket)} className={styles.btnAction} style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "#10b981", borderColor: "rgba(16,185,129,0.4)" }}>
+                              <button onClick={() => handleCloseTicket(ticket)} className={`${styles.btnAction} ${styles.adminCls_75}`} >
                                 <CheckCircle size={13} /> Mark as Closed
                               </button>
                             )}
-                            <button onClick={() => handleDeleteTicket(ticket.id)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.4rem 0.6rem" }}>
+                            <button onClick={() => handleDeleteTicket(ticket.id)} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_76}`} >
                               <Trash2 size={13} />
                             </button>
                           </div>
                         </div>
 
-                        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", margin: "0 0 0.25rem" }}>
-                          <strong style={{ color: "var(--foreground)" }}>From:</strong> {ticket.name ? `${ticket.name} — ` : ""}{ticket.user_email}
+                        <p className={styles.adminCls_77}>
+                          <strong className={styles.textForeground}>From:</strong> {ticket.name ? `${ticket.name} — ` : ""}{ticket.user_email}
                         </p>
-                        <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.5 }}>{ticket.message}</p>
+                        <p className={styles.adminCls_78}>{ticket.message}</p>
 
                         {/* Existing reply */}
                         {ticket.admin_reply && (
-                          <div style={{
-                            marginTop: "0.75rem",
-                            background: "linear-gradient(135deg, rgba(138,43,226,0.06), rgba(79,172,254,0.06))",
-                            border: "1px solid var(--primary)",
-                            borderRadius: "10px",
-                            padding: "0.75rem"
-                          }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
-                              <p style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" as const, letterSpacing: "0.05em", margin: 0 }}>Admin Reply</p>
+                          <div className={styles.adminCls_79}>
+                            <div className={styles.adminCls_80}>
+                              <p className={styles.adminCls_81}>Admin Reply</p>
                               {ticket.replied_at && (
-                                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                                <span className={styles.adminCls_82}>
                                   Replied: {new Date(ticket.replied_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                                 </span>
                               )}
                             </div>
-                            <p style={{ fontSize: "0.875rem", color: "var(--foreground)", lineHeight: 1.5, margin: 0 }}>{ticket.admin_reply}</p>
+                            <p className={styles.adminCls_83}>{ticket.admin_reply}</p>
                           </div>
                         )}
                       </div>
@@ -3335,7 +3219,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   </div>
 
                   {/* Pagination */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "1.25rem" }}>
+                  <div className={styles.adminCls_84}>
                     <button
                       onClick={() => setHelpTicketsPage((p) => Math.max(0, p - 1))}
                       disabled={helpTicketsPage === 0}
@@ -3343,7 +3227,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     >
                       ← Prev
                     </button>
-                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                    <span className={styles.adminCls_85}>
                       Page {helpTicketsPage + 1} of {Math.max(1, Math.ceil(helpTicketsCount / 10))} ({helpTicketsCount} total)
                     </span>
                     <button
@@ -3365,23 +3249,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               <h1 className={styles.sectionTitle}>Send Announcements and Payouts Notifications</h1>
               <p className={styles.sectionSubtitle}>Broadcast push notifications directly to user segments or specific accounts.</p>
 
-              <div style={{
-                background: "var(--card-bg)",
-                border: "1px solid var(--card-border)",
-                borderRadius: "16px",
-                padding: "2rem",
-                maxWidth: "640px",
-                marginTop: "1.5rem"
-              }}>
-                <form onSubmit={handleSendNotification} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <div className={styles.adminCls_86}>
+                <form onSubmit={handleSendNotification} className={styles.adminCls_87}>
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>Notification Target Segment</label>
-                    <select
-                      value={notificationTarget}
-                      onChange={(e: any) => setNotificationTarget(e.target.value)}
-                      className={styles.selectField}
-                      style={{ width: "100%" }}
-                    >
+                    <select value={notificationTarget} onChange={(e: any) => setNotificationTarget(e.target.value)} className={`${styles.selectField} ${styles.wFull}`} >
                       <option value="all">All Registered Users</option>
                       <option value="monetized">Monetized Users Only</option>
                       <option value="user">Specific User by Email</option>
@@ -3391,62 +3263,33 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   {notificationTarget === "user" && (
                     <div className={styles.formGroup}>
                       <label className={styles.formLabel}>Target User Email Address</label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="user@example.com"
-                        value={notificationTargetEmail}
-                        onChange={(e) => setNotificationTargetEmail(e.target.value)}
-                        className={styles.inputField}
-                        style={{ width: "100%" }}
-                      />
+                      <input type="email" required placeholder="user@example.com" value={notificationTargetEmail} onChange={(e) => setNotificationTargetEmail(e.target.value)} className={`${styles.inputField} ${styles.wFull}`} />
                     </div>
                   )}
 
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>Message Title</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Account Update 📢"
-                      value={notificationTitle}
-                      onChange={(e) => setNotificationTitle(e.target.value)}
-                      className={styles.inputField}
-                      style={{ width: "100%" }}
-                    />
+                    <input type="text" required placeholder="e.g. Account Update 📢" value={notificationTitle} onChange={(e) => setNotificationTitle(e.target.value)} className={`${styles.inputField} ${styles.wFull}`} />
                   </div>
 
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>Message Body Content</label>
-                    <textarea
-                      required
-                      rows={5}
-                      placeholder="Write your announcement details here..."
-                      value={notificationMessage}
-                      onChange={(e) => setNotificationMessage(e.target.value)}
-                      className={styles.textareaField}
-                      style={{ width: "100%", resize: "vertical", minHeight: "100px" }}
-                    />
+                    <textarea required rows={5} placeholder="Write your announcement details here..." value={notificationMessage} onChange={(e) => setNotificationMessage(e.target.value)} className={`${styles.textareaField} ${styles.adminCls_88}`} />
                   </div>
 
                   {notificationSuccessMsg && (
-                    <div style={{ color: "#34d399", fontSize: "0.875rem", background: "rgba(52,211,153,0.1)", padding: "0.75rem", borderRadius: "8px", border: "1px solid rgba(52,211,153,0.2)" }}>
+                    <div className={styles.adminCls_89}>
                       {notificationSuccessMsg}
                     </div>
                   )}
 
                   {notificationErrorMsg && (
-                    <div style={{ color: "#f87171", fontSize: "0.875rem", background: "rgba(248,113,113,0.1)", padding: "0.75rem", borderRadius: "8px", border: "1px solid rgba(248,113,113,0.2)" }}>
+                    <div className={styles.adminCls_90}>
                       {notificationErrorMsg}
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={notificationLoading}
-                    className={styles.btnSubmit}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
-                  >
+                  <button type="submit" disabled={notificationLoading} className={`${styles.btnSubmit} ${styles.adminCls_91}`} >
                     {notificationLoading ? "Broadcasting message..." : "Broadcast Announcement"}
                   </button>
                 </form>
@@ -3489,7 +3332,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           <div>
                             <h3 className={styles.cardTitle}>Report ID: {report.id.slice(0, 8)}</h3>
                             <span className={styles.cardMeta}>
-                              Reported by: <strong style={{ color: "var(--foreground)" }}>{report.reporter_email}</strong> · Reported on {new Date(report.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              Reported by: <strong className={styles.textForeground}>{report.reporter_email}</strong> · Reported on {new Date(report.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
                           <span style={{
@@ -3505,9 +3348,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           </span>
                         </div>
 
-                        <div className={styles.cardBody} style={{ fontSize: "0.85rem", color: "var(--foreground)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        <div className={`${styles.cardBody} ${styles.adminCls_92}`} >
                           <div><strong>Report Type:</strong> <span style={{ color: report.report_type === "advertiser" ? "#ef4444" : "#2563eb", fontWeight: 600 }}>{report.report_type === "advertiser" ? "Block and Report Advertiser" : "Block and Report Ad"}</span></div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                          <div className={styles.adminCls_93}>
                             <strong>Target Ad ID:</strong>
                             <button
                               type="button"
@@ -3519,15 +3362,15 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               <span>(Inspect Ad Details 🔍)</span>
                             </button>
                           </div>
-                          {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code style={{ fontSize: "0.85rem" }}>{report.advertiser_email}</code></div>}
+                          {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code className={styles.adminCls_94}>{report.advertiser_email}</code></div>}
                           {report.reason && (
                             <div className={styles.reportReasonBox}>
-                              <strong style={{ color: "var(--foreground)" }}>User Reason:</strong> {report.reason}
+                              <strong className={styles.textForeground}>User Reason:</strong> {report.reason}
                             </div>
                           )}
                         </div>
 
-                        <div className={styles.cardFooter} style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.75rem", alignItems: "center" }}>
+                        <div className={`${styles.cardFooter} ${styles.adminCls_95}`} >
                           <button
                             onClick={() => handleInspectAd(report.ad_id)}
                             className={styles.inspectAdLink}
@@ -3572,18 +3415,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           {/* 11. FAILED QUEUES / DLQ TAB */}
           {activeTab === "queues" && (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className={styles.adminCls_96}>
                 <div>
                   <h1 className={styles.sectionTitle}>Failed Queues and Dead Letter Queue (DLQ)</h1>
                   <p className={styles.sectionSubtitle}>Inspect background queue jobs that failed maximum retries. Manually trigger retries or clear stale queue entries.</p>
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    onClick={handleRetryDlqAll}
-                    disabled={dlqLoading || dlqJobs.length === 0}
-                    className={styles.btnAction}
-                    style={{ backgroundColor: "#10b981", color: "#fff", display: "flex", alignItems: "center", gap: "0.5rem" }}
-                  >
+                <div className={styles.adminCls_97}>
+                  <button onClick={handleRetryDlqAll} disabled={dlqLoading || dlqJobs.length === 0} className={`${styles.btnAction} ${styles.adminCls_98}`} >
                     <RefreshCw size={14} className={dlqLoading ? "spin" : ""} />
                     <span>Retry All Failed Jobs ({dlqCount})</span>
                   </button>
@@ -3598,7 +3436,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {dlqActionStatus && (
-                <div style={{ padding: "0.75rem 1rem", borderRadius: "8px", backgroundColor: "#1e293b", color: "#38bdf8", marginBottom: "1rem", fontSize: "0.85rem" }}>
+                <div className={styles.adminCls_99}>
                   {dlqActionStatus}
                 </div>
               )}
@@ -3618,26 +3456,22 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                             Failed at: {job.failedAt ? new Date(job.failedAt).toLocaleString() : "Unknown"}
                           </span>
                         </div>
-                        <span style={{ fontSize: "0.75rem", padding: "0.2rem 0.6rem", borderRadius: "4px", backgroundColor: "#ef444422", color: "#ef4444", fontWeight: 700 }}>
+                        <span className={styles.adminCls_100}>
                           FAILED
                         </span>
                       </div>
 
                       <div className={styles.cardBody}>
-                        <div style={{ fontSize: "0.85rem", color: "#f87171", marginBottom: "0.5rem" }}>
+                        <div className={styles.adminCls_101}>
                           <strong>Reason:</strong> {job.failedReason || "Exhausted retry limits"}
                         </div>
-                        <pre style={{ fontSize: "0.75rem", backgroundColor: "#090d16", padding: "0.75rem", borderRadius: "6px", overflowX: "auto", color: "#94a3b8" }}>
+                        <pre className={styles.adminCls_102}>
                           {JSON.stringify(job.data || job.rawPayload || {}, null, 2)}
                         </pre>
                       </div>
 
                       <div className={styles.cardFooter}>
-                        <button
-                          onClick={() => handleRetryDlqSingle(job.id)}
-                          className={styles.btnAction}
-                          style={{ backgroundColor: "#3b82f6", color: "#fff" }}
-                        >
+                        <button onClick={() => handleRetryDlqSingle(job.id)} className={`${styles.btnAction} ${styles.adminCls_103}`} >
                           Retry Job
                         </button>
                       </div>
@@ -3675,24 +3509,24 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, color: reconciliationData?.transfersPaused ? "#ef4444" : "var(--foreground)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     {reconciliationData?.transfersPaused ? (
                       <>
-                        <ShieldAlert size={20} style={{ color: "#ef4444" }} />
+                        <ShieldAlert size={20} className={styles.textDanger} />
                         <span>EMERGENCY P2P TRANSFERS PAUSED</span>
                       </>
                     ) : (
                       <>
-                        <ShieldCheck size={20} style={{ color: "#10b981" }} />
+                        <ShieldCheck size={20} className={styles.textSuccess} />
                         <span>System P2P Transfers Active</span>
                       </>
                     )}
                   </h3>
-                  <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+                  <p className={styles.adminCls_104}>
                     {reconciliationData?.transfersPaused
                       ? "P2P transfer processing is currently frozen to contain financial variance."
                       : "System double-entry ledger is operating normally without balance drift."}
                   </p>
                 </div>
 
-                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                <div className={styles.adminCls_105}>
                   <button
                     type="button"
                     onClick={handleToggleEmergencyPause}
@@ -3784,13 +3618,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {reconciliationMsg && (
-                <div style={{ color: "#34d399", fontSize: "0.875rem", background: "rgba(52,211,153,0.1)", padding: "0.75rem", borderRadius: "8px", border: "1px solid rgba(52,211,153,0.2)", marginBottom: "1.5rem" }}>
+                <div className={styles.adminCls_106}>
                   {reconciliationMsg}
                 </div>
               )}
 
               {/* Health Metrics Grid */}
-              <div className={styles.statsGrid} style={{ marginBottom: "2rem" }}>
+              <div className={`${styles.statsGrid} ${styles.adminCls_107}`} >
                 <div className={styles.statCard}>
                   <span className={styles.statLabel}>Ledger Audit Status</span>
                   <div style={{
@@ -3839,10 +3673,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
                 <div className={styles.statCard}>
                   <span className={styles.statLabel}>Platform Treasury Balance</span>
-                  <div className={styles.statValue} style={{ color: "#10b981" }}>
+                  <div className={`${styles.statValue} ${styles.textSuccess}`} >
                     ₦{(Number(reconciliationData?.platformTreasury?.balance || 0)).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
                   </div>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted, #94a3b8)", marginTop: "4px" }}>
+                  <span className={styles.adminCls_108}>
                     +₦{(Number(reconciliationData?.platformTreasury?.total_forfeited_absorbed || 0)).toLocaleString("en-NG", { minimumFractionDigits: 2 })} absorbed from deactivations
                   </span>
                 </div>
@@ -3859,32 +3693,26 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {/* Pending Dual-Authorization Requests (Four-Eyes Principle) */}
-              <div style={{ marginBottom: "2.5rem" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem", flexWrap: "wrap", gap: "10px" }}>
+              <div className={styles.adminCls_109}>
+                <div className={styles.adminCls_110}>
                   <div>
-                    <h3 className={styles.cardTitle} style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <h3 className={`${styles.cardTitle} ${styles.adminCls_111}`} >
                       <ShieldCheck size={18} color="#6366f1" />
                       <span>Pending Dual-Authorization Queue (Four-Eyes Principle)</span>
                     </h3>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted, #94a3b8)" }}>
+                    <span className={styles.adminCls_112}>
                       Actions over ₦50,000 or sensitive modifications require explicit secondary peer admin review.
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => fetchPendingRequests(true, pendingRequestsPage, pendingRequestsLimit, pendingRequestsStatusFilter, pendingRequestsSearch)}
-                    disabled={pendingRequestsLoading}
-                    className={styles.btnAction}
-                    style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  >
+                  <button type="button" onClick={() => fetchPendingRequests(true, pendingRequestsPage, pendingRequestsLimit, pendingRequestsStatusFilter, pendingRequestsSearch)} disabled={pendingRequestsLoading} className={`${styles.btnAction} ${styles.adminCls_113}`} >
                     <RefreshCw size={13} className={pendingRequestsLoading ? styles.spin : ""} />
                     <span>{pendingRequestsLoading ? "Refreshing..." : "Refresh Queue"}</span>
                   </button>
                 </div>
 
                 {/* Filter Tabs & Search Controls */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "1rem" }}>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                <div className={styles.adminCls_114}>
+                  <div className={styles.adminCls_115}>
                     <button
                       type="button"
                       onClick={() => {
@@ -3960,8 +3788,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   </div>
 
                   {/* Search box */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", position: "relative", minWidth: "220px" }}>
-                    <Search size={14} style={{ position: "absolute", left: "10px", color: "var(--text-muted)" }} />
+                  <div className={styles.adminCls_116}>
+                    <Search size={14} className={styles.adminCls_117} />
                     <input
                       type="text"
                       placeholder="Search requests..."
@@ -3973,19 +3801,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           fetchPendingRequests(false, 0, pendingRequestsLimit, pendingRequestsStatusFilter, pendingRequestsSearch);
                         }
                       }}
-                      style={{
-                        paddingLeft: "30px",
-                        paddingRight: "10px",
-                        paddingTop: "6px",
-                        paddingBottom: "6px",
-                        fontSize: "0.82rem",
-                        borderRadius: "8px",
-                        border: "1px solid var(--card-border)",
-                        background: "var(--card-bg)",
-                        color: "var(--foreground)",
-                        outline: "none",
-                        width: "100%",
-                      }}
+                      className={styles.adminCls_118}
                     />
                     {pendingRequestsSearch && (
                       <button
@@ -3995,14 +3811,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           setPendingRequestsPage(0);
                           fetchPendingRequests(false, 0, pendingRequestsLimit, pendingRequestsStatusFilter, "");
                         }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "var(--text-muted)",
-                          fontSize: "0.75rem",
-                          padding: "2px 4px",
-                        }}
+                        className={styles.adminCls_119}
                       >
                         ✕
                       </button>
@@ -4013,7 +3822,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 {pendingRequestsLoading ? (
                   <div className={styles.loadingText}>Loading authorization queue...</div>
                 ) : pendingRequests.length === 0 ? (
-                  <div className={styles.emptyState} style={{ padding: "1.2rem", background: "rgba(99,102,241,0.04)", border: "1px dashed rgba(99,102,241,0.2)" }}>
+                  <div className={`${styles.emptyState} ${styles.adminCls_120}`} >
                     No authorizations found matching criteria. All clear!
                   </div>
                 ) : (
@@ -4030,7 +3839,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           <div key={req.id} className={styles.cardItem} style={{ borderLeft: `4px solid ${borderColor}` }}>
                             <div className={styles.cardHeader}>
                               <div>
-                                <h3 className={styles.cardTitle} style={{ textTransform: "capitalize" }}>
+                                <h3 className={`${styles.cardTitle} ${styles.capitalize}`} >
                                   {req.action_type.replace(/_/g, " ")}
                                 </h3>
                                 <span className={styles.cardMeta}>
@@ -4050,7 +3859,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               </span>
                             </div>
 
-                            <div className={styles.cardDetails} style={{ marginTop: "0.5rem", fontSize: "0.875rem" }}>
+                            <div className={`${styles.cardDetails} ${styles.adminCls_121}`} >
                               {req.amount_kobo > 0 && (
                                 <div>
                                   <strong>Amount:</strong> ₦{(req.amount_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
@@ -4077,40 +3886,28 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                                 </div>
                               )}
                               {req.reason && (
-                                <div className={styles.reportReasonBox} style={{ marginTop: "0.5rem" }}>
+                                <div className={`${styles.reportReasonBox} ${styles.adminCls_122}`} >
                                   <strong>Reason:</strong> {req.reason}
                                 </div>
                               )}
                               {req.approved_by && (
-                                <div style={{ fontSize: "0.8rem", color: "#10b981", marginTop: "0.4rem" }}>
+                                <div className={styles.adminCls_123}>
                                   <strong>Approved By:</strong> {req.approved_by}
                                 </div>
                               )}
                               {req.rejected_by && (
-                                <div style={{ fontSize: "0.8rem", color: "#ef4444", marginTop: "0.4rem" }}>
+                                <div className={styles.adminCls_124}>
                                   <strong>Rejected By:</strong> {req.rejected_by} ({req.rejection_reason || "No reason given"})
                                 </div>
                               )}
                             </div>
 
                             {isPending && (
-                              <div className={styles.cardFooter} style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApproveRequest(req.id)}
-                                  disabled={approvingRequestId === req.id}
-                                  className={`${styles.btnAction} ${styles.btnSuccess}`}
-                                  style={{ flex: 1, padding: "0.5rem 0.8rem", fontSize: "0.85rem", fontWeight: 700 }}
-                                >
+                              <div className={`${styles.cardFooter} ${styles.adminCls_125}`} >
+                                <button type="button" onClick={() => handleApproveRequest(req.id)} disabled={approvingRequestId === req.id} className={`${styles.btnAction} ${styles.btnSuccess} ${styles.adminCls_126}`} >
                                   {approvingRequestId === req.id ? "Approving..." : "Approve and Execute"}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRejectRequest(req.id)}
-                                  disabled={approvingRequestId === req.id}
-                                  className={`${styles.btnAction} ${styles.btnDanger}`}
-                                  style={{ flex: 1, padding: "0.5rem 0.8rem", fontSize: "0.85rem", fontWeight: 700 }}
-                                >
+                                <button type="button" onClick={() => handleRejectRequest(req.id)} disabled={approvingRequestId === req.id} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_126}`} >
                                   Reject
                                 </button>
                               </div>
@@ -4139,33 +3936,27 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {/* Deactivated Account Forfeitures (Treasury Absorption Queue) */}
-              <div style={{ marginBottom: "2.5rem" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem", flexWrap: "wrap", gap: "10px" }}>
+              <div className={styles.adminCls_109}>
+                <div className={styles.adminCls_110}>
                   <div>
-                    <h3 className={styles.cardTitle} style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <h3 className={`${styles.cardTitle} ${styles.adminCls_111}`} >
                       <Building2 size={18} color="#10b981" />
                       <span>Deactivated Account Forfeited Balances (Treasury Absorption Queue)</span>
                     </h3>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted, #94a3b8)" }}>
+                    <span className={styles.adminCls_112}>
                       When users deactivate accounts with balances below withdrawal thresholds and forfeit funds, review and resolve them to platform balance with an immutable audit log trace.
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => fetchReconciliationData(true, forfeitedPage, forfeitedLimit, forfeitedStatusFilter, forfeitedSearch)}
-                    disabled={reconciliationLoading}
-                    className={styles.btnAction}
-                    style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  >
+                  <button type="button" onClick={() => fetchReconciliationData(true, forfeitedPage, forfeitedLimit, forfeitedStatusFilter, forfeitedSearch)} disabled={reconciliationLoading} className={`${styles.btnAction} ${styles.adminCls_113}`} >
                     <RefreshCw size={13} />
                     <span>{reconciliationLoading ? "Refreshing..." : "Refresh Queue"}</span>
                   </button>
                 </div>
 
                 {/* Filter Tabs & Search Controls */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "1rem" }}>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                <div className={styles.adminCls_114}>
+                  <div className={styles.adminCls_115}>
                     <button
                       type="button"
                       onClick={() => {
@@ -4223,8 +4014,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   </div>
 
                   {/* Search box */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", position: "relative", minWidth: "220px" }}>
-                    <Search size={14} style={{ position: "absolute", left: "10px", color: "var(--text-muted)" }} />
+                  <div className={styles.adminCls_116}>
+                    <Search size={14} className={styles.adminCls_117} />
                     <input
                       type="text"
                       placeholder="Filter by email or user..."
@@ -4236,19 +4027,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           fetchReconciliationData(false, 0, forfeitedLimit, forfeitedStatusFilter, forfeitedSearch);
                         }
                       }}
-                      style={{
-                        paddingLeft: "30px",
-                        paddingRight: "10px",
-                        paddingTop: "6px",
-                        paddingBottom: "6px",
-                        fontSize: "0.82rem",
-                        borderRadius: "8px",
-                        border: "1px solid var(--card-border)",
-                        background: "var(--card-bg)",
-                        color: "var(--foreground)",
-                        outline: "none",
-                        width: "100%",
-                      }}
+                      className={styles.adminCls_118}
                     />
                     {forfeitedSearch && (
                       <button
@@ -4258,14 +4037,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           setForfeitedPage(0);
                           fetchReconciliationData(false, 0, forfeitedLimit, forfeitedStatusFilter, "");
                         }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "var(--text-muted)",
-                          fontSize: "0.75rem",
-                          padding: "2px 4px",
-                        }}
+                        className={styles.adminCls_119}
                       >
                         ✕
                       </button>
@@ -4274,7 +4046,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 </div>
 
                 {!reconciliationData?.forfeitedBalances || reconciliationData.forfeitedBalances.length === 0 ? (
-                  <div className={styles.emptyState} style={{ padding: "1.2rem", background: "rgba(16,185,129,0.04)", border: "1px dashed rgba(16,185,129,0.2)" }}>
+                  <div className={`${styles.emptyState} ${styles.adminCls_127}`} >
                     No forfeited balances matching criteria. All records clean!
                   </div>
                 ) : (
@@ -4288,7 +4060,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           <div key={item.id} className={styles.cardItem}>
                             <div className={styles.cardHeader}>
                               <div>
-                                <h3 className={styles.cardTitle} style={{ fontSize: "0.95rem" }}>
+                                <h3 className={`${styles.cardTitle} ${styles.adminCls_128}`} >
                                   {item.username ? `@${item.username}` : item.user_email}
                                 </h3>
                                 <span className={styles.cardMeta}>
@@ -4308,25 +4080,18 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               </span>
                             </div>
 
-                            <div className={styles.cardBody} style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                              <div><strong>Account Email:</strong> <span style={{ color: "var(--foreground)" }}>{item.user_email}</span></div>
+                            <div className={`${styles.cardBody} ${styles.adminCls_129}`} >
+                              <div><strong>Account Email:</strong> <span className={styles.textForeground}>{item.user_email}</span></div>
                               <div>
                                 <strong>Forfeited Amount:</strong>{" "}
-                                <span style={{ color: "#10b981", fontWeight: 800, fontSize: "1rem" }}>
+                                <span className={styles.adminCls_130}>
                                   {amountFormatted}
                                 </span>
                               </div>
-                              <div><strong>Reason:</strong> <span style={{ color: "var(--text-muted)" }}>{item.reason}</span></div>
+                              <div><strong>Reason:</strong> <span className={styles.textMuted}>{item.reason}</span></div>
 
                               {!isPending && item.resolved_by && (
-                                <div style={{
-                                  marginTop: "0.5rem",
-                                  padding: "8px 10px",
-                                  borderRadius: "6px",
-                                  backgroundColor: "rgba(16,185,129,0.08)",
-                                  border: "1px solid rgba(16,185,129,0.2)",
-                                  fontSize: "0.8rem",
-                                }}>
+                                <div className={styles.adminCls_131}>
                                   <div><strong>Resolved By:</strong> {item.resolved_by}</div>
                                   {item.resolved_at && <div><strong>Resolved At:</strong> {new Date(item.resolved_at).toLocaleString()}</div>}
                                   {item.resolution_notes && <div><strong>Audit Note:</strong> {item.resolution_notes}</div>}
@@ -4384,7 +4149,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
               {/* Reconciliation Logs Table */}
               <div>
-                <h3 className={styles.cardTitle} style={{ marginBottom: "1rem" }}>System Audit and Reconciliation Log History</h3>
+                <h3 className={`${styles.cardTitle} ${styles.adminCls_132}`} >System Audit and Reconciliation Log History</h3>
                 {reconciliationLoading ? (
                   <div className={styles.loadingText}>Fetching reconciliation logs...</div>
                 ) : !reconciliationData?.logs || reconciliationData.logs.length === 0 ? (
@@ -4413,7 +4178,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           </span>
                         </div>
 
-                        <div className={styles.cardBody} style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                        <div className={`${styles.cardBody} ${styles.adminCls_129}`} >
                           <div><strong>Total Sent:</strong> ₦{(log.total_debits_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</div>
                           <div><strong>Total Received:</strong> ₦{(log.total_credits_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</div>
                           <div><strong>Variance:</strong> ₦{(log.variance_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</div>
@@ -4475,7 +4240,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     <span className={styles.statLabel}>Pending Review</span>
                     <Clock size={18} color="#f59e0b" />
                   </div>
-                  <div className={styles.statValue} style={{ color: "#f59e0b" }}>{subscribersMetrics.pending}</div>
+                  <div className={`${styles.statValue} ${styles.textWarning}`} >{subscribersMetrics.pending}</div>
                 </div>
 
                 <div className={styles.statCard}>
@@ -4483,7 +4248,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     <span className={styles.statLabel}>Approved (Awaiting Payment)</span>
                     <ShieldCheck size={18} color="#60a5fa" />
                   </div>
-                  <div className={styles.statValue} style={{ color: "#60a5fa" }}>{subscribersMetrics.approved}</div>
+                  <div className={`${styles.statValue} ${styles.adminCls_133}`} >{subscribersMetrics.approved}</div>
                 </div>
 
                 <div className={styles.statCard}>
@@ -4491,20 +4256,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                     <span className={styles.statLabel}>Active Subscribers (Paid)</span>
                     <CheckCircle2 size={18} color="#10b981" />
                   </div>
-                  <div className={styles.statValue} style={{ color: "#10b981" }}>{subscribersMetrics.active}</div>
+                  <div className={`${styles.statValue} ${styles.textSuccess}`} >{subscribersMetrics.active}</div>
                 </div>
               </div>
 
               {/* Filter and Search Bar */}
-              <div style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "12px",
-                alignItems: "center",
-                justifyContent: "space-between",
-                margin: "1.5rem 0 1rem 0",
-              }}>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <div className={styles.adminCls_134}>
+                <div className={styles.adminCls_135}>
                   {(["all", "pending", "approved", "active", "rejected"] as const).map((st) => (
                     <button
                       key={st}
@@ -4530,39 +4288,12 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   ))}
                 </div>
 
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <input
-                    type="text"
-                    placeholder="Search domain, business, or email..."
-                    value={subscribersSearch}
-                    onChange={(e) => setSubscribersSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        setSubscribersPage(0);
-                        fetchSubscribers(0, subscribersLimit, subscribersStatus, subscribersSearch, true);
-                      }
-                    }}
-                    className={styles.modalInput}
-                    style={{ minWidth: "260px", padding: "6px 12px", fontSize: "0.85rem" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSubscribersPage(0);
-                      fetchSubscribers(0, subscribersLimit, subscribersStatus, subscribersSearch, true);
-                    }}
-                    className={styles.btnAction}
-                    style={{ padding: "6px 12px", fontSize: "0.85rem" }}
-                  >
+                <div className={styles.adminCls_136}>
+                  <input type="text" placeholder="Search domain, business, or email..." value={subscribersSearch} onChange={(e) => setSubscribersSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { setSubscribersPage(0); fetchSubscribers(0, subscribersLimit, subscribersStatus, subscribersSearch, true); } }} className={`${styles.modalInput} ${styles.adminCls_137}`} />
+                  <button type="button" onClick={() => { setSubscribersPage(0); fetchSubscribers(0, subscribersLimit, subscribersStatus, subscribersSearch, true); }} className={`${styles.btnAction} ${styles.adminCls_138}`} >
                     Search
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => fetchSubscribers(subscribersPage, subscribersLimit, subscribersStatus, subscribersSearch, true)}
-                    disabled={subscribersLoading}
-                    className={styles.btnAction}
-                    style={{ padding: "6px 12px", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  >
+                  <button type="button" onClick={() => fetchSubscribers(subscribersPage, subscribersLimit, subscribersStatus, subscribersSearch, true)} disabled={subscribersLoading} className={`${styles.btnAction} ${styles.adminCls_139}`} >
                     <RefreshCw size={13} className={subscribersLoading ? "spin" : ""} />
                     <span>Sync</span>
                   </button>
@@ -4616,16 +4347,16 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                       >
                         <div className={styles.cardHeader}>
                           <div>
-                            <h3 className={styles.cardTitle} style={{ fontSize: "1.05rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <h3 className={`${styles.cardTitle} ${styles.adminCls_140}`} >
                               <Building2 size={16} color={badgeColor} />
                               <span>{sub.business_name}</span>
                             </h3>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                            <div className={styles.adminCls_141}>
                               <Globe size={13} color="var(--primary, #3b82f6)" />
-                              <strong style={{ color: "var(--primary, #3b82f6)", fontSize: "0.9rem" }}>{sub.domain}</strong>
+                              <strong className={styles.adminCls_142}>{sub.domain}</strong>
                             </div>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                          <div className={styles.adminCls_143}>
                             <span
                               style={{
                                 fontSize: "0.75rem",
@@ -4640,42 +4371,42 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                             >
                               {sub.status}
                             </span>
-                            <span style={{ fontSize: "0.7rem", color: "var(--text-muted, #94a3b8)" }}>
+                            <span className={styles.adminCls_144}>
                               Payment: <strong style={{ color: sub.payment_status === "paid" ? "#10b981" : "#f59e0b" }}>{sub.payment_status || "unpaid"}</strong>
                             </span>
                           </div>
                         </div>
 
-                        <div className={styles.cardBody} style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                        <div className={`${styles.cardBody} ${styles.adminCls_145}`} >
                           <div>
                             <strong>Applicant Email:</strong>{" "}
-                            <span style={{ color: "var(--foreground)" }}>{sub.user_email || sub.contact_email || "Not specified"}</span>
+                            <span className={styles.textForeground}>{sub.user_email || sub.contact_email || "Not specified"}</span>
                           </div>
                           {sub.contact_email && sub.contact_email !== sub.user_email && (
                             <div>
                               <strong>Contact Email:</strong>{" "}
-                              <span style={{ color: "var(--foreground)" }}>{sub.contact_email}</span>
+                              <span className={styles.textForeground}>{sub.contact_email}</span>
                             </div>
                           )}
                           <div>
                             <strong>Subscription Fee:</strong>{" "}
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>{formattedAmount}</span>
-                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted, #94a3b8)", marginLeft: "6px" }}>
+                            <span className={styles.adminCls_146}>{formattedAmount}</span>
+                            <span className={styles.adminCls_147}>
                               ({sub.discount_percentage || 30}% discount subsidy on ads)
                             </span>
                           </div>
                           <div>
                             <strong>Submitted:</strong>{" "}
-                            <span style={{ color: "var(--text-muted, #94a3b8)" }}>{new Date(sub.created_at).toLocaleString()}</span>
+                            <span className={styles.adminCls_148}>{new Date(sub.created_at).toLocaleString()}</span>
                           </div>
                           {sub.reviewed_by && (
                             <div>
                               <strong>Reviewed By:</strong>{" "}
-                              <span style={{ color: "var(--text-muted, #94a3b8)" }}>{sub.reviewed_by} ({sub.reviewed_at ? new Date(sub.reviewed_at).toLocaleDateString() : "date unknown"})</span>
+                              <span className={styles.adminCls_148}>{sub.reviewed_by} ({sub.reviewed_at ? new Date(sub.reviewed_at).toLocaleDateString() : "date unknown"})</span>
                             </div>
                           )}
                           {sub.rejection_reason && (
-                            <div style={{ color: "#ef4444", backgroundColor: "rgba(239,68,68,0.08)", padding: "6px 8px", borderRadius: "6px", marginTop: "4px" }}>
+                            <div className={styles.adminCls_149}>
                               <strong>Rejection Reason:</strong> {sub.rejection_reason}
                             </div>
                           )}
@@ -4687,44 +4418,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                         </div>
 
                         {/* Action Buttons for Admins */}
-                        <div style={{ display: "flex", gap: "8px", marginTop: "auto", paddingTop: "0.5rem", borderTop: "1px solid var(--card-border, rgba(255,255,255,0.08))" }}>
+                        <div className={styles.adminCls_150}>
                           {isPending && (
                             <>
-                              <button
-                                type="button"
-                                onClick={() => handleApproveSubscriber(sub)}
-                                disabled={subscriberActionLoading === sub.id}
-                                className={styles.btnAction}
-                                style={{
-                                  flex: 1,
-                                  backgroundColor: "#10b981",
-                                  color: "#fff",
-                                  padding: "8px 12px",
-                                  fontSize: "0.85rem",
-                                  fontWeight: 700,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  gap: "6px",
-                                }}
-                              >
+                              <button type="button" onClick={() => handleApproveSubscriber(sub)} disabled={subscriberActionLoading === sub.id} className={`${styles.btnAction} ${styles.adminCls_151}`} >
                                 <CheckCircle2 size={14} />
                                 {subscriberActionLoading === sub.id ? "Approving..." : "Approve Application"}
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRejectSubscriber(sub)}
-                                disabled={subscriberActionLoading === sub.id}
-                                className={`${styles.btnAction} ${styles.btnDanger}`}
-                                style={{
-                                  padding: "8px 14px",
-                                  fontSize: "0.85rem",
-                                  fontWeight: 700,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                }}
-                              >
+                              <button type="button" onClick={() => handleRejectSubscriber(sub)} disabled={subscriberActionLoading === sub.id} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_152}`} >
                                 <X size={14} />
                                 Reject
                               </button>
@@ -4732,51 +4433,33 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           )}
 
                           {isApproved && (
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "8px" }}>
-                              <span style={{ fontSize: "0.8rem", color: "#60a5fa" }}>
+                            <div className={styles.adminCls_153}>
+                              <span className={styles.adminCls_154}>
                                 ⏳ Approved — awaiting brand owner payment of {formattedAmount}.
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRejectSubscriber(sub)}
-                                disabled={subscriberActionLoading === sub.id}
-                                className={`${styles.btnAction} ${styles.btnDanger}`}
-                                style={{ padding: "5px 10px", fontSize: "0.75rem" }}
-                              >
+                              <button type="button" onClick={() => handleRejectSubscriber(sub)} disabled={subscriberActionLoading === sub.id} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_155}`} >
                                 Revoke / Reject
                               </button>
                             </div>
                           )}
 
                           {isActive && (
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "8px" }}>
-                              <span style={{ fontSize: "0.8rem", color: "#10b981", fontWeight: 600 }}>
+                            <div className={styles.adminCls_153}>
+                              <span className={styles.adminCls_156}>
                                 ✓ Active Verified Subscriber (30% Discount Live)
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRejectSubscriber(sub)}
-                                disabled={subscriberActionLoading === sub.id}
-                                className={`${styles.btnAction} ${styles.btnDanger}`}
-                                style={{ padding: "5px 10px", fontSize: "0.75rem" }}
-                              >
+                              <button type="button" onClick={() => handleRejectSubscriber(sub)} disabled={subscriberActionLoading === sub.id} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_155}`} >
                                 Suspend Brand
                               </button>
                             </div>
                           )}
 
                           {isRejected && (
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "8px" }}>
-                              <span style={{ fontSize: "0.8rem", color: "#ef4444" }}>
+                            <div className={styles.adminCls_153}>
+                              <span className={styles.adminCls_157}>
                                 Rejected
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleApproveSubscriber(sub)}
-                                disabled={subscriberActionLoading === sub.id}
-                                className={styles.btnAction}
-                                style={{ backgroundColor: "#10b981", color: "#fff", padding: "5px 10px", fontSize: "0.75rem" }}
-                              >
+                              <button type="button" onClick={() => handleApproveSubscriber(sub)} disabled={subscriberActionLoading === sub.id} className={`${styles.btnAction} ${styles.adminCls_158}`} >
                                 Re-approve
                               </button>
                             </div>
@@ -4813,28 +4496,17 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* ==================================================== */}
       {selectedUser && (
         <div className={styles.modalOverlay} onClick={() => setSelectedUser(null)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px" }}>
+          <div className={`${styles.modalContent} ${styles.adminCls_159}`} onClick={(e) => e.stopPropagation()} >
             <div className={styles.modalHeader}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{
-                  width: "38px",
-                  height: "38px",
-                  borderRadius: "50%",
-                  backgroundColor: "var(--primary)",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: "700",
-                  fontSize: "1rem"
-                }}>
+              <div className={styles.adminCls_160}>
+                <div className={styles.adminCls_161}>
                   {selectedUser.firstName ? selectedUser.firstName.slice(0, 2).toUpperCase() : "US"}
                 </div>
                 <div>
-                  <h3 className={styles.modalTitle} style={{ margin: 0 }}>
+                  <h3 className={`${styles.modalTitle} ${styles.mZero}`} >
                     {selectedUser.business_name || `${selectedUser.firstName} ${selectedUser.lastName}`}
                   </h3>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  <div className={styles.adminCls_162}>
                     @{selectedUser.username.split("@")[0]} &bull; {selectedUser.email}
                   </div>
                 </div>
@@ -4879,14 +4551,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               {/* Wallet Summary & Quick Adjust */}
               <div className={styles.modalSectionCard}>
                 <h4 className={styles.modalSectionTitle}>Wallet and Balance Adjustments</h4>
-                <div className={styles.gridTwoCol} style={{ marginBottom: "0.5rem" }}>
+                <div className={`${styles.gridTwoCol} ${styles.adminCls_163}`} >
                   <div className={styles.metricCard}>
                     <span className={styles.metricLabel}>Available Balance</span>
-                    <span className={styles.metricValue} style={{ color: "#10b981" }}>{formatCurrency(selectedUser.balance || 0)}</span>
+                    <span className={`${styles.metricValue} ${styles.textSuccess}`} >{formatCurrency(selectedUser.balance || 0)}</span>
                   </div>
                   <div className={styles.metricCard}>
                     <span className={styles.metricLabel}>Pending Withdrawal</span>
-                    <span className={styles.metricValue} style={{ color: "#3b82f6" }}>{formatCurrency(selectedUser.withdrawal || 0)}</span>
+                    <span className={`${styles.metricValue} ${styles.textInfo}`} >{formatCurrency(selectedUser.withdrawal || 0)}</span>
                   </div>
                 </div>
 
@@ -4904,8 +4576,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {/* Suspension Controls */}
-              <div className={styles.modalSectionCard} style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}>
-                <h4 className={styles.modalSectionTitle} style={{ color: "#f85149" }}>User Account Suspension Controls</h4>
+              <div className={`${styles.modalSectionCard} ${styles.adminCls_164}`} >
+                <h4 className={`${styles.modalSectionTitle} ${styles.adminCls_165}`} >User Account Suspension Controls</h4>
                 
                 {selectedUser.suspended_until && new Date(selectedUser.suspended_until) > new Date() ? (
                   <div className={styles.statusAlertDanger}>
@@ -4930,7 +4602,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             </div>
 
             <div className={styles.modalFooter}>
-              <button disabled={userActionSubmitting} onClick={() => handleDeleteUser(selectedUser)} className={`${styles.btnAction} ${styles.btnDanger}`} style={{ marginRight: "auto" }}>
+              <button disabled={userActionSubmitting} onClick={() => handleDeleteUser(selectedUser)} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_166}`} >
                 {userActionSubmitting ? "Processing..." : "Delete Account Permanently"}
               </button>
               <button onClick={() => setSelectedUser(null)} className={styles.btnAction}>
@@ -4946,7 +4618,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* ==================================================== */}
       {editAdData && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContent} style={{ maxWidth: "550px" }}>
+          <div className={`${styles.modalContent} ${styles.adminCls_167}`} >
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>Edit Ad Campaign Details</h3>
               <button onClick={() => setEditAdData(null)} className={styles.btnClose}>
@@ -5064,7 +4736,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* ==================================================== */}
       {editHighlightData && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContent} style={{ maxWidth: "500px" }}>
+          <div className={`${styles.modalContent} ${styles.adminCls_168}`} >
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>Edit Business Highlight</h3>
               <button onClick={() => setEditHighlightData(null)} className={styles.btnClose}>
@@ -5146,22 +4818,15 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </button>
             </div>
             <div className={styles.modalBody}>
-              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-                <strong style={{ color: "var(--foreground)" }}>From:</strong> {replyingTicket.name ? `${replyingTicket.name} — ` : ""}{replyingTicket.user_email}
+              <p className={styles.adminCls_169}>
+                <strong className={styles.textForeground}>From:</strong> {replyingTicket.name ? `${replyingTicket.name} — ` : ""}{replyingTicket.user_email}
               </p>
-              <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "1rem", lineHeight: 1.5, background: "var(--sidebar-bg)", padding: "0.75rem", borderRadius: "8px" }}>
+              <p className={styles.adminCls_170}>
                 {replyingTicket.message}
               </p>
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>Your Reply</label>
-                <textarea
-                  className={styles.textareaField}
-                  rows={5}
-                  placeholder="Type your reply here..."
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  style={{ width: "100%", resize: "vertical", minHeight: "120px" }}
-                />
+                <textarea className={`${styles.textareaField} ${styles.adminCls_171}`} rows={5} placeholder="Type your reply here..." value={replyText} onChange={(e) => setReplyText(e.target.value)} />
               </div>
             </div>
             <div className={styles.modalFooter}>
@@ -5186,9 +4851,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* ==================================================== */}
       {inspectingAd && (
         <div className={styles.modalOverlay} onClick={() => setInspectingAd(null)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px" }}>
+          <div className={`${styles.modalContent} ${styles.adminCls_159}`} onClick={(e) => e.stopPropagation()} >
             <div className={styles.modalHeader}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div className={styles.adminCls_172}>
                 <Megaphone size={20} color="var(--primary)" />
                 <h3 className={styles.modalTitle}>Ad Details Inspector</h3>
               </div>
@@ -5200,10 +4865,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <div className={styles.modalBody}>
               <AdminAdMediaBox adMedia={inspectingAd.ad_media || inspectingAd.ad_media_url || ""} adMediaType={inspectingAd.ad_media_type} />
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", backgroundColor: "var(--sidebar-bg)", padding: "1.1rem", borderRadius: "10px", border: "1px solid var(--card-border)", fontSize: "0.85rem" }}>
-                <div><strong>Ad ID:</strong> <code style={{ wordBreak: "break-all" }}>{inspectingAd.id}</code></div>
-                <div><strong>Ad Type:</strong> <span style={{ textTransform: "capitalize", fontWeight: "700", color: "var(--primary)" }}>{inspectingAd.ad_type}</span></div>
-                <div><strong>Advertiser Email:</strong> <code style={{ wordBreak: "break-all" }}>{inspectingAd.user_email || inspectingAd.email}</code></div>
+              <div className={styles.adminCls_173}>
+                <div><strong>Ad ID:</strong> <code className={styles.breakAll}>{inspectingAd.id}</code></div>
+                <div><strong>Ad Type:</strong> <span className={styles.adminCls_174}>{inspectingAd.ad_type}</span></div>
+                <div><strong>Advertiser Email:</strong> <code className={styles.breakAll}>{inspectingAd.user_email || inspectingAd.email}</code></div>
                 <div><strong>Status:</strong> <span style={{ fontWeight: "700", color: inspectingAd.is_paused ? "#ef4444" : "#10b981" }}>{inspectingAd.is_paused ? "Paused / Deactivated" : "Active"}</span></div>
                 <div><strong>Impressions:</strong> <span>{inspectingAd.impression_count || 0} / {inspectingAd.impressions || 0}</span></div>
                 <div><strong>Mutual Attention:</strong> <span>{inspectingAd.mutual_adds_count || 0}</span></div>
@@ -5212,9 +4877,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               </div>
 
               {inspectingAd.ad_content && (
-                <div style={{ backgroundColor: "var(--sidebar-bg)", padding: "1.1rem", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
-                  <strong style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Ad Headline / Content:</strong>
-                  <p style={{ marginTop: "0.35rem", fontSize: "0.95rem", color: "var(--foreground)", whiteSpace: "pre-wrap" }}>{inspectingAd.ad_content}</p>
+                <div className={styles.adminCls_175}>
+                  <strong className={styles.adminCls_85}>Ad Headline / Content:</strong>
+                  <p className={styles.adminCls_176}>{inspectingAd.ad_content}</p>
                 </div>
               )}
             </div>
@@ -5229,11 +4894,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               >
                 Deactivate Ad Campaign
               </button>
-              <button
-                onClick={() => setInspectingAd(null)}
-                className={styles.btnAction}
-                style={{ backgroundColor: "var(--sidebar-bg)", color: "var(--foreground)", border: "1px solid var(--card-border)" }}
-              >
+              <button onClick={() => setInspectingAd(null)} className={`${styles.btnAction} ${styles.adminCls_177}`} >
                 Close Inspector
               </button>
             </div>
@@ -5246,9 +4907,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* ==================================================== */}
       {banModalUser && (
         <div className={styles.modalOverlay} onClick={() => setBanModalUser(null)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px" }}>
+          <div className={`${styles.modalContent} ${styles.adminCls_178}`} onClick={(e) => e.stopPropagation()} >
             <div className={styles.modalHeader}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div className={styles.adminCls_160}>
                 <ShieldAlert size={22} color="#f59e0b" />
                 <h3 className={styles.modalTitle}>Manage Advertiser Access</h3>
               </div>
@@ -5330,25 +4991,15 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       {/* ==================================================== */}
       {showReverseModal && (
         <div className={styles.modalOverlay} onClick={() => !reversalLoading && setShowReverseModal(false)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "520px" }}>
+          <div className={`${styles.modalContent} ${styles.adminCls_179}`} onClick={(e) => e.stopPropagation()} >
             <div className={styles.modalHeader}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{
-                  width: "38px",
-                  height: "38px",
-                  borderRadius: "50%",
-                  backgroundColor: "rgba(99,102,241,0.15)",
-                  color: "#6366f1",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: "700"
-                }}>
+              <div className={styles.adminCls_160}>
+                <div className={styles.adminCls_180}>
                   <RefreshCw size={20} />
                 </div>
                 <div>
-                  <h3 className={styles.modalTitle} style={{ margin: 0 }}>Reverse User Transfer</h3>
-                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted, #94a3b8)" }}>
+                  <h3 className={`${styles.modalTitle} ${styles.mZero}`} >Reverse User Transfer</h3>
+                  <span className={styles.adminCls_112}>
                     Claw back funds from recipient and refund sender atomically.
                   </span>
                 </div>
@@ -5366,31 +5017,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <form onSubmit={handleExecuteReversal}>
               <div className={styles.modalBody}>
                 {reversalError && (
-                  <div style={{
-                    color: "#ef4444",
-                    fontSize: "0.85rem",
-                    background: "rgba(239,68,68,0.1)",
-                    padding: "0.75rem",
-                    borderRadius: "8px",
-                    border: "1px solid rgba(239,68,68,0.2)",
-                    marginBottom: "1rem"
-                  }}>
+                  <div className={styles.adminCls_181}>
                     {reversalError}
                   </div>
                 )}
 
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Transaction Reference (Required)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. trf_1725619200000_abc123"
-                    value={reverseRef}
-                    onChange={(e) => setReverseRef(e.target.value)}
-                    required
-                    disabled={reversalLoading}
-                    className={styles.inputField}
-                    style={{ fontFamily: "monospace" }}
-                  />
+                  <input type="text" placeholder="e.g. trf_1725619200000_abc123" value={reverseRef} onChange={(e) => setReverseRef(e.target.value)} required disabled={reversalLoading} className={`${styles.inputField} ${styles.adminCls_182}`} />
                   <span className={styles.formHelperText}>
                     Enter the original debit or credit transaction reference recorded on the ledger.
                   </span>

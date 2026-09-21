@@ -165,6 +165,7 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.5);
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .carouselDotActive {
@@ -1589,3 +1590,150 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Full Audience Targeting Breakdown in Specs Drawer ── */
+.targetingMatrixBox {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.targetingMatrixTitle {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.targetingMatrixGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.targetingCard {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.targetingCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.targetingCardLabel {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.targetingCardCount {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.targetingChipsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.targetingChip {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+  line-height: 1.35;
+}
+
+.targetingEmpty {
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.refreshAdsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+  transition: all 0.18s ease;
+}
+
+.refreshAdsBtn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.paginationEllipsis {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.badgeRollover {
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.headerTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.kpiValueMuted {
+  color: var(--text-muted) !important;
+}
+
+.kpiSubMuted {
+  color: var(--text-muted) !important;
+}
+

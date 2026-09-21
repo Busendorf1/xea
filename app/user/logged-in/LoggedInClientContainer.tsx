@@ -67,7 +67,10 @@ const StatementPageContent = dynamic(() => import("@/components/Statement/page")
   ssr: false,
 });
 
+import DashboardClient from "@/components/DashboardClient/page";
+
 export type TabKey = 
+  | "feed"
   | "adPage" 
   | "monetize" 
   | "myads" 
@@ -82,16 +85,26 @@ interface Props {
   initialClicks?: number;
   initialAtwTier?: string;
   initialTab?: TabKey;
+  user?: any;
+  parsedInterest?: any;
+  email?: string;
+  initialAds?: any[];
+  initialProfiles?: Record<string, any>;
 }
 
-const VALID_TABS: TabKey[] = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
+const VALID_TABS: TabKey[] = ["feed", "adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
 
 export default function LoggedInClientContainer({ 
   session, 
   initialMonetized, 
   initialClicks, 
   initialAtwTier,
-  initialTab = "monetize" 
+  initialTab = "feed",
+  user,
+  parsedInterest,
+  email,
+  initialAds,
+  initialProfiles,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTab]));
@@ -106,32 +119,38 @@ export default function LoggedInClientContainer({
     const viewParam = urlParams.get("view") as TabKey;
     const editIdParam = urlParams.get("id");
 
-    if (editIdParam) {
-      sessionStorage.setItem("paayh_edit_ad_id", editIdParam);
+    // Check cookie for edit id
+    const cookiesList = document.cookie.split("; ");
+    const editCookie = cookiesList.find((c) => c.trim().startsWith("paayh_edit_ad_id="));
+    const cookieEditId = editCookie ? editCookie.trim().split("=")[1] : null;
+    const finalEditId = editIdParam || cookieEditId;
+
+    if (finalEditId) {
+      sessionStorage.setItem("paayh_edit_ad_id", finalEditId);
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("paayh_edit_ad", { detail: { adId: editIdParam } }));
+        window.dispatchEvent(new CustomEvent("paayh_edit_ad", { detail: { adId: finalEditId } }));
       }, 50);
     }
 
     const boostRef = urlParams.get("boost_ref") || urlParams.get("reference") || urlParams.get("trxref");
     if (boostRef && boostRef.startsWith("BOOST-")) {
       sessionStorage.setItem("paayh_boost_ref", boostRef);
+      finalTab = "myads";
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent("paayh_boost_ref", { detail: { reference: boostRef } }));
       }, 100);
+    } else if (urlParams.get("reference") || urlParams.get("trxref")) {
+      // General payment callback (e.g. ad submission payment)
+      finalTab = "statement";
     }
-
-    // Clean cookie if it was present
-    document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
     if (viewParam && VALID_TABS.includes(viewParam)) {
       finalTab = viewParam;
-    } else {
+    } else if (!boostRef && !(urlParams.get("reference") || urlParams.get("trxref"))) {
       // 2. Check for cookie set by server redirects
-      const cookies = document.cookie.split("; ");
-      const tabCookie = cookies.find((c) => c.startsWith("paayh_active_tab="));
+      const tabCookie = cookiesList.find((c) => c.trim().startsWith("paayh_active_tab="));
       if (tabCookie) {
-        const cookieTab = tabCookie.split("=")[1] as TabKey;
+        const cookieTab = tabCookie.trim().split("=")[1] as TabKey;
         if (VALID_TABS.includes(cookieTab)) finalTab = cookieTab;
       } else {
         // 3. Check sessionStorage
@@ -142,11 +161,15 @@ export default function LoggedInClientContainer({
       }
     }
 
+    // Clean cookies after reading
+    document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "paayh_edit_ad_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
     setActiveTab(finalTab);
     sessionStorage.setItem("paayh_active_tab", finalTab);
 
-    if (window.location.pathname !== "/user/logged-in" || window.location.search !== "") {
-      window.history.replaceState(null, "", "/user/logged-in");
+    if (window.location.pathname !== "/logged-in" || window.location.search !== "") {
+      window.history.replaceState(null, "", "/logged-in");
     }
   };
 
@@ -156,7 +179,7 @@ export default function LoggedInClientContainer({
     const handleTabChangeEvent = () => {
       const stored = sessionStorage.getItem("paayh_active_tab") as TabKey;
       if (stored) setActiveTab(stored);
-      window.history.replaceState(null, "", "/user/logged-in");
+      window.history.replaceState(null, "", "/logged-in");
     };
 
     window.addEventListener("paayh_tab_change", handleTabChangeEvent);
@@ -194,6 +217,18 @@ export default function LoggedInClientContainer({
       });
     }
   }, []);
+
+  if (activeTab === "feed") {
+    return (
+      <DashboardClient 
+        user={user} 
+        parsedInterest={parsedInterest} 
+        email={email || session?.user?.email} 
+        initialAds={initialAds}
+        initialProfiles={initialProfiles}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">

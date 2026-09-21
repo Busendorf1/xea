@@ -488,8 +488,7 @@ export default function ModalLandingPage() {
                           setIsRedirecting(false);
                         }
                       }}
-                      className={styles.termsBackBtn}
-                      style={isRedirecting ? { opacity: 0.35, pointerEvents: "none" } : undefined}
+                      className={`${styles.termsBackBtn} ${isRedirecting ? styles.termsBackBtnDisabled : ""}`}
                     >
                       Back
                     </button>

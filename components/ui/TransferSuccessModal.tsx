@@ -162,7 +162,7 @@ export default function TransferSuccessModal({
 
  <div className={styles.receiptRow}>
  <span className={styles.receiptLabel}>Status</span>
- <span className={styles.receiptValue} style={{ color: "var(--success, #16a34a)" }}>
+ <span className={`${styles.receiptValue} ${styles.receiptValueSuccess}`}>
  {isWithdrawal ? "Queued" : "Completed"}
  </span>
  </div>

@@ -1,0 +1,129 @@
+.gpsToggleWrapper {
+  grid-column: 1 / -1;
+  margin-bottom: 0.75rem;
+}
+
+.gpsToggleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.gpsToggleLabelDisabled {
+  cursor: not-allowed;
+}
+
+.gpsCheckbox {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+.gpsStatusText {
+  font-size: 0.83rem;
+  margin-top: 0.4rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.gpsStatusSuccess {
+  color: #16a34a;
+}
+
+.gpsStatusError {
+  color: #dc2626;
+}
+
+.readOnlyInput {
+  width: 100%;
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+.labelBlock {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.customInput {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.groupTopMargin {
+  margin-top: 1rem;
+}
+
+.multiLocationWrapper {
+  grid-column: 1 / -1;
+  margin-top: 0.5rem;
+}
+
+.addLocationBtn {
+  background-color: rgba(29, 155, 240, 0.12);
+  border: 1px solid rgba(29, 155, 240, 0.3);
+  color: #1d9bf0;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.addLocationBtnDisabled {
+  background-color: rgba(148, 163, 184, 0.2);
+  border: 1px solid #64748b;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.maxLocationWarning {
+  font-size: 0.78rem;
+  color: var(--primary);
+  margin-top: 0.4rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pillsContainer {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.locationPill {
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.removePillBtn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}

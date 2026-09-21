@@ -23,11 +23,16 @@ export async function POST(req: NextRequest) {
     const { isAdminEmail } = await import("@/lib/authHelper");
     const isAdmin = isAdminEmail(email);
     if (isAdmin && (type === "ad" || type === "highlight")) {
+      const redirectUrl = `${callbackUrl || "/logged-in"}?admin_free=true`;
+      const ref = `ADMIN_FREE_${Date.now()}`;
       return NextResponse.json({
+        success: true,
         status: true,
+        authorization_url: redirectUrl,
+        reference: ref,
         data: {
-          authorization_url: `${callbackUrl || "/user/statement"}?admin_free=true`,
-          reference: `ADMIN_FREE_${Date.now()}`,
+          authorization_url: redirectUrl,
+          reference: ref,
         },
       });
     }
@@ -113,7 +118,7 @@ export async function POST(req: NextRequest) {
     const paystackData = await PaystackService.initializeTransaction(
       email,
       verifiedAmount,
-      callbackUrl || `${req.nextUrl.origin}/user/statement`,
+      callbackUrl || `${req.nextUrl.origin}/logged-in`,
       paystackMetadata,
       channels
     );

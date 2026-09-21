@@ -51,6 +51,11 @@
   margin-bottom: 1.5rem;
 }
 
+.applyText {
+  margin-bottom: 1rem;
+  color: var(--foreground);
+}
+
 .emailSection {
   background: rgba(29, 155, 240, 0.05);
   border: 1px dashed var(--primary);

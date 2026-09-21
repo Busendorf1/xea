@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
-import UserAvatar from "./UserAvatar";
+import Avatar from "./Avatar";
 import HighlightCard from "./HighlightCard";
 import AdOptionsMenu from "./AdOptionsMenu";
 import MediaCarousel from "./MediaCarousel";
@@ -338,7 +338,8 @@ function AdCard({
       return advertiserProfile.business_name.trim();
     }
     if (advertiserProfile?.firstName && advertiserProfile.firstName.trim() !== "") {
-      return advertiserProfile.firstName.trim();
+      const full = `${advertiserProfile.firstName} ${advertiserProfile.lastName || ""}`.trim();
+      return full || advertiserProfile.firstName.trim();
     }
     if (advertiserProfile?.username && advertiserProfile.username.trim() !== "") {
       return advertiserProfile.username.trim();
@@ -346,11 +347,27 @@ function AdCard({
     if (ad.custom_sponsor_handle && ad.custom_sponsor_handle.trim() !== "") {
       return ad.custom_sponsor_handle.trim().replace(/^@/, "");
     }
+    if ((ad as any).publisher_name && (ad as any).publisher_name.trim() !== "") {
+      return (ad as any).publisher_name.trim();
+    }
+    if ((ad as any).publisher_handle && (ad as any).publisher_handle.trim() !== "") {
+      return (ad as any).publisher_handle.replace(/^@/, "").trim();
+    }
+    if (ad.product_name && ad.product_name.trim() !== "") {
+      return ad.product_name.trim();
+    }
+    if (ad.title && ad.title.trim() !== "") {
+      return ad.title.trim();
+    }
     if (ad.user_email) {
+      const emailLower = ad.user_email.toLowerCase();
+      if (emailLower === "admin@paayh.com" || emailLower === "system@paayh.com" || ad.ad_type === "admin_broadcast") {
+        return "Paayh";
+      }
       return ad.user_email.split("@")[0];
     }
     return "Paayh";
-  }, [ad.custom_sponsor_name, ad.custom_sponsor_handle, ad.user_email, advertiserProfile]);
+  }, [ad, advertiserProfile]);
 
   const targetLink = useMemo(() => {
     if (ad.action_website) return getHref("action_website", ad.action_website);
@@ -366,26 +383,9 @@ function AdCard({
     return "#";
   }, [ad.action_website, ad.action_whatsapp, ad.action_phone, ad.action_email, ad.product_cta_link, ad.action_ios, ad.action_android, ad.action_watch_now]);
 
-  const getAdvertiserName = useCallback((adItem: Ad): string => {
-    if (adItem.custom_sponsor_name && adItem.custom_sponsor_name.trim() !== "") {
-      return adItem.custom_sponsor_name.trim().slice(0, 25);
-    }
-    const profile = adItem.user_email ? advertiserProfiles[adItem.user_email.toLowerCase()] : null;
-    let displayName = "";
-    if (profile) {
-      if (profile.business_name && profile.business_name.trim() !== "") {
-        displayName = profile.business_name;
-      } else if (profile.firstName && profile.firstName.trim() !== "") {
-        displayName = profile.firstName;
-      } else if (profile.username && profile.username.trim() !== "") {
-        displayName = profile.username;
-      }
-    }
-    if (!displayName) {
-      displayName = "Sponsored";
-    }
-    return displayName.slice(0, 25);
-  }, [advertiserProfiles]);
+  const getAdvertiserName = useCallback((_adItem: Ad): string => {
+    return brandName.slice(0, 25);
+  }, [brandName]);
 
   const actionButtons = useMemo(() => {
     return [
@@ -444,14 +444,14 @@ function AdCard({
           customLogo={ad.custom_sponsor_logo}
           isPlatformPost={isPlatformPost}
         >
-          <div className={styles.avatar} style={{ cursor: "pointer" }}>
-            <UserAvatar
+          <div className={styles.avatar}>
+            <Avatar
               src={ad.custom_sponsor_logo || advertiserProfile?.profileImage}
-              fallbackText={brandName}
+              name={brandName}
+              email={ad.user_email}
               size={40}
               alt={brandName}
               gender={advertiserProfile?.gender || (ad as any).gender || null}
-              className={styles.avatarImg}
             />
           </div>
         </AdvertiserHoverCard>
@@ -469,7 +469,7 @@ function AdCard({
               customLogo={ad.custom_sponsor_logo}
               isPlatformPost={isPlatformPost}
             >
-              <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer", minWidth: 0 }}>
+              <div className={styles.sponsorNameWrapper}>
                 <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
               </div>
             </AdvertiserHoverCard>
@@ -511,16 +511,7 @@ function AdCard({
           <>
             {ad.product_name && <h4 className={styles.productNameTitle}>{ad.product_name}</h4>}
             {ad.ad_content && (
-              <p
-                className={styles.productDescriptionText}
-                style={{
-                  marginTop: "4px",
-                  marginBottom: "12px",
-                  fontSize: "0.92rem",
-                  color: "var(--text-secondary)",
-                  lineHeight: "1.4",
-                }}
-              >
+              <p className={styles.productDescriptionText}>
                 {ad.ad_content.trim().charAt(0).toUpperCase() + ad.ad_content.trim().slice(1)}
               </p>
             )}
@@ -669,7 +660,6 @@ function AdCard({
                   target="_blank"
                   rel="noopener noreferrer"
                   className={styles.productCtaButton}
-                  style={{ marginRight: "4px", fontSize: "0.75rem", padding: "4px 10px", height: "28px" }}
                   onClick={() => handleCtaClick((ad.product_cta_type || "Comment").toLowerCase().replace(/\s+/g, "_"))}
                 >
                   {ad.product_cta_type || "Comment"}

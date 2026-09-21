@@ -1,4 +1,5 @@
 import React from "react";
+import styles from "./VerifiedBadge.module.css";
 
 interface VerifiedBadgeProps {
   size?: number;
@@ -23,18 +24,13 @@ export default function VerifiedBadge({
 }: VerifiedBadgeProps) {
   return (
     <span
-      className={className}
+      className={`${styles.badgeWrapper} ${className}`.trim()}
       title={title}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
         width: size,
         height: size,
         minWidth: size,
         minHeight: size,
-        flexShrink: 0,
-        verticalAlign: "middle",
         ...style,
       }}
     >

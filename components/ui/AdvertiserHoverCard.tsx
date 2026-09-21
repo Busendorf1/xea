@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, ReactNode } from "react";
 import styles from "./AdvertiserHoverCard.module.css";
-import UserAvatar from "./UserAvatar";
+import Avatar from "./Avatar";
 import VerifiedBadge from "./VerifiedBadge";
 import { Calendar, MapPin } from "lucide-react";
 
@@ -156,9 +156,10 @@ export default function AdvertiserHoverCard({
           {/* Header with Avatar and Names */}
           <div className={styles.popoverHeader}>
             <div className={styles.popoverAvatar}>
-              <UserAvatar
+              <Avatar
                 src={avatarSrc}
-                fallbackText={displayName}
+                name={displayName}
+                email={profile?.email}
                 size={48}
                 alt={displayName}
                 gender={profile?.gender}

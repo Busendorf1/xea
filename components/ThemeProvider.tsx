@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import AppleAlertHUD, { showAppleAlert, AppleAlertType } from "@/components/ui/AppleAlert";
 
 export type Theme = "white" | "dark";
 
@@ -11,41 +12,8 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function showGlobalToast(message: string) {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message } }));
-  }
-}
-
-function GlobalToastHUD() {
-  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
-
-  useEffect(() => {
-    const handleToast = (e: Event) => {
-      const customEvt = e as CustomEvent<{ message?: string }>;
-      if (customEvt?.detail?.message) {
-        setToast({ message: customEvt.detail.message, id: Date.now() });
-      }
-    };
-    window.addEventListener("xea:toast", handleToast);
-    return () => window.removeEventListener("xea:toast", handleToast);
-  }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => {
-      setToast(null);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  if (!toast) return null;
-
-  return (
-    <div role="status" aria-live="polite" className="globalToastHud">
-      <span>{toast.message}</span>
-    </div>
-  );
+export function showGlobalToast(message: string, type: AppleAlertType = "info") {
+  showAppleAlert(message, type);
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -94,7 +62,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
-      <GlobalToastHUD />
+      <AppleAlertHUD />
     </ThemeContext.Provider>
   );
 }

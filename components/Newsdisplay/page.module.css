@@ -123,3 +123,54 @@
   }
 }
 
+.skeletonContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.skeletonCard {
+  padding: 1rem;
+}
+
+.skeletonTitle {
+  margin-top: 10px;
+}
+
+.errorContainer {
+  padding: 1.5rem;
+  text-align: center;
+  background: rgba(220, 38, 38, 0.08);
+  border-radius: 8px;
+  border: 1px solid var(--danger);
+  margin-bottom: 1.5rem;
+}
+
+.errorMessage {
+  color: var(--danger);
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.retryButton {
+  padding: 6px 12px;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.adVideo {
+  width: 100%;
+  height: auto;
+  max-height: 400px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 8px;
+}
+
+

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import styles from "./RollingCounter.module.css";
+
 
 interface RollingCounterProps {
   value: number;
@@ -28,37 +30,24 @@ export default function RollingCounter({
   const startTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const target = Math.max(0, Number(value) || 0);
-    const start = displayValue;
-    startValRef.current = start;
-    targetValRef.current = target;
+    startValRef.current = displayValue;
     startTimeRef.current = null;
-
-    if (start === target) return;
-
-    /**
-     * Fashionable Luxury Deceleration Curve
-     * Rolls smoothly with mechanical momentum, then dramatically slows down
-     * at the last ending digits so you can watch each final number click into place.
-     */
-    const luxuryEaseOut = (t: number): number => {
-      // 4.5 power quartic-quintic curve provides an ultra-satisfying ending glide
-      return 1 - Math.pow(1 - t, 4.5);
-    };
 
     const animate = (timestamp: number) => {
       if (!startTimeRef.current) startTimeRef.current = timestamp;
       const elapsed = timestamp - startTimeRef.current;
-      const progress = Math.min(1, elapsed / durationMs);
-      const easedProgress = luxuryEaseOut(progress);
+      const progress = Math.min(elapsed / durationMs, 1);
 
-      const current = startValRef.current + (targetValRef.current - startValRef.current) * easedProgress;
+      // Spring-like ease out cubic curve
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      const current = startValRef.current + (value - startValRef.current) * easeOut;
+
       setDisplayValue(current);
 
       if (progress < 1) {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
-        setDisplayValue(targetValRef.current);
+        setDisplayValue(value);
       }
     };
 
@@ -78,16 +67,8 @@ export default function RollingCounter({
   }).format(displayValue);
 
   return (
-    <span
-      className={className}
-      style={{
-        display: "inline-flex",
-        alignItems: "baseline",
-        fontVariantNumeric: "tabular-nums",
-        letterSpacing: "-0.02em",
-      }}
-    >
-      <span style={{ marginRight: "2px", opacity: 0.9 }}>{currencyPrefix}</span>
+    <span className={`${styles.counterWrapper} ${className}`.trim()}>
+      <span className={styles.prefix}>{currencyPrefix}</span>
       <span>{formattedNumber}</span>
     </span>
   );

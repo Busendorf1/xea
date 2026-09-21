@@ -421,15 +421,7 @@ export default function Update({ email }: Props) {
 
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "var(--background)",
-        }}
-      >
+      <div className={styles.loadingContainer}>
         <AppleSpinner size={42} />
       </div>
     );
@@ -460,41 +452,25 @@ export default function Update({ email }: Props) {
       
       {isAdmin && (
         <div className={styles.adminPrivilegeBanner}>
-          <ShieldCheck size={15} style={{ flexShrink: 0 }} />
+          <ShieldCheck size={15} className={styles.flexShrink0} />
           <span>Admin Privilege: Unlimited profile updates (30-day cooldown bypassed)</span>
         </div>
       )}
 
       {isFormDisabled && (
-        <div style={{
-          background: "rgba(16, 185, 129, 0.1)",
-          border: "1px solid #10b981",
-          borderRadius: "8px",
-          padding: "1rem",
-          marginBottom: "1.5rem",
-          textAlign: "center",
-          color: "#10b981",
-          fontWeight: "600"
-        }}>
-          ⏱️ Next update available in: <span style={{ fontFamily: "monospace", fontSize: "1.1rem" }}>{countdownText}</span>
+        <div className={styles.cooldownBanner}>
+          ⏱️ Next update available in: <span className={styles.cooldownCountdown}>{countdownText}</span>
         </div>
       )}
 
       {status && (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "8px",
-          padding: "10px 16px",
-          borderRadius: "10px",
-          margin: "14px 0",
-          fontSize: "0.9rem",
-          fontWeight: 600,
-          backgroundColor: status.includes("Successful") ? "rgba(16, 185, 129, 0.12)" : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌") ? "rgba(239, 68, 68, 0.12)" : "rgba(59, 130, 246, 0.12)",
-          color: status.includes("Successful") ? "#10b981" : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌") ? "#ef4444" : "#3b82f6",
-          border: `1px solid ${status.includes("Successful") ? "rgba(16, 185, 129, 0.3)" : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌") ? "rgba(239, 68, 68, 0.3)" : "rgba(59, 130, 246, 0.3)"}`
-        }}>
+        <div className={`${styles.statusBanner} ${
+          status.includes("Successful")
+            ? styles.statusBannerSuccess
+            : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌")
+            ? styles.statusBannerError
+            : styles.statusBannerInfo
+        }`}>
           {status.includes("Successful") ? (
             <CheckCircle2 size={18} color="#10b981" />
           ) : (
@@ -508,7 +484,7 @@ export default function Update({ email }: Props) {
       {currentStep === 0 && (
         <div className={styles.formSection}>
           <div className={styles.formGrid}>
-            <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
+            <div className={`${styles.formGroup} ${styles.colSpanFull}`}>
               <label>Username / Handle</label>
               <input
                 name="username"
@@ -517,20 +493,8 @@ export default function Update({ email }: Props) {
                 onChange={handleChange}
                 disabled={isFormDisabled}
               />
-              <div style={{
-                marginTop: "6px",
-                padding: "8px 12px",
-                borderRadius: "8px",
-                backgroundColor: "rgba(99, 102, 241, 0.08)",
-                border: "1px solid rgba(99, 102, 241, 0.25)",
-                fontSize: "0.78rem",
-                color: "var(--text-muted)",
-                lineHeight: "1.4",
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "8px"
-              }}>
-                <Info size={15} color="#6366f1" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <div className={styles.privacyNoticeBox}>
+                <Info size={15} color="#6366f1" className={styles.privacyNoticeIcon} />
                 <span>
                   <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform.
                 </span>
@@ -681,9 +645,9 @@ export default function Update({ email }: Props) {
               </select>
             </div>
 
-            <div className={styles.formGroup} style={{ gridColumn: "1 / -1" }}>
+            <div className={`${styles.formGroup} ${styles.colSpanFull}`}>
               <label>Profile Picture / Brand Logo</label>
-              <label className={styles.fileUpload} style={{ opacity: isFormDisabled ? 0.6 : 1, cursor: isFormDisabled ? "not-allowed" : "pointer" }}>
+              <label className={`${styles.fileUpload} ${isFormDisabled ? styles.fileUploadDisabled : ""}`}>
                 {imageFile ? `Selected: ${imageFile.name}` : "Choose Profile Picture or Brand Logo"}
                 <input
                   type="file"
@@ -696,11 +660,11 @@ export default function Update({ email }: Props) {
                 />
               </label>
               {hasManualAvatar(dbProfile.profileImage) ? (
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                <p className={styles.uploadHelperText}>
                   Current profile photo/logo is active. Select a new file above to replace it.
                 </p>
               ) : (
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                <p className={styles.uploadHelperText}>
                   If no photo or logo is uploaded, a default silhouette avatar will be displayed.
                 </p>
               )}
@@ -712,7 +676,7 @@ export default function Update({ email }: Props) {
       {/* STEP 2: Categories, Interests & Bio */}
       {currentStep === 2 && (
         <div className={styles.formSection}>
-          <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
+          <p className={styles.stepSectionIntro}>
             Select your relevant industries and interests to receive targeted ads and business highlights.
           </p>
 
@@ -722,8 +686,8 @@ export default function Update({ email }: Props) {
           {renderDropdown("Lifestyles", "lifestyle", lifestyles)}
           {renderDropdown("Personality Traits", "personality", personalityTraits)}
 
-          <div style={{ marginTop: "1.25rem" }}>
-            <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
+          <div className={styles.bioGroup}>
+            <label className={styles.bioLabel}>
               Bio / Tagline
             </label>
             <textarea
@@ -742,7 +706,7 @@ export default function Update({ email }: Props) {
       {/* STEP 3: Review & Submit */}
       {currentStep === 3 && (
         <div className={styles.formSection}>
-          <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
+          <p className={styles.stepSectionIntro}>
             Please review your updated profile information before saving.
           </p>
 
@@ -795,7 +759,7 @@ export default function Update({ email }: Props) {
               </div>
             </div>
 
-            <div className={styles.reviewCard} style={{ gridColumn: "1 / -1" }}>
+            <div className={`${styles.reviewCard} ${styles.colSpanFull}`}>
               <div className={styles.reviewCardTitle}>Selected Targeting</div>
               <div className={styles.reviewItem}>
                 <span className={styles.reviewLabel}>Industries:</span>
@@ -813,7 +777,7 @@ export default function Update({ email }: Props) {
           </div>
 
           {dbProfile && !dbProfile.has_updated_profile && (
-            <p style={{ fontSize: "0.82rem", color: "#d97706", marginTop: "1.25rem", textAlign: "center", fontWeight: "600" }}>
+            <p className={styles.cooldownWarningNote}>
               ⚠️ Note: Once confirmed, you can only update your profile once every 30 days.
             </p>
           )}
@@ -845,15 +809,9 @@ export default function Update({ email }: Props) {
         ) : (
           <button
             type="button"
-            className={styles.nextBtn}
+            className={`${styles.nextBtn} ${isFormDisabled ? styles.submitBtnDisabled : styles.submitBtnActive}`}
             onClick={handleUpdate}
             disabled={loading || isFormDisabled}
-            style={{
-              background: isFormDisabled ? "var(--sidebar-bg)" : "var(--primary)",
-              color: isFormDisabled ? "var(--text-muted)" : "var(--background)",
-              border: isFormDisabled ? "1px solid var(--card-border)" : "1px solid var(--primary)",
-              boxShadow: "none",
-            }}
           >
             {loading ? "Saving Profile..." : isFormDisabled ? `Locked (Cooldown)` : "Save Profile"}
           </button>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Edit3, Rocket, ShieldAlert, Sparkles, Crown, AlertCircle } from "lucide-react";
@@ -17,6 +17,7 @@ import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/l
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
+import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 
 interface Session {
   user?: {
@@ -52,7 +53,9 @@ type Category =
 type AdMediaType = "text" | "image" | "video" | "mixed";
 
 export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
-  const isAdmin = useMemo(() => isAdminEmail(session?.user?.email), [session?.user?.email]);
+  const isAdmin = useMemo(() => {
+    return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(session?.user?.email));
+  }, [session?.user]);
   const searchParams = useSearchParams();
   const editAdId = searchParams ? searchParams.get("id") : null;
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -255,21 +258,25 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     fetchUserProfile();
   }, [session]);
 
-  // Clear targeting selections whenever the ad type changes
+  // Clear targeting selections ONLY whenever the user actively switches ad type
+  const prevAdTypeRef = useRef<string>(adType);
   useEffect(() => {
-    setFormSelections((prev) => ({
-      ...prev,
-      industry: [],
-      interest: [],
-      lifestyle: [],
-      behavior: [],
-      personality: [],
-    }));
+    if (prevAdTypeRef.current !== adType) {
+      prevAdTypeRef.current = adType;
+      setFormSelections((prev) => ({
+        ...prev,
+        industry: [],
+        interest: [],
+        lifestyle: [],
+        behavior: [],
+        personality: [],
+      }));
+    }
   }, [adType]);
 
   const toggleSelection = (type: Category, value: string) => {
     setFormSelections((prev) => {
-      const list = prev[type];
+      const list = prev[type] || [];
       const updated = list.includes(value)
         ? list.filter((v) => v !== value)
         : [...list, value];
@@ -299,11 +306,20 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     });
   };
 
-  const handleTargetAll = (cat: Category) => {
-    setFormSelections((prev) => ({
-      ...prev,
-      [cat]: optionsMap[cat] ?? [],
-    }));
+  const handleTargetAll = (cat: Category, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const allOptions = optionsMap[cat] ?? [];
+    setFormSelections((prev) => {
+      const currentList = prev[cat] || [];
+      const isAllSelected = allOptions.length > 0 && allOptions.every((opt) => currentList.includes(opt));
+      return {
+        ...prev,
+        [cat]: isAllSelected ? [] : [...allOptions],
+      };
+    });
   };
 
   const [activeSubscribers, setActiveSubscribers] = useState<string[]>(["baggyt.com"]);
@@ -492,9 +508,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       let mediaUrlString: string | null = formSelections.existingMedia || null;
 
       if (formSelections.adMediaFiles && formSelections.adMediaFiles.length > 0) {
-        const mediaUrls: string[] = [];
-        for (let i = 0; i < formSelections.adMediaFiles.length; i++) {
-          const file = formSelections.adMediaFiles[i];
+        const uploadPromises = formSelections.adMediaFiles.map(async (file, i) => {
           const sanitizedFileName = file.name.replace(/[^\w.-]/g, "_");
           const uniqueFileName = `${adId}_${i}_${sanitizedFileName}`;
           const isVid = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
@@ -532,11 +546,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             .from("ad-media")
             .getPublicUrl(uniqueFileName);
 
-          if (publicUrlData?.publicUrl) {
-            mediaUrls.push(publicUrlData.publicUrl);
-          }
-        }
-        mediaUrlString = mediaUrls.join(",");
+          return publicUrlData?.publicUrl || null;
+        });
+
+        const uploadedUrls = await Promise.all(uploadPromises);
+        mediaUrlString = uploadedUrls.filter(Boolean).join(",");
       }
 
       // Initialize Paystack payment or wallet pay depending on selector
@@ -602,19 +616,25 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               is_ai_content: isAiContent,
             }
           },
-          callbackUrl: `${window.location.origin}/user/statement`
+          callbackUrl: `${window.location.origin}/logged-in`
         })
       });
 
       const paymentData = await paymentResponse.json();
-      if (!paymentResponse.ok || !paymentData.success) {
+      if (!paymentResponse.ok || (!paymentData.success && !paymentData.status)) {
         throw new Error(paymentData.error || "Failed to process payment");
       }
 
-      if (paymentMethod === "wallet") {
-        window.location.href = "/user/statement";
+      sessionStorage.setItem("paayh_active_tab", "statement");
+      clearUserCampaignsCache(session?.user?.email || "");
+
+      const authUrl = paymentData.authorization_url || paymentData.data?.authorization_url;
+      if (isAdmin || paymentMethod === "wallet") {
+        window.location.href = "/logged-in";
+      } else if (authUrl) {
+        window.location.href = authUrl;
       } else {
-        window.location.href = paymentData.authorization_url;
+        window.location.href = "/logged-in";
       }
       setIsSubmitting(false);
     } catch (err: any) {
@@ -715,7 +735,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               {editingId ? "Update your target audience, locations, and creative. Edits will be submitted for verification." : "Reach active audiences with hyper-targeted ad delivery."}
             </p>
             {editingId && (
-              <div style={{ marginBottom: "1rem" }}>
+              <div className={styles.editingSwitchWrapper}>
                 <button
                   type="button"
                   onClick={() => {
@@ -762,15 +782,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                       customSponsorLogo: "",
                     });
                   }}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                    color: "var(--text-muted)",
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    fontSize: "0.8rem",
-                    cursor: "pointer",
-                  }}
+                  className={styles.switchCampaignBtn}
                 >
                   &larr; Switch to Create New Campaign
                 </button>
@@ -780,26 +792,35 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
             {/* Step 0 */}
             {step === 0 && (
-              <>
-                <label>Select Campaign Ad Category:</label>
-                <div className={styles.adTypeGrid}>
-                  {Object.keys(adRates).map((key) => {
-                    const isSelected = adType === key;
-                    const rate = adRates[key];
-                    const displayName = key === "product_sales" ? "Product Sales" : key.charAt(0).toUpperCase() + key.slice(1);
-                    return (
-                      <div
-                        key={key}
-                        className={`${styles.adTypeCard} ${isSelected ? styles.adTypeCardActive : ""}`}
-                        onClick={() => setAdType(key)}
-                      >
-                        <div className={styles.adTypeCardTitle}>{displayName}</div>
-                        <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / attention</div>
-                      </div>
-                    );
-                  })}
+              <div className={styles.modernSectionCard}>
+                <div className={styles.modernSectionHeader}>
+                  <span className={styles.modernSectionTitle}>Select Campaign Ad Category</span>
+                  <span className={styles.modernSectionBadge}>
+                    {adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1)} · {formatCurrency(adRates[adType] || 0)}/attention
+                  </span>
                 </div>
-              </>
+                <div className={styles.modernSectionBody}>
+                  <p className={styles.categoryDescription}>
+                    Choose the category that best matches your ad campaign. </p>
+                  <div className={`${styles.adTypeGrid} ${styles.adTypeGridSpaced}`}>
+                    {Object.keys(adRates).map((key) => {
+                      const isSelected = adType === key;
+                      const rate = adRates[key];
+                      const displayName = key === "product_sales" ? "Product Sales" : key.charAt(0).toUpperCase() + key.slice(1);
+                      return (
+                        <div
+                          key={key}
+                          className={`${styles.adTypeCard} ${isSelected ? styles.adTypeCardActive : ""}`}
+                          onClick={() => setAdType(key)}
+                        >
+                          <div className={styles.adTypeCardTitle}>{displayName}</div>
+                          <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / attention</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Step 1 — targeting options scoped to the chosen ad category */}
@@ -808,33 +829,51 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 <p className={styles.targetingNote}>
                   Showing targeting options for{" "}
                   <strong>{adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1)}</strong>{" "}
-                  ads. Switch category in Step 1 to see different options.
+                  ads. Switch category in Step 0 to see different options.
                 </p>
-                {activeCategories.map((cat) => (
-                  <div key={cat} className={styles.dropdownContainer}>
-                    <details>
-                      <summary>
-                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                        <button
-                          type="button"
-                          onClick={() => handleTargetAll(cat)}
-                        >
-                          Target All
-                        </button>
-                      </summary>
-                      {optionsMap[cat]?.map((item, i) => (
-                        <label key={i}>
-                          <input
-                            type="checkbox"
-                            checked={formSelections[cat]?.includes(item)}
-                            onChange={() => toggleSelection(cat, item)}
-                          />
-                          {item}
-                        </label>
-                      ))}
-                    </details>
-                  </div>
-                ))}
+
+                {activeCategories.map((cat) => {
+                  const items = optionsMap[cat] || [];
+                  const selectedList = formSelections[cat] || [];
+                  const isAllSelected = items.length > 0 && items.every((item) => selectedList.includes(item));
+                  const selectedCount = selectedList.length;
+
+                  return (
+                    <div key={cat} className={`${styles.dropdownContainer} ${styles.modernSectionCard}`}>
+                      <details open>
+                        <summary className={`${styles.modernSectionHeader} ${styles.categorySummaryHeader}`}>
+                          <span className={styles.modernSectionTitle}>
+                            {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                            {selectedCount > 0 && (
+                              <span className={styles.modernSectionBadge}>
+                                {selectedCount} selected
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleTargetAll(cat, e)}
+                            className={`${styles.targetAllBtn} ${isAllSelected ? styles.targetAllBtnActive : ""}`}
+                          >
+                            {isAllSelected ? "Deselect All" : "Target All"}
+                          </button>
+                        </summary>
+                        <div className={`${styles.modernSectionBody} ${styles.categoryGridBody}`}>
+                          {items.map((item, i) => (
+                            <label key={i} className={styles.categoryItemLabel}>
+                              <input
+                                type="checkbox"
+                                checked={selectedList.includes(item)}
+                                onChange={() => toggleSelection(cat, item)}
+                              />
+                              {item}
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  );
+                })}
                 {activeCategories.length === 0 && (
                   <p className={styles.targetingNote}>
                     No granular targeting available for Individual ads — your ad will reach a broad general audience.
@@ -846,221 +885,284 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             {/* Step 2 */}
             {step === 2 && (
               <>
-                <LocationSelector
-                  country={formSelections.country}
-                  state={formSelections.state}
-                  location={formSelections.province}
-                  multiLocation={true}
-                  multiLocations={formSelections.targetLocations || []}
-                  onChange={({ country, state, location, multiLocations }) =>
-                    setFormSelections((prev) => ({
-                      ...prev,
-                      country,
-                      state,
-                      province: location,
-                      ...(multiLocations ? { targetLocations: multiLocations } : {})
-                    }))
-                  }
-                  cityLabel="Province"
-                />
-                <label>Gender:</label>
-                <select
-                  value={formSelections.gender}
-                  onChange={(e) =>
-                    setFormSelections({
-                      ...formSelections,
-                      gender: e.target.value,
-                    })
-                  }
-                >
-                  <option value="">Select Gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="both">Both</option>
-                </select>
-                
-                <div className={styles.ageRangeRow}>
-                  <div className={styles.ageRangeField}>
-                    <label className={styles.ageRangeLabel}>Target Min Age</label>
-                    <select
-                      value={formSelections.ageRange[0]}
-                      onChange={(e) => {
-                        const min = parseInt(e.target.value);
-                        const max = Math.max(min, formSelections.ageRange[1]);
-                        setFormSelections({
-                          ...formSelections,
-                          ageRange: [min, max],
-                        });
-                      }}
-                    >
-                      {Array.from({ length: 83 }, (_, i) => i + 18).map((age) => (
-                        <option key={age} value={age}>
-                          {age} years
-                        </option>
-                      ))}
-                    </select>
+                {/* Target Location & Geographies */}
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Target Location &amp; Geographies</span>
+                    <span className={styles.modernSectionBadge}>
+                      {(formSelections.targetLocations && formSelections.targetLocations.length > 0)
+                        ? `${formSelections.targetLocations.length} locations`
+                        : formSelections.state || formSelections.country || "All locations"}
+                    </span>
                   </div>
-                  <div className={styles.ageRangeField}>
-                    <label className={styles.ageRangeLabel}>Target Max Age</label>
-                    <select
-                      value={formSelections.ageRange[1]}
-                      onChange={(e) => {
-                        const max = parseInt(e.target.value);
-                        const min = Math.min(max, formSelections.ageRange[0]);
-                        setFormSelections({
-                          ...formSelections,
-                          ageRange: [min, max],
-                        });
-                      }}
-                    >
-                      {Array.from({ length: 83 }, (_, i) => i + 18).map((age) => (
-                        <option key={age} value={age}>
-                          {age} years
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <label>Employment Status (Select up to 4):</label>
-                <div className={styles.checkboxGroup}>
-                  {[
-                    { value: "employed", label: "Employed" },
-                    { value: "unemployed", label: "Unemployed" },
-                    { value: "student", label: "Student" },
-                    { value: "entrepreneur", label: "Entrepreneur" },
-                    { value: "freelancer", label: "Freelancer" },
-                    { value: "retired", label: "Retired" },
-                  ].map((option) => {
-                    const currentList = Array.isArray(formSelections.employmentStatus)
-                      ? formSelections.employmentStatus
-                      : formSelections.employmentStatus
-                      ? (formSelections.employmentStatus as string).split(",").map((s) => s.trim())
-                      : [];
-                    const isChecked = currentList.includes(option.value);
-                    return (
-                      <label key={option.value} className={styles.checkboxLabel}>
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleEmploymentStatus(option.value)}
-                        />
-                        {option.label}
-                      </label>
-                    );
-                  })}
-                </div>
-                <label htmlFor="impression-input" className={styles.labelBlock}>
-                  Audience or Real Human Attention
-                </label>
-                <div className={styles.impressionStack}>
-                  <input
-                    type="range"
-                    id="impression"
-                    min={1}
-                    max={10000} /*as our user increases, we increase the targetable number so we can deliver on our capacity*/
-                    step={1}
-                    value={formSelections.impressions}
-                    onChange={(e) =>
-                      setFormSelections({
-                        ...formSelections,
-                        impressions: parseInt(e.target.value) || 1,
-                      })
-                    }
-                    className={styles.impressionSliderFull}
-                  />
-                  <div className={styles.impressionInputRow}>
-                    {/* <span className={styles.impressionInputLabel}>Exact count:</span> */}
-                    <input
-                      type="number"
-                      id="impression-input"
-                      min={1}
-                      max={5000000}
-                      value={formSelections.impressions}
-                      onChange={(e) => {
-                        let val = parseInt(e.target.value);
-                        if (isNaN(val)) val = 1;
-                        if (val > 5000000) val = 5000000;
-                        setFormSelections({
-                          ...formSelections,
-                          impressions: val,
-                        });
-                      }}
-                      className={styles.impressionInput}
+                  <div className={styles.modernSectionBody}>
+                    <LocationSelector
+                      country={formSelections.country}
+                      state={formSelections.state}
+                      location={formSelections.province}
+                      multiLocation={true}
+                      multiLocations={formSelections.targetLocations || []}
+                      onChange={({ country, state, location, multiLocations }) =>
+                        setFormSelections((prev) => ({
+                          ...prev,
+                          country: country || "",
+                          state: state || "",
+                          province: (multiLocations && multiLocations.length > 0) ? multiLocations.join("; ") : (location || ""),
+                          targetLocations: multiLocations || [],
+                        }))
+                      }
+                      cityLabel="Province"
                     />
                   </div>
                 </div>
-                <label className={styles.labelBlock}>
-                  Campaign Duration: {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={formSelections.campaignDays}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    setFormSelections({
-                      ...formSelections,
-                      campaignDays: isNaN(val) || val < 1 ? 1 : val,
-                    });
-                  }}
-                  className={styles.inputBox}
-                  placeholder="e.g. 5"
-                />
-                <p className={styles.hintText}>
-                  Daily Attention Cap: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} attentions/day
-                </p>
-                <label className={styles.labelBlock}>
-                  Target Views Per User: {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={formSelections.userFrequencyCap}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    setFormSelections({
-                      ...formSelections,
-                      userFrequencyCap: isNaN(val) || val < 1 ? 1 : val,
-                    });
-                  }}
-                  className={styles.inputBox}
-                  placeholder="e.g. 3"
-                />
-                <p className={styles.hintText}>
-                  A viewer can see this ad up to {formSelections.userFrequencyCap} time{formSelections.userFrequencyCap > 1 ? "s" : ""} before it stops showing for them.
-                </p>
-                <p className={styles.hintTextItalic}>
-                  Tip: Ads shown 3 - 7 or more times are more likely to be remembered and increases likelihood of taking action than ads shown only once.
-                </p>
+
+                {/* Audience Demographics */}
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Audience Demographics</span>
+                    <span className={styles.modernSectionBadge}>
+                      {formSelections.ageRange[0]}–{formSelections.ageRange[1]} yrs · {formSelections.gender ? formSelections.gender.charAt(0).toUpperCase() + formSelections.gender.slice(1) : "All genders"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.fieldLabelBold}>Gender:</label>
+                      <select
+                        value={formSelections.gender}
+                        onChange={(e) =>
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            gender: e.target.value,
+                          }))
+                        }
+                        className={styles.inputBox}
+                      >
+                        <option value="">Select Gender</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="both">Both</option>
+                      </select>
+                    </div>
+                    
+                    <div className={styles.ageRangeRow}>
+                      <div className={styles.ageRangeField}>
+                        <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Target Min Age</label>
+                        <select
+                          className={styles.inputBox}
+                          value={formSelections.ageRange[0]}
+                          onChange={(e) => {
+                            const min = parseInt(e.target.value);
+                            setFormSelections((prev) => {
+                              const max = Math.max(min, prev.ageRange[1]);
+                              return {
+                                ...prev,
+                                ageRange: [min, max],
+                              };
+                            });
+                          }}
+                        >
+                          {Array.from({ length: 83 }, (_, i) => i + 18).map((age) => (
+                            <option key={age} value={age}>
+                              {age} years
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className={styles.ageRangeField}>
+                        <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Target Max Age</label>
+                        <select
+                          className={styles.inputBox}
+                          value={formSelections.ageRange[1]}
+                          onChange={(e) => {
+                            const max = parseInt(e.target.value);
+                            setFormSelections((prev) => {
+                              const min = Math.min(max, prev.ageRange[0]);
+                              return {
+                                ...prev,
+                                ageRange: [min, max],
+                              };
+                            });
+                          }}
+                        >
+                          {Array.from({ length: 83 }, (_, i) => i + 18).map((age) => (
+                            <option key={age} value={age}>
+                              {age} years
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.fieldLabelBold}>Employment Status (Select up to 4):</label>
+                      <div className={styles.checkboxGroup}>
+                        {[
+                          { value: "employed", label: "Employed" },
+                          { value: "unemployed", label: "Unemployed" },
+                          { value: "student", label: "Student" },
+                          { value: "entrepreneur", label: "Entrepreneur" },
+                          { value: "freelancer", label: "Freelancer" },
+                          { value: "retired", label: "Retired" },
+                        ].map((option) => {
+                          const currentList = Array.isArray(formSelections.employmentStatus)
+                            ? formSelections.employmentStatus
+                            : formSelections.employmentStatus
+                            ? (formSelections.employmentStatus as string).split(",").map((s) => s.trim())
+                            : [];
+                          const isChecked = currentList.includes(option.value);
+                          return (
+                            <label key={option.value} className={styles.checkboxLabel}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleEmploymentStatus(option.value)}
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Attention Volume & Delivery Controls */}
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Attention Volume &amp; Delivery Controls</span>
+                    <span className={styles.modernSectionBadge}>
+                      {formSelections.impressions.toLocaleString()} views · {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <div className={styles.formGroup}>
+                      <label htmlFor="impression-input" className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
+                        Audience or Real Human Attention
+                      </label>
+                      <div className={styles.impressionStack}>
+                        <input
+                          type="range"
+                          id="impression"
+                          min={1}
+                          max={10000} /*as our user increases, we increase the targetable number so we can deliver on our capacity*/
+                          step={1}
+                          value={formSelections.impressions}
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              impressions: parseInt(e.target.value) || 1,
+                            }))
+                          }
+                          className={styles.impressionSliderFull}
+                        />
+                        <div className={styles.impressionInputRow}>
+                          <input
+                            type="number"
+                            id="impression-input"
+                            min={1}
+                            max={5000000}
+                            value={formSelections.impressions}
+                            onChange={(e) => {
+                              let val = parseInt(e.target.value);
+                              if (isNaN(val)) val = 1;
+                              if (val > 5000000) val = 5000000;
+                              setFormSelections((prev) => ({
+                                ...prev,
+                                impressions: val,
+                              }));
+                            }}
+                            className={styles.impressionInput}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
+                        Campaign Duration: {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={formSelections.campaignDays}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            campaignDays: isNaN(val) || val < 1 ? 1 : val,
+                          }));
+                        }}
+                        className={styles.inputBox}
+                        placeholder="e.g. 5"
+                      />
+                      <p className={styles.hintText}>
+                        Daily Attention Cap: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} attentions/day
+                      </p>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
+                        Target Views Per User: {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={formSelections.userFrequencyCap}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            userFrequencyCap: isNaN(val) || val < 1 ? 1 : val,
+                          }));
+                        }}
+                        className={styles.inputBox}
+                        placeholder="e.g. 3"
+                      />
+                      <p className={styles.hintText}>
+                        A viewer can see this ad up to {formSelections.userFrequencyCap} time{formSelections.userFrequencyCap > 1 ? "s" : ""} before it stops showing for them.
+                      </p>
+                      <p className={styles.hintTextItalic}>
+                        Tip: Ads shown 3 - 7 or more times are more likely to be remembered and increases likelihood of taking action than ads shown only once.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Mutual Features */}
-                <div className={styles.mutualSection}>
-                  <label className={`${styles.checkboxLabel} ${styles.mutualLabel}`}>
-                    <input
-                      type="checkbox"
-                      checked={formSelections.displayMutualButton}
-                      onChange={(e) =>
-                        setFormSelections({
-                          ...formSelections,
-                          displayMutualButton: e.target.checked,
-                        })
-                      }
-                    />
-                    Display "Mutual+" button on this ad (allow viewers to add you as a mutual)
-                  </label>
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Mutual Attention Network</span>
+                    <span className={styles.modernSectionBadge}>
+                      {formSelections.displayMutualButton ? "Mutual+ Enabled" : "Optional"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <label className={styles.mutualLabel}>
+                      <input
+                        type="checkbox"
+                        checked={formSelections.displayMutualButton}
+                        onChange={(e) =>
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            displayMutualButton: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Display &quot;Mutual+&quot; button on this ad (allow viewers to add you as a mutual)</span>
+                    </label>
 
-                  {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
-                    <div className={styles.mutualActivatedBox}>
-                      <strong className={styles.mutualActivatedTitle}> Free Mutual Attention Activated!</strong>
-                      <span>Ticking this box will add your <strong>{userProfile.mutual_count} mutuals</strong> as free attention to this campaign.</span>
-                      <span className={styles.mutualActivatedHint}>
-                        Total target: <strong>{(formSelections.impressions + userProfile.mutual_count).toLocaleString()} views</strong> (You only pay for {formSelections.impressions.toLocaleString()} views). Your {userProfile.mutual_count} mutuals will be targeted first, and your mutual count will be spent.
-                      </span>
-                    </div>
-                  )}
+                    {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
+                      <div className={styles.mutualActivatedBox}>
+                        <strong className={styles.mutualActivatedTitle}> Free Mutual Attention Activated!</strong>
+                        <span>Ticking this box will add your <strong>{userProfile.mutual_count} mutuals</strong> as free attention to this campaign.</span>
+                        <span className={styles.mutualActivatedHint}>
+                          Total target: <strong>{(formSelections.impressions + userProfile.mutual_count).toLocaleString()} views</strong> (You only pay for {formSelections.impressions.toLocaleString()} views). Your {userProfile.mutual_count} mutuals will be targeted first, and your mutual count will be spent.
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}
@@ -1068,516 +1170,564 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             {step === 3 && (
               <div className={styles.adCreativeSection}>
                 {isAdmin && (
-                  <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", padding: "16px", borderRadius: "12px", marginBottom: "20px" }}>
-                    <h4 style={{ color: "var(--primary)", fontSize: "0.92rem", fontWeight: 700, marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding and Free Campaign Publishing
-                    </h4>
-                    <div className={styles.formGroup} style={{ marginBottom: "12px" }}>
-                      <label>Custom Sponsor Name (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. ABC Ltd (defaults to Sponsored)"
-                        value={formSelections.customSponsorName}
-                        onChange={(e) => setFormSelections({ ...formSelections, customSponsorName: e.target.value })}
-                        className={styles.inputBox}
-                      />
-                    </div>
-                    <div className={styles.formGroup}>
-                      <label>Custom Handle (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. @abc_ltd (defaults to @Sponsored)"
-                        value={formSelections.customSponsorHandle}
-                        onChange={(e) => setFormSelections({ ...formSelections, customSponsorHandle: e.target.value })}
-                        className={styles.inputBox}
-                      />
-                    </div>
-                  </div>
-                )}
-                {adType === "product_sales" && (
-                  <>
-                    <div className={styles.formGroup}>
-                      <label>
-                        Product Name{" "}
-                        <span className={styles.charCount}>
-                          {formSelections.productName.length}/80
-                        </span>
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={80}
-                        value={formSelections.productName}
-                        placeholder="Enter product name (max 80 characters)"
-                        onChange={(e) =>
-                          setFormSelections({
-                            ...formSelections,
-                            productName: e.target.value,
-                          })
-                        }
-                        className={styles.inputBox}
-                      />
-                    </div>
-
-                    <div className={styles.formGroup}>
-                      <label>Product Price (₦)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={formSelections.productPrice}
-                        placeholder="Enter product price in Naira"
-                        onChange={(e) =>
-                          setFormSelections({
-                            ...formSelections,
-                            productPrice: e.target.value,
-                          })
-                        }
-                        className={styles.inputBox}
-                      />
-                    </div>
-
-                    <div className={styles.formGroup}>
-                      <label>Primary CTA Button Text (Select 1 CTA)</label>
-                      <select
-                        value={formSelections.productCtaType}
-                        onChange={(e) =>
-                          setFormSelections({
-                            ...formSelections,
-                            productCtaType: e.target.value,
-                          })
-                        }
-                        className={styles.inputBox}
-                      >
-                        <option value="Buy">Buy</option>
-                        <option value="Shop">Shop</option>
-                        <option value="Order">Order</option>
-                        <option value="Book">Book</option>
-                        <option value="Reserve">Reserve</option>
-                        <option value="Apply">Apply</option>
-                        <option value="Comment">Comment</option>
-                        <option value="Join">Join</option>
-                        <option value="Learn More">Learn More</option>
-                        <option value="Visit Website">Visit Website</option>
-                      </select>
-                    </div>
-
-                    <div className={styles.formGroup}>
-                      <div className={styles.ctaLabelRow}>
-                        <label>Primary CTA Link (Secure HTTPS)</label>
-                        <Link href="/business/subscribe" className={styles.premiumLink}>
-                          E-commerce platform? Become a Premium Subscriber →
-                        </Link>
-                      </div>
-                      <input
-                        type="text"
-                        value={formSelections.productCtaLink}
-                        placeholder="https://yourwebsite.com/product-page"
-                        onChange={(e) =>
-                          setFormSelections({
-                            ...formSelections,
-                            productCtaLink: e.target.value,
-                          })
-                        }
-                        className={`${styles.inputBox} ${
-                          formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://")
-                            ? styles.inputError
-                            : ""
-                        }`}
-                      />
-                      {formSelections.productCtaLink && isSubsidizedLink(formSelections.productCtaLink) && (
-                        <div className={styles.subsidyBanner}>
-                          {/* <Sparkles size={16} color="#34d399" /> */}
-                          <span>Baggyt is a premium subscriber, 30% Off your ad cost applies.</span>
-                        </div>
-                      )}
-                      {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && (
-                        <p className={styles.error}>
-                          The link must be a secure link starting with https://
-                        </p>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {adType !== "product_sales" && (
-                  <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "16px", borderRadius: "12px", marginBottom: "18px" }}>
-                    <div className={styles.formGroup} style={{ marginBottom: "12px" }}>
-                      <label>Action &amp; Engagement CTA (Select 1 CTA)</label>
-                      <select
-                        value={formSelections.productCtaType}
-                        onChange={(e) =>
-                          setFormSelections({
-                            ...formSelections,
-                            productCtaType: e.target.value,
-                          })
-                        }
-                        className={styles.inputBox}
-                      >
-                        <option value="Comment">Comment</option>
-                        <option value="Vote">Vote</option>
-                        <option value="Donate">Donate</option>
-                        <option value="Volunteer">Volunteer</option>
-                        <option value="Book">Book</option>
-                        <option value="Reserve">Reserve</option>
-                        <option value="Apply">Apply</option>
-                        <option value="Order">Order</option>
-                        <option value="Buy">Buy</option>
-                        <option value="Shop">Shop</option>
-                        <option value="Join">Join</option>
-                        <option value="Learn More">Learn More</option>
-                        <option value="Visit Website">Visit Website</option>
-                      </select>
-                    </div>
-
-                    <div className={styles.formGroup} style={{ marginBottom: "0" }}>
-                      <label>CTA Target Link (WhatsApp, Chat App, Email or Website)</label>
-                      <input
-                        type="text"
-                        value={formSelections.productCtaLink}
-                        placeholder="e.g. https://wa.me/234... or https://chat.whatsapp.com/... or https://yourlink.com"
-                        onChange={(e) =>
-                          setFormSelections({
-                            ...formSelections,
-                            productCtaLink: e.target.value,
-                          })
-                        }
-                        className={`${styles.inputBox} ${
-                          formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && !formSelections.productCtaLink.startsWith("http://") && !formSelections.productCtaLink.startsWith("mailto:")
-                            ? styles.inputError
-                            : ""
-                        }`}
-                      />
-                      <span style={{ fontSize: "0.76rem", opacity: 0.75, marginTop: "6px", display: "block" }}>
-                        {(() => {
-                          const cta = formSelections.productCtaType || "Comment";
-                          switch (cta) {
-                            case "Comment":
-                              return "Directs viewers to drop opinions, comments, or leave feedback outside the app.";
-                            case "Vote":
-                              return "Directs viewers to voter registration, polling info, or campaign voting portals.";
-                            case "Donate":
-                              return "Directs viewers to contribute securely to your campaign or cause.";
-                            case "Volunteer":
-                              return "Directs viewers to sign up as a campaign volunteer, grassroots agent, or supporter.";
-                            case "Book":
-                              return "Directs viewers to book an appointment, session, ticket, or consultation outside the app.";
-                            case "Reserve":
-                              return "Directs viewers to make a reservation for a table, seat, or event outside the app.";
-                            case "Apply":
-                              return "Directs viewers to submit an application for a job, program, or offer outside the app.";
-                            case "Order":
-                              return "Directs viewers to place an order directly on your linked store, menu, or chat.";
-                            case "Buy":
-                            case "Shop":
-                              return "Directs viewers to purchase your product or service on your linked store.";
-                            case "Join":
-                              return "Directs viewers to join your community, channel, group, or membership.";
-                            case "Learn More":
-                            case "Visit Website":
-                            default:
-                              return "Directs viewers to your external link to explore, learn more, or connect.";
-                          }
-                        })()}
+                  <div className={`${styles.modernSectionCard} ${styles.adminPrivilegeCard}`}>
+                    <div className={`${styles.modernSectionHeader} ${styles.adminPrivilegeHeader}`}>
+                      <span className={`${styles.modernSectionTitle} ${styles.adminPrivilegeTitle}`}>
+                        <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding
                       </span>
-                      {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && !formSelections.productCtaLink.startsWith("http://") && !formSelections.productCtaLink.startsWith("mailto:") && (
-                        <p className={styles.error}>
-                          Please enter a valid link starting with https:// or mailto:
-                        </p>
-                      )}
+                      <span className={`${styles.modernSectionBadge} ${styles.adminPrivilegeBadge}`}>
+                        Free Publishing Active
+                      </span>
+                    </div>
+                    <div className={styles.modernSectionBody}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>Custom Sponsor Name (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. ABC Ltd (defaults to Sponsored)"
+                          value={formSelections.customSponsorName}
+                          onChange={(e) => setFormSelections((prev) => ({ ...prev, customSponsorName: e.target.value }))}
+                          className={styles.inputBox}
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>Custom Handle (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. @abc_ltd (defaults to @Sponsored)"
+                          value={formSelections.customSponsorHandle}
+                          onChange={(e) => setFormSelections((prev) => ({ ...prev, customSponsorHandle: e.target.value }))}
+                          className={styles.inputBox}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <div className={styles.formGroup}>
-                  <label>Ad Content Type</label>
-                  <select
-                    value={formSelections.adMediaType}
-                    onChange={(e) =>
-                      setFormSelections({
-                        ...formSelections,
-                        adMediaType: e.target.value as AdMediaType,
-                        adMediaFiles: [],
-                      })
-                    }
-                    className={styles.inputBox}
-                  >
-                    <option value="">-- Select media type --</option>
-                    <option value="text">Text Only</option>
-                    <option value="image">Image(s) (Up to 4)</option>
-                    <option value="video">Video Only (Max 1)</option>
-                    <option value="mixed">Mixed (Up to 3 Images + 1 Video)</option>
-                  </select>
-                  {formSelections.adMediaType === "image" && (
-                    <small className={styles.info}>
-                      Max size: 5MB per image (JPG, PNG, etc). You can select up to 4 images.
-                    </small>
-                  )}
-                  {formSelections.adMediaType === "video" && (
-                    <small className={styles.info}>
-                      Max size: 60MB • Max duration: 5mins • Format: Video formats. Select exactly 1 video.
-                    </small>
-                  )}
-                  {formSelections.adMediaType === "mixed" && (
-                    <small className={styles.info}>
-                      Up to 3 images (max 5MB each) and exactly 1 video (max 60MB, 5mins).
-                    </small>
-                  )}
-                </div>
-
-                {formSelections.adMediaType && formSelections.adMediaType !== "text" && (
-                  <div className={styles.formGroup}>
-                    <label>Upload Files</label>
-                    <input
-                      type="file"
-                      multiple={formSelections.adMediaType !== "video"}
-                      accept={
-                        formSelections.adMediaType === "video"
-                          ? "video/*"
-                          : formSelections.adMediaType === "image"
-                          ? "image/*"
-                          : "image/*,video/*"
-                      }
-                      onChange={async (e) => {
-                        const files = e.target.files;
-                        if (!files || files.length === 0) return;
-                        const fileArray = Array.from(files);
-
-                        // Separate images and videos
-                        const images = fileArray.filter(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name));
-                        const videos = fileArray.filter(f => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name));
-
-                        // Validation checks
-                        if (formSelections.adMediaType === "image") {
-                          if (videos.length > 0) {
-                            alert("Only images are allowed for this type.");
-                            e.target.value = "";
-                            return;
+                {adType === "product_sales" ? (
+                  <div className={styles.modernSectionCard}>
+                    <div className={styles.modernSectionHeader}>
+                      <span className={styles.modernSectionTitle}>Product Offer &amp; Primary Action</span>
+                      <span className={styles.modernSectionBadge}>
+                        {formSelections.productCtaType || "Buy"}
+                      </span>
+                    </div>
+                    <div className={styles.modernSectionBody}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>
+                          Product Name{" "}
+                          <span className={styles.charCount}>
+                            {formSelections.productName.length}/80
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={80}
+                          value={formSelections.productName}
+                          placeholder="Enter product name (max 80 characters)"
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              productName: e.target.value,
+                            }))
                           }
-                          if (images.length > 4) {
-                            alert("You can select up to 4 images only.");
-                            e.target.value = "";
-                            return;
-                          }
-                        } else if (formSelections.adMediaType === "video") {
-                          if (images.length > 0) {
-                            alert("Only videos are allowed for this type.");
-                            e.target.value = "";
-                            return;
-                          }
-                          if (videos.length > 1) {
-                            alert("You can select only 1 video.");
-                            e.target.value = "";
-                            return;
-                          }
-                        } else if (formSelections.adMediaType === "mixed") {
-                          if (videos.length > 1) {
-                            alert("You can select at most 1 video.");
-                            e.target.value = "";
-                            return;
-                          }
-                          if (images.length > 3) {
-                            alert("You can select at most 3 images.");
-                            e.target.value = "";
-                            return;
-                          }
-                          if (images.length + videos.length > 4) {
-                            alert("Total number of files cannot exceed 4.");
-                            e.target.value = "";
-                            return;
-                          }
-                        }
-
-                        // Size and video duration checks
-                        for (const file of fileArray) {
-                          const isImage = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
-                          const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
-
-                          if (isImage) {
-                            if (file.size > 5 * 1024 * 1024) {
-                              alert(`Image ${file.name} exceeds 5MB limit.`);
-                              e.target.value = "";
-                              return;
-                            }
-                          } else if (isVideo) {
-                            if (file.size > 60 * 1024 * 1024) {
-                              alert(`Video ${file.name} exceeds 60MB limit.`);
-                              e.target.value = "";
-                              return;
-                            }
-                            // Gracefully check duration with iCloud streaming fallback
-                            let durationOk = true;
-                            try {
-                              durationOk = await new Promise<boolean>((resolve) => {
-                                const videoEl = document.createElement("video");
-                                videoEl.preload = "metadata";
-                                const timer = setTimeout(() => {
-                                  // If iCloud is still streaming/downloading, allow if file size is valid
-                                  resolve(file.size <= 60 * 1024 * 1024);
-                                }, 3500);
-
-                                videoEl.onloadedmetadata = () => {
-                                  clearTimeout(timer);
-                                  resolve(videoEl.duration <= 300);
-                                };
-                                videoEl.onerror = () => {
-                                  clearTimeout(timer);
-                                  // On iOS iCloud offloaded assets, allow file by size
-                                  resolve(file.size <= 60 * 1024 * 1024);
-                                };
-                                videoEl.src = URL.createObjectURL(file);
-                              });
-                            } catch {
-                              durationOk = file.size <= 60 * 1024 * 1024;
-                            }
-
-                            if (!durationOk) {
-                              alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
-                              e.target.value = "";
-                              return;
-                            }
-                          }
-                        }
-
-                        setFormSelections(prev => ({
-                          ...prev,
-                          adMediaFiles: fileArray
-                        }));
-                      }}
-                      className={styles.inputBox}
-                    />
-                    {formSelections.adMediaFiles.length > 0 && (
-                      <div className={styles.selectedFilesHint}>
-                        Selected: {formSelections.adMediaFiles.map(f => f.name).join(", ")}
+                          className={styles.inputBox}
+                        />
                       </div>
-                    )}
-                    {formSelections.existingMedia && formSelections.adMediaFiles.length === 0 && (
-                      <div className={styles.selectedFilesHint}>
-                        Current campaign media preserved. Choose new file(s) above if you wish to replace it.
+
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>Product Price (₦)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formSelections.productPrice}
+                          placeholder="Enter product price in Naira"
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              productPrice: e.target.value,
+                            }))
+                          }
+                          className={styles.inputBox}
+                        />
                       </div>
-                    )}
+
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>Primary CTA Button Text (Select 1 CTA)</label>
+                        <select
+                          value={formSelections.productCtaType}
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              productCtaType: e.target.value,
+                            }))
+                          }
+                          className={styles.inputBox}
+                        >
+                          <option value="Buy">Buy</option>
+                          <option value="Shop">Shop</option>
+                          <option value="Order">Order</option>
+                          <option value="Book">Book</option>
+                          <option value="Reserve">Reserve</option>
+                          <option value="Apply">Apply</option>
+                          <option value="Comment">Comment</option>
+                          <option value="Join">Join</option>
+                          <option value="Learn More">Learn More</option>
+                          <option value="Visit Website">Visit Website</option>
+                        </select>
+                      </div>
+
+                      <div className={styles.formGroup}>
+                        <div className={styles.ctaLabelRow}>
+                          <label className={styles.fieldLabelBold}>Primary CTA Link (Secure HTTPS)</label>
+                          <Link href="/business/subscribe" className={styles.premiumLink}>
+                            E-commerce platform? Become a Premium Subscriber →
+                          </Link>
+                        </div>
+                        <input
+                          type="text"
+                          value={formSelections.productCtaLink}
+                          placeholder="https://yourwebsite.com/product-page"
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              productCtaLink: e.target.value,
+                            }))
+                          }
+                          className={`${styles.inputBox} ${
+                            formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://")
+                              ? styles.inputError
+                              : ""
+                          }`}
+                        />
+                        {formSelections.productCtaLink && isSubsidizedLink(formSelections.productCtaLink) && (
+                          <div className={styles.subsidyBanner}>
+                            <span>Baggyt is a premium subscriber, 30% Off your ad cost applies.</span>
+                          </div>
+                        )}
+                        {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && (
+                          <p className={styles.error}>
+                            The link must be a secure link starting with https://
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.modernSectionCard}>
+                    <div className={styles.modernSectionHeader}>
+                      <span className={styles.modernSectionTitle}>Action &amp; Engagement CTA</span>
+                      <span className={styles.modernSectionBadge}>
+                        {formSelections.productCtaType || "Comment"}
+                      </span>
+                    </div>
+                    <div className={styles.modernSectionBody}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>Action &amp; Engagement CTA (Select 1 CTA)</label>
+                        <select
+                          value={formSelections.productCtaType}
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              productCtaType: e.target.value,
+                            }))
+                          }
+                          className={styles.inputBox}
+                        >
+                          <option value="Comment">Comment</option>
+                          <option value="Vote">Vote</option>
+                          <option value="Donate">Donate</option>
+                          <option value="Volunteer">Volunteer</option>
+                          <option value="Book">Book</option>
+                          <option value="Reserve">Reserve</option>
+                          <option value="Apply">Apply</option>
+                          <option value="Order">Order</option>
+                          <option value="Buy">Buy</option>
+                          <option value="Shop">Shop</option>
+                          <option value="Join">Join</option>
+                          <option value="Learn More">Learn More</option>
+                          <option value="Visit Website">Visit Website</option>
+                        </select>
+                      </div>
+
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>CTA Target Link (WhatsApp, Chat App, Email or Website)</label>
+                        <input
+                          type="text"
+                          value={formSelections.productCtaLink}
+                          placeholder="e.g. https://wa.me/234... or https://chat.whatsapp.com/... or https://yourlink.com"
+                          onChange={(e) =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              productCtaLink: e.target.value,
+                            }))
+                          }
+                          className={`${styles.inputBox} ${
+                            formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && !formSelections.productCtaLink.startsWith("http://") && !formSelections.productCtaLink.startsWith("mailto:")
+                              ? styles.inputError
+                              : ""
+                          }`}
+                        />
+                        <span className={styles.inputHelperText}>
+                          {(() => {
+                            const cta = formSelections.productCtaType || "Comment";
+                            switch (cta) {
+                              case "Comment":
+                                return "Directs viewers to drop opinions, comments, or leave feedback outside the app.";
+                              case "Vote":
+                                return "Directs viewers to voter registration, polling info, or campaign voting portals.";
+                              case "Donate":
+                                return "Directs viewers to contribute securely to your campaign or cause.";
+                              case "Volunteer":
+                                return "Directs viewers to sign up as a campaign volunteer, grassroots agent, or supporter.";
+                              case "Book":
+                                return "Directs viewers to book an appointment, session, ticket, or consultation outside the app.";
+                              case "Reserve":
+                                return "Directs viewers to make a reservation for a table, seat, or event outside the app.";
+                              case "Apply":
+                                return "Directs viewers to submit an application for a job, program, or offer outside the app.";
+                              case "Order":
+                                return "Directs viewers to place an order directly on your linked store, menu, or chat.";
+                              case "Buy":
+                              case "Shop":
+                                return "Directs viewers to purchase your product or service on your linked store.";
+                              case "Join":
+                                return "Directs viewers to join your community, channel, group, or membership.";
+                              case "Learn More":
+                              case "Visit Website":
+                              default:
+                                return "Directs viewers to your external link to explore, learn more, or connect.";
+                            }
+                          })()}
+                        </span>
+                        {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && !formSelections.productCtaLink.startsWith("http://") && !formSelections.productCtaLink.startsWith("mailto:") && (
+                          <p className={styles.error}>
+                            Please enter a valid link starting with https:// or mailto:
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                 <div className={styles.formGroup}>
-                   <label>
-                     {adType === "product_sales" ? "Product Description" : "Ad Message"}{" "}
-                     <span className={styles.charCount}>
-                       {formSelections.adContent.length}/{adType === "product_sales" ? 200 : (formSelections.adActionButtons.includes("read_more") ? 500 : 220)}
-                     </span>
-                   </label>
-                   <textarea
-                     maxLength={adType === "product_sales" ? 200 : (formSelections.adActionButtons.includes("read_more") ? 500 : 220)}
-                     value={formSelections.adContent}
-                     placeholder={adType === "product_sales" ? "Write product description here (no links allowed)" : "Write your ad message here (no links allowed)"}
-                     onChange={(e) => {
-                       e.target.style.height = "auto";
-                       e.target.style.height = `${e.target.scrollHeight}px`;
-                       setFormSelections({
-                         ...formSelections,
-                         adContent: e.target.value,
-                       });
-                     }}
-                     className={`${styles.inputBox} ${styles.textareaAutoResize} ${
-                       containsLink(formSelections.adContent)
-                         ? styles.inputError
-                         : ""
-                     }`}
-                   />
-                  {containsLink(formSelections.adContent) && (
-                    <p className={styles.error}>
-                      Links are not allowed in the ad content.
-                    </p>
-                  )}
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Ad Media &amp; Visual Assets</span>
+                    <span className={styles.modernSectionBadge}>
+                      {formSelections.adMediaType ? formSelections.adMediaType.toUpperCase() : "Select Format"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.fieldLabelBold}>Ad Content Type</label>
+                      <select
+                        value={formSelections.adMediaType}
+                        onChange={(e) =>
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            adMediaType: e.target.value as AdMediaType,
+                            adMediaFiles: [],
+                          }))
+                        }
+                        className={styles.inputBox}
+                      >
+                        <option value="">-- Select media type --</option>
+                        <option value="text">Text Only</option>
+                        <option value="image">Image(s) (Up to 4)</option>
+                        <option value="video">Video Only (Max 1)</option>
+                        <option value="mixed">Mixed (Up to 3 Images + 1 Video)</option>
+                      </select>
+                      {formSelections.adMediaType === "image" && (
+                        <small className={styles.info}>
+                          Max size: 5MB per image (JPG, PNG, etc). You can select up to 4 images.
+                        </small>
+                      )}
+                      {formSelections.adMediaType === "video" && (
+                        <small className={styles.info}>
+                          Max size: 60MB • Max duration: 5mins • Format: Video formats. Select exactly 1 video.
+                        </small>
+                      )}
+                      {formSelections.adMediaType === "mixed" && (
+                        <small className={styles.info}>
+                          Up to 3 images (max 5MB each) and exactly 1 video (max 60MB, 5mins).
+                        </small>
+                      )}
+                    </div>
+
+                    {formSelections.adMediaType && formSelections.adMediaType !== "text" && (
+                      <div className={styles.formGroup}>
+                        <label className={styles.fieldLabelBold}>Upload Files</label>
+                        <input
+                          type="file"
+                          multiple={formSelections.adMediaType !== "video"}
+                          accept={
+                            formSelections.adMediaType === "video"
+                              ? "video/*"
+                              : formSelections.adMediaType === "image"
+                              ? "image/*"
+                              : "image/*,video/*"
+                          }
+                          onChange={async (e) => {
+                            const files = e.target.files;
+                            if (!files || files.length === 0) return;
+                            const fileArray = Array.from(files);
+
+                            // Separate images and videos
+                            const images = fileArray.filter(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name));
+                            const videos = fileArray.filter(f => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name));
+
+                            // Validation checks
+                            if (formSelections.adMediaType === "image") {
+                              if (videos.length > 0) {
+                                alert("Only images are allowed for this type.");
+                                e.target.value = "";
+                                return;
+                              }
+                              if (images.length > 4) {
+                                alert("You can select up to 4 images only.");
+                                e.target.value = "";
+                                return;
+                              }
+                            } else if (formSelections.adMediaType === "video") {
+                              if (images.length > 0) {
+                                alert("Only videos are allowed for this type.");
+                                e.target.value = "";
+                                return;
+                              }
+                              if (videos.length > 1) {
+                                alert("You can select only 1 video.");
+                                e.target.value = "";
+                                return;
+                              }
+                            } else if (formSelections.adMediaType === "mixed") {
+                              if (videos.length > 1) {
+                                alert("You can select at most 1 video.");
+                                e.target.value = "";
+                                return;
+                              }
+                              if (images.length > 3) {
+                                alert("You can select at most 3 images.");
+                                e.target.value = "";
+                                return;
+                              }
+                              if (images.length + videos.length > 4) {
+                                alert("Total number of files cannot exceed 4.");
+                                e.target.value = "";
+                                return;
+                              }
+                            }
+
+                            // Size and video duration checks
+                            for (const file of fileArray) {
+                              const isImage = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+                              const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
+
+                              if (isImage) {
+                                if (file.size > 5 * 1024 * 1024) {
+                                  alert(`Image ${file.name} exceeds 5MB limit.`);
+                                  e.target.value = "";
+                                  return;
+                                }
+                              } else if (isVideo) {
+                                if (file.size > 60 * 1024 * 1024) {
+                                  alert(`Video ${file.name} exceeds 60MB limit.`);
+                                  e.target.value = "";
+                                  return;
+                                }
+                                // Gracefully check duration with iCloud streaming fallback
+                                let durationOk = true;
+                                try {
+                                  durationOk = await new Promise<boolean>((resolve) => {
+                                    const videoEl = document.createElement("video");
+                                    videoEl.preload = "metadata";
+                                    const timer = setTimeout(() => {
+                                      // If iCloud is still streaming/downloading, allow if file size is valid
+                                      resolve(file.size <= 60 * 1024 * 1024);
+                                    }, 3500);
+
+                                    videoEl.onloadedmetadata = () => {
+                                      clearTimeout(timer);
+                                      resolve(videoEl.duration <= 300);
+                                    };
+                                    videoEl.onerror = () => {
+                                      clearTimeout(timer);
+                                      // On iOS iCloud offloaded assets, allow file by size
+                                      resolve(file.size <= 60 * 1024 * 1024);
+                                    };
+                                    videoEl.src = URL.createObjectURL(file);
+                                  });
+                                } catch {
+                                  durationOk = file.size <= 60 * 1024 * 1024;
+                                }
+
+                                if (!durationOk) {
+                                  alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
+                                  e.target.value = "";
+                                  return;
+                                }
+                              }
+                            }
+
+                            setFormSelections(prev => ({
+                              ...prev,
+                              adMediaFiles: fileArray
+                            }));
+                          }}
+                          className={styles.inputBox}
+                        />
+                        {formSelections.adMediaFiles.length > 0 && (
+                          <div className={styles.selectedFilesHint}>
+                            Selected: {formSelections.adMediaFiles.map(f => f.name).join(", ")}
+                          </div>
+                        )}
+                        {formSelections.existingMedia && formSelections.adMediaFiles.length === 0 && (
+                          <div className={styles.selectedFilesHint}>
+                            Current campaign media preserved. Choose new file(s) above if you wish to replace it.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className={styles.formGroup}>
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>
+                      {adType === "product_sales" ? "Product Description" : "Ad Message Copy"}
+                    </span>
+                    <span className={styles.modernSectionBadge}>
+                      {formSelections.adContent.length}/{adType === "product_sales" ? 200 : (formSelections.adActionButtons.includes("read_more") ? 500 : 220)}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <div className={styles.formGroup}>
+                      <textarea
+                        maxLength={adType === "product_sales" ? 200 : (formSelections.adActionButtons.includes("read_more") ? 500 : 220)}
+                        value={formSelections.adContent}
+                        placeholder={adType === "product_sales" ? "Write product description here (no links allowed)" : "Write your ad message here (no links allowed)"}
+                        onChange={(e) => {
+                          e.target.style.height = "auto";
+                          e.target.style.height = `${e.target.scrollHeight}px`;
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            adContent: e.target.value,
+                          }));
+                        }}
+                        className={`${styles.inputBox} ${styles.textareaAutoResize} ${
+                          containsLink(formSelections.adContent)
+                            ? styles.inputError
+                            : ""
+                        }`}
+                      />
+                      {containsLink(formSelections.adContent) && (
+                        <p className={styles.error}>
+                          Links are not allowed in the ad content.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.modernSectionCard}>
                   {(() => {
                     const hasPrimaryCta = Boolean(formSelections.productCtaLink?.trim()) || adType === "product_sales";
                     const maxButtons = hasPrimaryCta ? 2 : 3;
 
                     return (
                       <>
-                        <label>
-                          Action Buttons (Max {maxButtons})
+                        <div className={styles.modernSectionHeader}>
+                          <span className={styles.modernSectionTitle}>Interactive Action Buttons</span>
+                          <span className={styles.modernSectionBadge}>
+                            {formSelections.adActionButtons.length}/{maxButtons} active
+                          </span>
+                        </div>
+                        <div className={styles.modernSectionBody}>
                           {hasPrimaryCta && (
-                            <span style={{ fontSize: "0.76rem", color: "var(--primary)", marginLeft: "8px", fontWeight: "normal" }}>
-                              (Reduced to {maxButtons} to ensure clean mobile card spacing alongside &quot;{formSelections.productCtaType || "Comment"}&quot;)
-                            </span>
+                            <p className={styles.actionSubHint}>
+                              Reduced to max {maxButtons} buttons to ensure clean mobile card spacing alongside &quot;{formSelections.productCtaType || "Comment"}&quot;.
+                            </p>
                           )}
-                        </label>
-                        {(() => {
-                          const baseButtons: string[] = ["phone", "whatsapp", "website", "email"];
-                          if (adType === "business" || adType === "government") {
-                            baseButtons.push("ios", "android");
-                          }
-                          if (adType === "business" || adType === "government" || formSelections.adMediaType === "video") {
-                            baseButtons.push("watch_now");
-                          }
-                          if (formSelections.adMediaType === "text") {
-                            baseButtons.push("read_more");
-                          }
-                          return baseButtons.map((type) => {
-                            const isSelected = formSelections.adActionButtons.includes(type as any);
-                            const placeholderMap: Record<string, string> = {
-                              phone: "e.g. 234904567890",
-                              whatsapp: "e.g. 234904567890",
-                              email: "e.g. someone@example.com",
-                              website: "e.g. https://yourwebsite.com",
-                              ios: "e.g. https://apps.apple.com/us/app/your-app",
-                              android: "e.g. https://play.google.com/store/apps/details?id=your.app",
-                              watch_now: "e.g. https://youtube.com/watch?v=...",
-                              read_more: "",
-                            };
+                          <div className={styles.actionButtonsStack}>
+                            {(() => {
+                              const baseButtons: string[] = ["phone", "whatsapp", "website", "email"];
+                              if (adType === "business" || adType === "government") {
+                                baseButtons.push("ios", "android");
+                              }
+                              if (adType === "business" || adType === "government" || formSelections.adMediaType === "video") {
+                                baseButtons.push("watch_now");
+                              }
+                              if (formSelections.adMediaType === "text") {
+                                baseButtons.push("read_more");
+                              }
+                              return baseButtons.map((type) => {
+                                const isSelected = formSelections.adActionButtons.includes(type as any);
+                                const placeholderMap: Record<string, string> = {
+                                  phone: "e.g. 234904567890",
+                                  whatsapp: "e.g. 234904567890",
+                                  email: "e.g. someone@example.com",
+                                  website: "e.g. https://yourwebsite.com",
+                                  ios: "e.g. https://apps.apple.com/us/app/your-app",
+                                  android: "e.g. https://play.google.com/store/apps/details?id=your.app",
+                                  watch_now: "e.g. https://youtube.com/watch?v=...",
+                                  read_more: "",
+                                };
 
-                            const isEmail = type === "email";
-                            const value = type !== "read_more" ? formSelections.actionDetails[type as keyof typeof formSelections.actionDetails] || "" : "";
-                            const isEmailInvalid = isEmail && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+                                const isEmail = type === "email";
+                                const value = type !== "read_more" ? formSelections.actionDetails[type as keyof typeof formSelections.actionDetails] || "" : "";
+                                const isEmailInvalid = isEmail && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-                            return (
-                              <div key={type}>
-                                <label>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      const updated = [...formSelections.adActionButtons];
-                                      if (e.target.checked && updated.length < maxButtons) {
-                                        updated.push(type as any);
-                                      } else if (!e.target.checked) {
-                                        updated.splice(updated.indexOf(type as any), 1);
-                                      }
-                                      setFormSelections({
-                                        ...formSelections,
-                                        adActionButtons: updated,
-                                      });
-                                    }}
-                                  />
-                                  {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type === "watch_now" ? "WATCH NOW" : type.toUpperCase().replace("_", " ")}
-                                </label>
-                                {isSelected && type !== "read_more" && (
-                                  <input
-                                    type={isEmail ? "email" : "text"}
-                                    placeholder={placeholderMap[type]}
-                                    value={value}
-                                    onChange={(e) =>
-                                      setFormSelections({
-                                        ...formSelections,
-                                        actionDetails: {
-                                          ...formSelections.actionDetails,
-                                          [type]: e.target.value,
-                                        },
-                                      })
-                                    }
-                                    className={`${styles.inputBox} ${isEmailInvalid ? styles.inputError : ""}`}
-                                  />
-                                )}
-                                {isSelected && isEmailInvalid && (
-                                  <p className={styles.error}>Please enter a valid email address.</p>
-                                )}
-                              </div>
-                            );
-                          });
-                        })()}
+                                return (
+                                  <div key={type} className={styles.actionButtonCol}>
+                                    <label className={styles.actionButtonLabel}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setFormSelections((prev) => {
+                                            const updated = [...prev.adActionButtons];
+                                            if (checked && updated.length < maxButtons) {
+                                              updated.push(type as any);
+                                            } else if (!checked) {
+                                              const idx = updated.indexOf(type as any);
+                                              if (idx !== -1) updated.splice(idx, 1);
+                                            }
+                                            return {
+                                              ...prev,
+                                              adActionButtons: updated,
+                                            };
+                                          });
+                                        }}
+                                      />
+                                      {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type === "watch_now" ? "WATCH NOW" : type.toUpperCase().replace("_", " ")}
+                                    </label>
+                                    {isSelected && type !== "read_more" && (
+                                      <input
+                                        type={isEmail ? "email" : "text"}
+                                        placeholder={placeholderMap[type]}
+                                        value={value}
+                                        onChange={(e) =>
+                                          setFormSelections((prev) => ({
+                                            ...prev,
+                                            actionDetails: {
+                                              ...prev.actionDetails,
+                                              [type]: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className={`${styles.inputBox} ${styles.actionInputWrap} ${isEmailInvalid ? styles.inputError : ""}`}
+                                      />
+                                    )}
+                                    {isSelected && isEmailInvalid && (
+                                      <p className={styles.error}>Please enter a valid email address.</p>
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
                       </>
                     );
                   })()}
@@ -1812,11 +1962,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 />
 
                 {isAdmin ? (
-                  <div style={{ background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.35)", padding: "16px", borderRadius: "12px", margin: "20px 0", textAlign: "center" }}>
-                    <p style={{ color: "var(--primary)", fontSize: "1rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                  <div className={styles.adminFreeBanner}>
+                    <p className={styles.adminFreeHeading}>
                       <Crown size={18} color="var(--primary)" /> Admin Privilege: 100% Free Campaign Publishing (₦0.00 Total)
                     </p>
-                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+                    <p className={styles.adminFreeSubtext}>
                       No payment gateway or wallet balance deduction required.
                     </p>
                   </div>
@@ -1843,102 +1993,54 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 )}
 
                 {/* AI Content Disclosure Toggle */}
-                <div
-                  style={{
-                    marginTop: "20px",
-                    marginBottom: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "14px",
-                    padding: "14px 16px",
-                    backgroundColor: "var(--sidebar-bg)",
-                    borderRadius: "10px",
-                    border: "1px solid var(--card-border)",
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                    <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--foreground)" }}>
+                <div className={styles.aiDisclosureBox}>
+                  <div className={styles.aiDisclosureTextContainer}>
+                    <span className={styles.aiDisclosureTitle}>
                       AI-generated content
                     </span>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", lineHeight: 1.35 }}>
+                    <span className={styles.aiDisclosureDesc}>
                       Turn this on if your ad contains media or text generated or altered using AI tools.
                     </span>
                   </div>
-                  <label
-                    style={{
-                      position: "relative",
-                      display: "inline-block",
-                      width: "44px",
-                      height: "24px",
-                      flexShrink: 0,
-                      cursor: "pointer",
-                    }}
-                  >
+                  <label className={styles.aiSwitch}>
                     <input
                       type="checkbox"
                       checked={isAiContent}
                       onChange={(e) => setIsAiContent(e.target.checked)}
-                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
+                      className={styles.aiSwitchInput}
                     />
-                    <span
-                      style={{
-                        position: "absolute",
-                        cursor: "pointer",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: isAiContent ? "var(--primary)" : "var(--card-border)",
-                        transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
-                        borderRadius: "24px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: "absolute",
-                          content: '""',
-                          height: "18px",
-                          width: "18px",
-                          left: isAiContent ? "23px" : "3px",
-                          bottom: "3px",
-                          backgroundColor: "#ffffff",
-                          transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
-                          borderRadius: "50%",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                        }}
-                      />
+                    <span className={`${styles.aiSwitchSlider} ${isAiContent ? styles.aiSwitchSliderActive : ""}`}>
+                      <span className={`${styles.aiSwitchThumb} ${isAiContent ? styles.aiSwitchThumbActive : ""}`} />
                     </span>
                   </label>
                 </div>
 
-                <div style={{ marginTop: "12px", marginBottom: "16px", display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px 14px", backgroundColor: "var(--sidebar-bg)", borderRadius: "10px", border: "1px solid var(--card-border)" }}>
+                <div className={styles.termsPolicyBox}>
                   <input
                     type="checkbox"
                     id="adTermsPolicyCheckbox"
                     checked={agreedToPolicy}
                     onChange={(e) => setAgreedToPolicy(e.target.checked)}
-                    style={{ marginTop: "3px", width: "16px", height: "16px", cursor: "pointer", flexShrink: 0 }}
+                    className={styles.termsCheckbox}
                   />
-                  <label htmlFor="adTermsPolicyCheckbox" style={{ fontSize: "0.85rem", color: "var(--foreground)", cursor: "pointer", lineHeight: 1.4 }}>
+                  <label htmlFor="adTermsPolicyCheckbox" className={styles.termsLabel}>
                     I have reviewed my ad details and agree to Paayh&apos;s{" "}
-                    <Link href="/terms" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/terms" target="_blank" className={styles.termsLink}>
                       Terms of Service
                     </Link>,{" "}
-                    <Link href="/advertiser-guidelines" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/advertiser-guidelines" target="_blank" className={styles.termsLink}>
                       Advertising Guidelines
                     </Link>, and{" "}
-                    <Link href="/privacy" target="_blank" style={{ color: "var(--primary)", textDecoration: "underline", fontWeight: 600 }}>
+                    <Link href="/privacy" target="_blank" className={styles.termsLink}>
                       Privacy Policy
                     </Link>.
                   </label>
                 </div>
 
                 <button
-                  className={styles.submitButton}
+                  className={`${styles.submitButton} ${styles.submitButtonContent}`}
                   onClick={submitAd}
                   disabled={isSubmitting || !agreedToPolicy}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
                 >
                   {isSubmitting ? (
                     "Publishing Free Ad..."
@@ -1958,7 +2060,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 <button onClick={() => { setStepError(""); setStep(step - 1); }}>Back</button>
               )}
               {stepError && (
-                <span className={styles.stepValidationError} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span className={styles.stepValidationError}>
                   <AlertCircle size={14} color="#ef4444" /> {stepError}
                 </span>
               )}

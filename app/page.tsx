@@ -7,25 +7,9 @@ import { getUserProfileForDashboard } from "@/lib/getUserProfileForDashboard";
 export default async function Home() {
   const session = await auth0.getSession();
 
-  // If user is authenticated, render the production feed directly at root (https://paayh.com/)
+  // If user is authenticated, redirect to /logged-in
   if (session?.user?.email) {
-    const profileResult = await getUserProfileForDashboard(session);
-
-    if (profileResult.redirectUrl) {
-      redirect(profileResult.redirectUrl);
-    }
-
-    if (profileResult.user && profileResult.parsedInterest && profileResult.email) {
-      return (
-        <DashboardClient
-          user={profileResult.user}
-          parsedInterest={profileResult.parsedInterest}
-          email={profileResult.email}
-          initialAds={profileResult.initialAds}
-          initialProfiles={profileResult.initialProfiles}
-        />
-      );
-    }
+    redirect("/logged-in");
   }
 
   // Guest users visiting https://paayh.com see the dialogue concierge landing experience

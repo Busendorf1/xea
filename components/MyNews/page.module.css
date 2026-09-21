@@ -260,3 +260,115 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.paginationEllipsis {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.cardPaused {
+  opacity: 0.85;
+}
+
+.videoElement {
+  max-height: 240px;
+  background: #000;
+}
+
+.tagActionRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.actionButtonGroup {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.actionBtn {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.actionBtn:hover {
+  border-color: var(--primary);
+}
+
+.pauseBtn {
+  color: var(--text-muted);
+}
+
+.resumeBtn {
+  color: var(--success);
+}
+
+.adminStatementBox {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--sidebar-bg);
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+}
+
+.adminStatementTitle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--foreground);
+}
+
+.metaBadgesRow {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.biddedBadge {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.metaBadge {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: var(--sidebar-bg);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.noticeBanner {
+  background-color: var(--primary-glow);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}

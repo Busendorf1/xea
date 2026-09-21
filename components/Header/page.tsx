@@ -249,12 +249,12 @@ export default function Header() {
       
       {showNotifications && (
         <div className={styles.notificationDropdown}>
-          <div className={styles.notificationHeader} style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-              <h4 style={{ margin: 0 }}>Notifications</h4>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className={`${styles.notificationHeader} ${styles.notificationHeaderColumn}`}>
+            <div className={styles.notifTitleRow}>
+              <h4>Notifications</h4>
+              <div className={styles.notifActionsRow}>
                 {unreadCount > 0 && !isSelectionMode && (
-                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn} style={{ fontSize: "0.75rem", padding: "3px 8px" }}>
+                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn}>
                     Mark all as read
                   </button>
                 )}
@@ -269,19 +269,7 @@ export default function Header() {
                       });
                     }}
                     title={isSelectionMode ? "Cancel selection" : "Delete notifications"}
-                    style={{
-                      background: isSelectionMode ? "rgba(239, 68, 68, 0.12)" : "transparent",
-                      border: isSelectionMode ? "1px solid rgba(239, 68, 68, 0.3)" : "none",
-                      color: isSelectionMode ? "#ef4444" : "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "4px 6px",
-                      borderRadius: "6px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
+                    className={`${styles.notifDeleteToggleBtn} ${isSelectionMode ? styles.notifDeleteToggleBtnActive : ""}`}
                   >
                     <Trash2 size={15} />
                     {isSelectionMode && <span>Cancel</span>}
@@ -292,23 +280,14 @@ export default function Header() {
 
             {/* Selection and Deletion Controls - Only visible when in Selection Mode */}
             {isSelectionMode && notifications.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.76rem", paddingTop: "6px", borderTop: "1px solid var(--card-border)" }}>
+              <div className={styles.notifSelectionBar}>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleSelectAllNotifs();
                   }}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: "5px",
-                    backgroundColor: selectedNotifs.length === notifications.length ? "rgba(99, 102, 241, 0.15)" : "transparent",
-                    border: "1px solid var(--card-border)",
-                    color: "var(--text-muted)",
-                    fontSize: "0.74rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  className={`${styles.notifSelectAllBtn} ${selectedNotifs.length === notifications.length ? styles.notifSelectAllBtnActive : ""}`}
                 >
                   {selectedNotifs.length === notifications.length ? "Deselect All" : "Select All"}
                 </button>
@@ -323,20 +302,7 @@ export default function Header() {
                     }
                   }}
                   disabled={selectedNotifs.length === 0 || isDeletingNotifs}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "5px",
-                    backgroundColor: selectedNotifs.length > 0 ? "rgba(239, 68, 68, 0.15)" : "transparent",
-                    border: selectedNotifs.length > 0 ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid transparent",
-                    color: selectedNotifs.length > 0 ? "#ef4444" : "var(--text-muted)",
-                    fontSize: "0.74rem",
-                    fontWeight: 700,
-                    cursor: selectedNotifs.length > 0 ? "pointer" : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    opacity: selectedNotifs.length > 0 ? 1 : 0.5,
-                  }}
+                  className={`${styles.notifDeleteSelectedBtn} ${selectedNotifs.length > 0 ? styles.notifDeleteSelectedBtnActive : ""}`}
                 >
                   <Trash2 size={12} /> Delete ({selectedNotifs.length})
                 </button>
@@ -349,16 +315,7 @@ export default function Header() {
                     setIsSelectionMode(false);
                   }}
                   disabled={isDeletingNotifs}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "5px",
-                    backgroundColor: "transparent",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "0.74rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  className={styles.notifDeleteAllBtn}
                 >
                   Delete All
                 </button>
@@ -375,7 +332,6 @@ export default function Header() {
                   key={n.id}
                   onClick={() => handleMarkAsRead(n.id)}
                   className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
-                  style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
                 >
                   {isSelectionMode && (
                     <input
@@ -383,13 +339,13 @@ export default function Header() {
                       checked={selectedNotifs.includes(n.id)}
                       onClick={(e) => handleToggleSelectNotif(n.id, e)}
                       onChange={() => {}}
-                      style={{ marginTop: "3px", cursor: "pointer", width: "14px", height: "14px", flexShrink: 0 }}
+                      className={styles.notifCheckbox}
                     />
                   )}
-                  <div className={styles.notificationIconWrapper} style={{ flexShrink: 0 }}>
+                  <div className={styles.notificationIconWrapper}>
                     {getNotificationIcon(n.title || "", n.message || "")}
                   </div>
-                  <div className={styles.notificationContent} style={{ flexGrow: 1 }}>
+                  <div className={styles.notificationContent}>
                     <div className={styles.notificationTitle}>{stripEmoji(n.title)}</div>
                     <div className={styles.notificationMsg}>{stripEmoji(n.message)}</div>
                     <span className={styles.notificationTime}>
@@ -442,7 +398,7 @@ export default function Header() {
         </Link>
 
         {isSmallScreen ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div className={styles.mobileRightBar}>
             <SidebarMenu />
             {user && renderNotificationBell()}
             {renderThemeSwitcher()}
@@ -461,7 +417,7 @@ export default function Header() {
               {menuActive && (
                 <div className={styles.mobileNav}>
                   {isLoading ? (
-                    <div style={{ height: 36 }} />
+                    <div className={styles.authPlaceholderMobile} />
                   ) : user ? (
                     <a href="/auth/logout" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
                       Sign Out
@@ -493,7 +449,7 @@ export default function Header() {
             {user && renderNotificationBell()}
             {renderThemeSwitcher()}
             {isLoading ? (
-              <div style={{ width: 80, height: 36 }} />
+              <div className={styles.authPlaceholderDesktop} />
             ) : user ? (
               <a href="/auth/logout" className={styles.signOutBtn}>
                 Sign Out
