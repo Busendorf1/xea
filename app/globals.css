@@ -119,26 +119,26 @@
   --badge-gold-border: rgba(217, 119, 6, 0.25);
 }
 
-/* Fluid Responsive Typography & Screen Scaling */
+/* Fluid Responsive Typography & Screen Scaling (Scale 7) */
 html {
-  font-size: clamp(14.5px, 0.22vw + 13.6px, 15.8px);
+  font-size: clamp(15px, 0.25vw + 14px, 16.2px);
 }
 
 @media screen and (min-width: 1440px) {
   html {
-    font-size: 16px;
+    font-size: 16.6px;
   }
 }
 
 @media screen and (min-width: 1920px) {
   html {
-    font-size: 16.5px;
+    font-size: 17.5px;
   }
 }
 
 @media screen and (min-width: 2560px) {
   html {
-    font-size: 17px;
+    font-size: 18.8px;
   }
 }
 

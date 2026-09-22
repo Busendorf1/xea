@@ -6,6 +6,10 @@ import styles from "./modal.module.css";
 import { flowNodes, initialNodeId, FlowNode, FlowChoice } from "./flowData";
 import { useTheme } from "@/components/ThemeProvider";
 import { Sun, Moon, ArrowRight, RotateCcw } from "lucide-react";
+import DotMatrixBackground from "./backgrounds/DotMatrixBackground";
+import FloatingBadgesBackground from "./backgrounds/FloatingBadgesBackground";
+
+type BackgroundVariant = "dots" | "badges" | "both" | "none";
 
 interface DialogueMessage {
   id: string;
@@ -47,10 +51,27 @@ export default function ModalLandingPage() {
   const [visitedNodeIds, setVisitedNodeIds] = useState<string[]>([initialNodeId]);
   const [stepCount, setStepCount] = useState<number>(1);
   const [savedSession, setSavedSession] = useState<StoredConciergeSession | null>(null);
+  const [bgVariant, setBgVariant] = useState<BackgroundVariant>("both");
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<number | null>(null);
   const closeTimeoutRef = useRef<number | null>(null);
+
+  // Dynamic background aesthetic on page load / refresh / reload
+  useEffect(() => {
+    try {
+      // Graceful rotation pool: alternates between Dot Matrix + Crown Badge, Dot Matrix only, and Crown Badge only
+      const VARIANTS: BackgroundVariant[] = ["both", "dots", "both", "badges"];
+      const lastIndexStr = sessionStorage.getItem("paayh_bg_variant_idx");
+      const nextIndex = lastIndexStr
+        ? (parseInt(lastIndexStr, 10) + 1) % VARIANTS.length
+        : Math.floor(Math.random() * VARIANTS.length);
+      sessionStorage.setItem("paayh_bg_variant_idx", nextIndex.toString());
+      setBgVariant(VARIANTS[nextIndex]);
+    } catch {
+      // fallback to default
+    }
+  }, []);
 
   // Load saved session on initial mount
   useEffect(() => {
@@ -269,14 +290,22 @@ export default function ModalLandingPage() {
 
   return (
     <div className={styles.root}>
+      {/* Dynamic Interactive Backgrounds: Dot Matrix & Floating Badges */}
+      {(bgVariant === "dots" || bgVariant === "both") && <DotMatrixBackground />}
+      {(bgVariant === "badges" || bgVariant === "both") && <FloatingBadgesBackground />}
+
       {/* Background Landing Card View */}
       <main className={styles.landingWrap}>
         <div className={styles.landingCard}>
           <h1 className={styles.landingTitle}>Paayh</h1>
 
           <div className={styles.landingDesc}>
-            <p>Get paid for what AI can't do:</p>
-            <p>giving your attention to who needs it.</p>
+            {/* <p>Get paid for what AI can't do:</p>
+            <p>giving your attention to who needs it.</p> */}
+            <p>Monetize your attention!</p>
+               {/* <p>Get paid for genuinely paying attention to advert</p> */}
+
+      
           </div>
 
           {savedSession && savedSession.stepCount >= 1 ? (
