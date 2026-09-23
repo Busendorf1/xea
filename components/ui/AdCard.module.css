@@ -260,14 +260,20 @@ img.avatarImg {
   align-items: center;
   justify-content: center;
   max-height: 540px;
+  min-height: 200px;
 }
 
 .mediaRowItemSingle {
   flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
 }
 
 .mediaRowItemMulti {
-  flex: 0 0 clamp(240px, 80%, 440px);
+  flex: 0 0 clamp(260px, 82%, 460px);
+  width: clamp(260px, 82%, 460px);
+  min-width: 260px;
 }
 
 .webVideoContainer {

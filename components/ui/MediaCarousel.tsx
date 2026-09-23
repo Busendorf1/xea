@@ -27,6 +27,38 @@ export const isVideoUrl = (url?: string | null): boolean => {
 // Global in-memory aspect ratio cache to preserve exact media dimensions across virtual scroll recycling
 const mediaAspectRatioCache = new Map<string, number>();
 
+// Hydrate cache from sessionStorage on client
+if (typeof window !== "undefined") {
+  try {
+    const saved = sessionStorage.getItem("xea_media_aspect_ratios");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      Object.entries(parsed).forEach(([k, v]) => {
+        if (typeof v === "number" && !isNaN(v)) {
+          mediaAspectRatioCache.set(k, v);
+        }
+      });
+    }
+  } catch (e) {}
+}
+
+const saveRatioToCache = (url: string, ratio: number) => {
+  if (!url || !ratio || isNaN(ratio)) return;
+  mediaAspectRatioCache.set(url, ratio);
+  if (typeof window !== "undefined") {
+    try {
+      const saved = sessionStorage.getItem("xea_media_aspect_ratios");
+      const parsed = saved ? JSON.parse(saved) : {};
+      parsed[url] = ratio;
+      const keys = Object.keys(parsed);
+      if (keys.length > 150) {
+        delete parsed[keys[0]];
+      }
+      sessionStorage.setItem("xea_media_aspect_ratios", JSON.stringify(parsed));
+    } catch (e) {}
+  }
+};
+
 const MediaCarousel: React.FC<MediaCarouselProps> = ({
   adMedia,
   hlsUrl,
@@ -43,6 +75,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const [controlsVisible, setControlsVisible] = useState<Record<number, boolean>>({});
   const hideControlsTimers = useRef<Record<number, NodeJS.Timeout>>({});
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const firstImgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const formatVideoTime = useCallback((seconds: number) => {
@@ -135,12 +168,70 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   }, [adMedia]);
 
   const firstUrl = mediaUrls[0];
+  const isFirstVideo = Boolean(
+    firstUrl && (isVideoUrl(firstUrl) || firstUrl.includes(".m3u8") || !!hlsUrl)
+  );
+  // Default to 1.0 (standard 1:1 feed square) for images so they never start compressed in a 16:9 letterbox.
+  // Videos fallback to 16:9.
+  const fallbackRatio = isFirstVideo ? 16 / 9 : 1.0;
+
   const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => {
     if (firstUrl && mediaAspectRatioCache.has(firstUrl)) {
       return mediaAspectRatioCache.get(firstUrl)!;
     }
-    return 16 / 9;
+    return fallbackRatio;
   });
+
+  // Synchronously probe image/video to apply true aspect ratio on initial load without requiring a refresh
+  useEffect(() => {
+    if (!firstUrl) return;
+
+    if (mediaAspectRatioCache.has(firstUrl)) {
+      const cached = mediaAspectRatioCache.get(firstUrl)!;
+      setBaseAspectRatio((prev) => (prev === cached ? prev : cached));
+      return;
+    }
+
+    if (isFirstVideo) {
+      const v = videoRefs.current[0];
+      if (v && v.videoWidth && v.videoHeight) {
+        const rawRatio = v.videoWidth / v.videoHeight;
+        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+        saveRatioToCache(firstUrl, clamped);
+        setBaseAspectRatio(clamped);
+      }
+      return;
+    }
+
+    const applyRatio = (w: number, h: number) => {
+      if (w > 0 && h > 0) {
+        const rawRatio = w / h;
+        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+        saveRatioToCache(firstUrl, clamped);
+        setBaseAspectRatio((prev) => (prev === clamped ? prev : clamped));
+        return true;
+      }
+      return false;
+    };
+
+    // If DOM img element is already complete (from browser cache)
+    if (firstImgRef.current && firstImgRef.current.complete) {
+      if (applyRatio(firstImgRef.current.naturalWidth, firstImgRef.current.naturalHeight)) {
+        return;
+      }
+    }
+
+    // Pre-probe with new Image() to bypass React synthetic onLoad race conditions
+    const probe = new Image();
+    probe.src = firstUrl;
+    if (probe.complete) {
+      applyRatio(probe.naturalWidth, probe.naturalHeight);
+    } else {
+      probe.onload = () => {
+        applyRatio(probe.naturalWidth, probe.naturalHeight);
+      };
+    }
+  }, [firstUrl, isFirstVideo]);
 
   // Keep first video playing when card is in view
   useEffect(() => {
@@ -278,7 +369,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                       if (index === 0 && v.videoWidth && v.videoHeight) {
                         const rawRatio = v.videoWidth / v.videoHeight;
                         const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
-                        if (firstUrl) mediaAspectRatioCache.set(firstUrl, clamped);
+                        if (firstUrl) saveRatioToCache(firstUrl, clamped);
                         setBaseAspectRatio(clamped);
                       }
                     }}
@@ -307,6 +398,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                 </div>
               ) : (
                 <img
+                  ref={index === 0 ? firstImgRef : undefined}
                   src={url}
                   alt="Ad Media"
                   className={styles.adImgElement}
@@ -318,7 +410,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                       if (img.naturalWidth && img.naturalHeight) {
                         const rawRatio = img.naturalWidth / img.naturalHeight;
                         const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
-                        if (firstUrl) mediaAspectRatioCache.set(firstUrl, clamped);
+                        if (firstUrl) saveRatioToCache(firstUrl, clamped);
                         setBaseAspectRatio(clamped);
                       }
                     }

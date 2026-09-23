@@ -23,7 +23,37 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
     }
   }, [ad.is_highlight, ad.id]);
 
-  const [aspectRatio, setAspectRatio] = React.useState<number>(1.777);
+  const [aspectRatio, setAspectRatio] = React.useState<number>(1.0);
+  const imgRef = React.useRef<HTMLImageElement | null>(null);
+
+  React.useEffect(() => {
+    if (!ad.ad_media) return;
+    const applyRatio = (w: number, h: number) => {
+      if (w > 0 && h > 0) {
+        const rawRatio = w / h;
+        const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
+        setAspectRatio((prev) => (prev === clamped ? prev : clamped));
+        return true;
+      }
+      return false;
+    };
+
+    if (imgRef.current && imgRef.current.complete) {
+      if (applyRatio(imgRef.current.naturalWidth, imgRef.current.naturalHeight)) {
+        return;
+      }
+    }
+
+    const probe = new Image();
+    probe.src = ad.ad_media;
+    if (probe.complete) {
+      applyRatio(probe.naturalWidth, probe.naturalHeight);
+    } else {
+      probe.onload = () => {
+        applyRatio(probe.naturalWidth, probe.naturalHeight);
+      };
+    }
+  }, [ad.ad_media]);
 
   return (
     <div key={`hl-${ad.id}`} className={styles.card} style={style}>
@@ -62,6 +92,7 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
         {ad.ad_media && (
           <div className={styles.mediaBox} style={{ aspectRatio: `${aspectRatio}` }}>
             <img
+              ref={imgRef}
               src={ad.ad_media}
               alt="Highlight Cover"
               className={styles.adImgElement}

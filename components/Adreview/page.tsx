@@ -97,7 +97,12 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
     return isNaN(val) ? "₦0.00" : "₦" + val.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(16 / 9);
+  const isFirstVideo = Boolean(
+    mediaFiles[0]
+      ? mediaFiles[0].type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(mediaFiles[0].name)
+      : (mediaURLs[0] && /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(mediaURLs[0]))
+  );
+  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => (isFirstVideo ? 16 / 9 : 1.0));
 
   return (
     <div className={styles.card}>
