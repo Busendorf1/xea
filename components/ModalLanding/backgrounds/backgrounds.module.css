@@ -157,7 +157,7 @@
 /* Mobile screens (<= 640px) */
 @media (max-width: 640px) {
   .crownSlot1 {
-    bottom: clamp(3.8rem, 8.5vh, 4.8rem);
+    bottom: clamp(5.8rem, 12vh, 7.2rem);
   }
   .badge {
     padding: 5px 11px;
