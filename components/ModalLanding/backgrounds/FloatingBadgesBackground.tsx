@@ -4,12 +4,10 @@ import React, { useEffect, useRef, useState } from "react";
 import styles from "./backgrounds.module.css";
 
 const CROWN_MESSAGES = [
-  "🎯 We don't skip ads here",
-  "💰 Get paid for your time",
-  "💸 Reach millions at low cost",
-  "⚡ Your attention for cash",
-  "🎧 Verified Viewer Stream",
-  "🛡️ Advertise your brand",
+  "Your Attention has value",
+  "Get rewarded for your time",
+  "Where brands meet real attention",
+  "Reach audiences that truly listen",
 ];
 
 export default function FloatingBadgesBackground() {
