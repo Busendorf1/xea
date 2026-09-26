@@ -7,6 +7,10 @@ import { useRouter } from "next/navigation";
 import LocationSelector from "../LocationSelector";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import { CheckCircle2, AlertCircle, Info, ShieldCheck } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import CustomSelect from "@/components/ui/CustomSelect";
+import FormStepProgress from "@/components/ui/FormStepProgress";
+import FairAttentionModal from "@/components/ui/FairAttentionModal";
 
 import {
   ALL_INDUSTRIES as industries,
@@ -386,38 +390,92 @@ export default function Update({ email }: Props) {
     }, 1500);
   };
 
+  const handleSelectAll = (name: "industry" | "interest" | "behavior" | "lifestyle" | "personality", options: string[]) => {
+    setFormData((prev) => ({ ...prev, [name]: [...options] }));
+  };
+
+  const handleClearAll = (name: "industry" | "interest" | "behavior" | "lifestyle" | "personality") => {
+    setFormData((prev) => ({ ...prev, [name]: [] }));
+  };
+
   const renderDropdown = (
     label: string,
     name: "industry" | "interest" | "behavior" | "lifestyle" | "personality",
     options: string[]
-  ) => (
-    <div className={styles.dropdownContainer}>
-      <div
-        className={styles.dropdownHeader}
-        onClick={() => toggleDropdown(name)}
-      >
-        <span>Select {label}</span>
-        <span>{openDropdowns[name] ? "▲" : "▼"}</span>
-      </div>
-      {openDropdowns[name] && (
-        <div className={styles.checkboxGroup}>
-          {options.map((opt) => (
-            <label key={opt}>
-              <input
-                type="checkbox"
-                name={name}
-                value={opt}
-                checked={formData[name]?.includes(opt) || false}
-                onChange={handleChange}
-                disabled={timeRemaining !== null && timeRemaining > 0}
-              />
-              {opt}
-            </label>
-          ))}
+  ) => {
+    const selectedArr = formData[name] || [];
+    const isAllSelected = options.length > 0 && selectedArr.length === options.length;
+    return (
+      <div className={styles.dropdownContainer}>
+        <div
+          className={styles.dropdownHeader}
+          onClick={() => toggleDropdown(name)}
+        >
+          <span>{selectedArr.length > 0 ? `${selectedArr.length} ${label} selected` : `Select ${label}`}</span>
+          <span>{openDropdowns[name] ? "▲" : "▼"}</span>
         </div>
-      )}
-    </div>
-  );
+        <AnimatePresence>
+          {openDropdowns[name] && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className={styles.checkboxGroup}
+            >
+              <div className={styles.dropdownActionsBar}>
+                <button
+                  type="button"
+                  className={styles.quickActionBtn}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isAllSelected) {
+                      handleClearAll(name);
+                    } else {
+                      handleSelectAll(name, options);
+                    }
+                  }}
+                  disabled={timeRemaining !== null && timeRemaining > 0}
+                >
+                  {isAllSelected ? "Deselect All" : "Select All"}
+                </button>
+                {selectedArr.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.quickActionBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleClearAll(name);
+                    }}
+                    disabled={timeRemaining !== null && timeRemaining > 0}
+                  >
+                    Clear ({selectedArr.length})
+                  </button>
+                )}
+              </div>
+              {options.map((opt) => (
+                <motion.label 
+                  key={opt}
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <input
+                    type="checkbox"
+                    name={name}
+                    value={opt}
+                    checked={formData[name]?.includes(opt) || false}
+                    onChange={handleChange}
+                    disabled={timeRemaining !== null && timeRemaining > 0}
+                  />
+                  <span>{opt}</span>
+                </motion.label>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -432,21 +490,13 @@ export default function Update({ email }: Props) {
 
   return (
     <div className={styles.profileContainer}>
-      {/* Step Progress Bar Header */}
-      <div className={styles.progressContainer}>
-        {steps.map((label, idx) => (
-          <div
-            key={label}
-            className={`${styles.progressStep} ${
-              idx === currentStep ? styles.activeStep : idx < currentStep ? styles.completedStep : ""
-            }`}
-          >
-            <div className={styles.stepNumber}>{idx < currentStep ? "✓" : idx + 1}</div>
-            <span className={styles.stepLabel}>{label}</span>
-            {idx < steps.length - 1 && <div className={styles.stepLine} />}
-          </div>
-        ))}
-      </div>
+      <FairAttentionModal />
+      {/* Step Progress Bar Header (Standardized to /news) */}
+      <FormStepProgress
+        steps={steps}
+        currentStep={currentStep}
+        onStepClick={(idx) => setCurrentStep(idx)}
+      />
 
       <h1 className={styles.update}>Update Profile</h1>
       
@@ -463,22 +513,35 @@ export default function Update({ email }: Props) {
         </div>
       )}
 
-      {status && (
-        <div className={`${styles.statusBanner} ${
-          status.includes("Successful")
-            ? styles.statusBannerSuccess
-            : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌")
-            ? styles.statusBannerError
-            : styles.statusBannerInfo
-        }`}>
-          {status.includes("Successful") ? (
-            <CheckCircle2 size={18} color="#10b981" />
-          ) : (
-            <AlertCircle size={18} color={status.includes("Failed") || status.includes("❌") ? "#ef4444" : "var(--primary)"} />
-          )}
-          <span>{status.replace(/^[✅⚠️❌⏳]\s*/, "")}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {status && (
+          <motion.div 
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ 
+              opacity: 1, 
+              y: 0, 
+              scale: 1,
+              x: status.includes("Failed") || status.includes("⚠️") || status.includes("❌") ? [-6, 6, -4, 4, -2, 2, 0] : 0 
+            }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className={`${styles.statusBanner} ${
+              status.includes("Successful")
+                ? styles.statusBannerSuccess
+                : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌")
+                ? styles.statusBannerError
+                : styles.statusBannerInfo
+            }`}
+          >
+            {status.includes("Successful") ? (
+              <CheckCircle2 size={18} color="#10b981" />
+            ) : (
+              <AlertCircle size={18} color={status.includes("Failed") || status.includes("❌") ? "#ef4444" : "var(--primary)"} />
+            )}
+            <span>{status.replace(/^[✅⚠️❌⏳]\s*/, "")}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* STEP 0: Personal & Location Details */}
       {currentStep === 0 && (
@@ -570,20 +633,22 @@ export default function Update({ email }: Props) {
               />
             </div>
 
-            <LocationSelector
-              country={formData.country !== undefined ? formData.country : (dbProfile.country || "")}
-              state={formData.state !== undefined ? formData.state : (dbProfile.state || "")}
-              location={formData.location !== undefined ? formData.location : (dbProfile.location || "")}
-              onChange={({ country, state, location }) =>
-                setFormData((prev) => ({ ...prev, country, state, location }))
-              }
-              showLabels={true}
-              groupClass={styles.formGroup}
-              cityGroupClass={styles.formGroup}
-              cityLabel="City/Location"
-              disabled={isFormDisabled}
-              gpsEnforced={true}
-            />
+            <div className={styles.colSpanFull}>
+              <LocationSelector
+                country={formData.country !== undefined ? formData.country : (dbProfile.country || "")}
+                state={formData.state !== undefined ? formData.state : (dbProfile.state || "")}
+                location={formData.location !== undefined ? formData.location : (dbProfile.location || "")}
+                onChange={({ country, state, location }) =>
+                  setFormData((prev) => ({ ...prev, country, state, location }))
+                }
+                showLabels={true}
+                groupClass={styles.formGroup}
+                cityGroupClass={styles.formGroup}
+                cityLabel="City/Location"
+                disabled={isFormDisabled}
+                gpsEnforced={true}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -594,61 +659,66 @@ export default function Update({ email }: Props) {
           <div className={styles.formGrid}>
             <div className={styles.formGroup}>
               <label>Gender</label>
-              <select name="gender" value={formData.gender || ""} onChange={handleChange} disabled={isFormDisabled}>
-                <option value="">Select Gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-              </select>
+              <CustomSelect
+                value={formData.gender || ""}
+                onChange={(val) => setFormData((prev) => ({ ...prev, gender: val }))}
+                options={[
+                  { value: "male", label: "Male" },
+                  { value: "female", label: "Female" },
+                ]}
+                placeholder="Select Gender"
+                disabled={isFormDisabled}
+              />
             </div>
 
             <div className={styles.formGroup}>
               <label>Employment Status</label>
-              <select
-                name="employment"
+              <CustomSelect
                 value={formData.employment || ""}
-                onChange={handleChange}
+                onChange={(val) => setFormData((prev) => ({ ...prev, employment: val }))}
+                options={[
+                  { value: "employed", label: "Employed" },
+                  { value: "student", label: "Student" },
+                  { value: "unemployed", label: "Unemployed" },
+                  { value: "freelancer", label: "Freelancer" },
+                  { value: "entrepreneur", label: "Entrepreneur" },
+                  { value: "retired", label: "Retired" },
+                ]}
+                placeholder="Select Employment"
                 disabled={isFormDisabled}
-              >
-                <option value="">Select Employment</option>
-                <option value="employed">Employed</option>
-                <option value="student">Student</option>
-                <option value="unemployed">Unemployed</option>
-                <option value="freelancer">Freelancer</option>
-                <option value="entrepreneur">Entrepreneur</option>
-                <option value="retired">Retired</option>
-              </select>
+              />
             </div>
 
             <div className={styles.formGroup}>
               <label>International Traveller?</label>
-              <select
-                name="intlTravel"
+              <CustomSelect
                 value={formData.intlTravel || "no"}
-                onChange={handleChange}
+                onChange={(val) => setFormData((prev) => ({ ...prev, intlTravel: val }))}
+                options={[
+                  { value: "no", label: "No" },
+                  { value: "yes", label: "Yes" },
+                ]}
                 disabled={isFormDisabled}
-              >
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </select>
+              />
             </div>
 
             <div className={styles.formGroup}>
               <label>Local Traveller by Air?</label>
-              <select
-                name="localTravel"
+              <CustomSelect
                 value={formData.localTravel || "no"}
-                onChange={handleChange}
+                onChange={(val) => setFormData((prev) => ({ ...prev, localTravel: val }))}
+                options={[
+                  { value: "no", label: "No" },
+                  { value: "yes", label: "Yes" },
+                ]}
                 disabled={isFormDisabled}
-              >
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </select>
+              />
             </div>
 
             <div className={`${styles.formGroup} ${styles.colSpanFull}`}>
-              <label>Profile Picture / Brand Logo</label>
+              <label>Profile Picture / Brand Logo <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(Optional)</span></label>
               <label className={`${styles.fileUpload} ${isFormDisabled ? styles.fileUploadDisabled : ""}`}>
-                {imageFile ? `Selected: ${imageFile.name}` : "Choose Profile Picture or Brand Logo"}
+                {imageFile ? `Selected: ${imageFile.name}` : "Choose Profile Picture or Brand Logo (Optional)"}
                 <input
                   type="file"
                   accept="image/*"
@@ -661,11 +731,11 @@ export default function Update({ email }: Props) {
               </label>
               {hasManualAvatar(dbProfile.profileImage) ? (
                 <p className={styles.uploadHelperText}>
-                  Current profile photo/logo is active. Select a new file above to replace it.
+                  Choose profile photo/logo.
                 </p>
               ) : (
                 <p className={styles.uploadHelperText}>
-                  If no photo or logo is uploaded, a default silhouette avatar will be displayed.
+                  Optional. If no photo or logo is uploaded, a default silhouette avatar will be displayed.
                 </p>
               )}
             </div>
@@ -787,34 +857,43 @@ export default function Update({ email }: Props) {
       {/* Step Navigation Controls */}
       <div className={styles.stepNavigationRow}>
         {currentStep > 0 && (
-          <button
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: 1.01 }}
+            transition={{ type: "spring", stiffness: 450, damping: 25 }}
             type="button"
             className={styles.prevBtn}
             onClick={handlePrevStep}
             disabled={loading}
           >
-            ← Previous Step
-          </button>
+            Previous Step
+          </motion.button>
         )}
 
         {currentStep < steps.length - 1 ? (
-          <button
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: 1.01 }}
+            transition={{ type: "spring", stiffness: 450, damping: 25 }}
             type="button"
             className={styles.nextBtn}
             onClick={handleNextStep}
             disabled={isFormDisabled}
           >
-            Continue to {steps[currentStep + 1]} →
-          </button>
+            Continue to {steps[currentStep + 1]}
+          </motion.button>
         ) : (
-          <button
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: 1.01 }}
+            transition={{ type: "spring", stiffness: 450, damping: 25 }}
             type="button"
             className={`${styles.nextBtn} ${isFormDisabled ? styles.submitBtnDisabled : styles.submitBtnActive}`}
             onClick={handleUpdate}
             disabled={loading || isFormDisabled}
           >
             {loading ? "Saving Profile..." : isFormDisabled ? `Locked (Cooldown)` : "Save Profile"}
-          </button>
+          </motion.button>
         )}
       </div>
     </div>

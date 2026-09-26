@@ -4,6 +4,7 @@ import React from "react";
 import styles from "./AppleSpinner.module.css";
 
 export default function AppleSpinner({ size = 36, color }: { size?: number; color?: string }) {
+  const spinnerColor = color || "var(--primary, var(--foreground, #282826))";
   return (
     <div className={styles.spinnerContainer}>
       <svg
@@ -15,9 +16,9 @@ export default function AppleSpinner({ size = 36, color }: { size?: number; colo
       >
         <defs>
           <linearGradient x1="8.042%" y1="0%" x2="65.682%" y2="23.865%" id="appleSpinnerGrad">
-            <stop stopColor={color || "var(--primary, #2563eb)"} stopOpacity="0" offset="0%" />
-            <stop stopColor={color || "var(--primary, #2563eb)"} stopOpacity=".631" offset="63.14%" />
-            <stop stopColor={color || "var(--primary, #2563eb)"} offset="100%" />
+            <stop stopColor={spinnerColor} stopOpacity="0" offset="0%" />
+            <stop stopColor={spinnerColor} stopOpacity=".631" offset="63.14%" />
+            <stop stopColor={spinnerColor} offset="100%" />
           </linearGradient>
         </defs>
         <g fill="none" fillRule="evenodd">
@@ -29,7 +30,7 @@ export default function AppleSpinner({ size = 36, color }: { size?: number; colo
               strokeWidth="3.5"
               strokeLinecap="round"
             />
-            <circle fill={color || "var(--primary, #2563eb)"} cx="36" cy="18" r="2" />
+            <circle fill={spinnerColor} cx="36" cy="18" r="2" />
           </g>
         </g>
       </svg>

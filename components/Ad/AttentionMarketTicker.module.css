@@ -1,134 +1,105 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-card, 22px);
-  box-shadow: var(--shadow-surface);
-  padding: 16px;
-  margin-top: 16px;
+  padding: 18px 20px;
+  margin-top: 20px;
   margin-bottom: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-surface);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  overflow: hidden;
 }
 
+.containerActive {
+  border-color: var(--primary);
+  box-shadow: 0 4px 24px var(--primary-glow);
+}
+
+/* Header Bar */
 .headerBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--card-border);
-  padding-bottom: 12px;
+  gap: 16px;
 }
 
 .headerLeft {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 14px;
 }
 
-.tickerPulseIcon {
-  color: #2563eb;
-}
-
-.headerTitle {
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: var(--foreground);
-  text-transform: uppercase;
-}
-
-.liveBadge {
-  background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
-  border: 1px solid rgba(37, 99, 235, 0.3);
-  font-size: 0.65rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: var(--radius-pill, 9999px);
-  letter-spacing: 0.05em;
-}
-
-.tickerGrid {
+.iconCircle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--primary-glow);
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.singleTickerCard {
-  background: var(--input-bg);
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-inner, 12px);
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.catTickerText {
-  font-size: 0.92rem;
-  font-weight: 800;
-  color: var(--foreground);
-}
-
-.catPriceTag {
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: #2563eb;
-}
-
-.toggleCard {
-  background: var(--input-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-inner, 12px);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.toggleMainRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.toggleTextGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-}
-
-.toggleTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .zapIcon {
-  color: #2563eb;
+  color: var(--primary);
 }
 
-.toggleTitle {
-  font-size: 0.92rem;
-  font-weight: 700;
+.titleColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.headerTitle {
+  font-size: 0.96rem;
+  font-weight: 800;
   color: var(--foreground);
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.toggleDesc {
+.statusBadge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--sidebar-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: all 0.2s ease;
+}
+
+.statusBadgeActive {
+  background: var(--primary-glow);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.headerSubtitle {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin: 0;
+  line-height: 1.4;
 }
 
+/* Minimalist Switch Toggle */
 .switch {
   position: relative;
   display: inline-block;
-  width: 44px;
-  height: 24px;
+  width: 48px;
+  height: 26px;
   flex-shrink: 0;
 }
 
@@ -141,163 +112,337 @@
 .slider {
   position: absolute;
   cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background-color: var(--card-border);
-  transition: 0.3s;
-  border-radius: 4px;
+  transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 9999px;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
+  height: 20px;
+  width: 20px;
   left: 3px;
   bottom: 3px;
   background-color: var(--card-bg);
-  transition: 0.3s;
+  transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
-input:checked + .slider {
+.switch input:checked + .slider {
   background-color: var(--primary);
 }
 
-input:checked + .slider:before {
-  transform: translateX(20px);
+.switch input:checked + .slider:before {
+  transform: translateX(22px);
 }
 
+/* Expanded Bidding Panel */
 .biddingPanel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-top: 10px;
-  padding-top: 14px;
+  gap: 18px;
+  margin-top: 18px;
+  padding-top: 18px;
   border-top: 1px solid var(--card-border);
 }
 
-.panelHeader {
+/* Market Context Banner */
+.marketContextBanner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-size: 0.8rem;
+  justify-content: space-around;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-inner, 12px);
+  padding: 12px 14px;
 }
 
-.panelCatTitle {
+.contextItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.contextLabel {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.contextValue {
+  font-size: 0.88rem;
+  font-weight: 800;
   color: var(--foreground);
+  font-feature-settings: "tnum";
 }
 
-.floorNote {
+.topBidValue {
+  color: var(--primary);
+}
+
+.contextDivider {
+  width: 1px;
+  height: 24px;
+  background: var(--card-border);
+}
+
+/* Projected Rank Card */
+.rankCard {
+  border-radius: var(--radius-inner, 12px);
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+  transition: all 0.25s ease;
+}
+
+.rankCard_spotlight {
+  background: var(--badge-gold-bg, rgba(217, 119, 6, 0.08));
+  border-color: var(--badge-gold-border, rgba(217, 119, 6, 0.3));
+}
+
+.rankCard_matched {
+  background: var(--primary-glow);
+  border-color: var(--primary);
+}
+
+.rankCard_challenger {
+  background: var(--input-bg);
+  border-color: var(--card-border);
+}
+
+.rankHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rankIconWrap {
+  margin-top: 2px;
+}
+
+.goldCrown {
+  color: var(--badge-gold, #d97706);
+}
+
+.matchedSparkle {
+  color: var(--primary);
+}
+
+.challengerIcon {
   color: var(--text-muted);
 }
 
-.presetRow {
+.rankTextColumn {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.presetBtn {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+.rankTitle {
+  font-size: 0.86rem;
+  font-weight: 800;
   color: var(--foreground);
+}
+
+.rankDescription {
   font-size: 0.78rem;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 4px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* Presets Section */
+.presetsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
+}
+
+.sectionLabel {
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  color: var(--text-muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  display: block;
+}
+
+.presetChipsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.presetChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-inner, 12px);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--foreground);
 }
 
-.presetBtn:hover {
-  border-color: #2563eb;
-  color: #2563eb;
+.presetChip:hover {
+  border-color: var(--foreground);
+  background: var(--card-bg);
 }
 
-.inputGroup {
+.presetChip span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.presetChip strong {
+  font-size: 0.84rem;
+  font-weight: 800;
+  font-feature-settings: "tnum";
+}
+
+.presetChipActive {
+  background: var(--primary) !important;
+  color: var(--background) !important;
+  border-color: var(--primary) !important;
+}
+
+.presetChipActive span {
+  color: var(--background) !important;
+  opacity: 0.85;
+}
+
+.presetChipActive strong {
+  color: var(--background) !important;
+}
+
+/* Custom Bid Section */
+.customBidSection {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-width: 360px;
 }
 
-.inputLabel {
-  font-size: 0.78rem;
-  font-weight: 600;
+.inputHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.currencyBadge {
+  font-size: 0.7rem;
+  font-weight: 800;
   color: var(--text-muted);
+  background: var(--sidebar-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
-.inputWrapper {
+.inputContainer {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.currencyPrefix {
+.inputPrefix {
   position: absolute;
-  left: 12px;
-  color: var(--text-muted);
+  left: 14px;
+  font-size: 1rem;
   font-weight: 700;
-  font-size: 0.9rem;
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .bidInput {
   width: 100%;
-  padding: 10px 12px 10px 28px;
-  background: var(--card-bg);
+  padding: 12px 14px;
+  background: var(--input-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: var(--radius-inner, 12px);
   color: var(--foreground);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 700;
+  font-feature-settings: "tnum";
   outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .bidInput:focus {
-  border-color: #2563eb;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
-.inputErrorBorder {
-  border-color: #ef4444 !important;
+.bidInputError {
+  border-color: var(--danger) !important;
 }
 
 .errorText {
-  font-size: 0.72rem;
-  color: #ef4444;
+  font-size: 0.75rem;
+  color: var(--danger);
+  margin: 0;
+  font-weight: 600;
 }
 
-.calcBox {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 4px;
-  padding: 12px;
+/* Calculation Summary Box */
+.calcSummaryBox {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-inner, 12px);
+  padding: 14px 16px;
 }
 
 .calcRow {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
-.calcRow strong {
+.calcLabel {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.calcValue {
   color: var(--foreground);
+  font-weight: 700;
+  font-feature-settings: "tnum";
 }
 
 .calcTotalRow {
-  padding-top: 6px;
-  border-top: 1px solid var(--card-border);
-  margin-top: 2px;
-  font-size: 0.88rem;
+  padding-top: 10px;
+  border-top: 1px dashed var(--card-border);
+  font-size: 0.92rem;
 }
 
-.totalVal {
-  color: #2563eb !important;
+.totalLabel {
   font-weight: 800;
+  color: var(--foreground);
+}
+
+.totalNumberWrap {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--primary);
+  font-feature-settings: "tnum";
+}
+
+@media (max-width: 640px) {
+  .presetChipsRow {
+    grid-template-columns: 1fr;
+  }
 }

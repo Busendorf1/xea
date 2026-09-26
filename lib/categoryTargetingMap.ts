@@ -295,7 +295,7 @@ export function getUniqueTargetingOptions(dimension: TargetingDimension): string
   (Object.keys(categoryTargetingMap) as AdCategory[]).forEach((cat) => {
     categoryTargetingMap[cat][dimension]?.forEach((opt) => optionsSet.add(opt));
   });
-  return Array.from(optionsSet);
+  return Array.from(optionsSet).sort((a, b) => a.localeCompare(b));
 }
 
 export const ALL_INDUSTRIES: string[] = getUniqueTargetingOptions("industry");

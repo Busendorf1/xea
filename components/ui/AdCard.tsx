@@ -18,6 +18,36 @@ import AdOptionsMenu from "./AdOptionsMenu";
 import MediaCarousel from "./MediaCarousel";
 import AdvertiserHoverCard from "./AdvertiserHoverCard";
 
+export type BaseAd = {
+  id: string;
+  ad_content: string;
+  impressions: number;
+  cost_per_impression?: number | null;
+  created_at?: string | null;
+  user_email?: string;
+  title?: string;
+  is_highlight?: boolean;
+  [key: string]: any;
+};
+
+export type VideoAd = BaseAd & {
+  ad_type?: "video";
+  hls_url?: string | null;
+  ad_media: string;
+};
+
+export type CarouselAd = BaseAd & {
+  ad_type?: "carousel";
+  ad_media: string;
+};
+
+export type TextAd = BaseAd & {
+  ad_type?: "text";
+  ad_media: null;
+};
+
+export type AdUnion = VideoAd | CarouselAd | TextAd;
+
 export interface Ad {
   id: string;
   ad_media: string | null;
@@ -779,4 +809,52 @@ function AdCard({
   );
 }
 
-export default React.memo(AdCard);
+const MemoizedAdCard = (React.memo(AdCard) as unknown) as typeof AdCard & {
+  Root: React.FC<React.HTMLAttributes<HTMLDivElement>>;
+  Header: React.FC<{ advertiserName?: string; timestamp?: string | null; sponsorLabel?: string }>;
+  Media: React.FC<{ adMedia?: string | null; hlsUrl?: string | null; isMuted?: boolean; onToggleMute?: () => void }>;
+  Body: React.FC<{ content?: string; isExpanded?: boolean; onToggleExpand?: () => void }>;
+  Actions: React.FC<{ children?: React.ReactNode }>;
+};
+
+MemoizedAdCard.Root = function AdCardRoot({ children, className, ...props }: any) {
+  return <div className={`${styles.card} ${className || ""}`} {...props}>{children}</div>;
+};
+
+MemoizedAdCard.Header = function AdCardHeader({ advertiserName, timestamp, sponsorLabel }: any) {
+  return (
+    <div className={styles.tweetHeader}>
+      <div className={styles.headerLeft}>
+        <span className={styles.sponsorName}>{advertiserName}</span>
+        {timestamp && <><span className={styles.dot}></span><span className={styles.adTime}>{timestamp}</span></>}
+      </div>
+      {sponsorLabel && (
+        <div className={styles.headerRightContainer}>
+          <span className={styles.sponsorLabel}>{sponsorLabel}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+MemoizedAdCard.Media = function AdCardMedia({ adMedia, hlsUrl, isMuted = true, onToggleMute }: any) {
+  return (
+    <MediaCarousel
+      adMedia={adMedia || null}
+      hlsUrl={hlsUrl}
+      isCardVisible={true}
+      isMuted={isMuted}
+      onToggleMute={onToggleMute || (() => {})}
+    />
+  );
+};
+
+MemoizedAdCard.Body = function AdCardBody({ content }: any) {
+  return <p className={styles.adText}>{content}</p>;
+};
+
+MemoizedAdCard.Actions = function AdCardActions({ children }: any) {
+  return <div className={styles.actionButtons}>{children}</div>;
+};
+
+export default MemoizedAdCard;

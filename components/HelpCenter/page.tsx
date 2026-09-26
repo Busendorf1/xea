@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { MessageCircle, Send, Inbox } from "lucide-react";
+import { motion } from "framer-motion";
 import { helpSchema } from "@/lib/validationSchemas";
 
 interface HelpCenterProps {
@@ -307,9 +308,14 @@ export default function HelpCenter({ session }: HelpCenterProps) {
             </div>
           )}
 
-          <button type="submit" className={styles.submitBtn} disabled={submitting}>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            type="submit"
+            className={styles.submitBtn}
+            disabled={submitting}
+          >
             {submitting ? "Sending..." : "Send Message"}
-          </button>
+          </motion.button>
         </form>
       </div>
 
@@ -335,7 +341,13 @@ export default function HelpCenter({ session }: HelpCenterProps) {
           </div>
         ) : (
           tickets.map((ticket) => (
-            <div key={ticket.id} className={styles.ticketItem}>
+            <motion.div
+              key={ticket.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className={styles.ticketItem}
+            >
               <div className={styles.ticketHeader}>
                 <span className={styles.ticketSubject}>{ticket.subject}</span>
                 <div className={styles.ticketMeta}>
@@ -372,7 +384,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
                   )}
                 </div>
               )}
-            </div>
+            </motion.div>
           ))
         )}
       </div>

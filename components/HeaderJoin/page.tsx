@@ -154,7 +154,19 @@ export default function HeaderJoin() {
             } ${styles.mobileDropdown}`}
           >
             <div className={styles.create}>
-              <Link href={"/"} onClick={() => setMenuActive(false)}>Home</Link>
+              <Link
+                href={user ? "/logged-in?view=feed" : "/"}
+                onClick={() => {
+                  setMenuActive(false);
+                  if (typeof window !== "undefined") {
+                    sessionStorage.setItem("paayh_active_tab", "feed");
+                    document.cookie = "paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax";
+                    window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "feed" } }));
+                  }
+                }}
+              >
+                Home
+              </Link>
             </div>
             <div className={styles.create}>
               <Link href={"/../privacy"} onClick={() => setMenuActive(false)}>Policies</Link>
@@ -167,7 +179,18 @@ export default function HeaderJoin() {
       ) : (
         <div className={styles.end}>
           <div className={styles.create}>
-            <Link href={"/"}>Home</Link>
+            <Link
+              href={user ? "/logged-in?view=feed" : "/"}
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  sessionStorage.setItem("paayh_active_tab", "feed");
+                  document.cookie = "paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax";
+                  window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "feed" } }));
+                }
+              }}
+            >
+              Home
+            </Link>
           </div>
           <div className={styles.create}>
             <Link href={"/../privacy"}>Policies</Link>

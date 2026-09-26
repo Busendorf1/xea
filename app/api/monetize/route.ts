@@ -120,7 +120,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Cache payload in Redis to absorb traffic surges
-    redisConnection.set(cacheKey, JSON.stringify(payload), "EX", MONETIZE_STATUS_TTL_SECONDS).catch(() => {});
+    if (isRedisReady()) {
+      redisConnection.set(cacheKey, JSON.stringify(payload), "EX", MONETIZE_STATUS_TTL_SECONDS).catch(() => {});
+    }
 
     return NextResponse.json(payload, {
       headers: {
@@ -153,7 +155,9 @@ export async function POST(req: NextRequest) {
     }
 
     invalidateCachedProfile(emailLower).catch(() => {});
-    redisConnection.del(`monetize:status:${emailLower}`).catch(() => {});
+    if (isRedisReady()) {
+      redisConnection.del(`monetize:status:${emailLower}`).catch(() => {});
+    }
 
     const row = data?.[0] || { new_click_count: 0, is_now_monetized: false };
     return NextResponse.json({

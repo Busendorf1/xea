@@ -62,6 +62,38 @@ export function useFeedActions({
           console.warn("⚠️ Non-critical status recording ad seen:", response.status);
           return true;
         }
+
+        try {
+          const data = await response.json();
+          if (data && typeof data.clicksCount === "number") {
+            try {
+              const existing = localStorage.getItem("paayh_monetize_cache");
+              const parsed = existing ? JSON.parse(existing) : {};
+              const updatedCache = {
+                ...parsed,
+                clicksCount: data.clicksCount,
+                clicksRemaining: Math.max(0, 300 - data.clicksCount),
+                isMonetized: data.isMonetized ?? (data.clicksCount >= 300),
+              };
+              const serialized = JSON.stringify(updatedCache);
+              localStorage.setItem("paayh_monetize_cache", serialized);
+              sessionStorage.setItem("paayh_monetize_cache", serialized);
+            } catch {}
+
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("xea:click-increment", {
+                  detail: {
+                    delta: 1,
+                    totalClicks: data.clicksCount,
+                    isMonetized: data.isMonetized,
+                  },
+                })
+              );
+            }
+          }
+        } catch {}
+
         return true;
       } catch (e) {
         console.warn("⚠️ Non-critical error recording ad seen:", e);

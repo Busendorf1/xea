@@ -758,8 +758,9 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -767,6 +768,41 @@
   padding: 1.5rem 0.75rem;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.boosterGenderGroup {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.boosterGenderBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--input-bg, var(--card-bg));
+  color: var(--foreground);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.boosterGenderBtn:hover {
+  border-color: var(--primary);
+  background: rgba(234, 179, 8, 0.08);
+}
+
+.boosterGenderBtnActive {
+  border-color: var(--primary);
+  background: rgba(234, 179, 8, 0.18);
+  color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 .modalContent {

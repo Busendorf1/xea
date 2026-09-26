@@ -5,7 +5,11 @@ import Link from "next/link";
 import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import LocationSelector from "../LocationSelector";
-import { Zap, Calendar, ShieldAlert, Crown, Rocket } from "lucide-react";
+import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import RollingCounter from "@/components/ui/RollingCounter";
+import CustomSelect from "@/components/ui/CustomSelect";
+import FormStepProgress from "@/components/ui/FormStepProgress";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 import { newsSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
@@ -26,7 +30,22 @@ type NewsProps = {
 
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
-const steps = ["Media", "Title", "Content", "Targeting & Bidding", "Preview"];
+const steps = ["Media", "Title", "Content", "Targeting", "Preview"];
+
+const getCategoryIcon = (category: string) => {
+  const lower = category.toLowerCase();
+  if (lower.includes("tech") || lower.includes("crypto") || lower.includes("software") || lower.includes("ai")) return <Cpu size={15} />;
+  if (lower.includes("politic") || lower.includes("gov") || lower.includes("law")) return <Landmark size={15} />;
+  if (lower.includes("entertain") || lower.includes("music") || lower.includes("movie") || lower.includes("art")) return <Film size={15} />;
+  if (lower.includes("sport") || lower.includes("fitness")) return <Trophy size={15} />;
+  if (lower.includes("business") || lower.includes("finance") || lower.includes("invest") || lower.includes("real estate")) return <Briefcase size={15} />;
+  if (lower.includes("edu") || lower.includes("career") || lower.includes("study")) return <GraduationCap size={15} />;
+  if (lower.includes("life") || lower.includes("fashion") || lower.includes("beauty")) return <Sparkles size={15} />;
+  if (lower.includes("health") || lower.includes("med") || lower.includes("wellness")) return <Activity size={15} />;
+  if (lower.includes("science")) return <Atom size={15} />;
+  if (lower.includes("food") || lower.includes("travel")) return <Globe size={15} />;
+  return <Tag size={15} />;
+};
 
 export default function News({ session }: NewsProps) {
   const isAdmin = useMemo(() => {
@@ -98,6 +117,68 @@ export default function News({ session }: NewsProps) {
     };
     fetchBalance();
   }, [session]);
+
+  // Restore saved draft state on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("paayh_draft_news_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.step === "number") setStep(parsed.step);
+        if (parsed.title) setTitle(parsed.title);
+        if (parsed.content) setContent(parsed.content);
+        if (parsed.interest) setInterest(parsed.interest);
+        if (parsed.country) setCountry(parsed.country);
+        if (parsed.state) setState(parsed.state);
+        if (parsed.province) setProvince(parsed.province);
+        if (parsed.campaignDays) setCampaignDays(parsed.campaignDays);
+        if (typeof parsed.isBiddingEnabled === "boolean") setIsBiddingEnabled(parsed.isBiddingEnabled);
+        if (parsed.bidPrice) setBidPrice(parsed.bidPrice);
+        if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
+        if (parsed.customSponsorName) setCustomSponsorName(parsed.customSponsorName);
+        if (parsed.customSponsorHandle) setCustomSponsorHandle(parsed.customSponsorHandle);
+        if (parsed.mediaPreview) setMediaPreview(parsed.mediaPreview);
+      }
+    } catch {}
+  }, []);
+
+  // Autosave draft state on changes
+  useEffect(() => {
+    try {
+      const draft = {
+        step,
+        title,
+        content,
+        interest,
+        country,
+        state,
+        province,
+        campaignDays,
+        isBiddingEnabled,
+        bidPrice,
+        isAiContent,
+        customSponsorName,
+        customSponsorHandle,
+        mediaPreview: mediaPreview && mediaPreview.startsWith("data:") ? mediaPreview : null,
+      };
+      localStorage.setItem("paayh_draft_news_v1", JSON.stringify(draft));
+    } catch {}
+  }, [
+    step,
+    title,
+    content,
+    interest,
+    country,
+    state,
+    province,
+    campaignDays,
+    isBiddingEnabled,
+    bidPrice,
+    isAiContent,
+    customSponsorName,
+    customSponsorHandle,
+    mediaPreview,
+  ]);
 
   useEffect(() => {
     if (!interest) return;
@@ -260,6 +341,9 @@ export default function News({ session }: NewsProps) {
 
       sessionStorage.setItem("paayh_active_tab", "statement");
       clearUserCampaignsCache(session?.user?.email || "");
+      try {
+        localStorage.removeItem("paayh_draft_news_v1");
+      } catch {}
 
       const authUrl = paymentData.authorization_url || paymentData.data?.authorization_url;
       if (isAdmin || paymentMethod === "wallet") {
@@ -339,20 +423,11 @@ export default function News({ session }: NewsProps) {
     <div className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
           {/* Progress Step Tracker */}
-          <div className={styles.progressContainer}>
-            {steps.map((label, idx) => (
-              <div
-                key={label}
-                className={`${styles.progressStep} ${
-                  idx === step ? styles.activeStep : idx < step ? styles.completedStep : ""
-                }`}
-              >
-                <div className={styles.stepNumber}>{idx < step ? "✓" : idx + 1}</div>
-                <span className={styles.stepLabel}>{label}</span>
-                {idx < steps.length - 1 && <div className={styles.stepLine} />}
-              </div>
-            ))}
-          </div>
+          <FormStepProgress
+            steps={steps}
+            currentStep={step}
+            onStepClick={(idx) => setStep(idx)}
+          />
 
           <h1>Post Daily Highlight</h1>
 
@@ -369,57 +444,116 @@ export default function News({ session }: NewsProps) {
           )}
 
           <div className={styles.adFormContainer}>
-            {/* STEP 0: MEDIA */}
-            {step === 0 && (
-              <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Cover Image (Required)</label>
-                {mediaPreview ? (
-                  <div className={styles.mediaPreviewContainer}>
-                    <img src={mediaPreview} alt="Cover Preview" className={styles.mediaPreviewImage} />
-                    <div className={styles.removeBtnContainer}>
-                      <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className={styles.removeBtn}>Remove Image</button>
+            <AnimatePresence mode="wait">
+              {/* STEP 0: MEDIA */}
+              {step === 0 && (
+                <motion.div
+                  key="step-0"
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -15 }}
+                  transition={{ duration: 0.22 }}
+                  className={styles.formGroup}
+                >
+                  <label className={styles.fieldLabel}>Cover Image (Required)</label>
+                  {mediaPreview ? (
+                    <div className={styles.mediaPreviewContainer}>
+                      <img src={mediaPreview} alt="Cover Preview" className={styles.mediaPreviewImage} />
+                      <div className={styles.removeBtnContainer}>
+                        <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className={styles.removeBtn}>Remove Image</button>
+                      </div>
                     </div>
+                  ) : (
+                    <label className={styles.uploadZone}>
+                      <input type="file" accept="image/*" onChange={handleMediaChange} hidden />
+                      <p className={styles.uploadTitle}>Click to select cover image file</p>
+                      <p className={styles.uploadSubtext}>Supports PNG, JPG, WEBP (Max 5MB)</p>
+                    </label>
+                  )}
+                  <div className={styles.stepActionsEnd}>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      whileHover={{ scale: 1.01 }}
+                      disabled={!mediaFile}
+                      onClick={() => setStep(1)}
+                      className={styles.primaryNavBtn}
+                    >
+                      Continue to Title
+                    </motion.button>
                   </div>
-                ) : (
-                  <label className={styles.uploadZone}>
-                    <input type="file" accept="image/*" onChange={handleMediaChange} hidden />
-                    <p className={styles.uploadTitle}>Click to select cover image file</p>
-                    <p className={styles.uploadSubtext}>Supports PNG, JPG, WEBP (Max 5MB)</p>
-                  </label>
-                )}
-                <div className={styles.stepActionsEnd}>
-                  <button disabled={!mediaFile} onClick={() => setStep(1)} className={styles.primaryNavBtn}>Continue to Title →</button>
-                </div>
-              </div>
-            )}
+                </motion.div>
+              )}
 
-            {/* STEP 1: TITLE */}
-            {step === 1 && (
-              <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Highlight Title</label>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Grand Opening Sale 50% Off" className={styles.inputBox} maxLength={80} />
-                <div className={styles.stepActionsBetween}>
-                  <button onClick={() => setStep(0)} className={styles.secondaryNavBtn}>Back</button>
-                  <button disabled={!title.trim()} onClick={() => setStep(2)} className={styles.primaryNavBtn}>Continue to Content →</button>
-                </div>
-              </div>
-            )}
+              {/* STEP 1: TITLE */}
+              {step === 1 && (
+                <motion.div
+                  key="step-1"
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -15 }}
+                  transition={{ duration: 0.22 }}
+                  className={styles.formGroup}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <label className={styles.fieldLabel}>Highlight Title</label>
+                    <span style={{
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                      color: title.length >= 80 ? "#ef4444" : title.length >= 68 ? "#f59e0b" : "var(--text-muted)",
+                      transition: "color 0.2s ease"
+                    }}>
+                      {title.length} / 80
+                    </span>
+                  </div>
+                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Grand Opening Sale 50% Off" className={styles.inputBox} maxLength={80} />
+                  <div className={styles.stepActionsBetween}>
+                    <motion.button whileTap={{ scale: 0.97 }} onClick={() => setStep(0)} className={styles.secondaryNavBtn}>Back</motion.button>
+                    <motion.button whileTap={{ scale: 0.97 }} whileHover={{ scale: 1.01 }} disabled={!title.trim()} onClick={() => setStep(2)} className={styles.primaryNavBtn}>Continue to Content</motion.button>
+                  </div>
+                </motion.div>
+              )}
 
-            {/* STEP 2: CONTENT */}
-            {step === 2 && (
-              <div className={styles.formGroup}>
-                <label className={styles.fieldLabel}>Highlight Details & Story</label>
-                <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Share full details of your highlight announcement..." className={styles.textareaBox} rows={6} maxLength={1000} />
-                <div className={styles.stepActionsBetween}>
-                  <button onClick={() => setStep(1)} className={styles.secondaryNavBtn}>Back</button>
-                  <button disabled={!content.trim()} onClick={() => setStep(3)} className={styles.primaryNavBtn}>Continue to Targeting & Bidding →</button>
-                </div>
-              </div>
-            )}
+              {/* STEP 2: CONTENT */}
+              {step === 2 && (
+                <motion.div
+                  key="step-2"
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -15 }}
+                  transition={{ duration: 0.22 }}
+                  className={styles.formGroup}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <label className={styles.fieldLabel}>Highlight Details & Story</label>
+                    <span style={{
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                      color: content.length >= 1000 ? "#ef4444" : content.length >= 850 ? "#f59e0b" : "var(--text-muted)",
+                      transition: "color 0.2s ease"
+                    }}>
+                      {content.length} / 1000
+                    </span>
+                  </div>
+                  <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Share full details of your highlight announcement..." className={styles.textareaBox} rows={6} maxLength={1000} />
+                  <div className={styles.stepActionsBetween}>
+                    <motion.button whileTap={{ scale: 0.97 }} onClick={() => setStep(1)} className={styles.secondaryNavBtn}>Back</motion.button>
+                    <motion.button whileTap={{ scale: 0.97 }} whileHover={{ scale: 1.01 }} disabled={!content.trim()} onClick={() => setStep(3)} className={styles.primaryNavBtn}>Continue to Targeting</motion.button>
+                  </div>
+                </motion.div>
+              )}
 
             {/* STEP 3: TARGETING, LOCATION & BIDDING */}
             {step === 3 && (
-              <div className={`${styles.formGroup} ${styles.targetingGroup}`}>
+              <motion.div
+                key="step-3"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.22 }}
+                className={`${styles.formGroup} ${styles.targetingGroup}`}
+              >
                 {isAdmin && (
                   <div className={`${styles.modernSectionCard} ${styles.adminSectionCard}`}>
                     <div className={`${styles.modernSectionHeader} ${styles.adminSectionHeader}`}>
@@ -427,7 +561,7 @@ export default function News({ session }: NewsProps) {
                         <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding
                       </span>
                       <span className={`${styles.modernSectionBadge} ${styles.adminSectionBadge}`}>
-                        Free Publishing Active
+                        Publishing Active
                       </span>
                     </div>
                     <div className={styles.modernSectionBody}>
@@ -467,13 +601,19 @@ export default function News({ session }: NewsProps) {
                     <p className={styles.sectionDescription}>
                       Choose the specific topic or interest sector for your sponsored news piece.
                     </p>
+
                     <div className={styles.selectWrapper}>
-                      <select value={interest} onChange={(e) => setInterest(e.target.value)} className={styles.selectBox}>
-                        <option value="">-- Select Target Category --</option>
-                        {interests.map((cat) => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
+                      <CustomSelect
+                        value={interest}
+                        onChange={(val) => setInterest(val)}
+                        options={interests.map((cat) => ({
+                          value: cat,
+                          label: cat,
+                          icon: getCategoryIcon(cat),
+                        }))}
+                        placeholder="-- Search or select target category --"
+                        leadingIcon={<Tag size={16} />}
+                      />
                     </div>
                   </div>
                 </div>
@@ -533,38 +673,140 @@ export default function News({ session }: NewsProps) {
                   </div>
                 </div>
 
-                {/* Bidding Card */}
+                {/* Priority Spotlight Bidding Card */}
                 <div className={`${styles.modernSectionCard} ${isBiddingEnabled ? styles.biddingCardActive : ""}`}>
                   <div className={styles.modernSectionHeader}>
-                    <span className={styles.modernSectionTitle}>
-                      <Zap size={16} color="var(--primary)" /> Top Highlight Position (Bidding)
-                    </span>
-                    <span className={`${styles.modernSectionBadge} ${isBiddingEnabled ? styles.biddingBadgeActive : ""}`}>
-                      {isBiddingEnabled ? "Bidding Active" : "Standard Placement"}
-                    </span>
-                  </div>
-                  <div className={styles.modernSectionBody}>
-                    <div className={styles.biddingHeaderRow}>
-                      <div>
-                        <p className={styles.biddingTitle}>
-                          Contest for the #1 Top Highlight Carousel
-                        </p>
-                        <p className={styles.biddingSubtitle}>
-                          Highest bids stay at the top of the news highlights carousel. Current top bid for {interest || "this category"}: <strong>{formatCurrency(highestBid)}/day</strong>.
+                    <div className={styles.spotlightHeaderLeft}>
+                      <div className={styles.spotlightIconCircle}>
+                        <Zap size={16} className={styles.spotlightZapIcon} />
+                      </div>
+                      <div className={styles.spotlightTitleCol}>
+                        <div className={styles.spotlightTitleRow}>
+                          <span className={styles.modernSectionTitle}>
+                            Priority Spotlight Auction
+                          </span>
+                          <span className={`${styles.modernSectionBadge} ${isBiddingEnabled ? styles.biddingBadgeActive : ""}`}>
+                            {isBiddingEnabled ? "Spotlight Active" : "Standard Feed"}
+                          </span>
+                        </div>
+                        <p className={styles.spotlightSubtitle}>
+                          Contest for the #1 top position of the news highlights carousel
                         </p>
                       </div>
+                    </div>
+
+                    <label className={styles.spotlightSwitch} aria-label="Toggle Spotlight Bidding">
                       <input
                         type="checkbox"
                         checked={isBiddingEnabled}
                         onChange={(e) => setIsBiddingEnabled(e.target.checked)}
-                        className={styles.biddingCheckbox}
                       />
-                    </div>
+                      <span className={styles.spotlightSlider}></span>
+                    </label>
+                  </div>
 
+                  <AnimatePresence initial={false}>
                     {isBiddingEnabled && (
-                      <div className={styles.biddingContent}>
+                      <motion.div
+                        key="news-bidding-panel"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                        className={styles.modernSectionBody}
+                      >
+                        {/* Market Context Banner */}
+                        <div className={styles.spotlightContextBanner}>
+                          <div className={styles.spotlightContextItem}>
+                            <span className={styles.spotlightContextLabel}>Target Category</span>
+                            <span className={styles.spotlightContextValue}>{interest || "General News"}</span>
+                          </div>
+                          <div className={styles.spotlightContextDivider} />
+                          <div className={styles.spotlightContextItem}>
+                            <span className={styles.spotlightContextLabel}>Standard Daily Rate</span>
+                            <span className={styles.spotlightContextValue}>{formatCurrency(1000)}/day</span>
+                          </div>
+                          <div className={styles.spotlightContextDivider} />
+                          <div className={styles.spotlightContextItem}>
+                            <span className={styles.spotlightContextLabel}>Current Top Bid</span>
+                            <span className={`${styles.spotlightContextValue} ${styles.spotlightTopBidVal}`}>
+                              {formatCurrency(highestBid)}/day
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Projected Rank Card */}
+                        {(() => {
+                          const isLead = bidPrice > highestBid;
+                          const isMatched = bidPrice === highestBid && bidPrice > 1000;
+                          return (
+                            <div className={`${styles.spotlightRankCard} ${isLead ? styles.rankCardSpotlight : isMatched ? styles.rankCardMatched : styles.rankCardChallenger}`}>
+                              <div className={styles.spotlightRankHeader}>
+                                {isLead ? (
+                                  <Crown size={18} className={styles.goldCrownIcon} />
+                                ) : isMatched ? (
+                                  <Sparkles size={18} className={styles.matchedSparkleIcon} />
+                                ) : (
+                                  <TrendingUp size={18} className={styles.challengerIcon} />
+                                )}
+                                <div className={styles.spotlightRankCol}>
+                                  <span className={styles.spotlightRankTitle}>
+                                    {isLead
+                                      ? "★ #1 Spotlight Winner (Top Carousel)"
+                                      : isMatched
+                                      ? "⚡ Matched Top Bid (Shared Rotation)"
+                                      : "Challenger Position (Standard Rotation)"}
+                                  </span>
+                                  <p className={styles.spotlightRankDesc}>
+                                    {isLead
+                                      ? "Your highlight holds top spotlight at the beginning of the news carousel."
+                                      : isMatched
+                                      ? "Rotating at the top position alongside the current highest bidder."
+                                      : `Increase bid above ${formatCurrency(highestBid)}/day to secure #1 Spotlight position.`}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Quick Presets */}
+                        <div className={styles.spotlightPresets}>
+                          <span className={styles.spotlightSectionLabel}>Quick Outbid Presets</span>
+                          <div className={styles.spotlightPresetRow}>
+                            <motion.button
+                              type="button"
+                              whileTap={{ scale: 0.96 }}
+                              className={`${styles.spotlightPresetChip} ${bidPrice === highestBid ? styles.presetChipActive : ""}`}
+                              onClick={() => setBidPrice(highestBid)}
+                            >
+                              <span>Match Top</span>
+                              <strong>{formatCurrency(highestBid)}</strong>
+                            </motion.button>
+                            <motion.button
+                              type="button"
+                              whileTap={{ scale: 0.96 }}
+                              className={`${styles.spotlightPresetChip} ${bidPrice === highestBid + 200 ? styles.presetChipActive : ""}`}
+                              onClick={() => setBidPrice(highestBid + 200)}
+                            >
+                              <span>+₦200 Lead</span>
+                              <strong>{formatCurrency(highestBid + 200)}</strong>
+                            </motion.button>
+                            <motion.button
+                              type="button"
+                              whileTap={{ scale: 0.96 }}
+                              className={`${styles.spotlightPresetChip} ${bidPrice === highestBid + 500 ? styles.presetChipActive : ""}`}
+                              onClick={() => setBidPrice(highestBid + 500)}
+                            >
+                              <span>+₦500 Outbid</span>
+                              <strong>{formatCurrency(highestBid + 500)}</strong>
+                            </motion.button>
+                          </div>
+                        </div>
+
+                        {/* Custom Daily Bid Input */}
                         <div className={styles.formGroup}>
-                          <label className={styles.fieldLabelSub}>Your Bid Price Per Day (₦)</label>
+                          <span className={styles.spotlightSectionLabel}>Your Bid Price Per Day (₦)</span>
                           <input
                             type="number"
                             min={highestBid + 100}
@@ -573,25 +815,47 @@ export default function News({ session }: NewsProps) {
                             onChange={(e) => setBidPrice(parseFloat(e.target.value) || 1000)}
                             className={styles.inputBox}
                           />
-                          <p className={styles.biddingCostNote}>
-                            Total Bidded Cost: {formatCurrency(bidPrice * campaignDays)} for {campaignDays} {campaignDays === 1 ? "day" : "days"}. Higher bids overtake lower bids at top position.
-                          </p>
                         </div>
-                      </div>
+
+                        {/* Real-time Calculation Summary */}
+                        <div className={styles.spotlightCalcSummary}>
+                          <div className={styles.spotlightCalcRow}>
+                            <span>Campaign Duration:</span>
+                            <strong>{campaignDays} {campaignDays === 1 ? "day" : "days"}</strong>
+                          </div>
+                          <div className={styles.spotlightCalcRow}>
+                            <span>Daily Bid Rate:</span>
+                            <strong>{formatCurrency(bidPrice)}/day</strong>
+                          </div>
+                          <div className={`${styles.spotlightCalcRow} ${styles.spotlightCalcTotal}`}>
+                            <span>Total Campaign Cost:</span>
+                            <div className={styles.spotlightTotalWrap}>
+                              <RollingCounter value={bidPrice * campaignDays} currencyPrefix="₦" decimals={0} durationMs={600} />
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
                     )}
-                  </div>
+                  </AnimatePresence>
                 </div>
 
                 <div className={styles.stepActionsBetweenTight}>
-                  <button onClick={() => setStep(2)} className={styles.secondaryNavBtn}>Back</button>
-                  <button disabled={!interest} onClick={() => setStep(4)} className={styles.primaryNavBtn}>Continue to Preview →</button>
+                  <motion.button whileTap={{ scale: 0.97 }} onClick={() => setStep(2)} className={styles.secondaryNavBtn}>Back</motion.button>
+                  <motion.button whileTap={{ scale: 0.97 }} whileHover={{ scale: 1.01 }} disabled={!interest} onClick={() => setStep(4)} className={styles.primaryNavBtn}>Continue to Preview</motion.button>
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* STEP 4: PREVIEW & PAYMENT */}
             {step === 4 && (
-              <div className={styles.formGroup}>
+              <motion.div
+                key="step-4"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.22 }}
+                className={styles.formGroup}
+              >
                 <div className={styles.previewCard}>
                   {mediaPreview && <img src={mediaPreview} alt="Preview" className={styles.previewImage} />}
                   <div className={styles.previewContent}>
@@ -683,15 +947,16 @@ export default function News({ session }: NewsProps) {
                       "Processing Submission..."
                     ) : isAdmin ? (
                       <>
-                        <Rocket size={16} /> Publish Highlight Free (Admin)
+                        <Rocket size={16} /> Publish (Admin)
                       </>
                     ) : (
                       `Pay ${formatCurrency(totalCost)} & Submit`
                     )}
                   </button>
                 </div>
-              </div>
+              </motion.div>
             )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

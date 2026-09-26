@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "../ThemeProvider";
 import supabase from "@/lib/utils/db";
 import { sendMoneySchema, withdrawalSchema } from "@/lib/validationSchemas";
@@ -170,6 +172,25 @@ export default function DashboardClient({
     }
     return false;
   });
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Escape key closes open modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowWithdrawModal(false);
+        setShowSendMoneyModal(false);
+      }
+    };
+    if (showWithdrawModal || showSendMoneyModal) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [showWithdrawModal, showSendMoneyModal]);
 
   const handleDismissInactivity = () => {
     setInactivityDismissed(true);
@@ -1099,9 +1120,15 @@ export default function DashboardClient({
                 closeAllToggles();
               } else if (isTablet) {
                 setShowProfileTablet(!showProfileTablet);
+              } else {
+                if (typeof window !== "undefined") {
+                  sessionStorage.setItem("paayh_active_tab", "feed");
+                  document.cookie = "paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax";
+                  window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "feed" } }));
+                }
               }
             }}
-            title={isMobile ? "Go to Feed" : isTablet ? "Toggle Profile View" : undefined}
+            title={isMobile ? "Go to Feed" : isTablet ? "Toggle Profile View" : "Go to Home Feed"}
           >
             <div className={styles.nameBlock}>
               <span className={styles.appName}>Paayh</span>
@@ -1150,7 +1177,18 @@ export default function DashboardClient({
                 </button>
               )}
               <div className={styles.desktopNav}>
-                <Link href="/">Home</Link>
+                <Link
+                  href="/logged-in?view=feed"
+                  onClick={() => {
+                    if (typeof window !== "undefined") {
+                      sessionStorage.setItem("paayh_active_tab", "feed");
+                      document.cookie = "paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax";
+                      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "feed" } }));
+                    }
+                  }}
+                >
+                  Home
+                </Link>
                 <Link href="/terms">Terms</Link>
                 <Link href="/privacy">Privacy</Link>
                 <Link href="/faq">FAQ</Link>
@@ -1389,7 +1427,7 @@ export default function DashboardClient({
                                       strokeWidth="2.4"
                                       fill="none"
                                     />
-                                    <circle
+                                    <motion.circle
                                       className={styles.atwGaugeFill}
                                       cx="10"
                                       cy="10"
@@ -1398,30 +1436,41 @@ export default function DashboardClient({
                                       fill="none"
                                       stroke={stateColor}
                                       strokeDasharray={circ}
-                                      strokeDashoffset={strokeOffset}
+                                      initial={{ strokeDashoffset: circ }}
+                                      animate={{ strokeDashoffset: strokeOffset }}
+                                      transition={{ duration: 0.8, ease: "easeOut" }}
                                       strokeLinecap="round"
                                     />
                                   </svg>
                                 </div>
 
-                                {showAtwTooltip && (
-                                  <div className={styles.atwTooltipBox} onClick={(e) => e.stopPropagation()}>
-                                    <div className={styles.atwTooltipHeader}>
-                                      <span>ATW Holding Capacity</span>
-                                      <span className={styles.atwPct} style={{ color: stateColor }}>{pct}%</span>
-                                    </div>
-                                    <p className={styles.atwTooltipText}>
-                                      Holding limit: {formatCurrency(balanceCap)} ({tier.code}). Current: {formatCurrency(currentBal)}.
-                                    </p>
-                                    <span className={styles.atwTooltipHint} style={{ color: stateColor }}>
-                                      {ratio >= 0.90
-                                        ? "Max holding reached! Please withdraw your funds."
-                                        : ratio >= 0.60
-                                        ? "Balance is filling up. Prepare to withdraw soon."
-                                        : "Safe holding balance. All systems nominal."}
-                                    </span>
-                                  </div>
-                                )}
+                                <AnimatePresence>
+                                  {showAtwTooltip && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: 6, scale: 0.95 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                                      transition={{ duration: 0.18 }}
+                                      className={styles.atwTooltipBox}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div className={styles.atwTooltipHeader}>
+                                        <span>ATW Holding Capacity</span>
+                                        <span className={styles.atwPct} style={{ color: stateColor }}>{pct}%</span>
+                                      </div>
+                                      <p className={styles.atwTooltipText}>
+                                        Holding limit: {formatCurrency(balanceCap)} ({tier.code}). Current: {formatCurrency(currentBal)}.
+                                      </p>
+                                      <span className={styles.atwTooltipHint} style={{ color: stateColor }}>
+                                        {ratio >= 0.90
+                                          ? "Max holding reached! Please withdraw your funds."
+                                          : ratio >= 0.60
+                                          ? "Balance is filling up. Prepare to withdraw soon."
+                                          : "Safe holding balance. All systems nominal."}
+                                      </span>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
                               </div>
                             </div>
                           );
@@ -1475,7 +1524,8 @@ export default function DashboardClient({
                 </p>
               )}
               <div className={styles.walletBtnGroup}>
-                <button
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => setShowWithdrawModal(true)}
                   className={styles.withdrawBtn}
                   disabled={
@@ -1485,9 +1535,10 @@ export default function DashboardClient({
                   {(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
                     ? "Request Withdrawal"
                     : "Complete 300 clicks to withdraw earnings"}
-                </button>
+                </motion.button>
 
-                <button
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => setShowSendMoneyModal(true)}
                   className={styles.sendMoneyBtn}
                   title="Send Money to User Email"
@@ -1495,20 +1546,20 @@ export default function DashboardClient({
                 >
                   <Send size={15} />
                   <span>Send Money</span>
-                </button>
+                </motion.button>
               </div>
               <Link href="/logged-in" onClick={() => selectTab("statement")} className={styles.statementLink}>
                 View Account Statement
               </Link>
             </div>
 
-            <div className={styles.tagsCard}>
-              <TagGroup label="Interest" items={parseToArray(user.interest)} />
-              <TagGroup label="Industry" items={parseToArray(user.industry)} />
-              <TagGroup label="Behavior" items={parseToArray(user.behavior)} />
-              <TagGroup label="Lifestyle" items={parseToArray(user.lifestyle)} />
-              <TagGroup label="Personality" items={parseToArray(user.personality)} />
-            </div>
+            <PersonaDrawer
+              interest={parseToArray(user.interest)}
+              industry={parseToArray(user.industry)}
+              behavior={parseToArray(user.behavior)}
+              lifestyle={parseToArray(user.lifestyle)}
+              personality={parseToArray(user.personality)}
+            />
 
             {isMobile && (
               <div className={styles.mobileAccountLinksContainer}>
@@ -1524,204 +1575,276 @@ export default function DashboardClient({
           <div className={styles.backdrop} onClick={closeAllToggles} />
         )}
 
-        {/* Withdrawal Modal */}
-        {showWithdrawModal && (
-          <div className={styles.modalOverlay}>
-            <div className={styles.modalContent}>
-              <div className={styles.modalHeader}>
-                <div className={styles.modalTitleGroup}>
-                  <h3 className={styles.modalTitle}>Request Bank Withdrawal</h3>
-                  <div className={styles.modalSubtitle}>
-                    Available: <span className={styles.balanceHighlight}>{formatCurrency(user.balance ?? 0)}</span>
-                  </div>
-                </div>
-                <button onClick={() => setShowWithdrawModal(false)} className={styles.closeBtn} aria-label="Close">
-                  <X size={18} />
-                </button>
-              </div>
-              <form onSubmit={handleWithdrawSubmit} className={styles.modalBodyColumn}>
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Select Bank</label>
-                  <select
-                    value={selectedBank}
-                    onChange={(e) => setSelectedBank(e.target.value)}
-                    required
-                    className={styles.formInput}
+        {/* Modals rendered directly to document.body to isolate from dashboard flex container */}
+        {mounted && typeof document !== "undefined" && createPortal(
+          <>
+            {/* Withdrawal Modal */}
+            <AnimatePresence>
+              {showWithdrawModal && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={styles.modalOverlay}
+                  onClick={() => setShowWithdrawModal(false)}
+                >
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                    className={styles.modalContent}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <option value="">Choose Your Bank</option>
-                    {banks.map((b, index) => (
-                      <option key={`${b.code}-${index}`} value={b.code}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <div className={styles.modalHeader}>
+                      <div className={styles.modalTitleGroup}>
+                        <h3 className={styles.modalTitle}>Request Bank Withdrawal</h3>
+                        <div className={styles.modalSubtitle}>
+                          Available: <span className={styles.balanceHighlight}>{formatCurrency(user.balance ?? 0)}</span>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowWithdrawModal(false)} className={styles.closeBtn} aria-label="Close">
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleWithdrawSubmit} className={styles.modalBodyColumn}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>Select Bank</label>
+                        <select
+                          value={selectedBank}
+                          onChange={(e) => setSelectedBank(e.target.value)}
+                          required
+                          className={styles.formInput}
+                        >
+                          <option value="">Choose Your Bank</option>
+                          {banks.map((b, index) => (
+                            <option key={`${b.code}-${index}`} value={b.code}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Account Number</label>
-                  <input
-                    type="text"
-                    maxLength={10}
-                    placeholder="10 digit Account Number"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-                    required
-                    className={styles.formInput}
-                  />
-                </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>Account Number</label>
+                        <input
+                          type="text"
+                          maxLength={10}
+                          placeholder="10 digit Account Number"
+                          value={accountNumber}
+                          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+                          required
+                          className={styles.formInput}
+                        />
+                      </div>
 
-                {resolvingAccount && (
-                  <div className={styles.resolvingPill}>
-                    Verifying account details with bank...
-                  </div>
-                )}
+                      {resolvingAccount && (
+                        <div className={styles.resolvingPill}>
+                          Verifying account details with bank...
+                        </div>
+                      )}
 
-                {resolvedAccountName && (
-                  <div className={styles.resolvedPill}>
-                    <span className={styles.resolvedNameCheck}>✓</span>
-                    <span className={styles.resolvedName}>{resolvedAccountName}</span>
-                  </div>
-                )}
+                      {resolvedAccountName && (
+                        <div className={styles.resolvedPill}>
+                          <span className={styles.resolvedNameCheck}>✓</span>
+                          <span className={styles.resolvedName}>{resolvedAccountName}</span>
+                        </div>
+                      )}
 
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Withdrawal Amount ({getCurrencyConfig(user?.country).symbol})</label>
-                  <input
-                    type="number"
-                    min={10000}
-                    max={user.balance}
-                    placeholder={`Min ${formatCurrency(10000)}`}
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    required
-                    className={styles.formInput}
-                  />
-                </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>Withdrawal Amount ({getCurrencyConfig(user?.country).symbol})</label>
+                        <input
+                          type="number"
+                          min={10000}
+                          max={user.balance}
+                          placeholder={`Min ${formatCurrency(10000)}`}
+                          value={withdrawAmount}
+                          onChange={(e) => setWithdrawAmount(e.target.value)}
+                          required
+                          className={styles.formInput}
+                        />
+                      </div>
 
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Registered Phone</label>
-                  <input
-                    type="text"
-                    placeholder="Enter registered phone"
-                    value={withdrawPhone}
-                    onChange={(e) => setWithdrawPhone(e.target.value)}
-                    required
-                    className={styles.formInput}
-                  />
-                </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>Registered Phone</label>
+                        <input
+                          type="text"
+                          placeholder="Enter registered phone"
+                          value={withdrawPhone}
+                          onChange={(e) => setWithdrawPhone(e.target.value)}
+                          required
+                          className={styles.formInput}
+                        />
+                      </div>
 
-                {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
+                      {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
 
-                <button
-                  type="submit"
-                  disabled={submittingWithdrawal || !resolvedAccountName}
-                  className={styles.submitBtn}
+                      <button
+                        type="submit"
+                        disabled={submittingWithdrawal || !resolvedAccountName}
+                        className={styles.submitBtn}
+                      >
+                        {submittingWithdrawal ? "Processing Withdrawal..." : "Withdraw Funds"}
+                      </button>
+                    </form>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Send Money Modal */}
+            <AnimatePresence>
+              {showSendMoneyModal && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={styles.modalOverlay}
+                  onClick={() => setShowSendMoneyModal(false)}
                 >
-                  {submittingWithdrawal ? "Processing Withdrawal..." : "Withdraw Funds"}
-                </button>
-              </form>
-            </div>
-          </div>
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                    className={styles.modalContent}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className={styles.modalHeader}>
+                      <h3>Send Money to User</h3>
+                      <button onClick={() => setShowSendMoneyModal(false)} className={styles.closeBtn}>
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleSendMoneySubmit} className={styles.modalBody}>
+                      <div className={styles.balanceRow}>
+                        <span>Available Balance:</span>
+                        <span className={styles.balanceValue}>{formatCurrency(user.balance ?? 0)}</span>
+                      </div>
+
+                      <div className={styles.balanceRowSub}>
+                        <span>Max Transfer Limit (20%):</span>
+                        <span className={styles.maxAllowedValue}>{formatCurrency((user.balance ?? 0) * 0.20)}</span>
+                      </div>
+
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>Recipient Email Account</label>
+                        <input
+                          type="email"
+                          placeholder="Enter recipient registered email (e.g. user@example.com)"
+                          value={sendRecipientEmail}
+                          onChange={(e) => setSendRecipientEmail(e.target.value)}
+                          required
+                          className={styles.formInput}
+                        />
+                        <span className={styles.formHintSmall}>
+                          Enter the exact email address of the recepient.
+                        </span>
+                      </div>
+
+                      <div className={styles.formGroup}>
+                        <label className={styles.formLabel}>Amount to Send (₦)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={1}
+                          max={user.balance * 0.20}
+                          placeholder={`Max ${formatCurrency((user.balance ?? 0) * 0.20)}`}
+                          value={sendAmount}
+                          onChange={(e) => setSendAmount(e.target.value)}
+                          required
+                          className={styles.formInput}
+                        />
+                        <span className={styles.formHintSmall}>
+                          Security Rules: Max 20% of your total balance at a time. Max 6 recipient users per day.
+                        </span>
+                      </div>
+
+                      {sendMoneyError && <div className={styles.errorText}>{sendMoneyError}</div>}
+
+                      <button
+                        type="submit"
+                        disabled={submittingSend || user.balance <= 0}
+                        className={styles.submitBtn}
+                      >
+                        {submittingSend ? "Processing Transfer..." : "Send Funds Instantly"}
+                      </button>
+                    </form>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Premium Transfer Success Animation Modal */}
+            <TransferSuccessModal
+              data={transferSuccessData}
+              onClose={() => setTransferSuccessData(null)}
+              formatCurrency={formatCurrency}
+            />
+          </>,
+          document.body
         )}
-
-        {/* Send Money Modal */}
-        {showSendMoneyModal && (
-          <div className={styles.modalOverlay}>
-            <div className={styles.modalContent}>
-              <div className={styles.modalHeader}>
-                <h3>Send Money to User</h3>
-                <button onClick={() => setShowSendMoneyModal(false)} className={styles.closeBtn}>
-                  <X size={18} />
-                </button>
-              </div>
-              <form onSubmit={handleSendMoneySubmit} className={styles.modalBody}>
-                <div className={styles.balanceRow}>
-                  <span>Available Balance:</span>
-                  <span className={styles.balanceValue}>{formatCurrency(user.balance ?? 0)}</span>
-                </div>
-
-                <div className={styles.balanceRowSub}>
-                  <span>Max Transfer Limit (20%):</span>
-                  <span className={styles.maxAllowedValue}>{formatCurrency((user.balance ?? 0) * 0.20)}</span>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Recipient Email Account</label>
-                  <input
-                    type="email"
-                    placeholder="Enter recipient registered email (e.g. user@example.com)"
-                    value={sendRecipientEmail}
-                    onChange={(e) => setSendRecipientEmail(e.target.value)}
-                    required
-                    className={styles.formInput}
-                  />
-                  <span className={styles.formHintSmall}>
-                    Enter the exact email address of the recepient.
-                  </span>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Amount to Send (₦)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min={1}
-                    max={user.balance * 0.20}
-                    placeholder={`Max ${formatCurrency((user.balance ?? 0) * 0.20)}`}
-                    value={sendAmount}
-                    onChange={(e) => setSendAmount(e.target.value)}
-                    required
-                    className={styles.formInput}
-                  />
-                  <span className={styles.formHintSmall}>
-                    Security Rules: Max 20% of your total balance at a time. Max 6 recipient users per day.
-                  </span>
-                </div>
-
-                {sendMoneyError && <div className={styles.errorText}>{sendMoneyError}</div>}
-
-                <button
-                  type="submit"
-                  disabled={submittingSend || user.balance <= 0}
-                  className={styles.submitBtn}
-                >
-                  {submittingSend ? "Processing Transfer..." : "Send Funds Instantly"}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-        
-        {/* Premium Transfer Success Animation Modal */}
-        <TransferSuccessModal
-          data={transferSuccessData}
-          onClose={() => setTransferSuccessData(null)}
-          formatCurrency={formatCurrency}
-        />
       </div>
     </div>
   );
 }
 
-function TagGroup({
-  label,
-  items,
+function PersonaDrawer({
+  interest = [],
+  industry = [],
+  behavior = [],
+  lifestyle = [],
+  personality = [],
 }: {
-  label: string;
-  items?: string[];
+  interest?: string[];
+  industry?: string[];
+  behavior?: string[];
+  lifestyle?: string[];
+  personality?: string[];
 }) {
-  if (!items || items.length === 0) return null;
+  const [activeTab, setActiveTab] = React.useState<string>("all");
+  const categories = React.useMemo(() => [
+    { id: "all", label: "All", items: Array.from(new Set([...(interest || []), ...(industry || []), ...(behavior || []), ...(lifestyle || []), ...(personality || [])])) },
+    { id: "interest", label: "Interest", items: interest || [] },
+    { id: "industry", label: "Industry", items: industry || [] },
+    { id: "lifestyle", label: "Lifestyle", items: lifestyle || [] },
+    { id: "behavior", label: "Behavior", items: behavior || [] },
+    { id: "personality", label: "Personality", items: personality || [] },
+  ].filter(c => c.items.length > 0 || c.id === "all"), [interest, industry, behavior, lifestyle, personality]);
+
+  const currentItems = categories.find(c => c.id === activeTab)?.items || categories[0]?.items || [];
+
   return (
-    <>
-    <div className={styles.tagGroup}>
-      <h5>{label}:</h5>
-      <div className={styles.tagsContainer}>
-        {items.map((item) => (
-          <span key={item} className={styles.tag}>
-            {item}
-          </span>
+    <div className={styles.personaCard}>
+      <div className={styles.personaHeader}>
+        <h5 className={styles.personaTitle}>Targeting & Persona</h5>
+        <span className={styles.personaCount}>{categories[0]?.items.length || 0} traits</span>
+      </div>
+      <div className={styles.personaTabRow}>
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            className={`${styles.personaTabBtn} ${activeTab === cat.id ? styles.personaTabBtnActive : ""}`}
+            onClick={() => setActiveTab(cat.id)}
+          >
+            {cat.label} ({cat.items.length})
+          </button>
         ))}
       </div>
+      <div className={styles.personaTagsGrid}>
+        {currentItems.length > 0 ? (
+          currentItems.map((item) => (
+            <span key={item} className={styles.personaTag}>
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className={styles.emptyPersonaNote}>No targeting attributes assigned yet.</span>
+        )}
+      </div>
     </div>
-    </>
   );
 }

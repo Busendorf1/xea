@@ -1,0 +1,133 @@
+/* Universal Form Step Progress Tracker (Standardized to /news) */
+.progressContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2.25rem;
+  width: 100%;
+  user-select: none;
+}
+
+.progressStep {
+  display: flex;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.progressStep:last-child {
+  flex: 0 0 auto;
+}
+
+.clickableStep {
+  cursor: pointer;
+}
+
+.clickableStep:hover .stepNumber {
+  transform: scale(1.08);
+  border-color: #10b981;
+}
+
+.clickableStep:hover .stepLabel {
+  color: var(--foreground);
+}
+
+.stepNumber {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: var(--background);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  z-index: 2;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.stepLabel {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+  white-space: nowrap;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+.stepLine {
+  flex: 1;
+  height: 2px;
+  background-color: var(--card-border);
+  margin-left: 0.75rem;
+  margin-right: 0.75rem;
+  z-index: 1;
+  transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Active Step Styling */
+.activeStep .stepNumber {
+  background-color: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18) !important;
+}
+
+.activeStep .stepLabel {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.activeStep .stepLine {
+  background-color: #10b981;
+}
+
+/* Completed Step Styling */
+.completedStep .stepNumber {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #10b981;
+}
+
+.completedStep .stepLabel {
+  color: var(--text-muted);
+}
+
+.completedStep .stepLine {
+  background-color: #10b981;
+}
+
+/* Responsive: gracefully condense on smaller screens */
+@media (max-width: 768px) {
+  .stepLabel {
+    font-size: 0.78rem;
+    margin-left: 0.35rem;
+  }
+  .stepLine {
+    margin-left: 0.4rem;
+    margin-right: 0.4rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .progressContainer {
+    margin-bottom: 1.25rem;
+  }
+  .stepLabel {
+    display: none !important;
+  }
+  .stepNumber {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+  .stepLine {
+    margin-left: 0.35rem;
+    margin-right: 0.35rem;
+  }
+}

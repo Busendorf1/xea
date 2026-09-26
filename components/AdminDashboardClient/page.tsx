@@ -1918,7 +1918,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               disabled={currentPage === 0}
               className={`${styles.btnAction} ${styles.paginationBtn}`}
             >
-              ← Prev
+              Prev
             </button>
 
             {startPage > 0 && (
@@ -1954,7 +1954,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               disabled={currentPage >= totalPages - 1}
               className={`${styles.btnAction} ${styles.paginationBtn}`}
             >
-              Next →
+              Next
             </button>
           </div>
         )}
@@ -3225,7 +3225,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                       disabled={helpTicketsPage === 0}
                       className={styles.btnAction}
                     >
-                      ← Prev
+                      Prev
                     </button>
                     <span className={styles.adminCls_85}>
                       Page {helpTicketsPage + 1} of {Math.max(1, Math.ceil(helpTicketsCount / 10))} ({helpTicketsCount} total)
@@ -3235,7 +3235,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                       disabled={(helpTicketsPage + 1) * 10 >= helpTicketsCount}
                       className={styles.btnAction}
                     >
-                      Next →
+                      Next
                     </button>
                   </div>
                 </>

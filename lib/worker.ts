@@ -8,7 +8,7 @@ const connectionOptions = {
   host: env.REDIS_HOST,
   port: env.REDIS_PORT,
   password: env.REDIS_PASSWORD || undefined,
-  tls: env.REDIS_TLS === "true" ? {} : undefined,
+  tls: env.REDIS_TLS === "true" ? { rejectUnauthorized: false } : undefined,
   maxRetriesPerRequest: null,
 };
 
@@ -477,6 +477,25 @@ export const paymentWorker = new Worker<PaymentJobData>(
     const { type, senderEmail, recipientEmail, amount, reference } = job.data;
     console.log(`💳 Payment Worker: Processing ${type} job [${reference}] from ${senderEmail} to ${recipientEmail}...`);
 
+    const transferRef = reference || job.id || `tx_${Date.now()}`;
+    const idempotencyKey = `idempotency:transfer:${transferRef}`;
+    const lockKey = `lock:transfer:${transferRef}`;
+    const { default: redisClient } = await import("./redis");
+
+    // 1. Idempotency Check: if this reference was already settled and recorded, exit cleanly
+    const alreadyCompleted = await redisClient.get(idempotencyKey);
+    if (alreadyCompleted === "completed") {
+      console.log(`ℹ️ Payment Worker: Transfer [${transferRef}] already settled and audited. Skipping duplicate job.`);
+      return;
+    }
+
+    // 2. Distributed Lock: Acquire 5-minute in-flight lock to prevent concurrent duplicate execution across workers
+    const lockAcquired = await redisClient.set(lockKey, "processing", "EX", 300, "NX");
+    if (!lockAcquired) {
+      console.warn(`⚠️ Payment Worker: Transfer [${transferRef}] is currently in-flight by another worker instance. Skipping.`);
+      return;
+    }
+
     try {
       if (type === "p2p_transfer" || type === "transfer-settlement") {
         const { data: senderUser } = await supabaseAdmin
@@ -519,10 +538,17 @@ export const paymentWorker = new Worker<PaymentJobData>(
           invalidateCachedProfile(senderEmail),
           invalidateCachedProfile(recipientEmail),
         ]);
-        console.log(`✅ Payment Worker: Completed P2P transfer audit and cache sync for reference [${reference}].`);
+
+        // 3. Mark transfer as permanently completed (24h retention) and release in-flight lock
+        await redisClient.set(idempotencyKey, "completed", "EX", 86400);
+        await redisClient.del(lockKey).catch(() => {});
+
+        console.log(`✅ Payment Worker: Completed P2P transfer audit and cache sync for reference [${transferRef}].`);
       }
     } catch (err: unknown) {
-      console.error(`❌ Payment Worker: Error processing transfer job [${reference}]:`, (err as Error)?.message || err);
+      // Release in-flight lock so retry can re-attempt if necessary
+      await redisClient.del(lockKey).catch(() => {});
+      console.error(`❌ Payment Worker: Error processing transfer job [${transferRef}]:`, (err as Error)?.message || err);
       throw err;
     }
   },

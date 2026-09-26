@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import styles from "./modal.module.css";
 import { flowNodes, initialNodeId, FlowNode, FlowChoice } from "./flowData";
 import { useTheme } from "@/components/ThemeProvider";
@@ -326,25 +327,27 @@ export default function ModalLandingPage() {
                   <span>Continue journey</span>
                   <ArrowRight size={14} className={styles.resumeBtnIcon} />
                 </button>
-                <button
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
                   type="button"
                   onClick={() => handleOpenModal(initialNodeId, true)}
                   className={styles.resumeFreshBtn}
                 >
                   <RotateCcw size={12} />
                   <span>Start fresh</span>
-                </button>
+                </motion.button>
               </div>
             </div>
           ) : (
-            <button
+            <motion.button
+              whileTap={{ scale: 0.97 }}
               type="button"
               autoFocus
               onClick={() => handleOpenModal(initialNodeId)}
               className={styles.primaryBtn}
             >
               Let’s go
-            </button>
+            </motion.button>
           )}
 
           <div className={styles.legalLinksRow}>
@@ -436,11 +439,21 @@ export default function ModalLandingPage() {
               {history.map((msg) => (
                 <React.Fragment key={msg.id}>
                   {msg.sender === "user" ? (
-                    <div className={styles.userMessageWrap}>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                      className={styles.userMessageWrap}
+                    >
                       <div className={styles.userBubble}>{msg.text}</div>
-                    </div>
+                    </motion.div>
                   ) : (
-                    <div className={styles.aiMessageWrap}>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                      className={styles.aiMessageWrap}
+                    >
                       <span className={styles.aiSender}>Paayh Guide</span>
                       <div className={styles.aiBubble}>
                         <p>{msg.text}</p>
@@ -450,11 +463,10 @@ export default function ModalLandingPage() {
                             className={styles.referralCard}
                           >
                             <span>{msg.referralLink.label}</span>
-                            <span className={styles.referralArrow}>→</span>
                           </Link>
                         )}
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </React.Fragment>
               ))}
@@ -557,9 +569,10 @@ export default function ModalLandingPage() {
                     {currentChoices.map((choice) => {
                       const isSelected = selectedChoiceId === choice.id;
                       return (
-                        <button
+                        <motion.button
                           key={choice.id}
                           type="button"
+                          whileTap={{ scale: 0.98 }}
                           disabled={isAiThinking}
                           onClick={() => setSelectedChoiceId(choice.id)}
                           onDoubleClick={() => handleSendChoice(choice)}
@@ -569,7 +582,7 @@ export default function ModalLandingPage() {
                           <span className={styles.choiceIndicator}>
                             {isSelected && <span className={styles.choiceIndicatorDot} />}
                           </span>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -583,8 +596,9 @@ export default function ModalLandingPage() {
                       Start over
                     </button>
 
-                    <button
+                    <motion.button
                       type="button"
+                      whileTap={{ scale: 0.96 }}
                       disabled={!selectedChoiceId || isAiThinking}
                       onClick={() => {
                         const choice = currentChoices.find((c) => c.id === selectedChoiceId);
@@ -593,7 +607,7 @@ export default function ModalLandingPage() {
                       className={styles.sendReplyBtn}
                     >
                       Send
-                    </button>
+                    </motion.button>
                   </div>
                 </>
               )}

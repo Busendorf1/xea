@@ -6,7 +6,6 @@ import styles from "./page.module.css";
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -151,13 +150,24 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
 
     const handleClickIncrement = (e: Event) => {
       const customEvent = e as CustomEvent;
-      const delta = customEvent.detail?.delta || 1;
-      setClicksCount((prev: number) => {
-        const next = prev + delta;
-        setClicksRemaining(Math.max(0, 300 - next));
-        if (next >= 300) setIsMonetized(true);
-        return next;
-      });
+      const totalClicks = customEvent.detail?.totalClicks;
+      if (typeof totalClicks === "number") {
+        setClicksCount(totalClicks);
+        setClicksRemaining(Math.max(0, 300 - totalClicks));
+        if (typeof customEvent.detail?.isMonetized === "boolean") {
+          setIsMonetized(customEvent.detail.isMonetized);
+        } else if (totalClicks >= 300) {
+          setIsMonetized(true);
+        }
+      } else {
+        const delta = customEvent.detail?.delta || 1;
+        setClicksCount((prev: number) => {
+          const next = prev + delta;
+          setClicksRemaining(Math.max(0, 300 - next));
+          if (next >= 300) setIsMonetized(true);
+          return next;
+        });
+      }
     };
 
     window.addEventListener("focus", onFocus);
@@ -366,7 +376,6 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
               <div className={styles.feedBtnMargin}>
                 <Link href="/" className={styles.feedBtn}>
                   <span>Go to Feed</span>
-                  <ArrowRight size={15} />
                 </Link>
               </div>
             </div>

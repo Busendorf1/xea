@@ -20,8 +20,27 @@ const envSchema = z.object({
 });
 
 export const getEnv = () => {
+  let redisHost = process.env.REDIS_HOST;
+  let redisPort = process.env.REDIS_PORT;
+  let redisPassword = process.env.REDIS_PASSWORD;
+  let redisTls = process.env.REDIS_TLS;
+
+  if (process.env.REDIS_URL && process.env.REDIS_URL.startsWith("redis")) {
+    try {
+      const u = new URL(process.env.REDIS_URL);
+      if (!redisHost || redisHost === "127.0.0.1") redisHost = u.hostname;
+      if (!redisPort) redisPort = u.port || "6379";
+      if (!redisPassword) redisPassword = u.password || undefined;
+      if (redisTls === undefined && u.protocol === "rediss:") redisTls = "true";
+    } catch {}
+  }
+
   const envObj = {
     ...process.env,
+    REDIS_HOST: redisHost || "127.0.0.1",
+    REDIS_PORT: redisPort || "6379",
+    REDIS_PASSWORD: redisPassword,
+    REDIS_TLS: redisTls,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
   };
   const result = envSchema.safeParse(envObj);

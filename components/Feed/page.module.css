@@ -541,8 +541,8 @@
 .pullSpinner {
   width: 18px;
   height: 18px;
-  border: 2.2px solid rgba(29, 155, 240, 0.25);
-  border-top-color: var(--primary, #1d9bf0);
+  border: 2.2px solid var(--card-border);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: feedSpin 0.75s linear infinite;
 }

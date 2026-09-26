@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { MapPin, X, AlertCircle, Plus } from "lucide-react";
+import { MapPin, X, AlertCircle, Plus, Navigation, Check } from "lucide-react";
 import { countryList, locationData } from "@/lib/utils/locations";
 import { detectGpsLocation } from "@/lib/utils/locationHelper";
+import CustomSelect from "@/components/ui/CustomSelect";
+import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./LocationSelector.module.css";
 
 interface LocationSelectorProps {
@@ -42,10 +44,12 @@ export default function LocationSelector({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [isToggled, setIsToggled] = useState<boolean>(Boolean(country || state || location));
+  const [manualFallback, setManualFallback] = useState(false);
 
   useEffect(() => {
     if (country || state || location) {
       setIsToggled(true);
+      if (!gpsStatus) setGpsStatus("success");
     }
   }, [country, state, location]);
 
@@ -54,23 +58,25 @@ export default function LocationSelector({
     setIsToggled(checked);
     if (!checked) {
       setGpsStatus(null);
+      setManualFallback(false);
       onChange({ country: "", state: "", location: "" });
     } else {
       setGpsLoading(true);
-      setGpsStatus("Detecting location via GPS...");
+      setGpsStatus("detecting");
       const res = await detectGpsLocation();
       setGpsLoading(false);
-      if (res.error) {
-        setGpsStatus(`⚠️ ${res.error}`);
-      } else {
+      if (res.country) {
         onChange({ country: res.country, state: res.state, location: res.location });
-        setGpsStatus(`✓ Location Detected: ${res.location ? res.location + ", " : ""}${res.state}, ${res.country}`);
+        setGpsStatus("success");
+      } else {
+        setManualFallback(true);
+        setGpsStatus("error");
       }
     }
   };
 
-  const isReadOnly = gpsEnforced;
-  const showFields = !gpsEnforced || (isToggled && (Boolean(country || state || location) || gpsLoading));
+  const isReadOnly = gpsEnforced && !manualFallback;
+  const showFields = !gpsEnforced || manualFallback || (isToggled && (Boolean(country || state || location) || gpsLoading));
 
   const isPredefinedCountry = countryList.includes(country);
   const selectedCountryOption = country ? (isPredefinedCountry ? country : "Other") : "";
@@ -83,8 +89,22 @@ export default function LocationSelector({
   const isPredefinedCity = citiesList.includes(location);
   const selectedCityOption = location ? (isPredefinedCity ? location : "Other") : "";
 
-  const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+  const countryOptions = [
+    ...countryList.map((c) => ({ value: c, label: c })),
+    { value: "Other", label: "Other (Type custom)" },
+  ];
+
+  const stateOptions = [
+    ...statesList.map((s) => ({ value: s.name, label: s.name })),
+    { value: "Other", label: "Other (Type custom)" },
+  ];
+
+  const cityOptions = [
+    ...citiesList.map((city) => ({ value: city, label: city })),
+    { value: "Other", label: "Other (Type custom)" },
+  ];
+
+  const handleCountryChange = (val: string) => {
     if (val === "Other") {
       onChange({ country: "", state: "", location: "" });
     } else {
@@ -92,8 +112,7 @@ export default function LocationSelector({
     }
   };
 
-  const handleStateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+  const handleStateChange = (val: string) => {
     if (val === "Other") {
       onChange({ country, state: "", location: "", multiLocations });
     } else {
@@ -101,8 +120,7 @@ export default function LocationSelector({
     }
   };
 
-  const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+  const handleCityChange = (val: string) => {
     if (val === "Other") {
       onChange({ country, state, location: "", multiLocations });
     } else {
@@ -113,90 +131,87 @@ export default function LocationSelector({
   return (
     <>
       {gpsEnforced && (
-        <div className={styles.gpsToggleWrapper}>
-          <label className={`${styles.gpsToggleLabel} ${disabled || gpsLoading ? styles.gpsToggleLabelDisabled : ""}`}>
-            <input
-              type="checkbox"
-              checked={isToggled}
-              onChange={handleToggle}
-              disabled={disabled || gpsLoading}
-              className={styles.gpsCheckbox}
-            />
-            <span>Auto-detect location</span>
-          </label>
-          {gpsStatus && (
-            <p className={`${styles.gpsStatusText} ${gpsStatus.startsWith("✓") ? styles.gpsStatusSuccess : gpsStatus.startsWith("⚠️") ? styles.gpsStatusError : ""}`}>
-              {gpsStatus}
-            </p>
-          )}
+        <div className={styles.appleLocationCard}>
+          <div className={styles.appleLocationRow}>
+            {/* Left: Apple Navigation Icon & Location Text Stack */}
+            <div className={styles.appleInfoGroup}>
+              <div className={`${styles.appleIconSquircle} ${isToggled ? styles.appleIconSquircleActive : ""}`}>
+                <Navigation size={17} className={isToggled ? styles.appleNavActive : styles.appleNavInactive} />
+              </div>
+              <div className={styles.appleTextStack}>
+                <span className={styles.appleTitle}>Auto-detect Location</span>
+                {isToggled && (location || state || country) ? (
+                  <span className={styles.appleSubtitle}>
+                    <MapPin size={11} className={styles.applePinIcon} />
+                    {[location, state, country].filter(Boolean).join(", ")}
+                  </span>
+                ) : gpsLoading ? (
+                  <span className={styles.appleSubtitleMuted}>Locating network position...</span>
+                ) : (
+                  <span className={styles.appleSubtitleMuted}>
+                    {manualFallback ? "Auto-detect unavailable. Manual entry enabled." : "Precise regional location"}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Apple Status Pill & iOS Toggle Switch */}
+            <div className={styles.appleActionsGroup}>
+              {/* Status Pill Badge */}
+              {gpsLoading ? (
+                <div className={styles.appleStatusPillLoading}>
+                  <AppleSpinner size={12} />
+                  <span>Locating...</span>
+                </div>
+              ) : gpsStatus === "success" || ((location || state || country) && isToggled) ? (
+                <div className={styles.appleStatusPillSuccess}>
+                  <Check size={12} strokeWidth={2.6} />
+                  <span>Detected</span>
+                </div>
+              ) : gpsStatus === "error" || manualFallback ? (
+                <div className={styles.appleStatusPillError}>
+                  <AlertCircle size={12} strokeWidth={2.4} />
+                  <span>Unavailable</span>
+                </div>
+              ) : null}
+
+              {/* iOS Switch Toggle */}
+              <label className={`${styles.appleSwitch} ${disabled || gpsLoading ? styles.appleSwitchDisabled : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={isToggled}
+                  onChange={handleToggle}
+                  disabled={disabled || gpsLoading}
+                  className={styles.appleSwitchInput}
+                  aria-label="Auto-detect location toggle"
+                />
+                <span className={styles.appleSwitchTrack}>
+                  <span className={styles.appleSwitchKnob} />
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Hidden inputs to preserve form submission values without occupying 3 columns */}
+          <input type="hidden" name="country" value={country} />
+          <input type="hidden" name="state" value={state} />
+          <input type="hidden" name="location" value={location} />
         </div>
       )}
 
-      {showFields && (
+      {showFields && !gpsEnforced && (
         <>
-          {/* If GPS Enforced, render read-only text inputs */}
-          {gpsEnforced ? (
-            <>
-              <div className={groupClass}>
-                {showLabels && <label className={labelClass}>Country</label>}
-                <input
-                  type="text"
-                  placeholder="Country"
-                  value={country}
-                  readOnly
-                  disabled
-                  className={`${inputClass} ${styles.readOnlyInput}`}
-                  required
-                />
-              </div>
-
-              <div className={groupClass}>
-                {showLabels && <label className={labelClass}>State</label>}
-                <input
-                  type="text"
-                  placeholder="State"
-                  value={state}
-                  readOnly
-                  disabled
-                  className={`${inputClass} ${styles.readOnlyInput}`}
-                  required
-                />
-              </div>
-
-              <div className={cityGroupClass || groupClass}>
-                {showLabels && <label className={labelClass}>{cityLabel}</label>}
-                <input
-                  type="text"
-                  placeholder={cityLabel}
-                  value={location}
-                  readOnly
-                  disabled
-                  className={`${inputClass} ${styles.readOnlyInput}`}
-                  required
-                />
-              </div>
-            </>
-          ) : (
-            /* Standard Manual Selectors for Advertisers on /adPage */
-            <>
-              {/* Country Select */}
+          {/* Standard Manual Selectors for Advertisers on /adPage */}
+          {/* Country Select */}
               <div className={groupClass}>
                 {showLabels && <label className={`${labelClass} ${styles.labelBlock}`}>Country</label>}
-                <select
+                <CustomSelect
                   value={selectedCountryOption}
                   onChange={handleCountryChange}
-                  className={`${inputClass} ${styles.fullWidth}`}
+                  options={countryOptions}
+                  placeholder="Select Country"
                   disabled={disabled}
-                  required={!multiLocation}
-                >
-                  <option value="">Select Country</option>
-                  {countryList.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                  <option value="Other">Other (Type custom)</option>
-                </select>
+                />
                 {selectedCountryOption === "Other" && (
                   <input
                     type="text"
@@ -217,21 +232,13 @@ export default function LocationSelector({
                 {showLabels && <label className={`${labelClass} ${styles.labelBlock}`}>State</label>}
                 {isPredefinedCountry && selectedCountryOption !== "Other" ? (
                   <>
-                    <select
+                    <CustomSelect
                       value={selectedStateOption}
                       onChange={handleStateChange}
-                      className={`${inputClass} ${styles.fullWidth}`}
+                      options={stateOptions}
+                      placeholder="Select State"
                       disabled={disabled}
-                      required={!multiLocation}
-                    >
-                      <option value="">Select State</option>
-                      {statesList.map((s) => (
-                        <option key={s.name} value={s.name}>
-                          {s.name}
-                        </option>
-                      ))}
-                      <option value="Other">Other (Type custom)</option>
-                    </select>
+                    />
                     {selectedStateOption === "Other" && (
                       <input
                         type="text"
@@ -266,21 +273,13 @@ export default function LocationSelector({
                 {showLabels && <label className={`${labelClass} ${styles.labelBlock}`}>{cityLabel}</label>}
                 {isPredefinedState && selectedStateOption !== "Other" ? (
                   <>
-                    <select
+                    <CustomSelect
                       value={selectedCityOption}
                       onChange={handleCityChange}
-                      className={`${inputClass} ${styles.fullWidth}`}
+                      options={cityOptions}
+                      placeholder={`Select ${cityLabel}`}
                       disabled={disabled}
-                      required={!multiLocation}
-                    >
-                      <option value="">Select {cityLabel}</option>
-                      {citiesList.map((city) => (
-                        <option key={city} value={city}>
-                          {city}
-                        </option>
-                      ))}
-                      <option value="Other">Other (Type custom)</option>
-                    </select>
+                    />
                     {selectedCityOption === "Other" && (
                       <input
                         type="text"
@@ -368,7 +367,5 @@ export default function LocationSelector({
             </>
           )}
         </>
-      )}
-    </>
-  );
-}
+      );
+    }

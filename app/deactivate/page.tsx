@@ -3,6 +3,6 @@ import { redirect } from "next/navigation";
 
 export default async function DeactivateRoute() {
   const cookieStore = await cookies();
-  cookieStore.set("paayh_active_tab", "deactivate", { path: "/", maxAge: 60 });
-  redirect("/logged-in");
+  cookieStore.set("paayh_active_tab", "deactivate", { path: "/", maxAge: 604800 });
+  redirect("/logged-in?view=deactivate");
 }

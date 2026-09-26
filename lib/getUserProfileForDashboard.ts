@@ -2,7 +2,7 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 import { safeParseArray } from "@/lib/utils/parsers";
 import { UserProfile } from "@/components/DashboardClient/page";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 import crypto from "crypto";
 import { isAdminEmail } from "@/lib/authHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
@@ -162,6 +162,22 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     user = dbData;
     if (user) {
       await setCachedProfile(email, user);
+    }
+  }
+
+  // Reconcile monetization_clicks with live Redis counter if present to ensure SSR matches real-time clicks
+  if (user && isRedisReady()) {
+    try {
+      const liveVal = await redisConnection.get(`user:live_clicks:${email}`);
+      if (liveVal) {
+        const liveClicks = Number(liveVal) || 0;
+        if (liveClicks > (user.monetization_clicks || 0)) {
+          user.monetization_clicks = liveClicks;
+        }
+      }
+    } catch {}
+    if ((user.monetization_clicks || 0) >= 300) {
+      user.monetized = true;
     }
   }
 

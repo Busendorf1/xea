@@ -9,7 +9,6 @@ import {
   ShieldCheck,
   Sparkles,
   Building2,
-  ArrowRight,
   Lock,
   Clock,
   AlertCircle,
@@ -200,7 +199,7 @@ export default function BusinessSubscribeComponent() {
         <h2>Login Required</h2>
         <p>You must be signed in to register your business domain as a Paayh Premium Subscriber.</p>
         <a href="/auth/login?connection=google-oauth2" className={styles.submitBtn}>
-          Sign in to Continue <ArrowRight size={18} />
+          Sign in to Continue
         </a>
       </div>
     );
@@ -440,7 +439,7 @@ export default function BusinessSubscribeComponent() {
             onClick={() => setShowReapplyForm(true)}
             className={styles.submitBtn}
           >
-            Submit Corrected Application <ArrowRight size={18} />
+            Submit Corrected Application
           </button>
         </div>
       )}
@@ -497,7 +496,7 @@ export default function BusinessSubscribeComponent() {
                 "Submitting Application..."
               ) : (
                 <>
-                  <Building2 size={18} /> Submit Application for Review <ArrowRight size={18} />
+                  <Building2 size={18} /> Submit Application for Review
                 </>
               )}
             </button>

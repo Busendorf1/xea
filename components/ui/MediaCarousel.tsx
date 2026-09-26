@@ -1,7 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
+import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./AdCard.module.css";
-import HlsVideoPlayer from "./HlsVideoPlayer";
 import VideoControlBar from "./VideoControlBar";
+
+const HlsVideoPlayer = dynamic(() => import("./HlsVideoPlayer"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: "100%", height: "100%", minHeight: 260, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--card-bg)" }}>
+      <AppleSpinner size={28} />
+    </div>
+  ),
+});
 
 interface MediaCarouselProps {
   adMedia: string | null;

@@ -99,6 +99,20 @@ export function useFeedAds({ userEmail, initialLimit = 10 }: UseFeedAdsOptions) 
           body: JSON.stringify({ adId: ad.id }),
         });
         if (!response.ok) throw new Error("Failed to record ad seen");
+        try {
+          const data = await response.json();
+          if (data && typeof data.clicksCount === "number" && typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("xea:click-increment", {
+                detail: {
+                  delta: 1,
+                  totalClicks: data.clicksCount,
+                  isMonetized: data.isMonetized,
+                },
+              })
+            );
+          }
+        } catch {}
         return true;
       } catch (err) {
         console.error("❌ Error in recordSeen:", err);

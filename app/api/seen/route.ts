@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
 
     // Check if ad is a platform post or has no budget (in which case user shouldn't earn click progress)
     let isPlatformPost = false;
+    let checkedFromCache = false;
     if (isRedisReady()) {
       try {
         const cached = await redisConnection.get(`ad:detail:${adId}`);
@@ -93,6 +94,26 @@ export async function POST(request: NextRequest) {
             Number(parsed.cost_per_impression) <= 0 ||
             !parsed.impressions ||
             Number(parsed.impressions) <= 0
+          );
+          checkedFromCache = true;
+        }
+      } catch {}
+    }
+
+    if (!checkedFromCache) {
+      try {
+        const { data: adRow } = await supabaseAdmin
+          .from("addsactive")
+          .select("is_admin_post, cost_per_impression, impressions")
+          .eq("id", adId)
+          .maybeSingle();
+        if (adRow) {
+          isPlatformPost = Boolean(
+            adRow.is_admin_post ||
+            !adRow.cost_per_impression ||
+            Number(adRow.cost_per_impression) <= 0 ||
+            !adRow.impressions ||
+            Number(adRow.impressions) <= 0
           );
         }
       } catch {}
@@ -128,13 +149,67 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    // Only increment monetization clicks if not an unpaid platform post
+    let clicksCount: number | undefined;
+    let isMonetized: boolean | undefined;
+
+    // Increment monetization clicks atomically if not an unpaid platform post
     if (!isPlatformPost) {
-      const { incrementCachedMonetizationClicks } = await import("@/lib/utils/cache");
-      await incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0);
+      try {
+        const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc("increment_user_click_progress", {
+          p_email: emailKey,
+          p_count: 1,
+        });
+
+        if (!rpcErr && rpcData && rpcData.length > 0) {
+          const row = rpcData[0];
+          clicksCount = Number(row.new_click_count || 0);
+          isMonetized = !!row.is_now_monetized;
+        } else if (rpcErr) {
+          console.warn("⚠️ RPC increment_user_click_progress notice in /api/seen:", rpcErr.message || rpcErr);
+          // Fallback direct update if RPC encounters error
+          const { data: uData } = await supabaseAdmin
+            .from("users")
+            .select("monetization_clicks, monetized")
+            .ilike("email", emailKey)
+            .maybeSingle();
+          if (uData) {
+            const nextCount = (Number(uData.monetization_clicks) || 0) + 1;
+            const nowMonetized = nextCount >= 300 || uData.monetized === true || uData.monetized === "true";
+            await supabaseAdmin
+              .from("users")
+              .update({
+                monetization_clicks: nextCount,
+                monetized: nowMonetized ? "true" : "false",
+                last_active_at: new Date().toISOString(),
+              })
+              .ilike("email", emailKey);
+            clicksCount = nextCount;
+            isMonetized = nowMonetized;
+          }
+        }
+      } catch (dbErr) {
+        console.warn("⚠️ DB increment error in /api/seen:", dbErr);
+      }
+
+      if (isRedisReady()) {
+        try {
+          const { incrementCachedMonetizationClicks, invalidateCachedProfile } = await import("@/lib/utils/cache");
+          const liveVal = await incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0);
+          if (!clicksCount && liveVal) {
+            clicksCount = liveVal;
+          }
+          await invalidateCachedProfile(emailKey).catch(() => {});
+          await redisConnection.del(`monetize:status:${emailKey}`).catch(() => {});
+        } catch {}
+      }
     }
 
-    return NextResponse.json({ success: true, queued: true });
+    return NextResponse.json({
+      success: true,
+      queued: true,
+      clicksCount,
+      isMonetized,
+    });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/seen:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Copy, Check, ShieldCheck, ArrowRight, Building2 } from "lucide-react";
+import { Copy, Check, ShieldCheck, Building2 } from "lucide-react";
 import styles from "./TransferSuccessModal.module.css";
 
 export interface TransferSuccessData {
@@ -176,7 +176,6 @@ export default function TransferSuccessModal({
  autoFocus
  >
  <span>Done</span>
- <ArrowRight size={18} />
  </button>
  </div>
  </div>

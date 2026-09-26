@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { boostSchema } from "@/lib/validationSchemas";
 import { formatCurrency } from "@/lib/utils/currency";
 import styles from "../MyAds/page.module.css";
 import Link from "next/link";
 import LocationSelector from "../LocationSelector";
+import CustomSelect from "@/components/ui/CustomSelect";
 import {
   Megaphone,
   Image as ImageIcon,
@@ -31,6 +33,8 @@ import {
   XCircle,
   RotateCw,
   Tag,
+  User,
+  UserCheck,
 } from "lucide-react";
 interface Session {
   user?: {
@@ -900,7 +904,15 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     const hasValidMedia = !!rawMediaString && rawMediaString.trim() !== "" && rawMediaString.toLowerCase() !== "text" && rawMediaString.toLowerCase() !== "null";
 
     return (
-      <div key={ad.id} className={styles.card}>
+      <motion.div
+        key={ad.id}
+        layout
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ y: -2 }}
+        transition={{ duration: 0.25 }}
+        className={styles.card}
+      >
         {/* Main Horizontal Row Body */}
         <div className={styles.rowBody}>
           {/* Thumbnail / Media Column */}
@@ -1011,7 +1023,12 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 <span>{deliveryPercent}% ({seenCount.toLocaleString()} / {targetImpressions.toLocaleString()} views)</span>
               </div>
               <div className={styles.deliveryProgressTrack}>
-                <div className={styles.deliveryProgressFill} style={{ width: `${deliveryPercent}%` }} />
+                <motion.div
+                  className={styles.deliveryProgressFill}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${deliveryPercent}%` }}
+                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                />
               </div>
             </div>
 
@@ -1222,8 +1239,15 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         </div>
 
         {/* Expandable Full Campaign Specs & Budget Drawer */}
-        {expandedSpecsMap[ad.id] && (
-          <div className={styles.specsDrawer}>
+        <AnimatePresence>
+          {expandedSpecsMap[ad.id] && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className={styles.specsDrawer}
+            >
             <div className={styles.specsHeading}>
               <span className={styles.specsHeadingInner}>
                 <SlidersHorizontal size={15} color="#1d9bf0" /> Advertiser Campaign Specifications & Budget Breakdown
@@ -1457,10 +1481,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
-      </div>
-    );
+      </AnimatePresence>
+    </motion.div>
+  );
   };
 
   const totalImpressionsDelivered = activeAds.reduce((acc, a) => acc + (a.impression_count || 0), 0);
@@ -1477,7 +1502,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           className={styles.refreshAdsBtn}
           title="Force-fetch latest ad campaigns and metrics from database"
         >
-          <RotateCw size={13} /> Refresh Ads
+          <motion.span
+            animate={{ rotate: loading ? 360 : 0 }}
+            transition={{ repeat: loading ? Infinity : 0, duration: 1, ease: "linear" }}
+            style={{ display: "inline-flex" }}
+          >
+            <RotateCw size={13} />
+          </motion.span>
+          <span>Refresh Ads</span>
         </button>
       </div>
 
@@ -1486,33 +1518,79 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       
       {/* Top KPI Header Summary Grid */}
       {!loading && (
-        <div className={styles.kpiContainer}>
-          <div className={styles.kpiCard}>
+        <motion.div
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: { opacity: 0 },
+            show: {
+              opacity: 1,
+              transition: { staggerChildren: 0.06 },
+            },
+          }}
+          className={styles.kpiContainer}
+        >
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 12 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+            }}
+            whileHover={{ y: -3, scale: 1.015 }}
+            className={styles.kpiCard}
+          >
             <span className={styles.kpiLabel}>Active Campaigns</span>
             <span className={styles.kpiValue}>{activeAds.length}</span>
             <span className={styles.kpiSub}>Currently delivering</span>
-          </div>
-          <div className={styles.kpiCard}>
+          </motion.div>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 12 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+            }}
+            whileHover={{ y: -3, scale: 1.015 }}
+            className={styles.kpiCard}
+          >
             <span className={styles.kpiLabel}>Ads in Review</span>
             <span className={`${styles.kpiValue} ${styles.kpiValueMuted}`}>{reviewAds.length}</span>
             <span className={`${styles.kpiSub} ${styles.kpiSubMuted}`}>Pending approval</span>
-          </div>
-          <div className={styles.kpiCard}>
+          </motion.div>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 12 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+            }}
+            whileHover={{ y: -3, scale: 1.015 }}
+            className={styles.kpiCard}
+          >
             <span className={styles.kpiLabel}>Impressions Delivered</span>
             <span className={styles.kpiValue}>{totalImpressionsDelivered.toLocaleString()}</span>
             <span className={styles.kpiSub}>Total views generated</span>
-          </div>
-          <div className={styles.kpiCard}>
+          </motion.div>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 12 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+            }}
+            whileHover={{ y: -3, scale: 1.015 }}
+            className={styles.kpiCard}
+          >
             <span className={styles.kpiLabel}>Total Engagements</span>
             <span className={styles.kpiValue}>{totalClicksCount.toLocaleString()}</span>
             <span className={styles.kpiSub}>Direct action clicks</span>
-          </div>
-          <div className={styles.kpiCard}>
+          </motion.div>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 12 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+            }}
+            whileHover={{ y: -3, scale: 1.015 }}
+            className={styles.kpiCard}
+          >
             <span className={styles.kpiLabel}>Mutual Additions</span>
             <span className={styles.kpiValue}>{totalMutualsGained.toLocaleString()}</span>
             <span className={styles.kpiSub}>New connections gained</span>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
 
       <h3 className={styles.subheading}>Ads in Review ({reviewAds.length})</h3>
@@ -1604,34 +1682,51 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       )}
 
       {/* Top-Up Booster Modal */}
-      {boosterAd && (
-        <div className={styles.modalOverlay} onClick={() => setBoosterAd(null)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div className={styles.modalHeaderLeft}>
-                <Zap size={18} color="var(--primary)" />
-                <h3 className={styles.modalTitle}>Boost & Top Up Campaign</h3>
+      <AnimatePresence>
+        {boosterAd && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className={styles.modalOverlay}
+            onClick={() => setBoosterAd(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 10 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className={styles.modalContent}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div className={styles.modalHeaderLeft}>
+                  <Zap size={18} color="var(--primary)" />
+                  <h3 className={styles.modalTitle}>Boost &amp; Top Up Campaign</h3>
+                </div>
+                <button className={styles.modalClose} onClick={() => setBoosterAd(null)}>✕</button>
               </div>
-              <button className={styles.modalClose} onClick={() => setBoosterAd(null)}>✕</button>
-            </div>
 
-            {/* Responsive Form Grid */}
-            <div className={styles.boosterGrid}>
-              <div className={styles.boosterGroup}>
-                <label className={styles.boosterLabel}>Add Extra Attention Target</label>
-                <select
-                  className={styles.boosterInput}
-                  value={addImpressions}
-                  onChange={(e) => setAddImpressions(Number(e.target.value))}
-                >
-                  <option value={0}>+0 Attention</option>
-                  <option value={500}>+500 Attention</option>
-                  <option value={1000}>+1,000 Attention</option>
-                  <option value={2500}>+2,500 Attention</option>
-                  <option value={5000}>+5,000 Attention</option>
-                  <option value={10000}>+10,000 Attention</option>
-                </select>
-              </div>
+              {/* Responsive Form Grid */}
+              <div className={styles.boosterGrid}>
+                <div className={styles.boosterGroup}>
+                  <label className={styles.boosterLabel}>Add Extra Attention Target</label>
+                  <CustomSelect
+                    value={String(addImpressions)}
+                    onChange={(val) => setAddImpressions(Number(val))}
+                    options={[
+                      { value: "0", label: "+0 Attention", badge: "Current" },
+                      { value: "500", label: "+500 Attention", badge: "Starter" },
+                      { value: "1000", label: "+1,000 Attention", badge: "Popular" },
+                      { value: "2500", label: "+2,500 Attention", badge: "Growth" },
+                      { value: "5000", label: "+5,000 Attention", badge: "High Reach" },
+                      { value: "10000", label: "+10,000 Attention", badge: "Scale" },
+                    ]}
+                    placeholder="Select Extra Attention"
+                    leadingIcon={<Zap size={16} />}
+                  />
+                </div>
 
               <div className={styles.boosterGroup}>
                 <div className={styles.boosterLabelRow}>
@@ -1687,15 +1782,26 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
               <div className={`${styles.boosterGroup} ${styles.boosterFullWidth}`}>
                 <label className={styles.boosterLabel}>Target Gender</label>
-                <select
-                  className={styles.boosterInput}
-                  value={boosterGender}
-                  onChange={(e) => setBoosterGender(e.target.value)}
-                >
-                  <option value="All">All Genders</option>
-                  <option value="Male">Male Only</option>
-                  <option value="Female">Female Only</option>
-                </select>
+                <div className={styles.boosterGenderGroup}>
+                  {[
+                    { value: "All", label: "All Genders", icon: <Users size={14} /> },
+                    { value: "Male", label: "Male Only", icon: <User size={14} /> },
+                    { value: "Female", label: "Female Only", icon: <UserCheck size={14} /> },
+                  ].map((g) => {
+                    const isSelected = boosterGender === g.value;
+                    return (
+                      <button
+                        key={g.value}
+                        type="button"
+                        onClick={() => setBoosterGender(g.value)}
+                        className={`${styles.boosterGenderBtn} ${isSelected ? styles.boosterGenderBtnActive : ""}`}
+                      >
+                        {g.icon}
+                        <span>{g.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className={`${styles.boosterGroup} ${styles.boosterFullWidth}`}>
@@ -1747,129 +1853,156 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             >
               {boosting ? "Processing Booster..." : "Confirm & Launch Booster"}
             </button>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+    </AnimatePresence>
 
       {/* ==================================================== */}
       {/* MODAL: CONTAINED NOTICE / BOOST ERROR */}
       {/* ==================================================== */}
-      {noticeModal && (
-        <div className={styles.modalOverlay} onClick={() => setNoticeModal(null)}>
-          <div
-            className={`${styles.modalContent} ${styles.noticeModal}`}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {noticeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className={styles.modalOverlay}
+            onClick={() => setNoticeModal(null)}
           >
-            <div className={styles.modalHeader}>
-              <div className={styles.modalHeaderLeft}>
-                <AlertTriangle size={22} color="var(--primary)" />
-                <h3 className={`${styles.modalTitle} ${styles.noticeModalTitle}`}>{noticeModal.title}</h3>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 10 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className={`${styles.modalContent} ${styles.noticeModal}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div className={styles.modalHeaderLeft}>
+                  <AlertTriangle size={22} color="var(--primary)" />
+                  <h3 className={`${styles.modalTitle} ${styles.noticeModalTitle}`}>{noticeModal.title}</h3>
+                </div>
+                <button className={styles.modalClose} onClick={() => setNoticeModal(null)}>
+                  <XCircle size={24} />
+                </button>
               </div>
-              <button className={styles.modalClose} onClick={() => setNoticeModal(null)}>
-                <XCircle size={24} />
-              </button>
-            </div>
-            <div className={styles.noticeModalBody}>
-              <p className={styles.noticeModalBodyPara}>{noticeModal.message}</p>
-            </div>
-            <div className={styles.noticeModalFooter}>
-              <button
-                type="button"
-                className={`${styles.boostBtn} ${styles.gotItBtn}`}
-                onClick={() => setNoticeModal(null)}
-              >
-                Got It
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className={styles.noticeModalBody}>
+                <p className={styles.noticeModalBodyPara}>{noticeModal.message}</p>
+              </div>
+              <div className={styles.noticeModalFooter}>
+                <button
+                  type="button"
+                  className={`${styles.boostBtn} ${styles.gotItBtn}`}
+                  onClick={() => setNoticeModal(null)}
+                >
+                  Got It
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ==================================================== */}
       {/* MODAL: ADVERTISER RATING FOR LISTENERS */}
       {/* ==================================================== */}
-      {ratingAdId && (
-        <div className={styles.modalOverlay} onClick={() => { setRatingAdId(null); setRatingMessage(null); }}>
-          <div
-            className={`${styles.modalContent} ${styles.ratingModalContainer}`}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {ratingAdId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className={styles.modalOverlay}
+            onClick={() => { setRatingAdId(null); setRatingMessage(null); }}
           >
-            <div className={styles.ratingModalHeader}>
-              <div className={styles.ratingModalHeaderLeft}>
-                <Star size={20} fill="var(--primary)" color="var(--primary)" />
-                <h3 className={styles.ratingModalTitle}>Rate Audience Engagement</h3>
-              </div>
-              <button className={styles.modalClose} onClick={() => { setRatingAdId(null); setRatingMessage(null); }}>
-                <XCircle size={22} />
-              </button>
-            </div>
-
-            <p className={styles.ratingModalSubtitle}>
-              How well did the audience engage with your ad? Your 1 to 5 star rating adds Attention Score points to all participating viewers.
-            </p>
-
-            {/* Interactive Star Picker */}
-            <div className={styles.starPicker}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRatingStars(star)}
-                  className={`${styles.starBtn} ${ratingStars >= star ? styles.starSelected : ""}`}
-                  title={`${star} Star${star > 1 ? "s" : ""} (+0.0${star} ATW Score)`}
-                >
-                  <Star
-                    size={32}
-                    fill={ratingStars >= star ? "var(--primary)" : "transparent"}
-                    color={ratingStars >= star ? "var(--primary)" : "var(--card-border)"}
-                  />
-                </button>
-              ))}
-            </div>
-
-            <div className={styles.starLabel}>
-              {ratingStars} Star{ratingStars > 1 ? "s" : ""} selected
-            </div>
-
-            {ratingMessage && (
-              <div className={ratingMessage.type === "success" ? styles.ratingAlertSuccess : styles.ratingAlertError}>
-                {ratingMessage.text}
-              </div>
-            )}
-
-            <button
-              type="button"
-              className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
-              disabled={ratingSubmitting}
-              onClick={async () => {
-                setRatingSubmitting(true);
-                setRatingMessage(null);
-                try {
-                  const res = await fetch("/api/campaigns/rate-listeners", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ad_id: ratingAdId, star_rating: ratingStars })
-                  });
-                  const data = await res.json();
-                  if (!res.ok) throw new Error(data.error || "Failed to submit rating");
-                  setRatedAdIds((prev) => new Set([...prev, ratingAdId!]));
-                  setRatingMessage({ type: "success", text: data.message });
-                  setTimeout(() => {
-                    setRatingAdId(null);
-                    setRatingMessage(null);
-                  }, 2000);
-                } catch (err: any) {
-                  setRatingMessage({ type: "error", text: err.message || "Failed to submit rating" });
-                } finally {
-                  setRatingSubmitting(false);
-                }
-              }}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 10 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className={`${styles.modalContent} ${styles.ratingModalContainer}`}
+              onClick={(e) => e.stopPropagation()}
             >
-              {ratingSubmitting ? "Submitting Rating..." : `Submit ${ratingStars}-Star Rating`}
-            </button>
-          </div>
-        </div>
-      )}
+              <div className={styles.ratingModalHeader}>
+                <div className={styles.ratingModalHeaderLeft}>
+                  <Star size={20} fill="var(--primary)" color="var(--primary)" />
+                  <h3 className={styles.ratingModalTitle}>Rate Audience Engagement</h3>
+                </div>
+                <button className={styles.modalClose} onClick={() => { setRatingAdId(null); setRatingMessage(null); }}>
+                  <XCircle size={22} />
+                </button>
+              </div>
+
+              <p className={styles.ratingModalSubtitle}>
+                How well did the audience engage with your ad? Your 1 to 5 star rating adds Attention Score points to all participating viewers.
+              </p>
+
+              {/* Interactive Star Picker */}
+              <div className={styles.starPicker}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRatingStars(star)}
+                    className={`${styles.starBtn} ${ratingStars >= star ? styles.starSelected : ""}`}
+                    title={`${star} Star${star > 1 ? "s" : ""} (+0.0${star} ATW Score)`}
+                  >
+                    <Star
+                      size={32}
+                      fill={ratingStars >= star ? "var(--primary)" : "transparent"}
+                      color={ratingStars >= star ? "var(--primary)" : "var(--card-border)"}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              <div className={styles.starLabel}>
+                {ratingStars} Star{ratingStars > 1 ? "s" : ""} selected
+              </div>
+
+              {ratingMessage && (
+                <div className={ratingMessage.type === "success" ? styles.ratingAlertSuccess : styles.ratingAlertError}>
+                  {ratingMessage.text}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
+                disabled={ratingSubmitting}
+                onClick={async () => {
+                  setRatingSubmitting(true);
+                  setRatingMessage(null);
+                  try {
+                    const res = await fetch("/api/campaigns/rate-listeners", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ ad_id: ratingAdId, star_rating: ratingStars })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Failed to submit rating");
+                    setRatedAdIds((prev) => new Set([...prev, ratingAdId!]));
+                    setRatingMessage({ type: "success", text: data.message });
+                    setTimeout(() => {
+                      setRatingAdId(null);
+                      setRatingMessage(null);
+                    }, 2000);
+                  } catch (err: any) {
+                    setRatingMessage({ type: "error", text: err.message || "Failed to submit rating" });
+                  } finally {
+                    setRatingSubmitting(false);
+                  }
+                }}
+              >
+                {ratingSubmitting ? "Submitting Rating..." : `Submit ${ratingStars}-Star Rating`}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

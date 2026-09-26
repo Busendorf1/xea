@@ -4,10 +4,43 @@
 import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Edit3, Rocket, ShieldAlert, Sparkles, Crown, AlertCircle } from "lucide-react";
+import {
+  Edit3,
+  Rocket,
+  ShieldAlert,
+  Sparkles,
+  Crown,
+  AlertCircle,
+  Phone,
+  MessageCircle,
+  Globe,
+  Mail,
+  Smartphone,
+  PlayCircle,
+  BookOpen,
+  Layers,
+  Image as ImageIcon,
+  Video,
+  FileText,
+  ShoppingBag,
+  ShoppingCart,
+  Calendar,
+  MessageSquare,
+  CheckCircle2,
+  Heart,
+  Users,
+  ExternalLink,
+  Check,
+  Zap,
+  User,
+  UserCheck,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import styles from "../Ad/page.module.css";
 import HeaderJoin from "../HeaderJoin/page";
 import LocationSelector from "../LocationSelector";
+import CustomSelect from "@/components/ui/CustomSelect";
+import FormStepProgress from "@/components/ui/FormStepProgress";
 import { v4 as uuidv4 } from "uuid";
 import supabase from "@/lib/utils/db";
 import dynamic from "next/dynamic";
@@ -40,7 +73,42 @@ const adRates: Record<string, number> = {
   product_sales: 55,
 };
 //we can pay 60%
-const steps = ["Ad", "Targeting", "Location", "Creative", "Summary"];
+const steps = [
+  "Category",
+  "Audience",
+  "Budget",
+  "Creative",
+  "Summary",
+  "Launch",
+];
+
+const getCtaIcon = (cta: string) => {
+  switch (cta) {
+    case "Buy":
+    case "Shop":
+      return <ShoppingBag size={15} />;
+    case "Order":
+      return <ShoppingCart size={15} />;
+    case "Book":
+    case "Reserve":
+      return <Calendar size={15} />;
+    case "Apply":
+      return <FileText size={15} />;
+    case "Comment":
+      return <MessageSquare size={15} />;
+    case "Vote":
+      return <CheckCircle2 size={15} />;
+    case "Donate":
+      return <Heart size={15} />;
+    case "Volunteer":
+    case "Join":
+      return <Users size={15} />;
+    case "Learn More":
+    case "Visit Website":
+    default:
+      return <ExternalLink size={15} />;
+  }
+};
 
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
@@ -132,6 +200,46 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   } | null>(null);
 
   const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, formSelections.country);
+
+  // Restore saved draft state on mount
+  useEffect(() => {
+    if (editingId) return;
+    try {
+      const saved = localStorage.getItem("paayh_draft_ad_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.step === "number") setStep(parsed.step);
+        if (parsed.adType) setAdType(parsed.adType);
+        if (typeof parsed.isBiddingEnabled === "boolean") setIsBiddingEnabled(parsed.isBiddingEnabled);
+        if (parsed.bidPrice) setBidPrice(parsed.bidPrice);
+        if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
+        if (parsed.formSelections) {
+          setFormSelections((prev) => ({
+            ...prev,
+            ...parsed.formSelections,
+            adMediaFiles: [],
+          }));
+        }
+      }
+    } catch {}
+  }, [editingId]);
+
+  // Autosave draft state on changes
+  useEffect(() => {
+    if (editingId) return;
+    try {
+      const { adMediaFiles, ...restSelections } = formSelections;
+      const draft = {
+        step,
+        adType,
+        isBiddingEnabled,
+        bidPrice,
+        isAiContent,
+        formSelections: restSelections,
+      };
+      localStorage.setItem("paayh_draft_ad_v1", JSON.stringify(draft));
+    } catch {}
+  }, [step, adType, isBiddingEnabled, bidPrice, isAiContent, formSelections, editingId]);
 
   const loadAdForEdit = async (targetId: string) => {
     if (!targetId) return;
@@ -437,7 +545,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     return true;
   };
 
-  /** Step 3 — ad creative validation */
+  /** Step 3 — creative validation (media assets + copy and interactive actions) */
   const validateStep3 = (): boolean => {
     setStepError("");
     if (!formSelections.adMediaType) {
@@ -627,6 +735,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
       sessionStorage.setItem("paayh_active_tab", "statement");
       clearUserCampaignsCache(session?.user?.email || "");
+      try {
+        localStorage.removeItem("paayh_draft_ad_v1");
+      } catch {}
 
       const authUrl = paymentData.authorization_url || paymentData.data?.authorization_url;
       if (isAdmin || paymentMethod === "wallet") {
@@ -699,34 +810,15 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       <main className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
           <div className={styles.adFormContainer}>
-            {/* Sleek Multi-Step Wizard Progress Header */}
-            <div className={styles.stepperContainer}>
-              {steps.map((label, idx) => (
-                <div key={label} className={styles.stepItemWrapper}>
-                  <div
-                    className={`${styles.stepItem} ${
-                      idx === step
-                        ? styles.stepItemActive
-                        : idx < step
-                        ? styles.stepItemCompleted
-                        : ""
-                    }`}
-                  >
-                    <span className={styles.stepBadge}>
-                      {idx < step ? "✓" : idx + 1}
-                    </span>
-                    <span className="hidden md:inline">{label}</span>
-                  </div>
-                  {idx < steps.length - 1 && (
-                    <div
-                      className={`${styles.stepLine} ${
-                        idx < step ? styles.stepLineActive : ""
-                      }`}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
+            {/* Sleek Multi-Step Wizard Progress Header (Standardized to /news) */}
+            <FormStepProgress
+              steps={steps}
+              currentStep={step}
+              onStepClick={(idx) => {
+                setStepError("");
+                setStep(idx);
+              }}
+            />
 
             <h1 className={`${styles.summaryTitle} ${styles.pageHeading}`}>
               {editingId ? <><Edit3 size={20} color="#818cf8" /> Edit Campaign</> : <><Rocket size={20} color="#1d9bf0" /> Create New Ad Campaign</>}
@@ -784,7 +876,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   }}
                   className={styles.switchCampaignBtn}
                 >
-                  &larr; Switch to Create New Campaign
+                  Switch to Create New Campaign
                 </button>
               </div>
             )}
@@ -882,40 +974,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               </>
             )}
 
-            {/* Step 2 */}
+            {/* Step 2: Budget & Reach */}
             {step === 2 && (
               <>
-                {/* Target Location & Geographies */}
-                <div className={styles.modernSectionCard}>
-                  <div className={styles.modernSectionHeader}>
-                    <span className={styles.modernSectionTitle}>Target Location &amp; Geographies</span>
-                    <span className={styles.modernSectionBadge}>
-                      {(formSelections.targetLocations && formSelections.targetLocations.length > 0)
-                        ? `${formSelections.targetLocations.length} locations`
-                        : formSelections.state || formSelections.country || "All locations"}
-                    </span>
-                  </div>
-                  <div className={styles.modernSectionBody}>
-                    <LocationSelector
-                      country={formSelections.country}
-                      state={formSelections.state}
-                      location={formSelections.province}
-                      multiLocation={true}
-                      multiLocations={formSelections.targetLocations || []}
-                      onChange={({ country, state, location, multiLocations }) =>
-                        setFormSelections((prev) => ({
-                          ...prev,
-                          country: country || "",
-                          state: state || "",
-                          province: (multiLocations && multiLocations.length > 0) ? multiLocations.join("; ") : (location || ""),
-                          targetLocations: multiLocations || [],
-                        }))
-                      }
-                      cityLabel="Province"
-                    />
-                  </div>
-                </div>
-
                 {/* Audience Demographics */}
                 <div className={styles.modernSectionCard}>
                   <div className={styles.modernSectionHeader}>
@@ -926,32 +987,41 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   </div>
                   <div className={styles.modernSectionBody}>
                     <div className={styles.formGroup}>
-                      <label className={styles.fieldLabelBold}>Gender:</label>
-                      <select
-                        value={formSelections.gender}
-                        onChange={(e) =>
-                          setFormSelections((prev) => ({
-                            ...prev,
-                            gender: e.target.value,
-                          }))
-                        }
-                        className={styles.inputBox}
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="both">Both</option>
-                      </select>
+                      <label className={styles.fieldLabelBold}>Target Gender:</label>
+                      <div className={styles.genderSegmentGroup}>
+                        {[
+                          { value: "", label: "All Genders", icon: <Users size={14} /> },
+                          { value: "male", label: "Male Only", icon: <User size={14} /> },
+                          { value: "female", label: "Female Only", icon: <UserCheck size={14} /> },
+                        ].map((g) => {
+                          const isSelected = formSelections.gender === g.value;
+                          return (
+                            <button
+                              key={g.value}
+                              type="button"
+                              onClick={() =>
+                                setFormSelections((prev) => ({
+                                  ...prev,
+                                  gender: g.value,
+                                }))
+                              }
+                              className={`${styles.genderSegmentBtn} ${isSelected ? styles.genderSegmentBtnActive : ""}`}
+                            >
+                              {g.icon}
+                              <span>{g.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                     
                     <div className={styles.ageRangeRow}>
                       <div className={styles.ageRangeField}>
                         <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Target Min Age</label>
-                        <select
-                          className={styles.inputBox}
-                          value={formSelections.ageRange[0]}
-                          onChange={(e) => {
-                            const min = parseInt(e.target.value);
+                        <CustomSelect
+                          value={String(formSelections.ageRange[0])}
+                          onChange={(val) => {
+                            const min = parseInt(val, 10);
                             setFormSelections((prev) => {
                               const max = Math.max(min, prev.ageRange[1]);
                               return {
@@ -960,21 +1030,19 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               };
                             });
                           }}
-                        >
-                          {Array.from({ length: 83 }, (_, i) => i + 18).map((age) => (
-                            <option key={age} value={age}>
-                              {age} years
-                            </option>
-                          ))}
-                        </select>
+                          options={Array.from({ length: 83 }, (_, i) => ({
+                            value: String(i + 18),
+                            label: `${i + 18} years`,
+                          }))}
+                          placeholder="Min Age"
+                        />
                       </div>
                       <div className={styles.ageRangeField}>
                         <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Target Max Age</label>
-                        <select
-                          className={styles.inputBox}
-                          value={formSelections.ageRange[1]}
-                          onChange={(e) => {
-                            const max = parseInt(e.target.value);
+                        <CustomSelect
+                          value={String(formSelections.ageRange[1])}
+                          onChange={(val) => {
+                            const max = parseInt(val, 10);
                             setFormSelections((prev) => {
                               const min = Math.min(max, prev.ageRange[0]);
                               return {
@@ -983,13 +1051,12 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               };
                             });
                           }}
-                        >
-                          {Array.from({ length: 83 }, (_, i) => i + 18).map((age) => (
-                            <option key={age} value={age}>
-                              {age} years
-                            </option>
-                          ))}
-                        </select>
+                          options={Array.from({ length: 83 }, (_, i) => ({
+                            value: String(i + 18),
+                            label: `${i + 18} years`,
+                          }))}
+                          placeholder="Max Age"
+                        />
                       </div>
                     </div>
 
@@ -1164,10 +1231,246 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     )}
                   </div>
                 </div>
+
+                {/* Target Location & Geographies */}
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Target Location &amp; Geographies</span>
+                    <span className={styles.modernSectionBadge}>
+                      {(formSelections.targetLocations && formSelections.targetLocations.length > 0)
+                        ? `${formSelections.targetLocations.length} locations`
+                        : formSelections.state || formSelections.country || "All locations"}
+                    </span>
+                  </div>
+                  <div className={styles.modernSectionBody}>
+                    <LocationSelector
+                      country={formSelections.country}
+                      state={formSelections.state}
+                      location={formSelections.province}
+                      multiLocation={true}
+                      multiLocations={formSelections.targetLocations || []}
+                      onChange={({ country, state, location, multiLocations }) =>
+                        setFormSelections((prev) => ({
+                          ...prev,
+                          country: country || "",
+                          state: state || "",
+                          province: (multiLocations && multiLocations.length > 0) ? multiLocations.join("; ") : (location || ""),
+                          targetLocations: multiLocations || [],
+                        }))
+                      }
+                      cityLabel="Province"
+                    />
+                  </div>
+                </div>
               </>
             )}
 
+            {/* Step 3: Creative (Media & Copy) */}
             {step === 3 && (
+              <>
+                <div className={styles.modernSectionCard}>
+                  <div className={styles.modernSectionHeader}>
+                    <span className={styles.modernSectionTitle}>Ad Media &amp; Visual Assets</span>
+                  <span className={styles.modernSectionBadge}>
+                    {formSelections.adMediaType ? formSelections.adMediaType.toUpperCase() : "Select Format"}
+                  </span>
+                </div>
+                <div className={styles.modernSectionBody}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.fieldLabelBold}>Ad Media Format &amp; Visual Asset Type</label>
+                    <div className={styles.mediaTypeGrid}>
+                      {[
+                        {
+                          value: "text",
+                          title: "Text Only",
+                          badge: "Fastest Load",
+                          desc: "Clean message copy & typography. No visual upload needed.",
+                          icon: <FileText size={15} color="#3b82f6" />,
+                        },
+                        {
+                          value: "image",
+                          title: "Image(s)",
+                          badge: "Up to 4 Photos",
+                          desc: "High-resolution photos & banners (JPG, PNG, max 5MB each).",
+                          icon: <ImageIcon size={15} color="#10b981" />,
+                        },
+                        {
+                          value: "video",
+                          title: "Video Only",
+                          badge: "Max 5 Mins",
+                          desc: "High-impact video storytelling (MP4, MOV, max 60MB).",
+                          icon: <Video size={15} color="#f59e0b" />,
+                        },
+                        {
+                          value: "mixed",
+                          title: "Mixed Media",
+                          badge: "Images + Video",
+                          desc: "Up to 3 high-res images and 1 video for maximum engagement.",
+                          icon: <Layers size={15} color="#8b5cf6" />,
+                        },
+                      ].map((format) => {
+                        const isSelected = formSelections.adMediaType === format.value;
+                        return (
+                          <div
+                            key={format.value}
+                            onClick={() =>
+                              setFormSelections((prev) => ({
+                                ...prev,
+                                adMediaType: format.value as AdMediaType,
+                                adMediaFiles: [],
+                              }))
+                            }
+                            className={`${styles.mediaTypeCard} ${isSelected ? styles.mediaTypeCardActive : ""}`}
+                          >
+                            <div className={styles.mediaTypeCardHeader}>
+                              <div className={styles.mediaTypeCardIcon}>{format.icon}</div>
+                              <span className={styles.mediaTypeCardBadge}>{format.badge}</span>
+                            </div>
+                            <h4 className={styles.mediaTypeCardTitle}>{format.title}</h4>
+                            <p className={styles.mediaTypeCardDesc}>{format.desc}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {formSelections.adMediaType && formSelections.adMediaType !== "text" && (
+                    <div className={styles.formGroup}>
+                      <label className={styles.fieldLabelBold}>Upload Files</label>
+                      <input
+                        type="file"
+                        multiple={formSelections.adMediaType !== "video"}
+                        accept={
+                          formSelections.adMediaType === "video"
+                            ? "video/*"
+                            : formSelections.adMediaType === "image"
+                            ? "image/*"
+                            : "image/*,video/*"
+                        }
+                        onChange={async (e) => {
+                          const files = e.target.files;
+                          if (!files || files.length === 0) return;
+                          const fileArray = Array.from(files);
+
+                          // Separate images and videos
+                          const images = fileArray.filter(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name));
+                          const videos = fileArray.filter(f => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name));
+
+                          // Validation checks
+                          if (formSelections.adMediaType === "image") {
+                            if (videos.length > 0) {
+                              alert("Only images are allowed for this type.");
+                              e.target.value = "";
+                              return;
+                            }
+                            if (images.length > 4) {
+                              alert("You can select up to 4 images only.");
+                              e.target.value = "";
+                              return;
+                            }
+                          } else if (formSelections.adMediaType === "video") {
+                            if (images.length > 0) {
+                              alert("Only videos are allowed for this type.");
+                              e.target.value = "";
+                              return;
+                            }
+                            if (videos.length > 1) {
+                              alert("You can select only 1 video.");
+                              e.target.value = "";
+                              return;
+                            }
+                          } else if (formSelections.adMediaType === "mixed") {
+                            if (videos.length > 1) {
+                              alert("You can select at most 1 video.");
+                              e.target.value = "";
+                              return;
+                            }
+                            if (images.length > 3) {
+                              alert("You can select at most 3 images.");
+                              e.target.value = "";
+                              return;
+                            }
+                            if (images.length + videos.length > 4) {
+                              alert("Total number of files cannot exceed 4.");
+                              e.target.value = "";
+                              return;
+                            }
+                          }
+
+                          // Size and video duration checks
+                          for (const file of fileArray) {
+                            const isImage = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
+                            const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
+
+                            if (isImage) {
+                              if (file.size > 5 * 1024 * 1024) {
+                                alert(`Image ${file.name} exceeds 5MB limit.`);
+                                e.target.value = "";
+                                return;
+                              }
+                            } else if (isVideo) {
+                              if (file.size > 60 * 1024 * 1024) {
+                                alert(`Video ${file.name} exceeds 60MB limit.`);
+                                e.target.value = "";
+                                return;
+                              }
+                              // Gracefully check duration with iCloud streaming fallback
+                              let durationOk = true;
+                              try {
+                                durationOk = await new Promise<boolean>((resolve) => {
+                                  const videoEl = document.createElement("video");
+                                  videoEl.preload = "metadata";
+                                  const timer = setTimeout(() => {
+                                    // If iCloud is still streaming/downloading, allow if file size is valid
+                                    resolve(file.size <= 60 * 1024 * 1024);
+                                  }, 3500);
+
+                                  videoEl.onloadedmetadata = () => {
+                                    clearTimeout(timer);
+                                    resolve(videoEl.duration <= 300);
+                                  };
+                                  videoEl.onerror = () => {
+                                    clearTimeout(timer);
+                                    // On iOS iCloud offloaded assets, allow file by size
+                                    resolve(file.size <= 60 * 1024 * 1024);
+                                  };
+                                  videoEl.src = URL.createObjectURL(file);
+                                });
+                              } catch {
+                                durationOk = file.size <= 60 * 1024 * 1024;
+                              }
+
+                              if (!durationOk) {
+                                alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
+                                e.target.value = "";
+                                return;
+                              }
+                            }
+                          }
+
+                          setFormSelections(prev => ({
+                            ...prev,
+                            adMediaFiles: fileArray
+                          }));
+                        }}
+                        className={styles.inputBox}
+                      />
+                      {formSelections.adMediaFiles.length > 0 && (
+                        <div className={styles.selectedFilesHint}>
+                          Selected: {formSelections.adMediaFiles.map(f => f.name).join(", ")}
+                        </div>
+                      )}
+                      {formSelections.existingMedia && formSelections.adMediaFiles.length === 0 && (
+                        <div className={styles.selectedFilesHint}>
+                          Current campaign media preserved. Choose new file(s) above if you wish to replace it.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Copy & Interactive Actions */}
               <div className={styles.adCreativeSection}>
                 {isAdmin && (
                   <div className={`${styles.modernSectionCard} ${styles.adminPrivilegeCard}`}>
@@ -1255,34 +1558,46 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                       <div className={styles.formGroup}>
                         <label className={styles.fieldLabelBold}>Primary CTA Button Text (Select 1 CTA)</label>
-                        <select
-                          value={formSelections.productCtaType}
-                          onChange={(e) =>
+                        <CustomSelect
+                          value={formSelections.productCtaType || "Buy"}
+                          onChange={(val) =>
                             setFormSelections((prev) => ({
                               ...prev,
-                              productCtaType: e.target.value,
+                              productCtaType: val,
                             }))
                           }
-                          className={styles.inputBox}
-                        >
-                          <option value="Buy">Buy</option>
-                          <option value="Shop">Shop</option>
-                          <option value="Order">Order</option>
-                          <option value="Book">Book</option>
-                          <option value="Reserve">Reserve</option>
-                          <option value="Apply">Apply</option>
-                          <option value="Comment">Comment</option>
-                          <option value="Join">Join</option>
-                          <option value="Learn More">Learn More</option>
-                          <option value="Visit Website">Visit Website</option>
-                        </select>
+                          options={[
+                            "Buy",
+                            "Shop",
+                            "Order",
+                            "Book",
+                            "Reserve",
+                            "Apply",
+                            "Comment",
+                            "Join",
+                            "Learn More",
+                            "Visit Website",
+                          ].map((cta) => ({
+                            value: cta,
+                            label: cta,
+                            icon: getCtaIcon(cta),
+                          }))}
+                          placeholder="Select Primary CTA"
+                        />
+                        <div className={styles.ctaPreviewRow}>
+                          <span className={styles.ctaPreviewLabel}>Live Feed Button:</span>
+                          <span className={styles.ctaPreviewBtn}>
+                            {getCtaIcon(formSelections.productCtaType || "Buy")}
+                            <span>{formSelections.productCtaType || "Buy"}</span>
+                          </span>
+                        </div>
                       </div>
 
                       <div className={styles.formGroup}>
                         <div className={styles.ctaLabelRow}>
                           <label className={styles.fieldLabelBold}>Primary CTA Link (Secure HTTPS)</label>
                           <Link href="/business/subscribe" className={styles.premiumLink}>
-                            E-commerce platform? Become a Premium Subscriber →
+                            E-commerce platform? Become a Premium Subscriber
                           </Link>
                         </div>
                         <input
@@ -1325,30 +1640,42 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     <div className={styles.modernSectionBody}>
                       <div className={styles.formGroup}>
                         <label className={styles.fieldLabelBold}>Action &amp; Engagement CTA (Select 1 CTA)</label>
-                        <select
-                          value={formSelections.productCtaType}
-                          onChange={(e) =>
+                        <CustomSelect
+                          value={formSelections.productCtaType || "Comment"}
+                          onChange={(val) =>
                             setFormSelections((prev) => ({
                               ...prev,
-                              productCtaType: e.target.value,
+                              productCtaType: val,
                             }))
                           }
-                          className={styles.inputBox}
-                        >
-                          <option value="Comment">Comment</option>
-                          <option value="Vote">Vote</option>
-                          <option value="Donate">Donate</option>
-                          <option value="Volunteer">Volunteer</option>
-                          <option value="Book">Book</option>
-                          <option value="Reserve">Reserve</option>
-                          <option value="Apply">Apply</option>
-                          <option value="Order">Order</option>
-                          <option value="Buy">Buy</option>
-                          <option value="Shop">Shop</option>
-                          <option value="Join">Join</option>
-                          <option value="Learn More">Learn More</option>
-                          <option value="Visit Website">Visit Website</option>
-                        </select>
+                          options={[
+                            "Comment",
+                            "Vote",
+                            "Donate",
+                            "Volunteer",
+                            "Book",
+                            "Reserve",
+                            "Apply",
+                            "Order",
+                            "Buy",
+                            "Shop",
+                            "Join",
+                            "Learn More",
+                            "Visit Website",
+                          ].map((cta) => ({
+                            value: cta,
+                            label: cta,
+                            icon: getCtaIcon(cta),
+                          }))}
+                          placeholder="Select Engagement Action"
+                        />
+                        <div className={styles.ctaPreviewRow}>
+                          <span className={styles.ctaPreviewLabel}>Live Feed Button:</span>
+                          <span className={styles.ctaPreviewBtn}>
+                            {getCtaIcon(formSelections.productCtaType || "Comment")}
+                            <span>{formSelections.productCtaType || "Comment"}</span>
+                          </span>
+                        </div>
                       </div>
 
                       <div className={styles.formGroup}>
@@ -1413,186 +1740,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                 <div className={styles.modernSectionCard}>
                   <div className={styles.modernSectionHeader}>
-                    <span className={styles.modernSectionTitle}>Ad Media &amp; Visual Assets</span>
-                    <span className={styles.modernSectionBadge}>
-                      {formSelections.adMediaType ? formSelections.adMediaType.toUpperCase() : "Select Format"}
-                    </span>
-                  </div>
-                  <div className={styles.modernSectionBody}>
-                    <div className={styles.formGroup}>
-                      <label className={styles.fieldLabelBold}>Ad Content Type</label>
-                      <select
-                        value={formSelections.adMediaType}
-                        onChange={(e) =>
-                          setFormSelections((prev) => ({
-                            ...prev,
-                            adMediaType: e.target.value as AdMediaType,
-                            adMediaFiles: [],
-                          }))
-                        }
-                        className={styles.inputBox}
-                      >
-                        <option value="">-- Select media type --</option>
-                        <option value="text">Text Only</option>
-                        <option value="image">Image(s) (Up to 4)</option>
-                        <option value="video">Video Only (Max 1)</option>
-                        <option value="mixed">Mixed (Up to 3 Images + 1 Video)</option>
-                      </select>
-                      {formSelections.adMediaType === "image" && (
-                        <small className={styles.info}>
-                          Max size: 5MB per image (JPG, PNG, etc). You can select up to 4 images.
-                        </small>
-                      )}
-                      {formSelections.adMediaType === "video" && (
-                        <small className={styles.info}>
-                          Max size: 60MB • Max duration: 5mins • Format: Video formats. Select exactly 1 video.
-                        </small>
-                      )}
-                      {formSelections.adMediaType === "mixed" && (
-                        <small className={styles.info}>
-                          Up to 3 images (max 5MB each) and exactly 1 video (max 60MB, 5mins).
-                        </small>
-                      )}
-                    </div>
-
-                    {formSelections.adMediaType && formSelections.adMediaType !== "text" && (
-                      <div className={styles.formGroup}>
-                        <label className={styles.fieldLabelBold}>Upload Files</label>
-                        <input
-                          type="file"
-                          multiple={formSelections.adMediaType !== "video"}
-                          accept={
-                            formSelections.adMediaType === "video"
-                              ? "video/*"
-                              : formSelections.adMediaType === "image"
-                              ? "image/*"
-                              : "image/*,video/*"
-                          }
-                          onChange={async (e) => {
-                            const files = e.target.files;
-                            if (!files || files.length === 0) return;
-                            const fileArray = Array.from(files);
-
-                            // Separate images and videos
-                            const images = fileArray.filter(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name));
-                            const videos = fileArray.filter(f => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name));
-
-                            // Validation checks
-                            if (formSelections.adMediaType === "image") {
-                              if (videos.length > 0) {
-                                alert("Only images are allowed for this type.");
-                                e.target.value = "";
-                                return;
-                              }
-                              if (images.length > 4) {
-                                alert("You can select up to 4 images only.");
-                                e.target.value = "";
-                                return;
-                              }
-                            } else if (formSelections.adMediaType === "video") {
-                              if (images.length > 0) {
-                                alert("Only videos are allowed for this type.");
-                                e.target.value = "";
-                                return;
-                              }
-                              if (videos.length > 1) {
-                                alert("You can select only 1 video.");
-                                e.target.value = "";
-                                return;
-                              }
-                            } else if (formSelections.adMediaType === "mixed") {
-                              if (videos.length > 1) {
-                                alert("You can select at most 1 video.");
-                                e.target.value = "";
-                                return;
-                              }
-                              if (images.length > 3) {
-                                alert("You can select at most 3 images.");
-                                e.target.value = "";
-                                return;
-                              }
-                              if (images.length + videos.length > 4) {
-                                alert("Total number of files cannot exceed 4.");
-                                e.target.value = "";
-                                return;
-                              }
-                            }
-
-                            // Size and video duration checks
-                            for (const file of fileArray) {
-                              const isImage = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
-                              const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
-
-                              if (isImage) {
-                                if (file.size > 5 * 1024 * 1024) {
-                                  alert(`Image ${file.name} exceeds 5MB limit.`);
-                                  e.target.value = "";
-                                  return;
-                                }
-                              } else if (isVideo) {
-                                if (file.size > 60 * 1024 * 1024) {
-                                  alert(`Video ${file.name} exceeds 60MB limit.`);
-                                  e.target.value = "";
-                                  return;
-                                }
-                                // Gracefully check duration with iCloud streaming fallback
-                                let durationOk = true;
-                                try {
-                                  durationOk = await new Promise<boolean>((resolve) => {
-                                    const videoEl = document.createElement("video");
-                                    videoEl.preload = "metadata";
-                                    const timer = setTimeout(() => {
-                                      // If iCloud is still streaming/downloading, allow if file size is valid
-                                      resolve(file.size <= 60 * 1024 * 1024);
-                                    }, 3500);
-
-                                    videoEl.onloadedmetadata = () => {
-                                      clearTimeout(timer);
-                                      resolve(videoEl.duration <= 300);
-                                    };
-                                    videoEl.onerror = () => {
-                                      clearTimeout(timer);
-                                      // On iOS iCloud offloaded assets, allow file by size
-                                      resolve(file.size <= 60 * 1024 * 1024);
-                                    };
-                                    videoEl.src = URL.createObjectURL(file);
-                                  });
-                                } catch {
-                                  durationOk = file.size <= 60 * 1024 * 1024;
-                                }
-
-                                if (!durationOk) {
-                                  alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
-                                  e.target.value = "";
-                                  return;
-                                }
-                              }
-                            }
-
-                            setFormSelections(prev => ({
-                              ...prev,
-                              adMediaFiles: fileArray
-                            }));
-                          }}
-                          className={styles.inputBox}
-                        />
-                        {formSelections.adMediaFiles.length > 0 && (
-                          <div className={styles.selectedFilesHint}>
-                            Selected: {formSelections.adMediaFiles.map(f => f.name).join(", ")}
-                          </div>
-                        )}
-                        {formSelections.existingMedia && formSelections.adMediaFiles.length === 0 && (
-                          <div className={styles.selectedFilesHint}>
-                            Current campaign media preserved. Choose new file(s) above if you wish to replace it.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className={styles.modernSectionCard}>
-                  <div className={styles.modernSectionHeader}>
                     <span className={styles.modernSectionTitle}>
                       {adType === "product_sales" ? "Product Description" : "Ad Message Copy"}
                     </span>
@@ -1648,9 +1795,20 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               Reduced to max {maxButtons} buttons to ensure clean mobile card spacing alongside &quot;{formSelections.productCtaType || "Comment"}&quot;.
                             </p>
                           )}
-                          <div className={styles.actionButtonsStack}>
+
+                          <div className={styles.actionMeterRow}>
+                            <span className={styles.actionMeterText}>
+                              <Zap size={15} color="var(--primary)" /> Interactive Feed CTAs
+                            </span>
+                            <span className={styles.actionMeterBadge}>
+                              {formSelections.adActionButtons.length} of {maxButtons} Selected
+                              {formSelections.adActionButtons.length >= maxButtons && " (Max Limit)"}
+                            </span>
+                          </div>
+
+                          <div className={styles.actionDeckGrid}>
                             {(() => {
-                              const baseButtons: string[] = ["phone", "whatsapp", "website", "email"];
+                              const baseButtons: string[] = ["whatsapp", "phone", "website", "email"];
                               if (adType === "business" || adType === "government") {
                                 baseButtons.push("ios", "android");
                               }
@@ -1660,67 +1818,215 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               if (formSelections.adMediaType === "text") {
                                 baseButtons.push("read_more");
                               }
+
+                              const buttonMetaMap: Record<
+                                string,
+                                {
+                                  title: string;
+                                  subtitle: string;
+                                  icon: React.ReactNode;
+                                  color: string;
+                                  bg: string;
+                                  previewLabel: string;
+                                  inputType: string;
+                                  placeholder: string;
+                                }
+                              > = {
+                                whatsapp: {
+                                  title: "WhatsApp Direct",
+                                  subtitle: "Direct 1-tap chat with your WhatsApp number",
+                                  icon: <MessageCircle size={18} />,
+                                  color: "#25D366",
+                                  bg: "rgba(37, 211, 102, 0.14)",
+                                  previewLabel: "WhatsApp",
+                                  inputType: "tel",
+                                  placeholder: "e.g. 234904567890 (no plus or spaces)",
+                                },
+                                phone: {
+                                  title: "Direct Phone Call",
+                                  subtitle: "Immediate phone dialer prompt on user device",
+                                  icon: <Phone size={18} />,
+                                  color: "#10b981",
+                                  bg: "rgba(16, 185, 129, 0.14)",
+                                  previewLabel: "Call Now",
+                                  inputType: "tel",
+                                  placeholder: "e.g. 234904567890",
+                                },
+                                website: {
+                                  title: "External Website",
+                                  subtitle: "Directs audience to your target web address",
+                                  icon: <Globe size={18} />,
+                                  color: "#0284c7",
+                                  bg: "rgba(2, 132, 199, 0.14)",
+                                  previewLabel: "Website",
+                                  inputType: "url",
+                                  placeholder: "e.g. https://yourwebsite.com",
+                                },
+                                email: {
+                                  title: "Email Inquiry",
+                                  subtitle: "Opens email composer with your recipient address",
+                                  icon: <Mail size={18} />,
+                                  color: "#8b5cf6",
+                                  bg: "rgba(139, 92, 246, 0.14)",
+                                  previewLabel: "Email Us",
+                                  inputType: "email",
+                                  placeholder: "e.g. hello@yourbrand.com",
+                                },
+                                ios: {
+                                  title: "Install iOS App",
+                                  subtitle: "App Store link for iPhone and iPad devices",
+                                  icon: <Smartphone size={18} />,
+                                  color: "#94a3b8",
+                                  bg: "rgba(148, 163, 184, 0.16)",
+                                  previewLabel: "App Store",
+                                  inputType: "url",
+                                  placeholder: "e.g. https://apps.apple.com/app/...",
+                                },
+                                android: {
+                                  title: "Install Android App",
+                                  subtitle: "Google Play Store listing link for Android users",
+                                  icon: <Smartphone size={18} />,
+                                  color: "#22c55e",
+                                  bg: "rgba(34, 197, 94, 0.14)",
+                                  previewLabel: "Play Store",
+                                  inputType: "url",
+                                  placeholder: "e.g. https://play.google.com/store/apps/details?id=...",
+                                },
+                                watch_now: {
+                                  title: "Watch Video",
+                                  subtitle: "Direct link to video premiere, stream, or channel",
+                                  icon: <PlayCircle size={18} />,
+                                  color: "#ef4444",
+                                  bg: "rgba(239, 68, 68, 0.14)",
+                                  previewLabel: "Watch Now",
+                                  inputType: "url",
+                                  placeholder: "e.g. https://youtube.com/watch?v=...",
+                                },
+                                read_more: {
+                                  title: "Expand Story",
+                                  subtitle: "Unlocks up to 500 characters of rich ad copy",
+                                  icon: <BookOpen size={18} />,
+                                  color: "#f59e0b",
+                                  bg: "rgba(245, 158, 11, 0.14)",
+                                  previewLabel: "Read More",
+                                  inputType: "none",
+                                  placeholder: "",
+                                },
+                              };
+
                               return baseButtons.map((type) => {
                                 const isSelected = formSelections.adActionButtons.includes(type as any);
-                                const placeholderMap: Record<string, string> = {
-                                  phone: "e.g. 234904567890",
-                                  whatsapp: "e.g. 234904567890",
-                                  email: "e.g. someone@example.com",
-                                  website: "e.g. https://yourwebsite.com",
-                                  ios: "e.g. https://apps.apple.com/us/app/your-app",
-                                  android: "e.g. https://play.google.com/store/apps/details?id=your.app",
-                                  watch_now: "e.g. https://youtube.com/watch?v=...",
-                                  read_more: "",
+                                const isLimitReached = !isSelected && formSelections.adActionButtons.length >= maxButtons;
+                                const meta = buttonMetaMap[type] || {
+                                  title: type.toUpperCase().replace("_", " "),
+                                  subtitle: "Custom interactive action",
+                                  icon: <Zap size={18} />,
+                                  color: "var(--primary)",
+                                  bg: "rgba(234, 179, 8, 0.14)",
+                                  previewLabel: type,
+                                  inputType: "text",
+                                  placeholder: "",
                                 };
 
                                 const isEmail = type === "email";
                                 const value = type !== "read_more" ? formSelections.actionDetails[type as keyof typeof formSelections.actionDetails] || "" : "";
                                 const isEmailInvalid = isEmail && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
+                                const toggleButton = () => {
+                                  if (isLimitReached) return;
+                                  setFormSelections((prev) => {
+                                    const updated = [...prev.adActionButtons];
+                                    if (!isSelected && updated.length < maxButtons) {
+                                      updated.push(type as any);
+                                    } else if (isSelected) {
+                                      const idx = updated.indexOf(type as any);
+                                      if (idx !== -1) updated.splice(idx, 1);
+                                    }
+                                    return {
+                                      ...prev,
+                                      adActionButtons: updated,
+                                    };
+                                  });
+                                };
+
                                 return (
-                                  <div key={type} className={styles.actionButtonCol}>
-                                    <label className={styles.actionButtonLabel}>
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          const checked = e.target.checked;
-                                          setFormSelections((prev) => {
-                                            const updated = [...prev.adActionButtons];
-                                            if (checked && updated.length < maxButtons) {
-                                              updated.push(type as any);
-                                            } else if (!checked) {
-                                              const idx = updated.indexOf(type as any);
-                                              if (idx !== -1) updated.splice(idx, 1);
-                                            }
-                                            return {
-                                              ...prev,
-                                              adActionButtons: updated,
-                                            };
-                                          });
-                                        }}
-                                      />
-                                      {type === "ios" ? "INSTALL NOW (iOS)" : type === "android" ? "INSTALL NOW (ANDROID)" : type === "watch_now" ? "WATCH NOW" : type.toUpperCase().replace("_", " ")}
-                                    </label>
+                                  <div
+                                    key={type}
+                                    className={`${styles.actionCard} ${isSelected ? styles.actionCardActive : ""} ${
+                                      isLimitReached ? styles.actionCardDisabled : ""
+                                    }`}
+                                  >
+                                    <div className={styles.actionCardHeader} onClick={toggleButton}>
+                                      <div
+                                        className={styles.actionIconWrapper}
+                                        style={{ backgroundColor: meta.bg, color: meta.color }}
+                                      >
+                                        {meta.icon}
+                                      </div>
+
+                                      <div className={styles.actionTextCol}>
+                                        <div className={styles.actionCardTitle}>
+                                          <span>{meta.title}</span>
+                                        </div>
+                                        <span className={styles.actionCardSubtitle}>{meta.subtitle}</span>
+                                      </div>
+
+                                      <div
+                                        className={`${styles.actionToggleSwitch} ${
+                                          isSelected ? styles.actionToggleSwitchActive : ""
+                                        }`}
+                                      >
+                                        <motion.span
+                                          layout
+                                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                          className={styles.actionToggleThumb}
+                                          style={{
+                                            marginLeft: isSelected ? "auto" : "0",
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+
                                     {isSelected && type !== "read_more" && (
-                                      <input
-                                        type={isEmail ? "email" : "text"}
-                                        placeholder={placeholderMap[type]}
-                                        value={value}
-                                        onChange={(e) =>
-                                          setFormSelections((prev) => ({
-                                            ...prev,
-                                            actionDetails: {
-                                              ...prev.actionDetails,
-                                              [type]: e.target.value,
-                                            },
-                                          }))
-                                        }
-                                        className={`${styles.inputBox} ${styles.actionInputWrap} ${isEmailInvalid ? styles.inputError : ""}`}
-                                      />
-                                    )}
-                                    {isSelected && isEmailInvalid && (
-                                      <p className={styles.error}>Please enter a valid email address.</p>
+                                      <div className={styles.actionConfigDrawer}>
+                                        <div className={styles.actionInputContainer}>
+                                          <span className={styles.actionInputLeadingIcon} style={{ color: meta.color }}>
+                                            {meta.icon}
+                                          </span>
+                                          <input
+                                            type={isEmail ? "email" : meta.inputType}
+                                            placeholder={meta.placeholder}
+                                            value={value}
+                                            onChange={(e) =>
+                                              setFormSelections((prev) => ({
+                                                ...prev,
+                                                actionDetails: {
+                                                  ...prev.actionDetails,
+                                                  [type]: e.target.value,
+                                                },
+                                              }))
+                                            }
+                                            className={`${styles.inputBox} ${styles.actionInputStyled} ${
+                                              isEmailInvalid ? styles.inputError : ""
+                                            }`}
+                                          />
+                                        </div>
+
+                                        <div className={styles.actionPreviewChip}>
+                                          <span>Feed Button Preview:</span>
+                                          <span
+                                            className={styles.actionPreviewButton}
+                                            style={{ backgroundColor: meta.color, color: "#fff" }}
+                                          >
+                                            {meta.icon}
+                                            <span>{meta.previewLabel}</span>
+                                          </span>
+                                        </div>
+
+                                        {isEmailInvalid && (
+                                          <p className={styles.error}>Please enter a valid email address.</p>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 );
@@ -1733,10 +2039,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                   })()}
                 </div>
               </div>
-            )}
+            </>
+          )}
 
-            {/* Step 4 */}
-            {step === 4 && (
+          {/* Step 4: Summary */}
+          {step === 4 && (
               <div className={styles.summaryContainer}>
                 <div className={styles.summaryHeader}>
                   <h2 className={styles.summaryTitle}>Campaign summary</h2>
@@ -1857,7 +2164,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                             <div className={styles.detailsRow}>
                               <span className={styles.detailsKey}>CTA action</span>
                               <span className={styles.detailsVal}>
-                                {formSelections.productCtaType} &rarr; <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
+                                {formSelections.productCtaType} · <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
                               </span>
                             </div>
                           )}
@@ -1942,6 +2249,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 />
               </div>
             )}
+            {/* Step 5: Launch */}
             {step === 5 && (
               <>
                 <h2 className={styles.centeredHeading}>Preview Your Ad</h2>
@@ -2046,10 +2354,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                     "Publishing Free Ad..."
                   ) : isAdmin ? (
                     <>
-                      <Rocket size={16} /> Publish Campaign Free (Admin)
+                      <Rocket size={16} /> Publish (Admin)
                     </>
                   ) : (
-                    "Submit Ad For Review"
+                    "Submit"
                   )}
                 </button>
               </>

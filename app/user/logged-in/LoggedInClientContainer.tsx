@@ -5,24 +5,12 @@ import dynamic from "next/dynamic";
 import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
 import myAdsStyles from "../myads/page.module.css";
+import AppleSpinner from "@/components/ui/AppleSpinner";
 
 // Clean Spinner Component for Dynamic Loading (Zero Text)
 const SimpleLoader = () => (
   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "4rem 0" }}>
-    <style>{`
-      @keyframes spinLoader {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-      }
-    `}</style>
-    <div style={{
-      width: "32px",
-      height: "32px",
-      border: "3px solid rgba(255, 255, 255, 0.15)",
-      borderTopColor: "#ffffff",
-      borderRadius: "50%",
-      animation: "spinLoader 0.8s linear infinite"
-    }} />
+    <AppleSpinner size={32} />
   </div>
 );
 
@@ -161,15 +149,16 @@ export default function LoggedInClientContainer({
       }
     }
 
-    // Clean cookies after reading
-    document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    // Keep active tab cookie fresh so server SSR renders the exact active tab on refresh with ZERO dashboard flash
+    document.cookie = `paayh_active_tab=${finalTab}; path=/; max-age=604800; SameSite=Lax`;
     document.cookie = "paayh_edit_ad_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
     setActiveTab(finalTab);
     sessionStorage.setItem("paayh_active_tab", finalTab);
 
-    if (window.location.pathname !== "/logged-in" || window.location.search !== "") {
-      window.history.replaceState(null, "", "/logged-in");
+    const targetUrl = finalTab === "feed" ? "/logged-in" : `/logged-in?view=${finalTab}`;
+    if (window.location.pathname + window.location.search !== targetUrl) {
+      window.history.replaceState(null, "", targetUrl);
     }
   };
 
@@ -177,9 +166,13 @@ export default function LoggedInClientContainer({
     checkAndSetTab();
 
     const handleTabChangeEvent = () => {
-      const stored = sessionStorage.getItem("paayh_active_tab") as TabKey;
-      if (stored) setActiveTab(stored);
-      window.history.replaceState(null, "", "/logged-in");
+      const stored = (sessionStorage.getItem("paayh_active_tab") as TabKey) || "feed";
+      if (stored && VALID_TABS.includes(stored)) {
+        setActiveTab(stored);
+        document.cookie = `paayh_active_tab=${stored}; path=/; max-age=604800; SameSite=Lax`;
+        const targetUrl = stored === "feed" ? "/logged-in" : `/logged-in?view=${stored}`;
+        window.history.replaceState(null, "", targetUrl);
+      }
     };
 
     window.addEventListener("paayh_tab_change", handleTabChangeEvent);

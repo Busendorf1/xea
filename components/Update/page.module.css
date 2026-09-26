@@ -1,8 +1,8 @@
 .profileContainer {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  padding: 3rem;
-  max-width: 800px;
+  padding: 2.5rem;
+  max-width: 840px;
   margin: auto;
   margin-top: 1.5rem;
   margin-bottom: 2rem;
@@ -50,6 +50,13 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  min-width: 0;
+}
+
+.colSpanFull {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
 }
 
 .formGroup label,
@@ -65,7 +72,9 @@
   display: flex !important;
   align-items: center;
   justify-content: center;
-  padding: 0.85rem 1.25rem !important;
+  padding: 0 1.25rem !important;
+  height: 48px !important;
+  min-height: 48px !important;
   background-color: var(--input-bg) !important;
   border: 1.5px dashed var(--card-border) !important;
   border-radius: var(--radius-inner, 12px) !important;
@@ -76,6 +85,7 @@
   transition: all 0.2s ease;
   width: 100%;
   box-sizing: border-box;
+  cursor: pointer;
 }
 
 .fileUpload:hover {
@@ -87,19 +97,27 @@
   display: none;
 }
 
-.formGrid input,
-.formGrid select,
-.formGrid textarea,
-.textbo {
+.formGrid input:not([type="file"]):not([type="checkbox"]),
+.formGrid select {
   background-color: var(--input-bg) !important;
   border: 1px solid var(--input-border) !important;
   border-radius: var(--radius-inner, 12px) !important;
-  padding: 0.8rem 1rem !important;
+  padding: 0 1rem !important;
+  height: 48px !important;
+  min-height: 48px !important;
   color: var(--foreground) !important;
-  font-size: 1rem !important; /* 16px to prevent iOS auto-zoom */
+  font-size: 0.95rem !important;
   outline: none;
   transition: all 0.2s ease;
   width: 100%;
+  box-sizing: border-box;
+}
+
+.formGrid input[type="date"] {
+  display: flex;
+  align-items: center;
+  height: 48px !important;
+  min-height: 48px !important;
   box-sizing: border-box;
 }
 
@@ -108,7 +126,7 @@
 .formGrid textarea:focus,
 .textbo:focus {
   border-color: var(--primary) !important;
-  box-shadow: 0 0 10px var(--primary-glow) !important;
+  box-shadow: 0 0 0 2px var(--card-border) !important;
 }
 
 .formGrid select option {
@@ -116,10 +134,21 @@
   color: var(--foreground);
 }
 
-.formContainer textarea {
-  resize: none;
-  grid-column: span 2;
-  min-height: 80px;
+.formGrid textarea,
+.textbo {
+  background-color: var(--input-bg) !important;
+  border: 1px solid var(--input-border) !important;
+  border-radius: var(--radius-inner, 12px) !important;
+  padding: 0.75rem 1rem !important;
+  min-height: 90px !important;
+  color: var(--foreground) !important;
+  font-size: 0.95rem !important;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
 }
 
 .dropdownContainer {
@@ -127,6 +156,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dropdownHeader {
@@ -137,12 +168,16 @@
   background-color: var(--input-bg);
   border: 1px solid var(--input-border);
   color: var(--foreground);
-  padding: 0.8rem 1.25rem;
+  padding: 0 1.25rem;
+  height: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
   border-radius: var(--radius-inner, 12px);
-  font-size: 1rem; /* 16px to prevent iOS auto-zoom */
+  font-size: 0.95rem;
   font-weight: 500;
   transition: all 0.2s ease;
   user-select: none;
+  width: 100%;
 }
 
 .dropdownHeader:hover {
@@ -155,13 +190,39 @@
   padding: 0.75rem;
   margin-top: 0.25rem;
   border-radius: var(--radius-inner, 12px);
-  max-height: 180px;
+  max-height: 220px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   z-index: 10;
+}
+
+.dropdownActionsBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.1rem 0.3rem 0.4rem;
+  margin-bottom: 0.2rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.quickActionBtn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.quickActionBtn:hover {
+  background: var(--secondary-glow);
+  opacity: 0.9;
 }
 
 .checkboxGroup::-webkit-scrollbar {
@@ -302,10 +363,10 @@
 }
 
 .activeStep .stepNumber {
-  background-color: var(--primary);
-  color: var(--background);
-  border-color: var(--primary);
-  box-shadow: 0 0 10px var(--primary-glow);
+  background-color: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
 }
 
 .activeStep .stepLabel {
@@ -318,17 +379,17 @@
 }
 
 .completedStep .stepNumber {
-  background-color: var(--primary);
-  color: var(--background);
-  border-color: var(--primary);
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
 }
 
 .completedStep .stepLabel {
-  color: var(--primary);
+  color: #10b981;
 }
 
 .completedStep .stepLine {
-  background-color: var(--primary);
+  background-color: #10b981;
 }
 
 /* Subtle, Professional Admin Privilege Notice */
@@ -542,17 +603,17 @@
 /* Responsiveness */
 @media screen and (max-width: 768px) {
   .profileContainer {
-    padding: 1.5rem 1rem;
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
-    border-radius: 0;
-    border: none;
+    padding: 1.75rem 1.25rem;
+    margin-top: 0.75rem;
+    margin-bottom: 1.25rem;
+    border-radius: var(--radius-card, 16px);
+    border: 1px solid var(--card-border);
     box-shadow: none;
   }
   
   .formGrid {
     grid-template-columns: 1fr;
-    gap: 0.75rem;
+    gap: 1rem;
   }
 
   .reviewGrid {
@@ -571,10 +632,28 @@
 }
 
 @media screen and (max-width: 480px) {
+  .profileContainer {
+    padding: 1.25rem 0.85rem;
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+    border-radius: 14px;
+  }
+
+  .formGrid {
+    gap: 0.85rem;
+  }
+
   .buttonGroup {
     width: 100% !important;
-    padding: 0.85rem !important;
-    border-radius: 4px !important;
+    padding: 0.85rem 0 !important;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+
+  .buttonGroup button {
+    width: 100% !important;
+    text-align: center;
   }
 }
 

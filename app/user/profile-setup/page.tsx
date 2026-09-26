@@ -9,6 +9,10 @@ import Footer from "@/components/Footer/page";
 import LocationSelector from "@/components/LocationSelector";
 import { profileSetupStep1Schema } from "@/lib/validationSchemas";
 import { CheckCircle2, AlertCircle, Loader2, XCircle, Info } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import FormStepProgress from "@/components/ui/FormStepProgress";
+import FairAttentionModal from "@/components/ui/FairAttentionModal";
+import CustomSelect from "@/components/ui/CustomSelect";
 
 
 import {
@@ -81,6 +85,32 @@ interface ProfileFormData {
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [usernameStatus, setUsernameStatus] = useState<string | null>(null);
+
+  // Restore saved draft state
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("paayh_draft_profile_setup_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.formData) {
+          setFormData((prev) => ({ ...prev, ...parsed.formData }));
+        }
+        if (parsed.step && (parsed.step === 1 || parsed.step === 2)) {
+          setStep(parsed.step);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Autosave draft on changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "paayh_draft_profile_setup_v1",
+        JSON.stringify({ step, formData })
+      );
+    } catch {}
+  }, [step, formData]);
 
   useEffect(() => {
     // Pre-fill username default from auth user if empty
@@ -244,6 +274,9 @@ interface ProfileFormData {
       }
 
       // Success - Redirect to feed
+      try {
+        localStorage.removeItem("paayh_draft_profile_setup_v1");
+      } catch {}
       router.push("/");
     } catch (err: any) {
       console.error("Unexpected error:", err);
@@ -252,8 +285,17 @@ interface ProfileFormData {
     }
   };
 
+  const handleSelectAll = (name: string, options: string[]) => {
+    setFormData((prev) => ({ ...prev, [name]: [...options] }));
+  };
+
+  const handleClearAll = (name: string) => {
+    setFormData((prev) => ({ ...prev, [name]: [] }));
+  };
+
   const renderMultiSelect = (label: string, name: keyof typeof openDropdowns, options: string[]) => {
     const selectedArr = (formData[name] as string[]) || [];
+    const isAllSelected = options.length > 0 && selectedArr.length === options.length;
     return (
       <div className={styles.dropdownContainer}>
         <label className={styles.inputLabel}>{label}</label>
@@ -261,20 +303,61 @@ interface ProfileFormData {
           <span>{selectedArr.length > 0 ? `${selectedArr.length} selected` : `Select ${label}`}</span>
           <span>{openDropdowns[name] ? "▲" : "▼"}</span>
         </div>
-        {openDropdowns[name] && (
-          <div className={styles.checkboxGroup}>
-            {options.map((opt, i) => (
-              <label key={i} className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={selectedArr.includes(opt)}
-                  onChange={(e) => handleCheckboxChange(name, opt, e.target.checked)}
-                />
-                <span>{opt}</span>
-              </label>
-            ))}
-          </div>
-        )}
+        <AnimatePresence>
+          {openDropdowns[name] && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className={styles.checkboxGroup}
+            >
+              <div className={styles.dropdownActionsBar}>
+                <button
+                  type="button"
+                  className={styles.quickActionBtn}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isAllSelected) {
+                      handleClearAll(name);
+                    } else {
+                      handleSelectAll(name, options);
+                    }
+                  }}
+                >
+                  {isAllSelected ? "Deselect All" : "Select All"}
+                </button>
+                {selectedArr.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.quickActionBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleClearAll(name);
+                    }}
+                  >
+                    Clear ({selectedArr.length})
+                  </button>
+                )}
+              </div>
+              {options.map((opt, i) => (
+                <motion.label 
+                  key={i} 
+                  className={styles.checkboxLabel}
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedArr.includes(opt)}
+                    onChange={(e) => handleCheckboxChange(name, opt, e.target.checked)}
+                  />
+                  <span>{opt}</span>
+                </motion.label>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   };
@@ -289,31 +372,47 @@ interface ProfileFormData {
 
   return (
     <>
+      <FairAttentionModal />
       <HeaderJoin />
       <main className={styles.container}>
         <div className={styles.glowBlob}></div>
         
         <div className={styles.setupCard}>
-          <div className={styles.progressContainer}>
-            <div className={`${styles.progressStep} ${step >= 1 ? styles.stepActive : ""}`}>
-              <div className={styles.stepNum}>1</div>
-              <span>Profile info</span>
-            </div>
-            <div className={styles.progressBar}>
-              <div className={styles.progressFill} style={{ width: step === 2 ? "100%" : "0%" }}></div>
-            </div>
-            <div className={`${styles.progressStep} ${step >= 2 ? styles.stepActive : ""}`}>
-              <div className={styles.stepNum}>2</div>
-              <span>Targeting traits</span>
-            </div>
-          </div>
+          <FormStepProgress
+            steps={["Profile info", "Targeting traits"]}
+            currentStep={step - 1}
+            onStepClick={(idx) => {
+              if (idx < step - 1) {
+                setStep(1);
+              }
+            }}
+          />
 
           <div className={styles.cardHeader}>
             <h2>Profile Setup</h2>
             <p>Set up your profile and preferences to start earning.</p>
           </div>
 
-          {errorMessage && <div className={styles.errorAlert}>{errorMessage}</div>}
+          <AnimatePresence>
+            {errorMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scale: 1,
+                  x: [-6, 6, -4, 4, -2, 2, 0],
+                }}
+                exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+                className={styles.errorAlert}
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{errorMessage}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <form onSubmit={handleSubmit} className={styles.form}>
             {step === 1 && (
@@ -405,55 +504,73 @@ interface ProfileFormData {
 
                   <div className={styles.inputGroup}>
                     <label htmlFor="gender" className={styles.inputLabel}>Gender</label>
-                    <select
+                    <CustomSelect
                       id="gender"
                       name="gender"
-                      required
                       value={formData.gender}
-                      onChange={handleInputChange}
-                      className={styles.selectField}
-                    >
-                      <option value="">Select Gender</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
+                      onChange={(val) => {
+                        setFormData((prev) => ({ ...prev, gender: val }));
+                        if (fieldErrors.gender) {
+                          setFieldErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.gender;
+                            return next;
+                          });
+                        }
+                      }}
+                      options={[
+                        { value: "male", label: "Male" },
+                        { value: "female", label: "Female" },
+                      ]}
+                      placeholder="Select Gender"
+                    />
                     {fieldErrors.gender && <span className={styles.fieldError}>{fieldErrors.gender}</span>}
                   </div>
 
                   <div className={styles.inputGroup}>
                     <label htmlFor="employment" className={styles.inputLabel}>Employment Status</label>
-                    <select
+                    <CustomSelect
                       id="employment"
                       name="employment"
-                      required
                       value={formData.employment}
-                      onChange={handleInputChange}
-                      className={styles.selectField}
-                    >
-                      <option value="">Select Employment</option>
-                      <option value="employed">Employed</option>
-                      <option value="student">Student</option>
-                      <option value="unemployed">Unemployed</option>
-                      <option value="freelancer">Freelancer</option>
-                      <option value="entrepreneur">Entrepreneur</option>
-                      <option value="retired">Retired</option>
-                    </select>
+                      onChange={(val) => {
+                        setFormData((prev) => ({ ...prev, employment: val }));
+                        if (fieldErrors.employment) {
+                          setFieldErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.employment;
+                            return next;
+                          });
+                        }
+                      }}
+                      options={[
+                        { value: "employed", label: "Employed" },
+                        { value: "student", label: "Student" },
+                        { value: "unemployed", label: "Unemployed" },
+                        { value: "freelancer", label: "Freelancer" },
+                        { value: "entrepreneur", label: "Entrepreneur" },
+                        { value: "retired", label: "Retired" },
+                      ]}
+                      placeholder="Select Employment"
+                    />
                   </div>
 
-                  <LocationSelector
-                    country={formData.country}
-                    state={formData.state}
-                    location={formData.location}
-                    onChange={({ country, state, location }) =>
-                      setFormData((prev) => ({ ...prev, country, state, location }))
-                    }
-                    inputClass={styles.inputField}
-                    labelClass={styles.inputLabel}
-                    groupClass={styles.inputGroup}
-                    cityGroupClass={styles.inputGroupFull}
-                    cityLabel="City/Location details"
-                    gpsEnforced={true}
-                  />
+                  <div className={styles.inputGroupFull}>
+                    <LocationSelector
+                      country={formData.country}
+                      state={formData.state}
+                      location={formData.location}
+                      onChange={({ country, state, location }) =>
+                        setFormData((prev) => ({ ...prev, country, state, location }))
+                      }
+                      inputClass={styles.inputField}
+                      labelClass={styles.inputLabel}
+                      groupClass={styles.inputGroup}
+                      cityGroupClass={styles.inputGroupFull}
+                      cityLabel="City/Location details"
+                      gpsEnforced={true}
+                    />
+                  </div>
 
                   <div className={styles.inputGroupFull}>
                     <label htmlFor="businessName" className={styles.inputLabel}>Business Name (Optional)</label>
@@ -484,15 +601,21 @@ interface ProfileFormData {
                 </div>
 
                 <div className={styles.buttonGroup}>
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     type="button"
                     onClick={() => router.push("/user/logout")}
                     className={styles.backBtn}
                     style={{ marginRight: "auto" }}
                   >
                     Logout
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     type="button"
                     onClick={() => {
                       if (validateStep1()) {
@@ -504,7 +627,7 @@ interface ProfileFormData {
                     className={styles.nextBtn}
                   >
                     Next Step
-                  </button>
+                  </motion.button>
                 </div>
               </div>
             )}
@@ -522,36 +645,38 @@ interface ProfileFormData {
                 <div className={styles.grid2}>
                   <div className={styles.inputGroup}>
                     <label htmlFor="intlTravel" className={styles.inputLabel}>International Traveller?</label>
-                    <select
+                    <CustomSelect
                       id="intlTravel"
                       name="intlTravel"
-                      value={formData.intlTravel}
-                      onChange={handleInputChange}
-                      className={styles.selectField}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
+                      value={formData.intlTravel || "no"}
+                      onChange={(val) => setFormData((prev) => ({ ...prev, intlTravel: val }))}
+                      options={[
+                        { value: "no", label: "No" },
+                        { value: "yes", label: "Yes" },
+                      ]}
+                    />
                   </div>
-                  
 
                   <div className={styles.inputGroup}>
                     <label htmlFor="localTravel" className={styles.inputLabel}>Local Air Traveller?</label>
-                    <select
+                    <CustomSelect
                       id="localTravel"
                       name="localTravel"
-                      value={formData.localTravel}
-                      onChange={handleInputChange}
-                      className={styles.selectField}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
+                      value={formData.localTravel || "no"}
+                      onChange={(val) => setFormData((prev) => ({ ...prev, localTravel: val }))}
+                      options={[
+                        { value: "no", label: "No" },
+                        { value: "yes", label: "Yes" },
+                      ]}
+                    />
                   </div>
                 </div>
 
                 <div className={styles.buttonGroup}>
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     type="button"
                     onClick={() => router.push("/user/logout")}
                     className={styles.backBtn}
@@ -559,8 +684,11 @@ interface ProfileFormData {
                     disabled={loading}
                   >
                     Logout
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     type="button"
                     onClick={() => {
                       setStep(1);
@@ -571,14 +699,17 @@ interface ProfileFormData {
                     disabled={loading}
                   >
                     Back
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
                     type="submit"
                     className={styles.submitBtn}
                     disabled={loading}
                   >
                     {loading ? "Saving..." : "Complete Setup"}
-                  </button>
+                  </motion.button>
                 </div>
               </div>
             )}
