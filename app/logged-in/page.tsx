@@ -26,7 +26,13 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
   const isAdmin = isAdminEmail(email);
   (session.user as any).isAdmin = isAdmin;
 
-  const profileResult = await getUserProfileForDashboard(session);
+  let profileResult;
+  try {
+    profileResult = await getUserProfileForDashboard(session);
+  } catch (err: any) {
+    console.error("❌ [LoggedInPage] Failed to fetch profile:", err?.message || err);
+    redirect("/user/profile-setup");
+  }
 
   if (profileResult.redirectUrl) {
     redirect(profileResult.redirectUrl);

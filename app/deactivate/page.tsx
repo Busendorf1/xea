@@ -1,8 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export default async function DeactivateRoute() {
-  const cookieStore = await cookies();
-  cookieStore.set("paayh_active_tab", "deactivate", { path: "/", maxAge: 604800 });
+export default function DeactivateRoute() {
   redirect("/logged-in?view=deactivate");
 }
