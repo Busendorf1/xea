@@ -673,9 +673,13 @@
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid #10b981;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.85rem 1.25rem;
   margin-bottom: 1.5rem;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
   color: #10b981;
   font-weight: 600;
 }
@@ -772,7 +776,10 @@
   font-size: 0.82rem;
   color: #d97706;
   margin-top: 1.25rem;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-weight: 600;
 }
 

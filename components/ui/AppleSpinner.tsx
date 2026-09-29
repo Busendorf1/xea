@@ -4,7 +4,7 @@ import React from "react";
 import styles from "./AppleSpinner.module.css";
 
 export default function AppleSpinner({ size = 36, color }: { size?: number; color?: string }) {
-  const spinnerColor = color || "var(--primary, var(--foreground, #282826))";
+  const spinnerColor = color || "var(--primary, var(--foreground, #000000))";
   return (
     <div className={styles.spinnerContainer}>
       <svg

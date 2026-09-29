@@ -29,6 +29,7 @@ import {
   Wallet, 
   ShieldAlert, 
   CheckCircle2, 
+  Check,
   AlertTriangle 
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -1647,7 +1648,7 @@ export default function DashboardClient({
 
                       {resolvedAccountName && (
                         <div className={styles.resolvedPill}>
-                          <span className={styles.resolvedNameCheck}>✓</span>
+                          <span className={styles.resolvedNameCheck}><Check size={13} strokeWidth={2.5} /></span>
                           <span className={styles.resolvedName}>{resolvedAccountName}</span>
                         </div>
                       )}

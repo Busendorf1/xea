@@ -35,6 +35,7 @@ import {
   Tag,
   User,
   UserCheck,
+  X,
 } from "lucide-react";
 interface Session {
   user?: {
@@ -469,7 +470,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     if (!reference) return;
     setNoticeModal({
       title: "Verifying Boost Payment",
-      message: "Confirming your boost top-up with payment gateway... ⚡",
+      message: "Confirming your boost top-up with payment gateway...",
     });
 
     try {
@@ -477,7 +478,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       const data = await res.json();
       if (data.success || data.status === "success") {
         setNoticeModal({
-          title: "Campaign Boosted! ⚡",
+          title: "Campaign Boosted!",
           message: "Your campaign priority and impressions have been updated successfully!",
         });
         clearUserCampaignsCache(session?.user?.email || "");
@@ -1473,11 +1474,31 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
               <div className={styles.clickBreakdownBox}>
                 <span className={styles.clickBreakdownTitle}>Detailed Click Type Breakdown</span>
                 <div className={styles.clickBreakdownRow}>
-                  {productCtaClicks > 0 ? <span>🛒 Product CTA: <strong>{productCtaClicks}</strong></span> : null}
-                  {phoneClicks > 0 ? <span>📞 Calls: <strong>{phoneClicks}</strong></span> : null}
-                  {whatsappClicks > 0 ? <span>💬 WhatsApp: <strong>{whatsappClicks}</strong></span> : null}
-                  {websiteClicks > 0 ? <span>🌐 Website: <strong>{websiteClicks}</strong></span> : null}
-                  {emailClicks > 0 ? <span>✉️ Email: <strong>{emailClicks}</strong></span> : null}
+                  {productCtaClicks > 0 ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <ShoppingCart size={13} /> Product CTA: <strong>{productCtaClicks}</strong>
+                    </span>
+                  ) : null}
+                  {phoneClicks > 0 ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <Phone size={13} /> Calls: <strong>{phoneClicks}</strong>
+                    </span>
+                  ) : null}
+                  {whatsappClicks > 0 ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <MessageSquare size={13} /> WhatsApp: <strong>{whatsappClicks}</strong>
+                    </span>
+                  ) : null}
+                  {websiteClicks > 0 ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <Globe size={13} /> Website: <strong>{websiteClicks}</strong>
+                    </span>
+                  ) : null}
+                  {emailClicks > 0 ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <Mail size={13} /> Email: <strong>{emailClicks}</strong>
+                    </span>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -1705,7 +1726,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   <Zap size={18} color="var(--primary)" />
                   <h3 className={styles.modalTitle}>Boost &amp; Top Up Campaign</h3>
                 </div>
-                <button className={styles.modalClose} onClick={() => setBoosterAd(null)}>✕</button>
+                <button className={styles.modalClose} onClick={() => setBoosterAd(null)} aria-label="Close modal">
+                  <X size={16} />
+                </button>
               </div>
 
               {/* Responsive Form Grid */}

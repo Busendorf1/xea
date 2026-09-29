@@ -78,7 +78,7 @@ export default function FloatingBadgesBackground() {
               isFading ? styles.crownFading : styles.crownVisible
             }`}
           >
-            <span className={styles.badgeDot} />
+            {/* <span className={styles.badgeDot} /> */}
             <span>{currentMessage}</span>
           </div>
         </div>

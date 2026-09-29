@@ -201,9 +201,9 @@ function AttentionMarketTicker({
                   <div className={styles.rankPillRow}>
                     <span className={styles.rankTitle}>
                       {rankStatus === "spotlight"
-                        ? "★ #1 Spotlight Winner (Lead Position)"
+                        ? "#1 Spotlight Winner (Lead Position)"
                         : rankStatus === "matched"
-                        ? "⚡ Matched Top Bid (Shared Spotlight)"
+                        ? "Matched Top Bid (Shared Spotlight)"
                         : "Challenger Position (Standard Feed Priority)"}
                     </span>
                   </div>

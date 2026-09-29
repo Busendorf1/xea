@@ -60,6 +60,7 @@ import {
   Building2,
   CheckCircle2,
   Globe,
+  Check,
   X
 } from "lucide-react";
 import styles from "./page.module.css";
@@ -1301,7 +1302,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handleDeleteUser = async (user: any) => {
     if (userActionSubmitting) return;
-    if (!confirm(`⚠️ WARNING: Are you sure you want to delete @${user.username} (${user.email}) permanently?`)) {
+    if (!confirm(`WARNING: Are you sure you want to delete @${user.username} (${user.email}) permanently?`)) {
       return;
     }
 
@@ -3269,7 +3270,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>Message Title</label>
-                    <input type="text" required placeholder="e.g. Account Update 📢" value={notificationTitle} onChange={(e) => setNotificationTitle(e.target.value)} className={`${styles.inputField} ${styles.wFull}`} />
+                    <input type="text" required placeholder="e.g. Account Update" value={notificationTitle} onChange={(e) => setNotificationTitle(e.target.value)} className={`${styles.inputField} ${styles.wFull}`} />
                   </div>
 
                   <div className={styles.formGroup}>
@@ -3359,7 +3360,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                               className={styles.inspectAdLink}
                             >
                               <span>{report.ad_id}</span>
-                              <span>(Inspect Ad Details 🔍)</span>
+                              <span>(Inspect Ad Details)</span>
                             </button>
                           </div>
                           {report.advertiser_email && <div><strong>Advertiser Email:</strong> <code className={styles.adminCls_94}>{report.advertiser_email}</code></div>}
@@ -3375,7 +3376,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                             onClick={() => handleInspectAd(report.ad_id)}
                             className={styles.inspectAdLink}
                           >
-                            🔍 Inspect Ad Details
+                            Inspect Ad Details
                           </button>
                           <button
                             onClick={() => handleDeactivateReportedAd(report.ad_id, report.id)}
@@ -3812,8 +3813,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           fetchPendingRequests(false, 0, pendingRequestsLimit, pendingRequestsStatusFilter, "");
                         }}
                         className={styles.adminCls_119}
+                        aria-label="Clear search"
                       >
-                        ✕
+                        <X size={14} />
                       </button>
                     )}
                   </div>
@@ -4038,8 +4040,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           fetchReconciliationData(false, 0, forfeitedLimit, forfeitedStatusFilter, "");
                         }}
                         className={styles.adminCls_119}
+                        aria-label="Clear search"
                       >
-                        ✕
+                        <X size={14} />
                       </button>
                     )}
                   </div>
@@ -4446,7 +4449,8 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                           {isActive && (
                             <div className={styles.adminCls_153}>
                               <span className={styles.adminCls_156}>
-                                ✓ Active Verified Subscriber (30% Discount Live)
+                                <Check size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} />
+                                Active Verified Subscriber (30% Discount Live)
                               </span>
                               <button type="button" onClick={() => handleRejectSubscriber(sub)} disabled={subscriberActionLoading === sub.id} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_155}`} >
                                 Suspend Brand
@@ -5009,8 +5013,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 className={styles.closeBtn}
                 onClick={() => !reversalLoading && setShowReverseModal(false)}
                 disabled={reversalLoading}
+                aria-label="Close modal"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
 

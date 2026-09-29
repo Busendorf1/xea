@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
-import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { invalidateCachedProfile, getCachedRecipient, setCachedRecipient } from "@/lib/utils/cache";
 import { paymentQueue } from "@/lib/queue";
 import {
   checkEmergencyPause,
@@ -134,15 +134,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: recipientLimit.reason }, { status: recipientLimit.statusCode || 429 });
     }
 
-    // 5. Verify Recipient Account Existence
-    const { data: recipientUser, error: recipientFetchErr } = await supabaseAdmin
-      .from("users")
-      .select("id, email, firstName, lastName")
-      .ilike("email", cleanRecipient)
-      .maybeSingle();
+    // 5. Verify Recipient Account Existence (Sub-millisecond Read-Through Cache + Exact B-Tree Match)
+    let recipientUser: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null = null;
 
-    if (recipientFetchErr || !recipientUser) {
-      return NextResponse.json({ error: "Recipient user account with this email does not exist." }, { status: 404 });
+    const cachedRecipient = await getCachedRecipient(cleanRecipient);
+    if (cachedRecipient === "NOT_FOUND") {
+      return NextResponse.json({ error: "User with this email does not exist." }, { status: 404 });
+    } else if (cachedRecipient) {
+      recipientUser = cachedRecipient;
+    } else {
+      // Primary fast-path: Exact deterministic B-Tree equality on normalized email
+      const { data: exactUser, error: recipientFetchErr } = await supabaseAdmin
+        .from("users")
+        .select("id, email, firstName, lastName")
+        .eq("email", cleanRecipient)
+        .maybeSingle();
+
+      if (!recipientFetchErr && exactUser) {
+        recipientUser = exactUser;
+        await setCachedRecipient(cleanRecipient, recipientUser);
+      } else if (!recipientFetchErr && !exactUser) {
+        // Fallback for legacy non-normalized rows (if any exist)
+        const { data: legacyUser } = await supabaseAdmin
+          .from("users")
+          .select("id, email, firstName, lastName")
+          .ilike("email", cleanRecipient)
+          .maybeSingle();
+
+        if (legacyUser) {
+          recipientUser = legacyUser;
+          await setCachedRecipient(cleanRecipient, recipientUser);
+        } else {
+          // Negative cache to defend against high-frequency email enumeration / brute-force
+          await setCachedRecipient(cleanRecipient, null);
+          return NextResponse.json({ error: "User with this email does not exist." }, { status: 404 });
+        }
+      } else {
+        return NextResponse.json({ error: "Failed to verify recipient account. Please try again." }, { status: 500 });
+      }
     }
 
     // 6. Verify & Reserve Sender Balance (Enforces 20% Limit & Sufficient Balance)
@@ -184,17 +213,17 @@ export async function POST(req: NextRequest) {
     let newBalance = rpcResult?.new_sender_balance;
     if (typeof newBalance !== "number") {
       newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
-      // Immediately deduct sender balance in DB
+      // Immediately deduct sender balance in DB using exact indexed equality
       await supabaseAdmin
         .from("users")
         .update({ balance: newBalance })
-        .ilike("email", cleanSender);
+        .eq("email", cleanSender);
 
-      // Immediately credit recipient balance in DB
+      // Immediately credit recipient balance in DB using exact indexed equality
       const { data: recipientRow } = await supabaseAdmin
         .from("users")
         .select("balance")
-        .ilike("email", cleanRecipient)
+        .eq("email", cleanRecipient)
         .maybeSingle();
 
       if (recipientRow) {
@@ -202,7 +231,7 @@ export async function POST(req: NextRequest) {
         await supabaseAdmin
           .from("users")
           .update({ balance: recipBal + amountNum })
-          .ilike("email", cleanRecipient);
+          .eq("email", cleanRecipient);
       }
     }
 

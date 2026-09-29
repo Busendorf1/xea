@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
-import { MessageCircle, Send, Inbox } from "lucide-react";
+import { MessageCircle, Send, Inbox, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { helpSchema } from "@/lib/validationSchemas";
 
@@ -301,10 +301,16 @@ export default function HelpCenter({ session }: HelpCenterProps) {
             </div>
           </div>
 
-          {error && <div className={styles.errorBanner}>⚠ {error}</div>}
+          {error && (
+            <div className={styles.errorBanner} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+              <span>{error}</span>
+            </div>
+          )}
           {success && (
-            <div className={styles.successBanner}>
-              ✓ Your request was submitted! We'll get back to you soon.
+            <div className={styles.successBanner} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+              <span>Your request was submitted! We&apos;ll get back to you soon.</span>
             </div>
           )}
 
@@ -370,7 +376,10 @@ export default function HelpCenter({ session }: HelpCenterProps) {
 
               {ticket.admin_reply && (
                 <div className={styles.responseBox}>
-                  <div className={styles.responseLabel}>⚡ Admin Response</div>
+                  <div className={styles.responseLabel} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <ShieldCheck size={14} />
+                    <span>Admin Response</span>
+                  </div>
                   <p className={styles.responseText}>{ticket.admin_reply}</p>
                   {ticket.replied_at && (
                     <p className={styles.ticketRepliedAt}>

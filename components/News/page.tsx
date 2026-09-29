@@ -752,9 +752,9 @@ export default function News({ session }: NewsProps) {
                                 <div className={styles.spotlightRankCol}>
                                   <span className={styles.spotlightRankTitle}>
                                     {isLead
-                                      ? "★ #1 Spotlight Winner (Top Carousel)"
+                                      ? "#1 Spotlight Winner (Top Carousel)"
                                       : isMatched
-                                      ? "⚡ Matched Top Bid (Shared Rotation)"
+                                      ? "Matched Top Bid (Shared Rotation)"
                                       : "Challenger Position (Standard Rotation)"}
                                   </span>
                                   <p className={styles.spotlightRankDesc}>

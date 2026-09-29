@@ -6,7 +6,7 @@ import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
 import LocationSelector from "../LocationSelector";
 import AppleSpinner from "@/components/ui/AppleSpinner";
-import { CheckCircle2, AlertCircle, Info, ShieldCheck } from "lucide-react";
+import { CheckCircle2, AlertCircle, Info, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import CustomSelect from "@/components/ui/CustomSelect";
 import FormStepProgress from "@/components/ui/FormStepProgress";
@@ -94,7 +94,7 @@ export default function Update({ email }: Props) {
       const resolvedState = formData.state ? formData.state : dbProfile.state;
       const resolvedLocation = formData.location ? formData.location : dbProfile.location;
       if (!resolvedCountry || !resolvedState || !resolvedLocation) {
-        setStatus("⚠️ Location is required. Please use 'Auto-detect location' to set your country, state, and city.");
+        setStatus("Location is required. Please use 'Auto-detect location' to set your country, state, and city.");
         return false;
       }
       return true;
@@ -106,12 +106,12 @@ export default function Update({ email }: Props) {
       const resolvedIndustry = Array.isArray(formData.industry) ? formData.industry : dbProfile.industry || [];
 
       if (!resolvedInterest || resolvedInterest.length === 0) {
-        setStatus("⚠️ At least one Interest must be selected so we can target relevant ads for you.");
+        setStatus("At least one Interest must be selected so we can target relevant ads for you.");
         return false;
       }
 
       if (!resolvedIndustry || resolvedIndustry.length === 0) {
-        setStatus("⚠️ At least one Industry must be selected so we can target relevant ads for you.");
+        setStatus("At least one Industry must be selected so we can target relevant ads for you.");
         return false;
       }
       return true;
@@ -139,7 +139,7 @@ export default function Update({ email }: Props) {
       try {
         const res = await fetch("/api/profile");
         if (!res.ok) {
-          setStatus("❌ Failed to fetch profile.");
+          setStatus("Failed to fetch profile.");
           setLoading(false);
           return;
         }
@@ -176,7 +176,7 @@ export default function Update({ email }: Props) {
         });
       } catch (e) {
         console.error("Error fetching profile:", e);
-        setStatus("❌ Failed to fetch profile.");
+        setStatus("Failed to fetch profile.");
       } finally {
         setLoading(false);
       }
@@ -241,7 +241,7 @@ export default function Update({ email }: Props) {
     const resolvedState = formData.state ? formData.state : dbProfile.state;
     const resolvedLocation = formData.location ? formData.location : dbProfile.location;
     if (!resolvedCountry || !resolvedState || !resolvedLocation) {
-      setStatus("⚠️ Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.");
+      setStatus("Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.");
       return;
     }
 
@@ -250,23 +250,23 @@ export default function Update({ email }: Props) {
     const resolvedIndustry = Array.isArray(formData.industry) ? formData.industry : dbProfile.industry || [];
 
     if (!resolvedInterest || resolvedInterest.length === 0) {
-      setStatus("⚠️ At least one Interest must be selected so we can target relevant ads for you.");
+      setStatus("At least one Interest must be selected so we can target relevant ads for you.");
       return;
     }
 
     if (!resolvedIndustry || resolvedIndustry.length === 0) {
-      setStatus("⚠️ At least one Industry must be selected so we can target relevant ads for you.");
+      setStatus("At least one Industry must be selected so we can target relevant ads for you.");
       return;
     }
 
     if (!isAdmin && timeRemaining !== null && timeRemaining > 0) {
-      setStatus("⚠️ You can only update your profile once every 30 days.");
+      setStatus("You can only update your profile once every 30 days.");
       return;
     }
 
 
     setLoading(true);
-    setStatus("⏳ Checking update eligibility...");
+    setStatus("Checking update eligibility...");
 
     // 1. Fetch current timestamp & update status via secure API
     let latestUser;
@@ -277,8 +277,8 @@ export default function Update({ email }: Props) {
       }
       latestUser = await resUser.json();
     } catch (fetchErr: any) {
-      console.error("❌ Failed to check timestamp:", fetchErr.message);
-      setStatus("❌ Failed to verify update eligibility.");
+      console.error("Failed to check timestamp:", fetchErr.message);
+      setStatus("Failed to verify update eligibility.");
       setLoading(false);
       return;
     }
@@ -291,11 +291,11 @@ export default function Update({ email }: Props) {
 
       if (diffDays < 30) {
         console.warn(
-          "❌ Update blocked: Only",
+          "Update blocked: Only",
           Math.floor(diffDays),
           "days passed"
         );
-        setStatus("⚠️ You can only update your profile once every 30 days.");
+        setStatus("You can only update your profile once every 30 days.");
         setLoading(false);
         return;
       }
@@ -324,8 +324,8 @@ export default function Update({ email }: Props) {
         });
 
       if (uploadError) {
-        console.error("❌ Image upload failed:", uploadError.message);
-        setStatus("❌ Failed to upload profile image.");
+        console.error("Image upload failed:", uploadError.message);
+        setStatus("Failed to upload profile image.");
         setLoading(false);
         return;
       }
@@ -373,8 +373,8 @@ export default function Update({ email }: Props) {
         throw new Error(errData.error || "Update rejected by API");
       }
     } catch (updateError: any) {
-      console.error("❌ Update failed:", updateError.message);
-      setStatus(`❌ Update failed: ${updateError.message}`);
+      console.error("Update failed:", updateError.message);
+      setStatus(`Update failed: ${updateError.message}`);
       setLoading(false);
       return;
     }
@@ -509,7 +509,9 @@ export default function Update({ email }: Props) {
 
       {isFormDisabled && (
         <div className={styles.cooldownBanner}>
-          ⏱️ Next update available in: <span className={styles.cooldownCountdown}>{countdownText}</span>
+          <Clock size={16} className={styles.flexShrink0} />
+          <span>Next update available in: </span>
+          <span className={styles.cooldownCountdown}>{countdownText}</span>
         </div>
       )}
 
@@ -521,14 +523,14 @@ export default function Update({ email }: Props) {
               opacity: 1, 
               y: 0, 
               scale: 1,
-              x: status.includes("Failed") || status.includes("⚠️") || status.includes("❌") ? [-6, 6, -4, 4, -2, 2, 0] : 0 
+              x: status.includes("Failed") || status.includes("required") || status.includes("blocked") ? [-6, 6, -4, 4, -2, 2, 0] : 0 
             }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
             className={`${styles.statusBanner} ${
               status.includes("Successful")
                 ? styles.statusBannerSuccess
-                : status.includes("Failed") || status.includes("required") || status.includes("⚠️") || status.includes("❌")
+                : status.includes("Failed") || status.includes("required") || status.includes("blocked") || status.includes("only update")
                 ? styles.statusBannerError
                 : styles.statusBannerInfo
             }`}
@@ -536,9 +538,9 @@ export default function Update({ email }: Props) {
             {status.includes("Successful") ? (
               <CheckCircle2 size={18} color="#10b981" />
             ) : (
-              <AlertCircle size={18} color={status.includes("Failed") || status.includes("❌") ? "#ef4444" : "var(--primary)"} />
+              <AlertCircle size={18} color={status.includes("Failed") ? "#ef4444" : "var(--primary)"} />
             )}
-            <span>{status.replace(/^[✅⚠️❌⏳]\s*/, "")}</span>
+            <span>{status}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -848,7 +850,8 @@ export default function Update({ email }: Props) {
 
           {dbProfile && !dbProfile.has_updated_profile && (
             <p className={styles.cooldownWarningNote}>
-              ⚠️ Note: Once confirmed, you can only update your profile once every 30 days.
+              <AlertTriangle size={15} className={styles.flexShrink0} />
+              <span>Note: Once confirmed, you can only update your profile once every 30 days.</span>
             </p>
           )}
         </div>

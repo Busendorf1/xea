@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import AdminDashboardClient from "@/components/AdminDashboardClient/page";
 import Link from "next/link";
 import { isAdminEmail } from "@/lib/authHelper";
+import { AlertTriangle } from "lucide-react";
 
 export default async function AdminDashboardPage() {
   const session = await auth0.getSession();
@@ -63,10 +64,13 @@ export default async function AdminDashboardPage() {
           maxWidth: "480px"
         }}>
           <div style={{
-            fontSize: "3rem",
+            display: "flex",
+            justifyContent: "center",
             marginBottom: "1rem",
             color: "#ef4444"
-          }}>⚠️</div>
+          }}>
+            <AlertTriangle size={48} />
+          </div>
           <h1 style={{
             fontSize: "1.75rem",
             fontWeight: "700",

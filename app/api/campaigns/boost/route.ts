@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
       // Insert notification
       await supabaseAdmin.from("notifications").insert({
         user_email: emailLower,
-        title: "Campaign Priority Boosted ⚡",
+        title: "Campaign Priority Boosted",
         message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost} and ${additionalImpressions || 0} additional impressions.`,
       });
 

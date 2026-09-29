@@ -197,6 +197,7 @@ export async function invalidateCachedProfile(email: string): Promise<void> {
   try {
     await Promise.all([
       redisConnection.del(`user:profile:${emailLower}`),
+      redisConnection.del(`user:recipient:${emailLower}`),
       redisConnection.del(`monetize:status:${emailLower}`),
       redisConnection.del(`statement:payments:${emailLower}`),
       redisConnection.del(`statement:withdrawals:${emailLower}`),
@@ -205,6 +206,86 @@ export async function invalidateCachedProfile(email: string): Promise<void> {
   } catch (err: any) {
     if (err?.message !== "Connection is closed.") {
       console.warn("⚠️ Redis invalidateCachedProfile notice:", err.message || err);
+    }
+  }
+}
+
+// ----------------------------------------------------
+// RECIPIENT ACCOUNT READ-THROUGH REDIS CACHING (P2P TRANSFER SPEED & SCALE)
+// ----------------------------------------------------
+
+export interface CachedRecipientInfo {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+export async function getCachedRecipient(email: string): Promise<CachedRecipientInfo | null | "NOT_FOUND"> {
+  if (!isRedisReady() || !email) return null;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    const raw = await redisConnection.get(`user:recipient:${emailLower}`);
+    if (raw) {
+      if (raw === "__NOT_FOUND__") return "NOT_FOUND";
+      return JSON.parse(raw) as CachedRecipientInfo;
+    }
+
+    // Secondary cache hit: check if the full profile is already cached in Redis
+    const profileRaw = await redisConnection.get(`user:profile:${emailLower}`);
+    if (profileRaw) {
+      const profile = JSON.parse(profileRaw);
+      if (profile && profile.id) {
+        const info: CachedRecipientInfo = {
+          id: profile.id,
+          email: profile.email || emailLower,
+          firstName: profile.firstName || null,
+          lastName: profile.lastName || null,
+        };
+        // Populate recipient cache with a 5-minute TTL
+        await redisConnection.set(`user:recipient:${emailLower}`, JSON.stringify(info), "EX", 300);
+        return info;
+      }
+    }
+
+    return null;
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis getCachedRecipient notice:", err.message || err);
+    }
+    return null;
+  }
+}
+
+export async function setCachedRecipient(
+  email: string,
+  recipient: CachedRecipientInfo | null,
+  ttlSeconds = 300 // 5-minute standard TTL for verified recipient accounts
+): Promise<void> {
+  if (!isRedisReady() || !email) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    if (!recipient) {
+      // Negative cache for 30s to mitigate brute-force and email enumeration attacks
+      await redisConnection.set(`user:recipient:${emailLower}`, "__NOT_FOUND__", "EX", 30);
+    } else {
+      await redisConnection.set(`user:recipient:${emailLower}`, JSON.stringify(recipient), "EX", ttlSeconds);
+    }
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis setCachedRecipient notice:", err.message || err);
+    }
+  }
+}
+
+export async function invalidateCachedRecipient(email: string): Promise<void> {
+  if (!email || !isRedisReady()) return;
+  const emailLower = email.toLowerCase().trim();
+  try {
+    await redisConnection.del(`user:recipient:${emailLower}`);
+  } catch (err: any) {
+    if (err?.message !== "Connection is closed.") {
+      console.warn("⚠️ Redis invalidateCachedRecipient notice:", err.message || err);
     }
   }
 }

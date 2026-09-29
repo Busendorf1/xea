@@ -1,7 +1,7 @@
 /* Design System Tokens: Unified Apple and Editorial Minimalist Palette */
 :root {
   /* Global Brand Identity Tokens */
-  --ink-charcoal: #282826;
+  --ink-charcoal: #000000;
   --paper-cream: #f9f9f7;
   --obsidian-dark: #000000;
   --midnight-surface: #0a0a0a;
@@ -42,12 +42,12 @@
 /* Light Theme Variables matching Modal standard */
 :root {
   --background: #f9f9f7;
-  --foreground: #282826;
-  --primary: #282826;
-  --primary-hover: #3d3d3a;
-  --primary-glow: rgba(40, 40, 38, 0.08);
-  --secondary: #282826;
-  --secondary-glow: rgba(40, 40, 38, 0.05);
+  --foreground: #000000;
+  --primary: #000000;
+  --primary-hover: #171717;
+  --primary-glow: rgba(0, 0, 0, 0.12);
+  --secondary: #000000;
+  --secondary-glow: rgba(0, 0, 0, 0.08);
   --card-bg: #ffffff;
   --card-border: #e6e5e1;
   --card-border-hover: #d6d5cf;
@@ -120,12 +120,12 @@
 [data-theme='white'],
 [data-theme='light'] {
   --background: #f9f9f7;
-  --foreground: #282826;
-  --primary: #282826;
-  --primary-hover: #3d3d3a;
-  --primary-glow: rgba(40, 40, 38, 0.08);
-  --secondary: #282826;
-  --secondary-glow: rgba(40, 40, 38, 0.05);
+  --foreground: #000000;
+  --primary: #000000;
+  --primary-hover: #171717;
+  --primary-glow: rgba(0, 0, 0, 0.12);
+  --secondary: #000000;
+  --secondary-glow: rgba(0, 0, 0, 0.08);
   --card-bg: #ffffff;
   --card-border: #e6e5e1;
   --card-border-hover: #d6d5cf;

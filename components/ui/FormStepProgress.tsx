@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Check } from "lucide-react";
 import styles from "./FormStepProgress.module.css";
 
 export interface FormStepProgressProps {
@@ -49,7 +50,7 @@ export default function FormStepProgress({
             title={label}
           >
             <div className={styles.stepNumber}>
-              {isCompleted ? "✓" : idx + 1}
+              {isCompleted ? <Check size={13} strokeWidth={2.6} /> : idx + 1}
             </div>
             <span className={styles.stepLabel}>{label}</span>
             {idx < steps.length - 1 && <div className={styles.stepLine} />}

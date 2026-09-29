@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import styles from "../FrontText/page.module.css";
 import Link from "next/link";
+import { X } from "lucide-react";
 
 export default function FrontText() {
   const [isOpen, setIsOpen] = useState(false);
@@ -17,7 +18,9 @@ export default function FrontText() {
       <div className={styles.modalDialog} onClick={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h2 className={styles.modalTitle}>How Paayh Works</h2>
-          <button className={styles.modalClose} onClick={() => setIsOpen(false)} aria-label="Close">✕</button>
+          <button className={styles.modalClose} onClick={() => setIsOpen(false)} aria-label="Close">
+            <X size={18} />
+          </button>
         </div>
         <div className={styles.modalBody}>
           <div className={styles.stepItem}>

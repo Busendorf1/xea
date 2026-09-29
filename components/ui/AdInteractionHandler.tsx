@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2 } from "lucide-react";
+import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2, ArrowRight } from "lucide-react";
 import styles from "./AdCard.module.css";
 import EarningCooldownNotice from "./EarningCooldownNotice";
 
@@ -360,7 +360,7 @@ export default function AdInteractionHandler({
                 onMouseDown={handleSwipeStart}
                 onTouchStart={handleSwipeStart}
               >
-                ➔
+                <ArrowRight size={16} />
               </div>
               <span className={styles.swipeText}>Swipe Right to Verify</span>
             </div>

@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
           const formattedBal = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(currentBalance);
           const notificationRows = allAdminEmails.map((adminEmail) => ({
             user_email: adminEmail,
-            title: "⚠️ Forfeited Balance: Account Deactivated",
+            title: "Forfeited Balance: Account Deactivated",
             message: `User @${username} (${emailLower}) has deactivated their account and forfeited ${formattedBal}. This amount is queued for resolution to the platform treasury in the Admin Dashboard.`,
           }));
 

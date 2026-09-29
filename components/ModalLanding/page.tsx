@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import styles from "./modal.module.css";
 import { flowNodes, initialNodeId, FlowNode, FlowChoice } from "./flowData";
 import { useTheme } from "@/components/ThemeProvider";
-import { Sun, Moon, ArrowRight, RotateCcw } from "lucide-react";
+import { Sun, Moon, ArrowRight, RotateCcw, X } from "lucide-react";
 import DotMatrixBackground from "./backgrounds/DotMatrixBackground";
 import FloatingBadgesBackground from "./backgrounds/FloatingBadgesBackground";
 
@@ -384,7 +384,8 @@ export default function ModalLandingPage() {
           className={`${styles.bottomRightQuote} ${isModalOpen ? styles.quoteHidden : ""}`}
           aria-hidden={isModalOpen}
         >
-          &ldquo;AI will take jobs, AI will replace us, AI poses a tremendous level of risk. but AI will not attend your book launch.&rdquo;
+          {/* &ldquo;AI will take jobs, AI will replace us, AI poses a tremendous level of risk. but AI will not attend your book launch.&rdquo; */}
+          &ldquo;We believe viewers deserve a share of the advertising revenue their attention generates. It&apos;s a fair, human-centered economic model.&rdquo;
         </div>
       </div>
 
@@ -404,7 +405,7 @@ export default function ModalLandingPage() {
             {/* Modal Header */}
             <header className={styles.modalHeader}>
               <div className={styles.modalHeaderLeft}>
-                <span className={styles.statusDot} aria-hidden="true" />
+                {/* <span className={styles.statusDot} aria-hidden="true" /> */}
                 <div className={styles.headerTitles}>
                   <h2 className={styles.modalTitle}>Paayh Concierge</h2>
                   <span className={styles.stepBadge}>
@@ -420,7 +421,7 @@ export default function ModalLandingPage() {
                   title="Restart conversation"
                   aria-label="Restart conversation"
                 >
-                  ↺
+                  <RotateCcw size={14} />
                 </button>
                 <button
                   type="button"
@@ -429,7 +430,7 @@ export default function ModalLandingPage() {
                   title="Close modal"
                   aria-label="Close modal"
                 >
-                  ✕
+                  <X size={16} />
                 </button>
               </div>
             </header>

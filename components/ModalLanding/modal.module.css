@@ -2,15 +2,15 @@
   --modal-paper: #f9f9f7;
   --modal-surface: #ffffff;
   --modal-card: #efefed;
-  --modal-ink: #282826;
+  --modal-ink: #000000;
   --modal-muted: #7a7975;
   --modal-hairline: #e6e5e1;
   --modal-choice-bg: #f4f4f2;
   --modal-choice-hover: #eaeae7;
-  --modal-user-bubble: #282826;
+  --modal-user-bubble: #000000;
   --modal-user-ink: #f9f9f7;
   --modal-ai-bubble: #ffffff;
-  --modal-backdrop: rgba(40, 40, 38, 0.14);
+  --modal-backdrop: rgba(0, 0, 0, 0.22);
   --modal-dialog-bg: rgba(255, 255, 255, 0.98);
   --modal-shadow: 0 24px 56px -12px rgba(0, 0, 0, 0.18);
 
@@ -79,30 +79,29 @@
   width: 100%;
   max-width: clamp(390px, 38vw, 580px);
   background-color: var(--modal-card);
-  border: 1px solid var(--modal-hairline);
+  border: none;
   border-radius: clamp(20px, 2vw, 28px);
   padding: clamp(1.8rem, 3.2vw, 3rem) clamp(1.5rem, 2.8vw, 2.6rem);
   text-align: center;
-  box-shadow: 0 10px 36px -8px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 10px 36px -8px rgba(0, 0, 0, 0.06);
   animation: futuristicCardIntro 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
   transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
               background-color 0.25s ease,
-              border-color 0.25s ease,
               box-shadow 0.35s ease;
   will-change: transform, opacity;
 }
 
 .landingCard:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 44px -8px rgba(0, 0, 0, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 44px -8px rgba(0, 0, 0, 0.09);
 }
 
 :global([data-theme='dark']) .landingCard {
-  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.7);
 }
 
 :global([data-theme='dark']) .landingCard:hover {
-  box-shadow: 0 16px 48px -10px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  box-shadow: 0 16px 48px -10px rgba(0, 0, 0, 0.85);
 }
 
 .landingBadge {
@@ -350,7 +349,7 @@
   position: fixed;
   bottom: clamp(1rem, 2vw, 2.2rem);
   right: clamp(1rem, 2vw, 2.6rem);
-  max-width: clamp(310px, 28vw, 500px);
+  max-width: clamp(380px, 42vw, 680px);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -388,14 +387,14 @@
 .bottomRightQuote {
   font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, sans-serif;
   font-style: normal;
-  font-size: clamp(0.78rem, 0.9vw, 1.02rem);
-  line-height: 1.45;
-  letter-spacing: -0.01em;
+  font-size: clamp(0.96rem, 1.25vw, 1.38rem);
+  line-height: 1.52;
+  letter-spacing: -0.015em;
   color: var(--modal-muted);
   text-align: right;
   pointer-events: none;
   user-select: none;
-  opacity: 0.88;
+  opacity: 0.92;
   transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               visibility 0.3s ease,
@@ -431,12 +430,12 @@
 
   .bottomRightQuote {
     display: block;
-    font-size: clamp(0.74rem, 2.4vw, 0.84rem);
-    line-height: 1.42;
+    font-size: clamp(0.88rem, 3.4vw, 1.08rem);
+    line-height: 1.48;
     text-align: center;
-    max-width: 360px;
+    max-width: min(92vw, 480px);
     margin: 0 auto;
-    opacity: 0.88;
+    opacity: 0.92;
   }
 }
 

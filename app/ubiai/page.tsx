@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { Check, X } from "lucide-react";
 import styles from "./ubiai.module.css";
 import {
   initialPage,
@@ -537,7 +538,7 @@ export default function UbiAiPage() {
                         <div>
                           {msg.tools.map((t, idx) => (
                             <span key={idx} className={styles.toolStepPill}>
-                              <span className={styles.toolStepCheck}>✓</span>
+                              <span className={styles.toolStepCheck}><Check size={11} strokeWidth={2.8} /></span>
                               {t.text}
                             </span>
                           ))}
@@ -580,7 +581,7 @@ export default function UbiAiPage() {
                     <div>
                       {activeTools.map((t, idx) => (
                         <span key={idx} className={styles.toolStepPill}>
-                          <span className={styles.toolStepCheck}>✓</span>
+                          <span className={styles.toolStepCheck}><Check size={11} strokeWidth={2.8} /></span>
                           {t.text}
                         </span>
                       ))}
@@ -630,7 +631,7 @@ export default function UbiAiPage() {
                     className={styles.dismissBtn}
                     aria-label="Dismiss"
                   >
-                    ✕
+                    <X size={14} />
                   </button>
                 </div>
               )}
@@ -706,7 +707,7 @@ export default function UbiAiPage() {
                 className={styles.modalClose}
                 aria-label="Close dialog"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
 
