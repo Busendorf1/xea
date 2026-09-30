@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
+import { InteractionData } from "@/lib/hooks/useFeedActions";
 import Avatar from "./Avatar";
 import HighlightCard from "./HighlightCard";
 import AdOptionsMenu from "./AdOptionsMenu";
@@ -137,7 +138,7 @@ interface AdCardProps {
   } | null;
   seenAds: string[];
   processingAds: string[];
-  onAdEarn: (ad: Ad) => Promise<boolean>;
+  onAdEarn: (ad: Ad, interactionData?: InteractionData) => Promise<boolean>;
   onAdMutual: (ad: Ad) => Promise<boolean>;
   onMarkSeen: (ad: Ad) => Promise<boolean>;
   onShare: (id: string) => void;

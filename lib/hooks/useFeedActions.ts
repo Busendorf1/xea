@@ -1,6 +1,12 @@
 import { useState, useRef, useCallback } from "react";
 import { Ad } from "@/components/ui/AdCard";
 import { ViewerProfileState } from "./useViewerProfile";
+import { KinematicVector } from "@/lib/security/kinematicsEvaluator";
+
+export interface InteractionData {
+  telemetry?: KinematicVector[];
+  turnstileToken?: string;
+}
 
 interface UseFeedActionsProps {
   userEmail: string;
@@ -108,7 +114,7 @@ export function useFeedActions({
 
   // Claim Earn reward
   const handleAdEarn = useCallback(
-    async (ad: Ad): Promise<boolean> => {
+    async (ad: Ad, interactionData?: InteractionData): Promise<boolean> => {
       if (!ad || !ad.id) return false;
       if (ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase()) {
         return false;
@@ -151,7 +157,8 @@ export function useFeedActions({
             token: ad.verification_token,
             servedAt: ad.served_at,
             type: "earn",
-            turnstileToken: "no-turnstile-script",
+            telemetry: interactionData?.telemetry || [],
+            turnstileToken: interactionData?.turnstileToken || undefined,
           }),
         });
 
@@ -165,6 +172,19 @@ export function useFeedActions({
           }
           if (errData?.code === "ALREADY_EARNED" || (errData?.error && String(errData.error).includes("already been claimed"))) {
             setSeenAds((prev) => (prev.includes(ad.id) ? prev : [...prev, ad.id]));
+            return false;
+          }
+          if (errData?.code === "POH_RETRY") {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("xea:toast", {
+                  detail: {
+                    message: "Verification incomplete. Please retry or listen again.",
+                    type: "warning",
+                  },
+                })
+              );
+            }
             return false;
           }
           return false;

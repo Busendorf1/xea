@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2, ArrowRight } from "lucide-react";
+import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 import styles from "./AdCard.module.css";
 import EarningCooldownNotice from "./EarningCooldownNotice";
 
 import { Ad } from "./AdCard";
+import { InteractionData } from "@/lib/hooks/useFeedActions";
+import { KinematicsCollector } from "./KinematicsCollector";
+import { KinematicVector } from "@/lib/security/kinematicsEvaluator";
 
 interface AdInteractionHandlerProps {
   ad: Ad;
@@ -28,7 +31,7 @@ interface AdInteractionHandlerProps {
   activeAction: "seen" | "earn" | "mutual" | null;
   handleAction: (type: "seen" | "earn" | "mutual", fn: () => Promise<boolean>) => Promise<void>;
   onMarkSeen: (ad: Ad) => Promise<boolean>;
-  onAdEarn: (ad: Ad) => Promise<boolean>;
+  onAdEarn: (ad: Ad, interactionData?: InteractionData) => Promise<boolean>;
   onAdMutual: (ad: Ad) => Promise<boolean>;
   brandName: string;
   targetLink: string;
@@ -81,6 +84,8 @@ export default function AdInteractionHandler({
   const isDragging = useRef(false);
   const startX = useRef(0);
   const trackRef = useRef<HTMLDivElement>(null);
+  const kinematicsRef = useRef<KinematicsCollector>(new KinematicsCollector());
+  const recordedTelemetryRef = useRef<KinematicVector[]>([]);
 
   // 1. Intersection Observer to check if 65% of ad card is visible in view
   useEffect(() => {
@@ -219,16 +224,43 @@ export default function AdInteractionHandler({
     setStage("unlocked");
   };
 
+  const handleRetryChallenge = () => {
+    isDragging.current = false;
+    isHolding.current = false;
+    if (holdInterval.current) clearInterval(holdInterval.current);
+    setSwipeOffset(0);
+    setHoldProgress(0);
+    setTapCount(0);
+    lastTapTime.current = 0;
+    kinematicsRef.current.reset();
+    recordedTelemetryRef.current = [];
+
+    // Cycle or pick another challenge type
+    const types: ChallengeType[] = ["swipe", "hold", "tap"];
+    const otherTypes = types.filter((t) => t !== challengeType);
+    const nextType = otherTypes[Math.floor(Math.random() * otherTypes.length)];
+    setChallengeType(nextType);
+    setStage("challenge");
+  };
+
   // 4. Challenge A: Swipe Handlers
   const handleSwipeStart = (e: React.MouseEvent | React.TouchEvent) => {
     isDragging.current = true;
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const force = "touches" in e && (e.touches[0] as any).force ? (e.touches[0] as any).force : 1.0;
+    const isTrusted = "isTrusted" in e ? (e as any).isTrusted : true;
     startX.current = clientX - swipeOffset;
+    kinematicsRef.current.start(clientX, clientY, force, "swipe", isTrusted);
   };
 
   const handleSwipeMove = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDragging.current || !trackRef.current) return;
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const force = "touches" in e && (e.touches[0] as any).force ? (e.touches[0] as any).force : 1.0;
+    kinematicsRef.current.record(clientX, clientY, force);
+
     const trackWidth = trackRef.current.clientWidth;
     const handleWidth = 44;
     const maxOffset = trackWidth - handleWidth;
@@ -237,10 +269,11 @@ export default function AdInteractionHandler({
     newOffset = Math.max(0, Math.min(newOffset, maxOffset));
     setSwipeOffset(newOffset);
 
-    // If dragged 95% of the way, complete the challenge
-    if (newOffset >= maxOffset * 0.95) {
+    // If dragged 90% of the way, complete the challenge
+    if (newOffset >= maxOffset * 0.9) {
       isDragging.current = false;
       setSwipeOffset(maxOffset);
+      recordedTelemetryRef.current = kinematicsRef.current.finish(clientX, clientY, force);
       handleChallengeSuccess();
     }
   };
@@ -248,24 +281,45 @@ export default function AdInteractionHandler({
   const handleSwipeEnd = () => {
     if (!isDragging.current) return;
     isDragging.current = false;
+    kinematicsRef.current.reset();
     // Snap back to 0 if not completed
     setSwipeOffset(0);
   };
 
   // 5. Challenge B: Hold Handlers
-  const startHold = () => {
+  const holdCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const startHold = (e?: React.MouseEvent | React.TouchEvent) => {
     if (stage !== "challenge" || challengeType !== "hold") return;
     isHolding.current = true;
+    const clientX = e ? ("touches" in e ? e.touches[0].clientX : e.clientX) : 0;
+    const clientY = e ? ("touches" in e ? e.touches[0].clientY : e.clientY) : 0;
+    const isTrusted = e && "isTrusted" in e ? (e as any).isTrusted : true;
+    holdCoords.current = { x: clientX, y: clientY };
+
+    kinematicsRef.current.start(clientX, clientY, 1.0, "hold", isTrusted);
     holdInterval.current = setInterval(() => {
+      kinematicsRef.current.record(holdCoords.current.x, holdCoords.current.y);
       setHoldProgress((prev) => {
         if (prev >= 100) {
           clearInterval(holdInterval.current!);
+          recordedTelemetryRef.current = kinematicsRef.current.finish(
+            holdCoords.current.x,
+            holdCoords.current.y
+          );
           handleChallengeSuccess();
           return 100;
         }
-        return prev + 4; // takes ~1.25 seconds to complete
+        return prev + 5; // takes ~1.0 second to complete
       });
     }, 50);
+  };
+
+  const updateHoldCoords = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isHolding.current) return;
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    holdCoords.current = { x: clientX, y: clientY };
   };
 
   const endHold = () => {
@@ -277,13 +331,22 @@ export default function AdInteractionHandler({
   };
 
   // 6. Challenge C: Tap Handlers
-  const handleTap = () => {
+  const handleTap = (e?: React.MouseEvent) => {
     const now = Date.now();
+    const clientX = e ? e.clientX : 0;
+    const clientY = e ? e.clientY : 0;
+    const isTrusted = e && "isTrusted" in e ? (e as any).isTrusted : true;
+
+    if (tapCount === 0) {
+      kinematicsRef.current.start(clientX, clientY, 1.0, "tap", isTrusted);
+    } else {
+      kinematicsRef.current.record(clientX, clientY);
+    }
+
     if (lastTapTime.current > 0) {
       const diff = now - lastTapTime.current;
-      if (diff < 200) {
-        setTapCount(1);
-        lastTapTime.current = now;
+      if (diff < 100) {
+        // Prevent accidental synthetic double-trigger
         return;
       }
     }
@@ -292,6 +355,7 @@ export default function AdInteractionHandler({
     setTapCount((prev) => {
       const next = prev + 1;
       if (next >= 3) {
+        recordedTelemetryRef.current = kinematicsRef.current.finish(clientX, clientY);
         handleChallengeSuccess();
       }
       return next;
@@ -372,6 +436,8 @@ export default function AdInteractionHandler({
               className={styles.holdBtn}
               onMouseDown={startHold}
               onTouchStart={startHold}
+              onMouseMove={updateHoldCoords}
+              onTouchMove={updateHoldCoords}
               onMouseUp={endHold}
               onMouseLeave={endHold}
               onTouchEnd={endHold}
@@ -407,6 +473,18 @@ export default function AdInteractionHandler({
               </div>
             </button>
           )}
+
+          <div className={styles.challengeFooterRow}>
+            <button
+              type="button"
+              className={styles.challengeActionLink}
+              onClick={handleRetryChallenge}
+              title="Try another verification challenge"
+            >
+              <RefreshCw size={10} />
+              <span>Retry Task</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -467,7 +545,15 @@ export default function AdInteractionHandler({
                   disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
                   onClick={() => {
                     hasTakenAction.current = true;
-                    handleAction("earn", () => onAdEarn(ad));
+                    handleAction("earn", async () => {
+                      const success = await onAdEarn(ad, {
+                        telemetry: recordedTelemetryRef.current,
+                      });
+                      if (!success) {
+                        handleRetryChallenge();
+                      }
+                      return success;
+                    });
                   }}
                   title="Earn from this ad"
                 >

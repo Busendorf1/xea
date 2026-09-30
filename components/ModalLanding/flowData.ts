@@ -26,7 +26,7 @@ export const flowNodes: Record<string, FlowNode> = {
   root: {
     id: 'root',
     aiMessage:
-      'Paayh is an attention exchange. Our goal is to deliver your advert and content for maximum ROI while rewarding listeners for their attention, which is win-win for businesses and viewers.',
+      'Paayh is an attention exchange platform. Our goal is to deliver your content and advert for maximum ROI while rewarding listeners for their attention, which is win-win for businesses and viewers.',
     referralLink: {
       label: 'Read our Platform Terms of Service',
       url: '/terms',
@@ -87,11 +87,11 @@ export const flowNodes: Record<string, FlowNode> = {
   // TRACK A: LISTENER TRACK ("EARN CASH FOR ATTENTION")
   // ==========================================
 
-  // L1. How do I earn on Paayh?
+  // L1. Earn Cash for Attention
   listener_l1: {
     id: 'listener_l1',
     aiMessage:
-      'Sign up, pick your interests, and view matching content. When the 16 second countdown ends, tap the Earn button. Your earnings update immediately in your wallet.',
+      '“We believe viewers deserve a share of the advertising revenue\ntheir attention generates. It’s a fair, human-centered economic model.”',
     referralLink: {
       label: 'Read Earning Guidelines in our FAQs',
       url: '/faq',
@@ -99,8 +99,8 @@ export const flowNodes: Record<string, FlowNode> = {
     choices: [
       {
         id: 'c_l1_next',
-        text: 'Why 16 second countdown?',
-        nextNodeId: 'listener_l2',
+        text: 'How to get started?',
+        nextNodeId: 'listener_l1_start',
       },
       {
         id: 'c_l1_google',
@@ -110,6 +110,36 @@ export const flowNodes: Record<string, FlowNode> = {
       },
       {
         id: 'c_l1_apple',
+        text: 'Continue with Apple',
+        action: 'auth_apple',
+        href: '/auth/login?connection=apple',
+      },
+    ],
+  },
+
+  // L1-Start. How to get started?
+  listener_l1_start: {
+    id: 'listener_l1_start',
+    aiMessage:
+      'Sign up, pick your interests, and view matching content. When the 16 second countdown ends, tap the Earn button. Your earnings update immediately in your wallet.',
+    referralLink: {
+      label: 'Read Earning Guidelines in our FAQs',
+      url: '/faq',
+    },
+    choices: [
+      {
+        id: 'c_l1_start_next',
+        text: 'Why 16 second countdown?',
+        nextNodeId: 'listener_l2',
+      },
+      {
+        id: 'c_l1_start_google',
+        text: 'Continue with Google',
+        action: 'auth_google',
+        href: '/auth/login?connection=google-oauth2',
+      },
+      {
+        id: 'c_l1_start_apple',
         text: 'Continue with Apple',
         action: 'auth_apple',
         href: '/auth/login?connection=apple',
@@ -279,8 +309,8 @@ export const flowNodes: Record<string, FlowNode> = {
     choices: [
       {
         id: 'c_l7_next',
-        text: 'Can I be both a listener and a promoter?',
-        nextNodeId: 'listener_l8',
+        text: 'How does Proof of Human work?',
+        nextNodeId: 'listener_l7_poh',
       },
       {
         id: 'c_l7_google',
@@ -290,6 +320,36 @@ export const flowNodes: Record<string, FlowNode> = {
       },
       {
         id: 'c_l7_apple',
+        text: 'Continue with Apple',
+        action: 'auth_apple',
+        href: '/auth/login?connection=apple',
+      },
+    ],
+  },
+
+  // L7-POH. How does Proof of Human work?
+  listener_l7_poh: {
+    id: 'listener_l7_poh',
+    aiMessage:
+      'When the timer ends, a simple natural touch gesture confirms you are human before crediting your wallet. This keeps your earnings secure and protects you from automated bot competition.',
+    referralLink: {
+      label: 'Review Interaction Standards in Terms',
+      url: '/terms',
+    },
+    choices: [
+      {
+        id: 'c_l7_poh_next',
+        text: 'Can I be both a listener and a promoter?',
+        nextNodeId: 'listener_l8',
+      },
+      {
+        id: 'c_l7_poh_google',
+        text: 'Continue with Google',
+        action: 'auth_google',
+        href: '/auth/login?connection=google-oauth2',
+      },
+      {
+        id: 'c_l7_poh_apple',
         text: 'Continue with Apple',
         action: 'auth_apple',
         href: '/auth/login?connection=apple',
@@ -365,7 +425,7 @@ export const flowNodes: Record<string, FlowNode> = {
   promoter_p1: {
     id: 'promoter_p1',
     aiMessage:
-      'Paayh has a community of listeners eager to earn from the content they view, whether displaced by AI or seeking extra cash. Because they earn, they never skip content and have real money to patronize offers that resonate.',
+      'Paayh has a community of listeners who deserves to get a share of the revenue their attention generates. Because they earn, they also have real money to patronize offers that resonate.',
     referralLink: {
       label: 'Read Advertiser Guidelines',
       url: '/advertiser-guidelines',
@@ -673,8 +733,8 @@ export const flowNodes: Record<string, FlowNode> = {
     choices: [
       {
         id: 'c_p11_next',
-        text: 'Can I be both a listener and a promoter?',
-        nextNodeId: 'promoter_p12_both',
+        text: 'How does Proof of Human protect my budget?',
+        nextNodeId: 'promoter_p11_poh',
       },
       {
         id: 'c_p11_google',
@@ -684,6 +744,36 @@ export const flowNodes: Record<string, FlowNode> = {
       },
       {
         id: 'c_p11_apple',
+        text: 'Continue with Apple',
+        action: 'auth_apple',
+        href: '/auth/login?connection=apple',
+      },
+    ],
+  },
+
+  // P11-POH. How does Proof of Human protect my budget?
+  promoter_p11_poh: {
+    id: 'promoter_p11_poh',
+    aiMessage:
+      'Every impression requires verified physical interaction before being counted. While nothing on the internet is 100% guaranteed, our multi-layer safeguards actively block automated bots and scripts to maximize genuine human engagement.',
+    referralLink: {
+      label: 'Review Platform Verification in Terms',
+      url: '/terms',
+    },
+    choices: [
+      {
+        id: 'c_p11_poh_next',
+        text: 'Can I be both a listener and a promoter?',
+        nextNodeId: 'promoter_p12_both',
+      },
+      {
+        id: 'c_p11_poh_google',
+        text: 'Continue with Google',
+        action: 'auth_google',
+        href: '/auth/login?connection=google-oauth2',
+      },
+      {
+        id: 'c_p11_poh_apple',
         text: 'Continue with Apple',
         action: 'auth_apple',
         href: '/auth/login?connection=apple',

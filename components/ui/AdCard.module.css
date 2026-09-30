@@ -1053,6 +1053,34 @@ img.avatarImg {
   white-space: nowrap;
 }
 
+.challengeFooterRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 2px;
+}
+
+.challengeActionLink {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.challengeActionLink:hover {
+  color: var(--primary);
+  background-color: rgba(29, 155, 240, 0.08);
+}
+
 /* Swipe Challenge styles */
 .swipeTrack {
   position: relative;

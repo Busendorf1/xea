@@ -385,7 +385,7 @@ export default function ModalLandingPage() {
           aria-hidden={isModalOpen}
         >
           {/* &ldquo;AI will take jobs, AI will replace us, AI poses a tremendous level of risk. but AI will not attend your book launch.&rdquo; */}
-          &ldquo;We believe viewers deserve a share of the advertising revenue their attention generates. It&apos;s a fair, human-centered economic model.&rdquo;
+          {/* &ldquo;We believe viewers deserve a share of the advertising revenue <br /> their attention generates. It&apos;s a fair, human-centered economic model.&rdquo; */}
         </div>
       </div>
 

@@ -296,23 +296,63 @@ export default function TermsPage() {
 
         {/* SECTION 6 */}
         <section>
-          <h2 className={styles.heading}>6. Platform Integrity &amp; Abuse Prevention Standards</h2>
+          <h2 className={styles.heading}>6. Proof of Human (PoH) Verification, Platform Integrity &amp; Abuse Prevention</h2>
           <p>
-            Paayh maintains automated heuristics and manual oversight to safeguard platform integrity. The following
-            actions constitute actionable civil fraud against Paayh:
+            <strong>6.1 Condition of Commercial Earning &amp; Proof of Human (PoH):</strong> Paayh&apos;s monetization model
+            is funded by commercial advertisers who contract exclusively for genuine, focused human attention. Consequently,
+            participation in attention rewards is strictly conditioned upon real-time authentication of authentic human presence.
+            To safeguard the ecosystem against automated abuse, Paayh deploys proprietary Proof of Human (&quot;PoH&quot;)
+            validation protocols.
+          </p>
+          <p>
+            <strong>6.1.1 Ephemeral Interaction Telemetry &amp; Privacy Compliance:</strong> During your use of the Services,
+            ad views, and verification interactions (including gestures, swipes, or taps), the platform may process ephemeral
+            interaction telemetry—such as natural touch and pointer kinematics, interaction cadence, session dwell time, and
+            execution environment signals—to distinguish authentic human motor interaction from synthetic scripts, macros,
+            or automated software. In strict compliance with the Nigeria Data Protection Act 2023 (NDPA) and applicable privacy
+            laws, this security telemetry is processed in volatile memory solely for real-time fraud mitigation, anti-bot defense,
+            and contract enforcement. Paayh does not collect, record, or retain persistent biometric identifiers (such as fingerprints,
+            retinal scans, or facial geometry).
+          </p>
+          <p>
+            <strong>6.1.2 Proprietary Security Heuristics &amp; Trade Secret Protection:</strong> You explicitly acknowledge
+            and agree that Paayh&apos;s fraud detection methodologies, kinematic evaluation algorithms, interaction scoring matrices,
+            and security heuristics constitute protected, proprietary trade secrets and confidential intellectual property of Paayh.
+            To prevent adversarial circumvention, Paayh is under no legal, statutory, or regulatory obligation to disclose internal
+            forensics, detection criteria, scoring thresholds, or security logs to users or third parties.
+          </p>
+          <p>
+            <strong>6.1.3 Unilateral Evaluation Discretion &amp; Complete Disclaimer of Liability:</strong> Paayh reserves the
+            sole, unilateral discretion to evaluate, validate, throttle, place into pacing cooldowns, or reject any interaction,
+            ad view, or reward claim that triggers automated or synthetic risk indicators. Paayh disclaims all liability, and you
+            irrevocably waive any right to claim damages, lost anticipated earnings, financial losses, or compensation of any kind
+            arising from automated verification rejections, temporary pacing intervals, security holds, or account restrictions.
+            Platform security determinations are final, binding, and non-justiciable.
+          </p>
+          <p>
+            <strong>6.1.4 Inherent Public Internet Realities &amp; No 100% Guarantee:</strong> You expressly acknowledge
+            and agree that nothing on the public internet can be 100% guaranteed. While Paayh deploys continuous multi-layered
+            defenses, behavioral kinematics, and anti-abuse safeguards to drive invalid traffic and bot manipulation to the barest
+            possible minimum, Paayh does not warrant, promise, or guarantee that any campaign, interaction, or impression will be
+            100% impervious to sophisticated adversarial attacks, synthetic anomalies, or third-party interference. All users and
+            advertisers accept these inherent operational risks of internet-based platforms without recourse.
+          </p>
+          <p>
+            <strong>6.2 Actionable Prohibited Abusive Activities:</strong> Paayh maintains automated heuristics and manual
+            oversight to safeguard platform integrity. The following actions constitute actionable civil fraud against Paayh:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Automated Viewing:</strong> Utilizing bots, headless browsers, automated scripts, auto clickers, or
-              emulators to simulate attention or solve verification challenges.
+              <strong>Automated Viewing &amp; AI Agents:</strong> Utilizing bots, headless browsers, automated scripts, AI agents,
+              auto clickers, macros, or virtual emulators to simulate attention, generate impressions, or solve verification challenges.
             </li>
             <li className={styles.listItem}>
-              <strong>Click Farming:</strong> Participating in coordinated engagement rings, incentivized mutual traffic
-              groups, or sybil networks.
+              <strong>Click Farming:</strong> Participating in coordinated engagement rings, incentivized mutual traffic groups,
+              device farms, or sybil networks.
             </li>
             <li className={styles.listItem}>
-              <strong>Circumvention:</strong> Tampering with session tokens, request headers, application encryption, or
-              impression verification endpoints.
+              <strong>Circumvention &amp; Replay Attacks:</strong> Tampering with session tokens, request headers, application
+              cryptography, API endpoints, or attempting direct API call replays to claim unearned credits.
             </li>
             <li className={styles.listItem}>
               <strong>Cloning, Scraping &amp; Reverse Engineering:</strong> Decompiling, reverse engineering, disassembling,
@@ -326,8 +366,9 @@ export default function TermsPage() {
             </li>
           </ul>
           <p>
-            Any violation results in immediate, permanent account termination, cancellation of active promotions, and
-            complete forfeiture of all unredeemed incentive credits.
+            <strong>6.3 Sanctions &amp; Forfeiture:</strong> Any violation of this Section results in immediate, permanent account
+            termination, cancellation of active promotions, permanent exclusion from the platform, and complete forfeiture of all
+            conditional, unredeemed promotional incentive credits without prior notice or right of appeal.
           </p>
         </section>
 
@@ -362,6 +403,12 @@ export default function TermsPage() {
             WHETHER STATUTORY, EXPRESS, OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
             PURPOSE, AND NON INFRINGEMENT. PAAYH DOES NOT WARRANT THAT PROMOTIONAL CAMPAIGNS WILL PRODUCE SPECIFIC SALES,
             CONVERSIONS, OR COMMERCIAL ROI, OR THAT THE PLATFORM WILL OPERATE UNINTERRUPTED OR ERROR FREE.
+          </p>
+          <p>
+            NOTHING ON THE INTERNET IS 100% GUARANTEED. WHILE PAAYH DEPLOYS ADVANCED PROOF OF HUMAN SAFEGUARDS TO DRIVE
+            INVALID TRAFFIC TO THE BAREST MINIMUM, PAAYH EXPRESSLY DISCLAIMS ANY ABSOLUTE OR 100% WARRANTY AGAINST
+            ADVERSARIAL INTERFERENCE, THIRD PARTY EXPLOITS, OR AUTOMATED NOISE. PROMOTIONAL CAMPAIGNS ARE TESTED AND RUN AT
+            THE ADVERTISER&apos;S OWN DISCRETION AND RISK.
           </p>
         </section>
 

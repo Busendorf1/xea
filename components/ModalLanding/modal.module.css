@@ -640,6 +640,7 @@
 
 .aiBubble p {
   margin: 0 0 0.3rem 0;
+  white-space: pre-line;
 }
 
 .aiBubble p:last-child {

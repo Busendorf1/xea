@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const session = await auth0.getSession();
     const body = await request.json();
-    const { adId, token, servedAt, type, deviceId } = body;
+    const { adId, token, servedAt, type, deviceId, telemetry, turnstileToken } = body;
 
     if (!adId || !type) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -115,6 +115,94 @@ export async function POST(request: NextRequest) {
           { error: "Ad session expired (Max 30m). Please refresh feed." },
           { status: 400 }
         );
+      }
+
+      // 2.5 Proof of Human: Kinematic Motor Biometrics & Adaptive Turnstile Defense
+      let isKinematicsHuman = true;
+      let kinematicScore = 0;
+      let kinematicReasons: string[] = [];
+
+      if (Array.isArray(telemetry) && telemetry.length > 0) {
+        const { evaluateKinematics } = await import("@/lib/security/kinematicsEvaluator");
+        const evalResult = evaluateKinematics(telemetry);
+        isKinematicsHuman = evalResult.isHuman;
+        kinematicScore = evalResult.score;
+        kinematicReasons = evalResult.reasons;
+      } else {
+        // Direct script API calls without physical interaction
+        isKinematicsHuman = false;
+        kinematicScore = 100;
+        kinematicReasons = ["No physical interaction telemetry provided (bypassed UI)"];
+      }
+
+      // If synthetic / bot kinematics detected (score >= 65), allow soft retries before imposing cooldown
+      if (!isKinematicsHuman) {
+        console.warn(
+          "🚨 Proof of Human retry check in /api/earn for user:",
+          emailKey,
+          "Ad:",
+          adId,
+          "Score:",
+          kinematicScore,
+          "Reasons:",
+          kinematicReasons
+        );
+
+        // Check retry count in Redis before imposing cooldown
+        let retryCount = 1;
+        if (isRedisReady()) {
+          try {
+            const retryKey = `user:poh_retries:${emailKey}`;
+            retryCount = await redisConnection.incr(retryKey);
+            if (retryCount === 1) {
+              await redisConnection.expire(retryKey, 120); // 2-minute sliding window
+            }
+          } catch {}
+        }
+
+        // Only lock account if they repeatedly fail (>= 3 times within 2 minutes)
+        if (retryCount >= 3) {
+          if (isRedisReady()) {
+            try {
+              const cooldownKey = `user:cooldown:${emailKey}`;
+              const cooldownUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+              await redisConnection.set(
+                cooldownKey,
+                JSON.stringify({ cooldownUntil, cooldownType: "pacing_15m" }),
+                "EX",
+                900
+              );
+            } catch {}
+          }
+
+          return NextResponse.json(
+            {
+              error: "Repeated invalid interaction attempts. Account placed on temporary pacing cooldown.",
+              code: "COOLDOWN_ACTIVE",
+              cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+              cooldownType: "pacing_15m",
+            },
+            { status: 403 }
+          );
+        }
+
+        // Return a soft retryable error
+        return NextResponse.json(
+          {
+            error: "Verification incomplete. Please retry the challenge or listen again.",
+            code: "POH_RETRY",
+            retryable: true,
+            reasons: kinematicReasons,
+          },
+          { status: 400 }
+        );
+      } else {
+        // Clear previous retry count on verified human interaction
+        if (isRedisReady()) {
+          try {
+            await redisConnection.del(`user:poh_retries:${emailKey}`);
+          } catch {}
+        }
       }
     }
 
