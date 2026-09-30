@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import styles from "./modal.module.css";
 import { flowNodes, initialNodeId, FlowNode, FlowChoice } from "./flowData";
 import { useTheme } from "@/components/ThemeProvider";
-import { Sun, Moon, ArrowRight, RotateCcw, X } from "lucide-react";
+import { Sun, Moon, ArrowRight, RotateCcw, X, Check } from "lucide-react";
 import DotMatrixBackground from "./backgrounds/DotMatrixBackground";
 import FloatingBadgesBackground from "./backgrounds/FloatingBadgesBackground";
 
@@ -507,14 +507,20 @@ export default function ModalLandingPage() {
                     </div>
                   </div>
 
-                  <label className={styles.termsCheckboxRow}>
+                  <label className={`${styles.termsCheckboxRow} ${isRedirecting ? styles.disabled : ""}`}>
                     <input
                       type="checkbox"
                       disabled={isRedirecting}
                       checked={termsAgreed}
                       onChange={(e) => setTermsAgreed(e.target.checked)}
-                      className={styles.termsCheckboxInput}
+                      className={styles.termsCheckboxHidden}
                     />
+                    <span
+                      className={`${styles.termsCustomCheckbox} ${termsAgreed ? styles.termsCheckboxChecked : ""}`}
+                      aria-hidden="true"
+                    >
+                      {termsAgreed && <Check size={11} strokeWidth={3.2} className={styles.termsCheckIcon} />}
+                    </span>
                     <span className={styles.termsCheckboxText}>
                       I confirm that I am at least 18 years old and I agree to the Terms of Service, Privacy Policy, and Cookie Policy.
                     </span>
