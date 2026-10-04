@@ -378,6 +378,51 @@
   background-color: var(--sidebar-bg);
 }
 
+.receiptRowBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: var(--card-bg, #ffffff);
+  border: 1px solid var(--card-border, #cbd5e1);
+  color: var(--foreground, #0f172a);
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.receiptRowBtn:hover {
+  background-color: var(--sidebar-bg, #f1f5f9);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.mobileReceiptBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background-color: var(--input-bg, #f1f5f9);
+  border: 1px solid var(--card-border, #e2e8f0);
+  color: var(--foreground, #0f172a);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  transition: all 0.15s ease;
+}
+
+.mobileReceiptBtn:hover {
+  background-color: var(--sidebar-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 .tdDesc {
   max-width: 220px;
   font-size: 0.82rem;

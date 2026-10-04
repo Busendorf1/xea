@@ -25,7 +25,7 @@ if (typeof window === "undefined" && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
  * Protects database calls from hanging indefinitely while adhering strictly
  * to Node.js / undici fetch specifications (avoiding forbidden headers like 'Connection').
  */
-const createPooledFetch = (timeoutMs = 15000) => {
+const createPooledFetch = (timeoutMs = 25000) => {
   return (input: RequestInfo | URL, init?: RequestInit) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -47,7 +47,7 @@ export const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
     autoRefreshToken: false,
   },
   global: {
-    fetch: createPooledFetch(15000), // Generous 15s timeout for writes & RPCs
+    fetch: createPooledFetch(25000), // Resilient 25s timeout for writes & RPCs over mobile hotspots
   },
 });
 

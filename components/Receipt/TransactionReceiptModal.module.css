@@ -1,0 +1,488 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  position: relative;
+  width: 100%;
+  max-width: 410px;
+  background-color: var(--card-bg, #ffffff);
+  color: var(--foreground, #0f172a);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 16px;
+  padding: 1.15rem 1rem 1rem 1rem;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.35);
+  animation: modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-sizing: border-box;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes modalPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.closeBtn {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  background: var(--sidebar-bg, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.closeBtn:hover {
+  color: var(--foreground, #0f172a);
+  background: var(--input-bg, rgba(0, 0, 0, 0.1));
+}
+
+/* ── Receipt Card Body ── */
+.receiptCard {
+  background: var(--input-bg, #f8fafc);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 0.9rem 0.9rem 0.75rem 0.9rem;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+}
+
+.receiptHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--card-border, #e2e8f0);
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.65rem;
+}
+
+.brandBox {
+  display: flex;
+  flex-direction: column;
+}
+
+.brandLogo {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--primary, #059669);
+  line-height: 1.1;
+}
+
+.brandSub {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #64748b);
+  font-weight: 600;
+  margin-top: 1px;
+}
+
+.headerRight {
+  text-align: right;
+  padding-right: 1.35rem; /* space for close button */
+}
+
+.disclaimerText {
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 1px;
+  line-height: 1.2;
+}
+
+.receiptLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--foreground, #0f172a);
+  line-height: 1.2;
+}
+
+/* ── Amount Display ── */
+.amountBox {
+  text-align: center;
+  padding: 0.65rem 0.4rem;
+  margin-bottom: 0.65rem;
+  background: var(--card-bg, #ffffff);
+  border: 1px dashed var(--card-border, #cbd5e1);
+  border-radius: 9px;
+}
+
+.amountLabel {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 0.2rem;
+}
+
+.amountFigure {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--foreground, #0f172a);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.creditSign {
+  color: #10b981;
+}
+
+.debitSign {
+  color: #ef4444;
+}
+
+/* ── Status Row ── */
+.statusRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0.15rem;
+  margin-bottom: 0.55rem;
+  border-bottom: 1px solid var(--card-border, #e2e8f0);
+}
+
+.statusRowLabel {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.statusSuccess {
+  background-color: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+}
+
+.statusPending {
+  background-color: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+}
+
+.statusFailed {
+  background-color: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+}
+
+.statusReversed {
+  background-color: rgba(148, 163, 184, 0.18);
+  color: #64748b;
+}
+
+/* ── Key-Value Details List ── */
+.detailsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.76rem;
+  padding: 0.1rem 0.15rem;
+}
+
+.detailLabel {
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
+  flex-shrink: 0;
+  max-width: 42%;
+  line-height: 1.3;
+}
+
+.detailValue {
+  color: var(--foreground, #0f172a);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  line-height: 1.3;
+}
+
+.inlineIcon {
+  color: var(--primary, #059669);
+  flex-shrink: 0;
+}
+
+.refValBox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.refText {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--foreground, #0f172a);
+  word-break: break-all;
+}
+
+.copyBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.copyBtn:hover {
+  color: var(--foreground, #0f172a);
+}
+
+.chargeValue {
+  color: #ef4444;
+}
+
+.discountValue {
+  color: #10b981;
+}
+
+.netRow {
+  border-top: 1px dashed var(--card-border, #cbd5e1);
+  padding-top: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.netLabel {
+  font-weight: 700;
+  color: var(--foreground, #0f172a);
+}
+
+.netValue {
+  font-weight: 800;
+  color: var(--primary, #059669);
+  font-size: 0.85rem;
+}
+
+.receiptFooter {
+  margin-top: 0.75rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--card-border, #e2e8f0);
+  text-align: center;
+}
+
+.footerRef {
+  font-size: 0.65rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* ── Modal Action Buttons ── */
+.actionRow {
+  display: flex;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+  flex-shrink: 0;
+}
+
+.downloadActionBtn {
+  flex: 1.35;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  border: none;
+  border-radius: 9px;
+  height: 36px;
+  padding: 0 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.downloadActionBtn:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.25);
+}
+
+.copyActionBtn {
+  flex: 1;
+  background: var(--sidebar-bg, #f1f5f9);
+  color: var(--foreground, #0f172a);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 9px;
+  height: 36px;
+  padding: 0 0.65rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.copyActionBtn:hover {
+  background: var(--input-bg, #e2e8f0);
+  transform: translateY(-1px);
+}
+
+.actionBtnIcon {
+  flex-shrink: 0;
+}
+
+.btnTextFull {
+  display: inline;
+}
+
+.btnTextShort {
+  display: none;
+}
+
+/* ── Responsive Screen Adjustments ── */
+@media (max-width: 520px) {
+  .overlay {
+    padding: 0.6rem 0.5rem;
+  }
+
+  .modal {
+    max-width: 100%;
+    padding: 0.9rem 0.75rem 0.75rem 0.75rem;
+    border-radius: 14px;
+    max-height: 94vh;
+  }
+
+  .receiptCard {
+    padding: 0.75rem 0.7rem 0.65rem 0.7rem;
+    border-radius: 10px;
+  }
+
+  .amountBox {
+    padding: 0.55rem 0.35rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .amountFigure {
+    font-size: 1.3rem;
+  }
+
+  .actionRow {
+    gap: 0.45rem;
+    margin-top: 0.7rem;
+  }
+
+  .downloadActionBtn {
+    height: 34px;
+    padding: 0 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  .copyActionBtn {
+    height: 34px;
+    padding: 0 0.5rem;
+    font-size: 0.74rem;
+  }
+
+  .btnTextFull {
+    display: none;
+  }
+
+  .btnTextShort {
+    display: inline;
+  }
+}
+
+@media (max-width: 360px) {
+  .overlay {
+    padding: 0.4rem 0.35rem;
+  }
+
+  .modal {
+    padding: 0.75rem 0.6rem 0.6rem 0.6rem;
+    border-radius: 12px;
+  }
+
+  .receiptCard {
+    padding: 0.65rem 0.55rem;
+  }
+
+  .brandLogo {
+    font-size: 1.02rem;
+  }
+
+  .amountFigure {
+    font-size: 1.18rem;
+  }
+
+  .detailRow {
+    font-size: 0.72rem;
+    gap: 0.35rem;
+  }
+
+  .refText {
+    font-size: 0.68rem;
+  }
+
+  .actionRow {
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+  }
+
+  .downloadActionBtn,
+  .copyActionBtn {
+    height: 32px;
+    font-size: 0.7rem;
+    padding: 0 0.4rem;
+  }
+}

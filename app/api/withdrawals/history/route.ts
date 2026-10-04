@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     // 2. High-Scale Index-Accelerated Database Read (~10ms)
     const { data: withdrawals, error } = await supabaseReadOnly
       .from("payments")
-      .select("id, reference, amount, status, type, description, created_at")
+      .select("id, reference, amount, status, type, description, metadata, created_at")
       .eq("user_email", emailLower)
       .eq("type", "withdrawal")
       .order("created_at", { ascending: false })

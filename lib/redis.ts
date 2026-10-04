@@ -50,7 +50,9 @@ function createRawRedisClient(): Redis {
       err?.code === "ECONNREFUSED" ||
       err?.code === "ENOTFOUND" ||
       err?.code === "EAI_AGAIN" ||
+      err?.code === "ETIMEDOUT" ||
       err?.message === "Connection is closed." ||
+      err?.message?.includes("ETIMEDOUT") ||
       err?.message?.includes("ENOTFOUND");
 
     if (!isTransient) {

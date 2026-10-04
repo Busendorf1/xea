@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import styles from "./page.module.css";
 import { useAdminDialog } from "@/components/ui/AdminDialog";
+import TransactionReceiptModal from "@/components/Receipt/TransactionReceiptModal";
 
 interface MasterTransaction {
   id: string;
@@ -40,6 +41,7 @@ export default function AdminMasterStatementTab() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [copiedRef, setCopiedRef] = useState<string | null>(null);
+  const [selectedReceiptTx, setSelectedReceiptTx] = useState<MasterTransaction | null>(null);
 
   // Filter States
   const [page, setPage] = useState(1);
@@ -661,19 +663,20 @@ export default function AdminMasterStatementTab() {
               <th className={styles.th}>Amount</th>
               <th className={styles.th}>Status</th>
               <th className={styles.th}>Description & Destination</th>
+              <th className={styles.th}>Receipt</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className={styles.td} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                <td colSpan={8} className={styles.td} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                   <RotateCw size={24} className="spin" style={{ margin: "0 auto 8px" }} />
                   <div>Loading master statement...</div>
                 </td>
               </tr>
             ) : transactions.length === 0 ? (
               <tr>
-                <td colSpan={7} className={styles.td} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                <td colSpan={8} className={styles.td} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                   No transactions found matching your criteria.
                 </td>
               </tr>
@@ -730,6 +733,31 @@ export default function AdminMasterStatementTab() {
                     </td>
                     <td className={styles.td} style={{ maxWidth: "260px", fontSize: "12px", color: "var(--text-muted)" }}>
                       {destInfo}
+                    </td>
+                    <td className={styles.td}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReceiptTx(tx)}
+                        style={{
+                          background: "var(--card-bg, #ffffff)",
+                          border: "1px solid var(--card-border, #cbd5e1)",
+                          color: "var(--foreground, #0f172a)",
+                          borderRadius: "6px",
+                          padding: "4px 8px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          transition: "all 0.15s ease",
+                          whiteSpace: "nowrap",
+                        }}
+                        title="Download or View Receipt"
+                      >
+                        <Download size={12} color="#10b981" />
+                        <span>Receipt</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -819,6 +847,15 @@ export default function AdminMasterStatementTab() {
           </button>
         </div>
       </div>
+
+      {/* Transaction Receipt Modal for Admin */}
+      {selectedReceiptTx && (
+        <TransactionReceiptModal
+          transaction={selectedReceiptTx}
+          onClose={() => setSelectedReceiptTx(null)}
+          currentUserEmail={selectedReceiptTx.user_email}
+        />
+      )}
     </div>
   );
 }

@@ -15,9 +15,11 @@ import {
   CreditCard,
   Building,
   Clock,
-  Download
+  Download,
+  FileText
 } from "lucide-react";
 import styles from "./page.module.css";
+import TransactionReceiptModal from "@/components/Receipt/TransactionReceiptModal";
 
 interface Transaction {
   id: string;
@@ -26,6 +28,7 @@ interface Transaction {
   status: string;
   type: string;
   description: string;
+  metadata?: Record<string, any>;
   created_at: string;
 }
 
@@ -74,6 +77,7 @@ export default function StatementComponent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [copiedRef, setCopiedRef] = useState<string | null>(null);
+  const [selectedReceiptTx, setSelectedReceiptTx] = useState<Transaction | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
@@ -534,6 +538,7 @@ export default function StatementComponent() {
                         <th className={styles.th}>Description</th>
                         <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
                         <th className={styles.th}>Status</th>
+                        <th className={styles.th}>Receipt</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -562,6 +567,17 @@ export default function StatementComponent() {
                               {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
                             </td>
                             <td className={styles.td}>{getStatusBadge(tx.status)}</td>
+                            <td className={styles.td}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReceiptTx(tx)}
+                                className={styles.receiptRowBtn}
+                                title="Download or View Receipt"
+                              >
+                                <Download size={12} />
+                                <span>Receipt</span>
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -602,6 +618,15 @@ export default function StatementComponent() {
                             <div className={`${styles.mobileAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
                               {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceiptTx(tx)}
+                              className={styles.mobileReceiptBtn}
+                              title="Download Receipt"
+                            >
+                              <Download size={11} />
+                              <span>Receipt</span>
+                            </button>
                           </div>
                         </div>
                       );
@@ -625,6 +650,7 @@ export default function StatementComponent() {
                       <th className={styles.th}>Destination Account</th>
                       <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
                       <th className={styles.th}>Status</th>
+                      <th className={styles.th}>Receipt</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -650,6 +676,17 @@ export default function StatementComponent() {
                           - {formatAmount(tx.amount)}
                         </td>
                         <td className={styles.td}>{getStatusBadge(tx.status)}</td>
+                        <td className={styles.td}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedReceiptTx(tx)}
+                            className={styles.receiptRowBtn}
+                            title="Download or View Receipt"
+                          >
+                            <Download size={12} />
+                            <span>Receipt</span>
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -687,6 +724,15 @@ export default function StatementComponent() {
                         <div className={`${styles.mobileAmount} ${styles.amountDebit}`}>
                           - {formatAmount(tx.amount)}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReceiptTx(tx)}
+                          className={styles.mobileReceiptBtn}
+                          title="Download Receipt"
+                        >
+                          <Download size={11} />
+                          <span>Receipt</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -737,6 +783,16 @@ export default function StatementComponent() {
             )}
           </div>
         </>
+      )}
+
+      {/* Transaction Receipt Modal */}
+      {selectedReceiptTx && (
+        <TransactionReceiptModal
+          transaction={selectedReceiptTx}
+          onClose={() => setSelectedReceiptTx(null)}
+          currentUserEmail={profile?.email}
+          currentUserName={profile?.firstName ? `${profile.firstName} ${profile.lastName || ""}`.trim() : undefined}
+        />
       )}
     </main>
   );

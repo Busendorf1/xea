@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     if (typeParam === "all") {
       const { data: allTransactions, error } = await supabaseReadOnly
         .from("payments")
-        .select("id, reference, amount, status, type, description, created_at")
+        .select("id, reference, amount, status, type, description, metadata, created_at")
         .eq("user_email", emailLower)
         .order("created_at", { ascending: false })
         .limit(300);
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseReadOnly
       .from("payments")
-      .select("id, reference, amount, status, type, description, created_at")
+      .select("id, reference, amount, status, type, description, metadata, created_at")
       .eq("user_email", emailLower);
 
     if (typeParam === "withdrawals") {

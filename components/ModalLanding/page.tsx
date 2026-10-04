@@ -365,6 +365,18 @@ export default function ModalLandingPage() {
               About
             </Link>
           </div>
+
+          <p style={{
+            fontSize: "0.72rem",
+            color: "var(--modal-muted, #7a7975)",
+            textAlign: "center",
+            marginTop: "0.85rem",
+            letterSpacing: "-0.01em",
+            opacity: 0.85,
+            lineHeight: 1.4,
+          }}>
+            &copy; {new Date().getFullYear()} Paayh by East Sixties Limited. All Rights Reserved.
+          </p>
         </div>
       </main>
 

@@ -205,7 +205,7 @@ export default function Footer() {
       </div>
 
       <div className={styles.copyRight}>
-        &copy; {new Date().getFullYear()} Paayh! All rights reserved.
+        &copy; {new Date().getFullYear()} Paayh by East Sixties Limited. All Rights Reserved.
       </div>
     </footer>
   );

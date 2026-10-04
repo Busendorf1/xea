@@ -96,6 +96,8 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     atw_tier
   `;
 
+  let dbError: any = null;
+
   // 1. Attempt to fetch from Redis cache first (<0.1ms)
   let user: any = await getCachedProfile(email);
 
@@ -103,7 +105,6 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     console.log(`🚀 Profile cache hit in Server Component for: ${email}`);
   } else {
     // Fetch user profile from Supabase with retries (resilience to flaky networks / transient DNS hiccups)
-    let dbError = null;
     let dbData = null;
     const maxAttempts = 3;
 
@@ -183,6 +184,9 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
 
   // 2. If user does not exist in DB, auto-provision
   if (!user) {
+    if (dbError) {
+      throw new Error(`Database connection failed while fetching user profile: ${dbError.message || dbError}`);
+    }
     console.log(`👤 User not found in database. Auto-provisioning profile for: ${email}`);
     const givenName = String(session.user.given_name || session.user.name || email.split("@")[0] || "User").trim();
     const familyName = String(session.user.family_name || "").trim();
