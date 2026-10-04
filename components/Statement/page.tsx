@@ -98,11 +98,65 @@ export default function StatementComponent() {
       if (paymentsRes.ok) {
         newPayments = await paymentsRes.json();
         setPayments(newPayments);
+
+        // Auto-verify recent pending transactions (last 15 minutes) to ensure immediate "Completed" state
+        const recentPending = (newPayments || []).filter(
+          (p: Transaction) =>
+            (p.status === "pending" || p.status === "processing") &&
+            Date.now() - new Date(p.created_at).getTime() < 15 * 60 * 1000
+        );
+
+        if (recentPending.length > 0) {
+          recentPending.forEach((rp: Transaction) => {
+            fetch(`/api/payments/verify?reference=${encodeURIComponent(rp.reference)}`)
+              .then((r) => r.json())
+              .then((resData) => {
+                if (resData.success || resData.status === "success") {
+                  setPayments((prev) =>
+                    prev.map((item) =>
+                      item.reference === rp.reference ? { ...item, status: "success" } : item
+                    )
+                  );
+                }
+              })
+              .catch(() => {});
+          });
+        }
       }
 
       if (withdrawalsRes.ok) {
         newWithdrawals = await withdrawalsRes.json();
         setWithdrawals(newWithdrawals);
+
+        // Auto-verify recent pending/processing withdrawals (last 15 minutes) to ensure immediate "Completed" state
+        const recentPendingWithdrawals = (newWithdrawals || []).filter(
+          (w: Transaction) =>
+            (w.status === "pending" || w.status === "processing") &&
+            Date.now() - new Date(w.created_at).getTime() < 15 * 60 * 1000
+        );
+
+        if (recentPendingWithdrawals.length > 0) {
+          recentPendingWithdrawals.forEach((rw: Transaction) => {
+            fetch(`/api/payments/verify?reference=${encodeURIComponent(rw.reference)}`)
+              .then((r) => r.json())
+              .then((resData) => {
+                if (resData.success || resData.status === "success") {
+                  setWithdrawals((prev) =>
+                    prev.map((item) =>
+                      item.reference === rw.reference ? { ...item, status: "success" } : item
+                    )
+                  );
+                } else if (resData.status === "failed") {
+                  setWithdrawals((prev) =>
+                    prev.map((item) =>
+                      item.reference === rw.reference ? { ...item, status: "failed" } : item
+                    )
+                  );
+                }
+              })
+              .catch(() => {});
+          });
+        }
       }
 
       try {
@@ -136,6 +190,15 @@ export default function StatementComponent() {
     } catch {}
 
     fetchData();
+
+    const handlePaymentVerified = () => {
+      fetchData(true);
+    };
+
+    window.addEventListener("paayh:payment_verified", handlePaymentVerified);
+    return () => {
+      window.removeEventListener("paayh:payment_verified", handlePaymentVerified);
+    };
   }, []);
 
   const handleRefresh = () => {
@@ -202,6 +265,10 @@ export default function StatementComponent() {
     switch (s) {
       case "success":
         return <span className={`${styles.status} ${styles.statusSuccess}`}>Completed</span>;
+      case "queued":
+        return <span className={`${styles.status} ${styles.statusPending}`}>Queued</span>;
+      case "processing":
+        return <span className={`${styles.status} ${styles.statusPending}`}>Processing</span>;
       case "pending":
         return <span className={`${styles.status} ${styles.statusPending}`}>Pending</span>;
       case "failed":

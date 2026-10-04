@@ -1,9 +1,11 @@
 // app/api/payments/verify/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import { PaystackService } from "@/lib/payment/paystack";
+import { PayoutProvider } from "@/lib/payment/payoutProvider";
+import { KoraService } from "@/lib/payment/kora";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -37,12 +39,123 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized: Payment record owner mismatch" }, { status: 403 });
     }
 
-    // 2. Verify with Paystack
-    const paystackResult = await PaystackService.verifyTransaction(reference);
+    // If already marked as success (e.g. by webhook), return immediately
+    if (payment.status === "success") {
+      return NextResponse.json({
+        success: true,
+        status: "success",
+        type: payment.type,
+        amount: payment.amount,
+        alreadyProcessed: true,
+      });
+    }
 
-    if (paystackResult.status !== "success") {
-      // Update local record to failed if Paystack says it failed
-      if (paystackResult.status === "failed") {
+    // 2. Branch A: Withdrawal Verification
+    if (payment.type === "withdrawal") {
+      let payoutStatus = "processing";
+      try {
+        const payoutData = await KoraService.verifyPayout(reference);
+        payoutStatus = payoutData?.status || "processing";
+
+        if (payoutStatus === "success") {
+          // Decrement user's pending withdrawal column
+          const { data: user } = await supabaseAdmin
+            .from("users")
+            .select("withdrawal")
+            .eq("email", email.toLowerCase().trim())
+            .maybeSingle();
+
+          if (user) {
+            const currentWithdrawal = parseFloat(user.withdrawal || 0);
+            const newWithdrawal = Math.max(0, currentWithdrawal - (payment.amount || 0));
+
+            await supabaseAdmin
+              .from("users")
+              .update({ withdrawal: newWithdrawal })
+              .eq("email", email.toLowerCase().trim());
+          }
+
+          // Mark payment as success in ledger
+          await supabaseAdmin
+            .from("payments")
+            .update({
+              status: "success",
+              metadata: {
+                ...(payment.metadata || {}),
+                gateway_status: "success",
+              },
+            })
+            .eq("reference", reference);
+
+          await invalidateCachedProfile(email);
+
+          return NextResponse.json({
+            success: true,
+            status: "success",
+            type: "withdrawal",
+            amount: payment.amount,
+          });
+        } else if (payoutStatus === "failed" || payoutStatus === "reversed") {
+          // Auto-refund user's balance
+          const { data: user } = await supabaseAdmin
+            .from("users")
+            .select("balance, withdrawal")
+            .eq("email", email.toLowerCase().trim())
+            .maybeSingle();
+
+          if (user) {
+            const currentBalance = parseFloat(user.balance || 0);
+            const currentWithdrawal = parseFloat(user.withdrawal || 0);
+
+            await supabaseAdmin
+              .from("users")
+              .update({
+                balance: currentBalance + (payment.amount || 0),
+                withdrawal: Math.max(0, currentWithdrawal - (payment.amount || 0)),
+              })
+              .eq("email", email.toLowerCase().trim());
+          }
+
+          await supabaseAdmin
+            .from("payments")
+            .update({
+              status: "failed",
+              metadata: {
+                ...(payment.metadata || {}),
+                gateway_status: payoutStatus,
+              },
+            })
+            .eq("reference", reference);
+
+          await invalidateCachedProfile(email);
+
+          return NextResponse.json({
+            success: false,
+            status: "failed",
+            message: "Withdrawal failed on payment gateway. Balance has been restored.",
+          });
+        }
+
+        return NextResponse.json({
+          success: false,
+          status: payoutStatus,
+          message: "Withdrawal is currently processing with the bank.",
+        });
+      } catch (err: any) {
+        console.warn("⚠️ Error verifying withdrawal payout:", err);
+        return NextResponse.json({
+          success: false,
+          status: "processing",
+          message: "Withdrawal is processing.",
+        });
+      }
+    }
+
+    // 3. Branch B: Inbound Payment Verification (Ads, Highlights, Brand Subscriptions)
+    const verifyResult = await PayoutProvider.verifyPayment(reference);
+
+    if (!verifyResult.success) {
+      if (verifyResult.status === "failed") {
         await supabaseAdmin
           .from("payments")
           .update({ status: "failed" })
@@ -50,19 +163,26 @@ export async function GET(req: NextRequest) {
       }
       return NextResponse.json({
         success: false,
-        status: paystackResult.status,
-        message: paystackResult.gateway_response,
+        status: verifyResult.status,
+        message: `Payment status on gateway is: ${verifyResult.status}`,
       });
     }
 
-    // 3. Process the successful payment
-    const metadata = payment.metadata || paystackResult.metadata;
-    const processResult = await processSuccessfulPayment(reference, metadata, paystackResult.amount / 100);
+    // 3. Process the successful payment (activates ad/highlight/brand subscription)
+    const metadata = {
+      ...(payment.metadata || {}),
+      ...(verifyResult.metadata || {}),
+    };
+    const processResult = await processSuccessfulPayment(reference, metadata, verifyResult.amount);
+
+    // Invalidate user cache and statement cache
+    await invalidateCachedProfile(email);
 
     return NextResponse.json({
       success: true,
       status: "success",
       type: payment.type,
+      amount: verifyResult.amount,
       alreadyProcessed: !!processResult.alreadyProcessed,
     });
   } catch (err: any) {

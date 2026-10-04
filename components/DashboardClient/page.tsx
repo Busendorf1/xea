@@ -30,7 +30,10 @@ import {
   ShieldAlert, 
   CheckCircle2, 
   Check,
-  AlertTriangle 
+  AlertTriangle,
+  AlertCircle,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Newsdisplay from "@/components/Newsdisplay/page";
@@ -173,6 +176,24 @@ export default function DashboardClient({
     }
     return false;
   });
+
+  const [showBalance, setShowBalance] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("paayh_show_balance");
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
+
+  const toggleShowBalance = () => {
+    setShowBalance((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("paayh_show_balance", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -926,10 +947,13 @@ export default function DashboardClient({
           balance: finalBal,
           withdrawal: (prev.withdrawal || 0) + amountNum,
         }));
+        try {
+          sessionStorage.removeItem("paayh_statement_cache");
+        } catch {}
         setTransferSuccessData({
           type: "withdrawal",
-          title: "Withdrawal Queued",
-          amount: amountNum,
+          title: data.status === "success" ? "Withdrawal Completed" : (data.status === "queued" ? "Withdrawal Queued" : "Withdrawal Processing"),
+          amount: typeof data.netAmount === "number" ? data.netAmount : Math.max(0, amountNum - 35),
           bankName: bank?.name || "Bank Account",
           accountNumber,
           accountName: resolvedAccountName,
@@ -1515,13 +1539,38 @@ export default function DashboardClient({
             <InviteLink username={user.username} />
 
             <div className={styles.walletCard}>
-              <h4 className={styles.walletHeader}>Wallet Balance</h4>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                <h4 className={styles.walletHeader} style={{ margin: 0 }}>Wallet Balance</h4>
+                <button
+                  type="button"
+                  onClick={toggleShowBalance}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "6px",
+                  }}
+                  title={showBalance ? "Hide balance" : "Show balance"}
+                  aria-label={showBalance ? "Hide balance" : "Show balance"}
+                >
+                  {showBalance ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
               <div className={styles.walletBalance}>
-                <RollingCounter value={user.balance ?? 0} currencyPrefix="₦" />
+                {showBalance ? (
+                  <RollingCounter value={user.balance ?? 0} currencyPrefix="₦" />
+                ) : (
+                  <span style={{ letterSpacing: "2px", fontWeight: 700 }}>₦••••••••</span>
+                )}
               </div>
               {user.withdrawal > 0 && (
                 <p className={styles.pendingWithdrawal}>
-                  Pending Withdrawal: {formatCurrency(user.withdrawal)}
+                  Pending Withdrawal: {showBalance ? formatCurrency(user.withdrawal) : "₦••••"}
                 </p>
               )}
               <div className={styles.walletBtnGroup}>
@@ -1530,12 +1579,15 @@ export default function DashboardClient({
                   onClick={() => setShowWithdrawModal(true)}
                   className={styles.withdrawBtn}
                   disabled={
-                    !(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
+                    !(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) ||
+                    (user.balance ?? 0) < 10000
                   }
                 >
-                  {(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
-                    ? "Request Withdrawal"
-                    : "Complete 300 clicks to withdraw earnings"}
+                  {!(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
+                    ? "Complete 300 clicks to withdraw earnings"
+                    : (user.balance ?? 0) < 10000
+                    ? `Min. ${formatCurrency(10000)} required to withdraw`
+                    : "Request Withdrawal"}
                 </motion.button>
 
                 <motion.button
@@ -1679,14 +1731,74 @@ export default function DashboardClient({
                         />
                       </div>
 
+                      {(user.balance ?? 0) < 10000 && (
+                        <div style={{
+                          background: "rgba(239, 68, 68, 0.1)",
+                          border: "1px solid rgba(239, 68, 68, 0.25)",
+                          borderRadius: "10px",
+                          padding: "10px 14px",
+                          fontSize: "12px",
+                          color: "#ef4444",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          marginBottom: "12px",
+                        }}>
+                          <AlertCircle size={15} />
+                          <span>Your wallet balance is below the minimum required limit of {formatCurrency(10000)}.</span>
+                        </div>
+                      )}
+
+                      {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
+                        <div style={{
+                          background: "var(--sidebar-bg)",
+                          border: "1px solid var(--card-border)",
+                          borderRadius: "12px",
+                          padding: "12px 14px",
+                          fontSize: "13px",
+                          color: "var(--text-muted)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                          marginBottom: "12px",
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>Transfer Network Fee:</span>
+                            <span style={{ color: "#f59e0b", fontWeight: 600 }}>₦35.00</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>Disbursement Schedule:</span>
+                            <span style={{ color: "var(--foreground)" }}>Instant / Payout Window</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid var(--card-border)", paddingTop: "8px" }}>
+                            <span style={{ fontWeight: 600, color: "var(--foreground)" }}>You will receive:</span>
+                            <span style={{ fontWeight: 700, color: "#10b981" }}>{formatCurrency(Math.max(0, (parseFloat(withdrawAmount) || 0) - 35))}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
 
                       <button
                         type="submit"
-                        disabled={submittingWithdrawal || !resolvedAccountName}
+                        disabled={
+                          submittingWithdrawal ||
+                          !resolvedAccountName ||
+                          (user.balance ?? 0) < 10000 ||
+                          (parseFloat(withdrawAmount) || 0) < 10000 ||
+                          (parseFloat(withdrawAmount) || 0) > (user.balance ?? 0)
+                        }
                         className={styles.submitBtn}
                       >
-                        {submittingWithdrawal ? "Processing Withdrawal..." : "Withdraw Funds"}
+                        {submittingWithdrawal
+                          ? "Processing Withdrawal..."
+                          : (user.balance ?? 0) < 10000
+                          ? `Min. ${formatCurrency(10000)} Balance Required`
+                          : (parseFloat(withdrawAmount) || 0) > 0 && (parseFloat(withdrawAmount) || 0) < 10000
+                          ? `Min. Withdrawal is ${formatCurrency(10000)}`
+                          : (parseFloat(withdrawAmount) || 0) > (user.balance ?? 0)
+                          ? "Amount Exceeds Balance"
+                          : "Withdraw Funds"}
                       </button>
                     </form>
                   </motion.div>

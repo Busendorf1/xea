@@ -1,7 +1,8 @@
 // app/api/withdrawals/resolve/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import { PaystackService } from "@/lib/payment/paystack";
+import { PayoutProvider } from "@/lib/payment/payoutProvider";
+// Note: To use Paystack directly instead, import { PaystackService } from "@/lib/payment/paystack";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "accountNumber and bankCode are required" }, { status: 400 });
     }
 
-    const resolved = await PaystackService.resolveAccount(accountNumber, bankCode);
+    // Resolves bank account via active gateway (Kora by default, with Paystack fallback)
+    const resolved = await PayoutProvider.resolveAccount(accountNumber, bankCode);
     return NextResponse.json(resolved);
   } catch (err: any) {
     console.error("❌ Error in POST /api/withdrawals/resolve:", err);

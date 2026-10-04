@@ -35,6 +35,7 @@ import {
   Contrast,
   Plus,
   Eye,
+  EyeOff,
   MessageCircle,
   Reply,
   Bell,
@@ -67,7 +68,8 @@ import styles from "./page.module.css";
 import { v4 as uuidv4 } from "uuid";
 import { ALL_INDUSTRIES, ALL_INTERESTS } from "@/lib/categoryTargetingMap";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
-
+import AdminPayoutsTab from "./AdminPayoutsTab";
+import AdminMasterStatementTab from "./AdminMasterStatementTab";
 
 interface AdminDashboardClientProps {
   session: {
@@ -80,7 +82,7 @@ interface AdminDashboardClientProps {
   adminEmails: string[];
 }
 
-type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues" | "reconciliation" | "brand-subscribers";
+type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues" | "payout-management" | "master-statement" | "reconciliation" | "brand-subscribers";
 
 function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -127,7 +129,30 @@ const formatCurrency = (amount: number | string, country?: string | null) => glo
 
 export default function AdminDashboardClient({ session, adminEmails }: AdminDashboardClientProps) {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  
+  const [showAdminBalance, setShowAdminBalance] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("admin_show_balance");
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
+
+  const toggleAdminBalance = () => {
+    setShowAdminBalance((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("admin_show_balance", String(next));
+      } catch {}
+      return next;
+    });
+  };
   
   // Data States
   const [users, setUsers] = useState<any[]>([]);
@@ -2320,11 +2345,11 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             {/* Theme Swapper */}
             <button
               onClick={() => setTheme(theme === "white" ? "dark" : "white")}
-              title={theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
+              title={mounted && theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
               aria-label="Toggle Theme"
               className={styles.adminCls_38}
             >
-              {theme === "white" ? <Sun size={15} /> : <Moon size={15} />}
+              {mounted && theme === "white" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
             <Link href="/">
@@ -2396,6 +2421,16 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <span>Failed Queues / DLQ</span>
           </button>
 
+          <button onClick={() => handleTabChange("payout-management")} className={`${styles.tabButton} ${activeTab === "payout-management" ? styles.tabButtonActive : ""}`}>
+            <Wallet size={18} />
+            <span>Payouts & Queue Manager</span>
+          </button>
+
+          <button onClick={() => handleTabChange("master-statement")} className={`${styles.tabButton} ${activeTab === "master-statement" ? styles.tabButtonActive : ""}`}>
+            <BarChart3 size={18} />
+            <span>Master Statement</span>
+          </button>
+
           <button onClick={() => handleTabChange("reconciliation")} className={`${styles.tabButton} ${activeTab === "reconciliation" ? styles.tabButtonActive : ""}`}>
             <FolderLock size={18} />
             <span>Financial Reconciliation</span>
@@ -2459,10 +2494,29 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                   <div className={styles.statCard}>
                     <div className={styles.statHeader}>
                       <span className={styles.statLabel}>Wallet Liability</span>
-                      <div className={styles.statIconBox}><Wallet size={16} color="#10b981" /></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <button
+                          type="button"
+                          onClick={toggleAdminBalance}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "var(--text-muted)",
+                            cursor: "pointer",
+                            padding: "2px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                          title={showAdminBalance ? "Hide balance figures" : "Show balance figures"}
+                          aria-label={showAdminBalance ? "Hide balance figures" : "Show balance figures"}
+                        >
+                          {showAdminBalance ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                        <div className={styles.statIconBox}><Wallet size={16} color="#10b981" /></div>
+                      </div>
                     </div>
-                    <span className={styles.statValue}>{formatCurrency(stats.totalBalance)}</span>
-                    <span className={styles.statDesc}>{formatCurrency(stats.totalWithdrawal)} in withdrawals processing</span>
+                    <span className={styles.statValue}>{showAdminBalance ? formatCurrency(stats.totalBalance) : "₦••••••••"}</span>
+                    <span className={styles.statDesc}>{showAdminBalance ? formatCurrency(stats.totalWithdrawal) : "₦••••••••"} in withdrawals processing</span>
                   </div>
 
                   <div className={styles.statCard}>
@@ -3483,7 +3537,33 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             </>
           )}
 
-          {/* 12. FINANCIAL RECONCILIATION & SECURITY AUDITS TAB */}
+          {/* 11. PAYOUTS & QUEUE MANAGER TAB */}
+          {activeTab === "payout-management" && (
+            <>
+              <div>
+                <h1 className={styles.sectionTitle}>Payouts & Queue Manager</h1>
+                <p className={styles.sectionSubtitle}>
+                  Real-time float monitoring, manual batch payout execution, and single or bulk payout retry engine.
+                </p>
+              </div>
+              <AdminPayoutsTab />
+            </>
+          )}
+
+          {/* 12. MASTER PLATFORM STATEMENT TAB */}
+          {activeTab === "master-statement" && (
+            <>
+              <div>
+                <h1 className={styles.sectionTitle}>Platform Master Statement</h1>
+                <p className={styles.sectionSubtitle}>
+                  Unified platform transaction ledger with indexed multi-criteria filtering, aggregated financial flows, and instant CSV export.
+                </p>
+              </div>
+              <AdminMasterStatementTab />
+            </>
+          )}
+
+          {/* 13. FINANCIAL RECONCILIATION & SECURITY AUDITS TAB */}
           {activeTab === "reconciliation" && (
             <>
               <div>
@@ -3673,12 +3753,31 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                 </div>
 
                 <div className={styles.statCard}>
-                  <span className={styles.statLabel}>Platform Treasury Balance</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className={styles.statLabel}>Platform Treasury Balance</span>
+                    <button
+                      type="button"
+                      onClick={toggleAdminBalance}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        padding: "2px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                      }}
+                      title={showAdminBalance ? "Hide balance figures" : "Show balance figures"}
+                      aria-label={showAdminBalance ? "Hide balance figures" : "Show balance figures"}
+                    >
+                      {showAdminBalance ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
                   <div className={`${styles.statValue} ${styles.textSuccess}`} >
-                    ₦{(Number(reconciliationData?.platformTreasury?.balance || 0)).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                    {showAdminBalance ? `₦${(Number(reconciliationData?.platformTreasury?.balance || 0)).toLocaleString("en-NG", { minimumFractionDigits: 2 })}` : "₦••••••••"}
                   </div>
                   <span className={styles.adminCls_108}>
-                    +₦{(Number(reconciliationData?.platformTreasury?.total_forfeited_absorbed || 0)).toLocaleString("en-NG", { minimumFractionDigits: 2 })} absorbed from deactivations
+                    {showAdminBalance ? `+₦${(Number(reconciliationData?.platformTreasury?.total_forfeited_absorbed || 0)).toLocaleString("en-NG", { minimumFractionDigits: 2 })}` : "+₦••••••••"} absorbed from deactivations
                   </span>
                 </div>
 
@@ -4281,9 +4380,9 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
                         fontSize: "0.85rem",
                         fontWeight: 600,
                         textTransform: "capitalize",
-                        backgroundColor: subscribersStatus === st ? "var(--primary, #3b82f6)" : "var(--card-bg, #0f172a)",
-                        color: subscribersStatus === st ? "#fff" : "var(--text-muted, #94a3b8)",
-                        border: subscribersStatus === st ? "1px solid var(--primary, #3b82f6)" : "1px solid var(--card-border, rgba(255,255,255,0.1))",
+                        backgroundColor: subscribersStatus === st ? "var(--primary)" : "var(--card-bg)",
+                        color: subscribersStatus === st ? "var(--background)" : "var(--text-muted)",
+                        border: subscribersStatus === st ? "1px solid var(--primary)" : "1px solid var(--card-border)",
                       }}
                     >
                       {st === "all" ? "All Applications" : st === "approved" ? "Approved (Unpaid)" : st === "active" ? "Active (Paid)" : st}

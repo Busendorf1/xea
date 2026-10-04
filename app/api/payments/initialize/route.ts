@@ -1,7 +1,8 @@
 // app/api/payments/initialize/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import { PaystackService } from "@/lib/payment/paystack";
+import { PayoutProvider } from "@/lib/payment/payoutProvider";
+// PaystackService is also accessible via PayoutProvider or directly from "@/lib/payment/paystack"
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
@@ -108,30 +109,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const paystackMetadata = {
+    const paymentMetadata = {
       type,
       user_email: email,
+      provider: PayoutProvider.getActiveGateway(),
       ...(metadata || {}),
     };
 
-    // Initialize with Paystack
-    const paystackData = await PaystackService.initializeTransaction(
+    // Initialize with active gateway (Kora or Paystack)
+    const paymentData = await PayoutProvider.initializePayment({
       email,
-      verifiedAmount,
-      callbackUrl || `${req.nextUrl.origin}/logged-in`,
-      paystackMetadata,
-      channels
-    );
+      amountInNaira: verifiedAmount,
+      callbackUrl: callbackUrl || `${req.nextUrl.origin}/logged-in`,
+      metadata: paymentMetadata,
+      channels,
+      narration: `Paayh Payment for ${type.replace("_", " ")}`,
+    });
 
     // Insert pending payment record
     const { error: insertError } = await supabaseAdmin.from("payments").insert({
       user_email: email,
-      reference: paystackData.reference,
+      reference: paymentData.reference,
       amount: verifiedAmount,
       status: "pending",
       type,
       description: `Payment for ${type.replace("_", " ")}`,
-      metadata: paystackMetadata,
+      metadata: paymentMetadata,
     });
 
     if (insertError) {
@@ -141,8 +144,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      authorization_url: paystackData.authorization_url,
-      reference: paystackData.reference,
+      authorization_url: paymentData.authorization_url,
+      reference: paymentData.reference,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/payments/initialize:", err);

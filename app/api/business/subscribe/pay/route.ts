@@ -4,7 +4,8 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { v4 as uuidv4 } from "uuid";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
-import { PaystackService } from "@/lib/payment/paystack";
+import { PayoutProvider } from "@/lib/payment/payoutProvider";
+// PaystackService is also accessible via PayoutProvider or directly from "@/lib/payment/paystack"
 
 export async function POST(req: NextRequest) {
   try {
@@ -162,21 +163,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Handle Paystack Card Payment Initialization
+    // 3. Handle Card Payment Initialization (via active gateway Kora or Paystack)
     if (payment_method === "card") {
       try {
         const callback = callback_url || `${process.env.NEXT_PUBLIC_BASE_URL || ""}/business/subscribe?payment=success`;
-        const initData = await PaystackService.initializeTransaction(
-          cleanEmail,
-          requiredAmount,
-          callback,
-          {
+        const initData = await PayoutProvider.initializePayment({
+          email: cleanEmail,
+          amountInNaira: requiredAmount,
+          callbackUrl: callback,
+          metadata: {
             type: "brand_subscription",
             subscriber_id: subscriber.id,
             domain: subscriber.domain,
             user_email: cleanEmail,
-          }
-        );
+            provider: PayoutProvider.getActiveGateway(),
+          },
+          narration: `Brand Subscription for ${subscriber.business_name} (${subscriber.domain})`,
+        });
 
         return NextResponse.json({
           success: true,
@@ -184,10 +187,10 @@ export async function POST(req: NextRequest) {
           access_code: initData.access_code,
           reference: initData.reference,
         });
-      } catch (paystackErr: any) {
-        console.error("❌ Paystack initialization error for brand subscription:", paystackErr);
+      } catch (payErr: any) {
+        console.error("❌ Card payment initialization error for brand subscription:", payErr);
         return NextResponse.json({
-          error: paystackErr.message || "Failed to initialize card payment. Please use wallet balance or try again.",
+          error: payErr.message || "Failed to initialize card payment. Please use wallet balance or try again.",
         }, { status: 500 });
       }
     }

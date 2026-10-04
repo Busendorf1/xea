@@ -68,6 +68,24 @@ export default function BusinessSubscribeComponent() {
     } else if (authUser?.email) {
       fetchStatusAndBalance(authUser.email);
       setContactEmail(authUser.email);
+
+      // Auto-verify returning payment reference (from Kora or Paystack)
+      if (typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search);
+        const ref = urlParams.get("reference") || urlParams.get("trxref");
+        if (ref) {
+          fetch(`/api/payments/verify?reference=${encodeURIComponent(ref)}`)
+            .then((r) => r.json())
+            .then((resData) => {
+              if (resData.success || resData.status === "success") {
+                setSuccessMsg("Brand subscription payment verified and completed successfully!");
+                fetchStatusAndBalance(authUser.email!);
+              }
+            })
+            .catch(() => {});
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      }
     }
   }, [authUser, authLoading, router]);
 
@@ -373,7 +391,7 @@ export default function BusinessSubscribeComponent() {
               className={`${styles.submitBtn} ${styles.payCardBtn}`}
             >
               <CreditCard size={18} />
-              Pay with Card / Bank (Paystack)
+              Pay with Card / Bank
             </button>
           </div>
         </div>

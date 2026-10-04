@@ -60,7 +60,7 @@
 
 .badgeAdmin {
   background-color: var(--danger);
-  color: var(--background);
+  color: #ffffff;
   font-size: 0.65rem;
   font-weight: 700;
   padding: 2px 8px;
@@ -1619,14 +1619,21 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--card-bg);
   border: 1px solid var(--card-border);
-  color: #ffffff;
+  color: var(--foreground);
   cursor: pointer;
-  box-shadow: 0 0 10px var(--primary-glow);
-  transition: all 0.2s ease;
-  padding: 0px;
-  flex-shrink: 0px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.adminCls_38:hover {
+  background: var(--sidebar-bg);
+  border-color: var(--card-border-hover);
+  color: var(--primary);
+  transform: translateY(-1px);
 }
 
 .adminCls_39 {
@@ -2033,8 +2040,9 @@
 .adminCls_99 {
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  background-color: #1e293b;
-  color: #38bdf8;
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  color: var(--primary);
   margin-bottom: 1rem;
   font-size: 0.85rem;
 }
@@ -2056,11 +2064,12 @@
 
 .adminCls_102 {
   font-size: 0.75rem;
-  background-color: #090d16;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
   padding: 0.75rem;
   border-radius: 6px;
   overflow-x: auto;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .adminCls_103 {

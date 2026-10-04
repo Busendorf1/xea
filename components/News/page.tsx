@@ -352,7 +352,7 @@ export default function News({ session }: NewsProps) {
           window.location.href = "/logged-in";
         }, 800);
       } else if (authUrl) {
-        setStatusNotice("Redirecting to Paystack to complete payment for your Highlight...");
+        setStatusNotice("Redirecting to secure checkout to complete payment for your Highlight...");
         window.location.href = authUrl;
       } else {
         window.location.href = "/logged-in";
@@ -883,7 +883,7 @@ export default function News({ session }: NewsProps) {
                     <h4 className={styles.paymentBoxHeading}>Select Payment Method</h4>
                     <div className={styles.paymentMethodOptions}>
                       <label className={styles.paymentOptionLabel}>
-                        <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Paystack (Card/Bank/Transfer)
+                        <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Debit Card / Bank Transfer
                       </label>
                       <label className={styles.paymentOptionLabel}>
                         <input type="radio" name="pay" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} /> Pay from Wallet Balance ({formatCurrency(balance)})

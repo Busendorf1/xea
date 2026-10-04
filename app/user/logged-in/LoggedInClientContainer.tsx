@@ -6,6 +6,7 @@ import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
 import myAdsStyles from "../myads/page.module.css";
 import AppleSpinner from "@/components/ui/AppleSpinner";
+import { showAppleAlert } from "@/components/ui/AppleAlert";
 
 // Clean Spinner Component for Dynamic Loading (Zero Text)
 const SimpleLoader = () => (
@@ -128,8 +129,40 @@ export default function LoggedInClientContainer({
         window.dispatchEvent(new CustomEvent("paayh_boost_ref", { detail: { reference: boostRef } }));
       }, 100);
     } else if (urlParams.get("reference") || urlParams.get("trxref")) {
-      // General payment callback (e.g. ad submission payment)
+      // General payment callback (e.g. ad, highlight, or brand subscription payment)
       finalTab = "statement";
+      const paymentRef = urlParams.get("reference") || urlParams.get("trxref");
+
+      if (paymentRef) {
+        const verifyKey = `verified_ref:${paymentRef}`;
+        if (!sessionStorage.getItem(verifyKey)) {
+          sessionStorage.setItem(verifyKey, "verifying");
+
+          // Immediately verify payment with server (Kora or Paystack) to set status to 'success'
+          fetch(`/api/payments/verify?reference=${encodeURIComponent(paymentRef)}`)
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success || data.status === "success") {
+                sessionStorage.setItem(verifyKey, "completed");
+                sessionStorage.removeItem("paayh_statement_cache");
+                window.dispatchEvent(new CustomEvent("paayh:payment_verified", { detail: { reference: paymentRef, data } }));
+
+                const typeLabel = data.type === "highlight" ? "Daily Highlight" : data.type === "ad" ? "Ad Campaign" : "Payment";
+                showAppleAlert(
+                  `Your ${typeLabel} payment was completed and verified successfully!`,
+                  "success",
+                  "Payment Successful"
+                );
+              } else if (data.status === "failed") {
+                sessionStorage.setItem(verifyKey, "failed");
+                showAppleAlert("Payment could not be verified or failed on the gateway.", "error", "Payment Failed");
+              }
+            })
+            .catch((err) => {
+              console.warn("⚠️ Client verify payment notice:", err);
+            });
+        }
+      }
     }
 
     if (viewParam && VALID_TABS.includes(viewParam)) {

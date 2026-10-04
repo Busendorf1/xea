@@ -1,10 +1,15 @@
+// app/api/cron/process-payouts/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { PayoutProvider, PayoutGateway } from "@/lib/payment/payoutProvider";
+import { KoraService } from "@/lib/payment/kora";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
-const BATCH_SIZE = 80; // Safe threshold under Paystack's 100 limit
-const COOLDOWN_MS = 6000; // 6 seconds delay between bulk calls
+// Kora supports up to 50 payouts per bulk batch; Paystack supports up to 100.
+// Setting safe threshold to 45 items per batch.
+const BATCH_SIZE = 45;
+const COOLDOWN_MS = 5000; // 5 seconds cool-down between batch dispatches
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,19 +39,22 @@ async function handleCron(req: NextRequest) {
       const lockRes = await redisConnection.set(lockKey, "LOCKED", "EX", 300, "NX");
       if (!lockRes) {
         console.warn("⚠️ Payout cron skipped: Previous payout batch job is still running.");
-        return NextResponse.json({ success: true, message: "Previous payout cron is currently running. Skipping duplicate trigger." });
+        return NextResponse.json({
+          success: true,
+          message: "Previous payout cron is currently running. Skipping duplicate trigger.",
+        });
       }
       lockAcquired = true;
     } catch (redisLockErr) {
       console.warn("⚠️ Distributed cron lock Redis warning:", redisLockErr);
     }
 
-    // 2. Fetch all pending withdrawals, oldest first
+    // 2. Fetch all pending and queued withdrawals, oldest first
     const { data: pendingPayments, error: fetchErr } = await supabaseAdmin
       .from("payments")
       .select("*")
       .eq("type", "withdrawal")
-      .eq("status", "pending")
+      .in("status", ["pending", "queued"])
       .order("created_at", { ascending: true });
 
     if (fetchErr) {
@@ -55,15 +63,57 @@ async function handleCron(req: NextRequest) {
     }
 
     if (!pendingPayments || pendingPayments.length === 0) {
-      return NextResponse.json({ success: true, message: "No pending payouts to process.." });
+      return NextResponse.json({ success: true, message: "No pending or queued payouts to process." });
     }
 
-    console.log(`🏦 Cron: Found ${pendingPayments.length} pending payouts. Starting batch execution.`);
+    const activeGateway: PayoutGateway = PayoutProvider.getActiveGateway();
+    console.log(
+      `🏦 Cron: Found ${pendingPayments.length} pending/queued payouts. Using gateway: [${activeGateway.toUpperCase()}].`
+    );
 
-    // 3. Process payouts in chunks of 80
+    // 3. Pre-flight Balance Verification (ensures float is sufficient)
+    let eligiblePayments = pendingPayments;
+    if (activeGateway === "kora") {
+      try {
+        const floatBalance = await KoraService.getNairaBalance();
+        const totalPending = pendingPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        console.log(`💰 Kora Available Float: ₦${floatBalance.toLocaleString()} | Required: ₦${totalPending.toLocaleString()}`);
+
+        if (floatBalance <= 0) {
+          console.warn("⚠️ Kora float balance is empty (₦0). Holding all queued withdrawals until merchant funds account.");
+          return NextResponse.json({
+            success: true,
+            message: "Disbursement float balance is ₦0. All withdrawal requests held safely in queue.",
+            heldCount: pendingPayments.length,
+          });
+        }
+
+        if (floatBalance < totalPending) {
+          console.warn("⚠️ Insufficient Kora float balance to process all payouts. Batching up to available float.");
+          let runningTotal = 0;
+          eligiblePayments = [];
+          for (const payment of pendingPayments) {
+            if (runningTotal + (payment.amount || 0) <= floatBalance) {
+              runningTotal += payment.amount || 0;
+              eligiblePayments.push(payment);
+            } else {
+              console.log(`⏳ Holding payout ${payment.reference} in queue (surpasses available float).`);
+            }
+          }
+        }
+      } catch (balErr) {
+        console.warn("⚠️ Failed to check Kora float balance before dispatch:", balErr);
+      }
+    }
+
+    if (eligiblePayments.length === 0) {
+      return NextResponse.json({ success: true, message: "No payouts eligible within current float limit." });
+    }
+
+    // 4. Split eligible payouts into safe chunks
     const chunks = [];
-    for (let i = 0; i < pendingPayments.length; i += BATCH_SIZE) {
-      chunks.push(pendingPayments.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < eligiblePayments.length; i += BATCH_SIZE) {
+      chunks.push(eligiblePayments.slice(i, i + BATCH_SIZE));
     }
 
     let processedCount = 0;
@@ -71,100 +121,229 @@ async function handleCron(req: NextRequest) {
 
     for (let idx = 0; idx < chunks.length; idx++) {
       const chunk = chunks[idx];
-      const validTransfers: any[] = [];
-      const paymentUpdates: Promise<any>[] = [];
+      console.log(`🏦 Cron: Processing batch ${idx + 1}/${chunks.length} containing ${chunk.length} items via ${activeGateway.toUpperCase()}.`);
 
-      console.log(`🏦 Cron: Processing batch ${idx + 1}/${chunks.length} containing ${chunk.length} items.`);
+      if (activeGateway === "kora") {
+        // =========================================================================
+        // KORA BULK PAYOUT ENGINE (Primary / Default)
+        // Direct disburse from Kora available balance (No recipient creation needed)
+        // =========================================================================
+        const validPayouts: any[] = [];
+        const paymentUpdates: Promise<any>[] = [];
 
-      // For each item in the chunk, resolve transfer recipient on Paystack
-      for (const payment of chunk) {
-        const { bankCode, bankName, accountNumber, accountName } = payment.metadata || {};
+        for (const payment of chunk) {
+          const { bankCode, bankName, accountNumber, accountName } = payment.metadata || {};
 
-        if (!bankCode || !accountNumber || !accountName) {
-          console.error(`❌ Cron: Missing bank metadata for payment reference ${payment.reference}`);
-          failedCount++;
-          // Fail this payment individually
-          paymentUpdates.push(failPayment(payment, "Missing bank details"));
-          continue;
-        }
+          if (!bankCode || !accountNumber) {
+            console.error(`❌ Cron: Missing bank metadata for payment reference ${payment.reference}`);
+            failedCount++;
+            paymentUpdates.push(failPayment(payment, "Missing bank details"));
+            continue;
+          }
 
-        try {
-          console.log(`🏦 Cron: Registering transfer recipient for ${accountName} (${accountNumber})`);
-          const recipientCode = await PaystackService.createTransferRecipient(
-            accountName,
-            accountNumber,
-            bankCode
-          );
-
-          validTransfers.push({
+          validPayouts.push({
             id: payment.id,
-            amountInNaira: payment.amount,
-            recipientCode,
             reference: payment.reference,
-            reason: payment.description || "Wallet Withdrawal",
+            amount: payment.amount,
+            bankCode,
+            bankName,
+            accountNumber,
+            accountName: accountName || "Paayh User",
+            customerEmail: payment.user_email,
+            narration: payment.description || "Paayh Withdrawal",
             metadata: payment.metadata,
           });
-        } catch (recipErr: any) {
-          console.error(`❌ Cron: Failed to create recipient for ${payment.reference}:`, recipErr.message);
-          failedCount++;
-          // Fail this payment individually and refund user
-          paymentUpdates.push(failPayment(payment, recipErr.message || "Failed to create transfer recipient"));
         }
-      }
 
-      // If we have valid recipients to pay, trigger bulk transfer for this batch
-      if (validTransfers.length > 0) {
-        try {
-          console.log(`🏦 Cron: Triggering bulk transfer on Paystack for ${validTransfers.length} items`);
-          const bulkResults = await PaystackService.initiateBulkTransfer(
-            validTransfers.map((vt) => ({
-              amountInNaira: vt.amountInNaira,
-              recipientCode: vt.recipientCode,
-              reference: vt.reference,
-              reason: vt.reason,
-            }))
-          );
+        if (validPayouts.length === 1) {
+          // Kora bulk requires at least 2 items; for a single withdrawal, use direct instant payout API
+          const vp = validPayouts[0];
+          const rawAmount = vp.amount;
+          const netAmount = vp.metadata?.net_amount ?? Math.max(0, rawAmount - 35);
 
-          // Update payments status to 'processing' and save recipient/transfer codes
-          for (const vt of validTransfers) {
-            const matchResult = bulkResults.find((r) => r.reference === vt.reference);
-            const transferCode = matchResult?.transfer_code || null;
+          try {
+            console.log(`🏦 Cron: 1 withdrawal in batch. Dispatching via Kora Single Payout ref=${vp.reference} netAmount=₦${netAmount}`);
+            const pRes = await KoraService.initiateSinglePayout({
+              reference: vp.reference,
+              amount: netAmount,
+              bankCode: vp.bankCode,
+              accountNumber: vp.accountNumber,
+              accountName: vp.accountName,
+              customerEmail: vp.customerEmail,
+              narration: vp.narration,
+            });
 
             paymentUpdates.push(
-              updatePaymentStatus(vt.id, "processing", {
-                ...vt.metadata,
-                recipientCode: vt.recipientCode,
-                transfer_code: transferCode,
+              updatePaymentStatus(vp.id, pRes.status === "success" ? "success" : "processing", {
+                ...vp.metadata,
+                gateway: "kora",
+                dispatched_at: new Date().toISOString(),
               })
             );
             processedCount++;
+          } catch (singleErr: any) {
+            console.error(`❌ Cron: Single payout failed for ${vp.reference}:`, singleErr?.message);
+            paymentUpdates.push(
+              updatePaymentStatus(vp.id, "queued", {
+                ...vp.metadata,
+                hold_reason: singleErr?.message || "Held for retry",
+                held_at: new Date().toISOString(),
+              })
+            );
           }
-        } catch (bulkErr: any) {
-          console.error(`❌ Cron: Bulk transfer call failed for batch ${idx + 1}:`, bulkErr.message);
-          // Fail the whole valid transfers list in this batch
-          for (const vt of validTransfers) {
-            failedCount++;
-            paymentUpdates.push(failPayment(vt, bulkErr.message || "Bulk transfer initiation failed"));
+        } else if (validPayouts.length >= 2) {
+          try {
+            const batchReference = `kora_batch_${Date.now()}_${idx}`;
+            console.log(`🏦 Cron: Calling Kora Bulk Payout API for ${validPayouts.length} items (batchRef=${batchReference})`);
+
+            await KoraService.initiateBulkPayout({
+              batchReference,
+              merchantBearsCost: false, // User bears withdrawal charges
+              description: `Paayh Batch Withdrawal Payout #${idx + 1}`,
+              payouts: validPayouts.map((vp) => ({
+                reference: vp.reference,
+                amount: vp.metadata?.net_amount ?? Math.max(0, vp.amount - 35),
+                bankCode: vp.bankCode,
+                accountNumber: vp.accountNumber,
+                accountName: vp.accountName,
+                customerEmail: vp.customerEmail,
+                narration: vp.narration,
+              })),
+            });
+
+            // Mark batch records as 'processing'
+            for (const vp of validPayouts) {
+              paymentUpdates.push(
+                updatePaymentStatus(vp.id, "processing", {
+                  ...vp.metadata,
+                  gateway: "kora",
+                  batchReference,
+                  dispatched_at: new Date().toISOString(),
+                })
+              );
+              processedCount++;
+            }
+          } catch (bulkErr: any) {
+            console.error(`❌ Cron: Kora bulk payout failed for batch ${idx + 1}:`, bulkErr?.message || bulkErr);
+            const errStr = (bulkErr?.message || "").toLowerCase();
+            const isFloatOrTemp =
+              errStr.includes("balance") ||
+              errStr.includes("insufficient") ||
+              errStr.includes("fund") ||
+              errStr.includes("temporarily") ||
+              errStr.includes("limit");
+
+            // If float or temporary downtime, keep queued; only refund on invalid account data
+            for (const vp of validPayouts) {
+              if (isFloatOrTemp) {
+                paymentUpdates.push(
+                  updatePaymentStatus(vp.id, "queued", {
+                    ...vp.metadata,
+                    gateway: "kora",
+                    hold_reason: bulkErr?.message || "Held for next payout window",
+                    held_at: new Date().toISOString(),
+                  })
+                );
+              } else {
+                failedCount++;
+                paymentUpdates.push(failPayment(vp, bulkErr?.message || "Kora bulk payout initiation failed"));
+              }
+            }
           }
         }
+
+        await Promise.all(paymentUpdates);
+      } else {
+        // =========================================================================
+        // PAYSTACK BULK TRANSFER ENGINE (Fallback / Alternative)
+        // Activated when PAYOUT_PROVIDER=paystack in .env
+        // Requires: 1) createTransferRecipient, 2) initiateBulkTransfer
+        // =========================================================================
+        const validTransfers: any[] = [];
+        const paymentUpdates: Promise<any>[] = [];
+
+        for (const payment of chunk) {
+          const { bankCode, bankName, accountNumber, accountName } = payment.metadata || {};
+
+          if (!bankCode || !accountNumber || !accountName) {
+            console.error(`❌ Cron (Paystack): Missing bank metadata for reference ${payment.reference}`);
+            failedCount++;
+            paymentUpdates.push(failPayment(payment, "Missing bank details"));
+            continue;
+          }
+
+          try {
+            const recipientCode = await PaystackService.createTransferRecipient(
+              accountName,
+              accountNumber,
+              bankCode
+            );
+
+            validTransfers.push({
+              id: payment.id,
+              amountInNaira: payment.amount,
+              recipientCode,
+              reference: payment.reference,
+              reason: payment.description || "Wallet Withdrawal",
+              metadata: payment.metadata,
+            });
+          } catch (recipErr: any) {
+            console.error(`❌ Cron (Paystack): Recipient creation failed for ${payment.reference}:`, recipErr.message);
+            failedCount++;
+            paymentUpdates.push(failPayment(payment, recipErr.message || "Failed to create transfer recipient"));
+          }
+        }
+
+        if (validTransfers.length > 0) {
+          try {
+            console.log(`🏦 Cron: Triggering bulk transfer on Paystack for ${validTransfers.length} items`);
+            const bulkResults = await PaystackService.initiateBulkTransfer(
+              validTransfers.map((vt) => ({
+                amountInNaira: vt.amountInNaira,
+                recipientCode: vt.recipientCode,
+                reference: vt.reference,
+                reason: vt.reason,
+              }))
+            );
+
+            for (const vt of validTransfers) {
+              const matchResult = bulkResults.find((r) => r.reference === vt.reference);
+              const transferCode = matchResult?.transfer_code || null;
+
+              paymentUpdates.push(
+                updatePaymentStatus(vt.id, "processing", {
+                  ...vt.metadata,
+                  gateway: "paystack",
+                  recipientCode: vt.recipientCode,
+                  transfer_code: transferCode,
+                  dispatched_at: new Date().toISOString(),
+                })
+              );
+              processedCount++;
+            }
+          } catch (bulkErr: any) {
+            console.error(`❌ Cron (Paystack): Bulk transfer call failed:`, bulkErr.message);
+            for (const vt of validTransfers) {
+              failedCount++;
+              paymentUpdates.push(failPayment(vt, bulkErr.message || "Bulk transfer initiation failed"));
+            }
+          }
+        }
+
+        await Promise.all(paymentUpdates);
       }
 
-      // Run database updates for the current batch concurrently
-      await Promise.all(paymentUpdates);
-
-      // 4. Cool-down: sleep 6 seconds before initiating the next chunk
+      // Cool-down delay between chunks to respect API rate limits
       if (idx < chunks.length - 1) {
-        console.log(`⏳ Cron: Sleeping for ${COOLDOWN_MS / 1000}s to respect Paystack rate limits...`);
         await sleep(COOLDOWN_MS);
       }
     }
 
     console.log(`✅ Cron: Completed processing. Processed: ${processedCount}, Failed: ${failedCount}`);
 
-    // Database cleanup for completed/expired ads is now handled by the /api/cron/database-cleanup endpoint.
-
     return NextResponse.json({
       success: true,
+      gateway: activeGateway,
       message: `Completed processing. Processed: ${processedCount}, Failed: ${failedCount}`,
     });
   } catch (err: any) {
@@ -185,7 +364,6 @@ async function failPayment(payment: any, reason: string) {
   const refundAmount = payment.amount;
 
   try {
-    // 1. Fetch user's current balance
     const { data: user } = await supabaseAdmin
       .from("users")
       .select("balance, withdrawal")
@@ -196,7 +374,6 @@ async function failPayment(payment: any, reason: string) {
       const currentBalance = parseFloat(user.balance || 0);
       const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-      // Refund balance and decrement pending withdrawal
       await supabaseAdmin
         .from("users")
         .update({
@@ -206,7 +383,6 @@ async function failPayment(payment: any, reason: string) {
         .ilike("email", userEmail);
     }
 
-    // 2. Mark payment as failed
     await supabaseAdmin
       .from("payments")
       .update({
@@ -218,16 +394,18 @@ async function failPayment(payment: any, reason: string) {
       })
       .eq("id", payment.id);
 
-    // 3. Insert notification
     await supabaseAdmin.from("notifications").insert({
       user_email: userEmail,
       title: "Withdrawal Failed",
-      message: `Your withdrawal of ₦${refundAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} could not be processed. The funds have been refunded to your wallet.`,
+      message: `Your withdrawal of ₦${refundAmount.toLocaleString("en-NG", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} could not be processed. The funds have been refunded to your wallet.`,
     });
 
-    console.log(`⚠️ Cron: Successfully failed and refunded payment ${payment.reference} for ${userEmail}`);
+    console.log(`⚠️ Cron: Refunded payment ${payment.reference} for ${userEmail}`);
   } catch (err) {
-    console.error(`❌ Cron: Critical error failing/refunding payment ${payment.reference}:`, err);
+    console.error(`❌ Cron: Error refunding payment ${payment.reference}:`, err);
   }
 }
 

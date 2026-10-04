@@ -4,6 +4,7 @@ import AdminDashboardClient from "@/components/AdminDashboardClient/page";
 import Link from "next/link";
 import { isAdminEmail } from "@/lib/authHelper";
 import { AlertTriangle } from "lucide-react";
+import { AdminDialogProvider } from "@/components/ui/AdminDialog";
 
 export default async function AdminDashboardPage() {
   const session = await auth0.getSession();
@@ -118,5 +119,9 @@ export default async function AdminDashboardPage() {
   }
 
   // Pass session and admin emails list to the client view
-  return <AdminDashboardClient session={session as any} adminEmails={adminEmails} />;
+  return (
+    <AdminDialogProvider>
+      <AdminDashboardClient session={session as any} adminEmails={adminEmails} />
+    </AdminDialogProvider>
+  );
 }
