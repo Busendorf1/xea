@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { PayoutProvider } from "@/lib/payment/payoutProvider";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -237,43 +238,31 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      if (paystackSecret) {
-        try {
-          const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${paystackSecret}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              email: emailLower,
-              amount: Math.round(totalCost * 100), // convert ₦ to kobo
-              reference,
-              callback_url: callbackUrl,
-              metadata: {
-                user_email: emailLower,
-                ad_id: adId,
-                type: "boost_campaign",
-                additional_impressions: additionalImpressions,
-                additional_days: additionalDays,
-                cost_per_impression: effectiveCost,
-              },
-            }),
-          });
+      try {
+        const paymentData = await PayoutProvider.initializePayment({
+          email: emailLower,
+          amountInNaira: totalCost,
+          callbackUrl,
+          metadata: {
+            user_email: emailLower,
+            ad_id: adId,
+            type: "boost_campaign",
+            additional_impressions: additionalImpressions,
+            additional_days: additionalDays,
+            cost_per_impression: effectiveCost,
+          },
+          narration: `Paayh Boost for Ad #${adId.substring(0, 8)}`,
+        });
 
-          const paystackData = await paystackRes.json();
-          if (paystackData.status && paystackData.data?.authorization_url) {
-            return NextResponse.json({
-              success: true,
-              paymentMethod: "card",
-              paymentUrl: paystackData.data.authorization_url,
-              reference,
-              totalCost,
-            });
-          }
-        } catch (e) {
-          console.error("❌ Paystack init error:", e);
-        }
+        return NextResponse.json({
+          success: true,
+          paymentMethod: "card",
+          paymentUrl: paymentData.authorization_url,
+          reference: paymentData.reference,
+          totalCost,
+        });
+      } catch (err: any) {
+        console.error("❌ PayoutProvider boost init error:", err);
       }
 
       // Fallback test payment URL if secret key is not set

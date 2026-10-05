@@ -33,7 +33,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Clock
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Newsdisplay from "@/components/Newsdisplay/page";
@@ -1236,7 +1237,7 @@ export default function DashboardClient({
           <div className={styles.inactivityModalBackdrop}>
             <div className={styles.inactivityModalCard}>
               <div className={styles.inactivityModalIcon}>
-                <AlertTriangle size={28} />
+                <Clock size={26} />
               </div>
               <div>
                 <h3 className={styles.inactivityModalTitle}>
@@ -1408,11 +1409,11 @@ export default function DashboardClient({
                           const ratio = Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
                           const pct = Math.round(ratio * 100);
 
-                          let stateColor = "#10b981";
+                          let stateColor = "var(--foreground)";
                           if (ratio >= 0.90) {
                             stateColor = "#ef4444";
                           } else if (ratio >= 0.60) {
-                            stateColor = "#f59e0b";
+                            stateColor = "var(--text-muted)";
                           }
 
                           // Circular gauge geometry
@@ -1764,7 +1765,7 @@ export default function DashboardClient({
                         }}>
                           <div style={{ display: "flex", justifyContent: "space-between" }}>
                             <span>Transfer Network Fee:</span>
-                            <span style={{ color: "#f59e0b", fontWeight: 600 }}>₦35.00</span>
+                            <span style={{ color: "var(--foreground)", fontWeight: 600 }}>₦35.00</span>
                           </div>
                           <div style={{ display: "flex", justifyContent: "space-between" }}>
                             <span>Disbursement Schedule:</span>

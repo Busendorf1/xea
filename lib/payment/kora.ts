@@ -514,7 +514,12 @@ export class KoraService {
 
     const result = await response.json();
     if (!response.ok || !result.status) {
-      const detailedErr = result.data ? JSON.stringify(result.data) : (result.message || "Failed to initialize payment checkout on Kora");
+      let detailedErr = result.message || "Failed to initialize payment checkout on Korapay";
+      if (result.data?.amount?.message) {
+        detailedErr = `Korapay Limit: ${result.data.amount.message} (maximum ₦1,000,000 per card transaction).`;
+      } else if (result.data) {
+        detailedErr = typeof result.data === "string" ? result.data : JSON.stringify(result.data);
+      }
       throw new Error(detailedErr);
     }
 

@@ -51,6 +51,7 @@ import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/l
 import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 import { clearUserCampaignsCache } from "@/lib/campaignsClient";
+import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
 
 interface Session {
   user?: {
@@ -131,6 +132,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [isAiContent, setIsAiContent] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [adType, setAdType] = useState("politics");
@@ -592,6 +594,29 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       }
     }
     return true;
+  };
+
+  const handleInitiateSubmit = () => {
+    if (isSubmitting) return;
+    setStepError("");
+    if (!session || !session.user?.email) {
+      setStepError("User not authenticated. Please log in.");
+      return;
+    }
+
+    const totalCost = calculateTotalCost();
+
+    if (!isAdmin && paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
+      setStepError(`Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`);
+      return;
+    }
+
+    if (isAdmin || totalCost <= 0) {
+      submitAd();
+      return;
+    }
+
+    setShowPaymentConfirmModal(true);
   };
 
   const submitAd = async () => {
@@ -1292,21 +1317,21 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                           title: "Image(s)",
                           badge: "Up to 4 Photos",
                           desc: "High-resolution photos & banners (JPG, PNG, max 5MB each).",
-                          icon: <ImageIcon size={15} color="#10b981" />,
+                          icon: <ImageIcon size={15} color="var(--foreground)" />,
                         },
                         {
                           value: "video",
                           title: "Video Only",
                           badge: "Max 5 Mins",
                           desc: "High-impact video storytelling (MP4, MOV, max 60MB).",
-                          icon: <Video size={15} color="#f59e0b" />,
+                          icon: <Video size={15} color="var(--foreground)" />,
                         },
                         {
                           value: "mixed",
                           title: "Mixed Media",
                           badge: "Images + Video",
                           desc: "Up to 3 high-res images and 1 video for maximum engagement.",
-                          icon: <Layers size={15} color="#8b5cf6" />,
+                          icon: <Layers size={15} color="var(--foreground)" />,
                         },
                       ].map((format) => {
                         const isSelected = formSelections.adMediaType === format.value;
@@ -1906,8 +1931,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                                   title: "Expand Story",
                                   subtitle: "Unlocks up to 500 characters of rich ad copy",
                                   icon: <BookOpen size={18} />,
-                                  color: "#f59e0b",
-                                  bg: "rgba(245, 158, 11, 0.14)",
+                                  color: "var(--foreground)",
+                                  bg: "var(--sidebar-bg)",
                                   previewLabel: "Read More",
                                   inputType: "none",
                                   placeholder: "",
@@ -1922,7 +1947,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                                   subtitle: "Custom interactive action",
                                   icon: <Zap size={18} />,
                                   color: "var(--primary)",
-                                  bg: "rgba(234, 179, 8, 0.14)",
+                                  bg: "var(--sidebar-bg)",
                                   previewLabel: type,
                                   inputType: "text",
                                   placeholder: "",
@@ -2347,11 +2372,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                 <button
                   className={`${styles.submitButton} ${styles.submitButtonContent}`}
-                  onClick={submitAd}
+                  onClick={handleInitiateSubmit}
                   disabled={isSubmitting || !agreedToPolicy}
                 >
                   {isSubmitting ? (
-                    "Publishing Free Ad..."
+                    "Processing..."
                   ) : isAdmin ? (
                     <>
                       <Rocket size={16} /> Publish (Admin)
@@ -2362,6 +2387,21 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 </button>
               </>
             )}
+
+            <PaymentConfirmationModal
+              isOpen={showPaymentConfirmModal}
+              onClose={() => setShowPaymentConfirmModal(false)}
+              onConfirm={submitAd}
+              serviceTitle="Sponsored Ad Campaign"
+              amountFormatted={formatCurrency(calculateTotalCost())}
+              paymentMethodText={paymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
+              summaryItems={[
+                { label: "Target Attention", value: `${formSelections.impressions.toLocaleString()} views` },
+                { label: "Duration", value: `${formSelections.campaignDays} ${formSelections.campaignDays === 1 ? "day" : "days"}` },
+                { label: "Ad Type", value: adType === "product_sales" ? "Product Sales" : "Standard Promo" },
+              ]}
+              isSubmitting={isSubmitting}
+            />
 
             <div className={styles.buttonGroup}>
               {step > 0 && (

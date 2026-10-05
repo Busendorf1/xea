@@ -97,7 +97,7 @@
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: var(--primary, #059669);
+  color: var(--foreground, #000000);
   line-height: 1.1;
 }
 
@@ -201,8 +201,9 @@
 }
 
 .statusPending {
-  background-color: rgba(245, 158, 11, 0.14);
-  color: #f59e0b;
+  background-color: var(--sidebar-bg, rgba(255, 255, 255, 0.08));
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
 }
 
 .statusFailed {

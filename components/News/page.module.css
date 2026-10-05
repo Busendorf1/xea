@@ -1343,8 +1343,8 @@
 }
 
 .rankCardSpotlight {
-  background: var(--badge-gold-bg, rgba(217, 119, 6, 0.08));
-  border-color: var(--badge-gold-border, rgba(217, 119, 6, 0.3));
+  background: var(--input-bg);
+  border-color: var(--card-border);
 }
 
 .rankCardMatched {
@@ -1364,7 +1364,7 @@
 }
 
 .goldCrownIcon {
-  color: var(--badge-gold, #d97706);
+  color: var(--foreground);
   flex-shrink: 0;
   margin-top: 2px;
 }

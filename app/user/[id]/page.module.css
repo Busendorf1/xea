@@ -295,9 +295,9 @@ padding: "2rem"
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8rem;
-  color: var(--badge-gold, #d97706);
-  background: var(--badge-gold-bg, rgba(217, 119, 6, 0.08));
-  border: 1px solid var(--badge-gold-border, rgba(217, 119, 6, 0.25));
+  color: var(--foreground);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   padding: 0.5rem 0.85rem;
   border-radius: var(--radius-inner, 12px);
   font-weight: 600;
@@ -307,25 +307,24 @@ padding: "2rem"
 
 @keyframes pulseGlow {
   0% {
-    box-shadow: 0 2px 8px rgba(14, 165, 233, 0.05);
-    border-color: rgba(14, 165, 233, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-color: var(--card-border);
   }
   50% {
-    box-shadow: 0 2px 14px rgba(14, 165, 233, 0.15);
-    border-color: rgba(14, 165, 233, 0.4);
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.15);
+    border-color: var(--card-border);
   }
   100% {
-    box-shadow: 0 2px 8px rgba(14, 165, 233, 0.05);
-    border-color: rgba(14, 165, 233, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-color: var(--card-border);
   }
 }
 
 .verifiedIcon {
   width: 16px;
   height: 16px;
-  color: var(--badge-gold, #d97706);
+  color: var(--foreground);
   flex-shrink: 0;
-  filter: drop-shadow(0 0 1px rgba(14, 165, 233, 0.3));
 }
 
 /* Wallet Card Styling - Borderless Gradient Tint */
@@ -523,8 +522,8 @@ padding: "2rem"
 .monetizedCard {
   margin-top: 1rem;
   padding: 0.5rem 1rem;
-  background: var(--badge-gold-bg, rgba(217, 119, 6, 0.08));
-  border: 1px solid var(--badge-gold-border, rgba(217, 119, 6, 0.25));
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-inner, 12px);
   display: inline-flex;
   flex-direction: row;
@@ -536,14 +535,14 @@ padding: "2rem"
 
 .monetizedCard h4 {
   margin: 0;
-  color: var(--badge-gold, #d97706);
+  color: var(--foreground);
   font-size: 0.75rem;
   font-weight: 600;
 }
 
 .monetizedCard p {
   margin: 0;
-  color: var(--badge-gold, #d97706);
+  color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 400;
   opacity: 0.8;

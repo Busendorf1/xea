@@ -774,13 +774,13 @@
 
 .cooldownWarningNote {
   font-size: 0.82rem;
-  color: #d97706;
+  color: var(--text-muted);
   margin-top: 1.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .submitBtnDisabled {

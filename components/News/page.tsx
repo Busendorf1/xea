@@ -5,7 +5,7 @@ import Link from "next/link";
 import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import LocationSelector from "../LocationSelector";
-import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag } from "lucide-react";
+import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag, Info, Award } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import RollingCounter from "@/components/ui/RollingCounter";
 import CustomSelect from "@/components/ui/CustomSelect";
@@ -15,6 +15,7 @@ import { newsSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 import { clearUserCampaignsCache } from "@/lib/campaignsClient";
+import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
 
 interface Session {
   user?: {
@@ -70,6 +71,7 @@ export default function News({ session }: NewsProps) {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [isAiContent, setIsAiContent] = useState(false);
   const [balance, setBalance] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
@@ -226,6 +228,45 @@ export default function News({ session }: NewsProps) {
     txt.trim() ? txt.trim().charAt(0).toUpperCase() + txt.trim().slice(1) : "";
 
   const totalCost = isBiddingEnabled ? (bidPrice * campaignDays) : (1000 * campaignDays);
+
+  const handleInitiateSubmit = () => {
+    if (isSubmitting) return;
+    setStepError(null);
+    setStatusNotice(null);
+    if (!session || !session.user?.email) {
+      setStepError("User not authenticated. Please log in.");
+      return;
+    }
+
+    const validationResult = newsSchema.safeParse({
+      title,
+      content,
+      interest,
+      country,
+      campaignDays,
+      bidPrice: isBiddingEnabled ? bidPrice : undefined,
+    });
+
+    if (!mediaFile || !validationResult.success) {
+      const errorMsg = !mediaFile
+        ? "Please select a cover image for your highlight."
+        : validationResult.error?.issues[0]?.message || "Please check your highlight form fields.";
+      setStepError(errorMsg);
+      return;
+    }
+
+    if (!isAdmin && paymentMethod === "wallet" && balance < totalCost) {
+      setStepError(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
+      return;
+    }
+
+    if (isAdmin || totalCost <= 0) {
+      handleSubmit();
+      return;
+    }
+
+    setShowPaymentConfirmModal(true);
+  };
 
   const handleSubmit = async () => {
     setStepError(null);
@@ -419,6 +460,23 @@ export default function News({ session }: NewsProps) {
     );
   }
 
+  const canNavigateToStep = (targetStep: number) => {
+    if (targetStep <= step) return true;
+    if (!mediaFile) {
+      setStepError("Please select a cover image for your highlight.");
+      return false;
+    }
+    if (targetStep >= 2 && title.trim().length < 3) {
+      setStepError("Title must be at least 3 characters.");
+      return false;
+    }
+    if (targetStep >= 3 && content.trim().length < 10) {
+      setStepError("Content must be at least 10 characters.");
+      return false;
+    }
+    return true;
+  };
+
   return (
     <div className={styles.pageWapper}>
         <div className={styles.pageWrapper}>
@@ -426,7 +484,12 @@ export default function News({ session }: NewsProps) {
           <FormStepProgress
             steps={steps}
             currentStep={step}
-            onStepClick={(idx) => setStep(idx)}
+            onStepClick={(idx) => {
+              if (canNavigateToStep(idx)) {
+                setStepError(null);
+                setStep(idx);
+              }
+            }}
           />
 
           <h1>Post Daily Highlight</h1>
@@ -500,7 +563,7 @@ export default function News({ session }: NewsProps) {
                       fontSize: "0.78rem",
                       fontWeight: 600,
                       fontVariantNumeric: "tabular-nums",
-                      color: title.length >= 80 ? "#ef4444" : title.length >= 68 ? "#f59e0b" : "var(--text-muted)",
+                      color: title.length >= 80 ? "#ef4444" : title.length >= 68 ? "var(--foreground)" : "var(--text-muted)",
                       transition: "color 0.2s ease"
                     }}>
                       {title.length} / 80
@@ -530,16 +593,46 @@ export default function News({ session }: NewsProps) {
                       fontSize: "0.78rem",
                       fontWeight: 600,
                       fontVariantNumeric: "tabular-nums",
-                      color: content.length >= 1000 ? "#ef4444" : content.length >= 850 ? "#f59e0b" : "var(--text-muted)",
+                      color: content.length >= 1000 ? "#ef4444" : content.length >= 850 ? "var(--foreground)" : "var(--text-muted)",
                       transition: "color 0.2s ease"
                     }}>
                       {content.length} / 1000
                     </span>
                   </div>
-                  <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Share full details of your highlight announcement..." className={styles.textareaBox} rows={6} maxLength={1000} />
+                  <textarea
+                    value={content}
+                    onChange={(e) => {
+                      setContent(e.target.value);
+                      if (stepError) setStepError(null);
+                    }}
+                    placeholder="Share full details of your highlight announcement..."
+                    className={styles.textareaBox}
+                    rows={6}
+                    maxLength={1000}
+                  />
+                  {content.trim().length > 0 && content.trim().length < 10 && (
+                    <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px", display: "flex", alignItems: "center", gap: "5px" }}>
+                      <Info size={13} style={{ flexShrink: 0 }} /> Content must be at least 10 characters ({10 - content.trim().length} more needed)
+                    </span>
+                  )}
                   <div className={styles.stepActionsBetween}>
                     <motion.button whileTap={{ scale: 0.97 }} onClick={() => setStep(1)} className={styles.secondaryNavBtn}>Back</motion.button>
-                    <motion.button whileTap={{ scale: 0.97 }} whileHover={{ scale: 1.01 }} disabled={!content.trim()} onClick={() => setStep(3)} className={styles.primaryNavBtn}>Continue to Targeting</motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      whileHover={{ scale: 1.01 }}
+                      disabled={content.trim().length < 10}
+                      onClick={() => {
+                        if (content.trim().length < 10) {
+                          setStepError("Content must be at least 10 characters.");
+                          return;
+                        }
+                        setStepError(null);
+                        setStep(3);
+                      }}
+                      className={styles.primaryNavBtn}
+                    >
+                      Continue to Targeting
+                    </motion.button>
                   </div>
                 </motion.div>
               )}
@@ -743,9 +836,9 @@ export default function News({ session }: NewsProps) {
                             <div className={`${styles.spotlightRankCard} ${isLead ? styles.rankCardSpotlight : isMatched ? styles.rankCardMatched : styles.rankCardChallenger}`}>
                               <div className={styles.spotlightRankHeader}>
                                 {isLead ? (
-                                  <Crown size={18} className={styles.goldCrownIcon} />
+                                  <Award size={18} className={styles.goldCrownIcon} />
                                 ) : isMatched ? (
-                                  <Sparkles size={18} className={styles.matchedSparkleIcon} />
+                                  <TrendingUp size={18} className={styles.matchedSparkleIcon} />
                                 ) : (
                                   <TrendingUp size={18} className={styles.challengerIcon} />
                                 )}
@@ -942,7 +1035,7 @@ export default function News({ session }: NewsProps) {
 
                 <div className={styles.stepActionsBetween}>
                   <button onClick={() => setStep(3)} className={styles.secondaryNavBtn}>Back</button>
-                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleSubmit} className={styles.primaryNavBtn}>
+                  <button disabled={isSubmitting || !agreedToPolicy} onClick={handleInitiateSubmit} className={styles.primaryNavBtn}>
                     {isSubmitting ? (
                       "Processing Submission..."
                     ) : isAdmin ? (
@@ -950,7 +1043,7 @@ export default function News({ session }: NewsProps) {
                         <Rocket size={16} /> Publish (Admin)
                       </>
                     ) : (
-                      `Pay ${formatCurrency(totalCost)} & Submit`
+                      "Submit"
                     )}
                   </button>
                 </div>
@@ -959,6 +1052,21 @@ export default function News({ session }: NewsProps) {
           </AnimatePresence>
         </div>
       </div>
+
+      <PaymentConfirmationModal
+        isOpen={showPaymentConfirmModal}
+        onClose={() => setShowPaymentConfirmModal(false)}
+        onConfirm={handleSubmit}
+        serviceTitle="Spotlight Daily Highlight"
+        amountFormatted={formatCurrency(totalCost)}
+        paymentMethodText={paymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
+        summaryItems={[
+          { label: "Campaign Duration", value: `${campaignDays} ${campaignDays === 1 ? "day" : "days"}` },
+          { label: "Target Area", value: country ? `${country}${state ? `, ${state}` : ""}` : "All Audiences" },
+          { label: "Category", value: interest },
+        ]}
+        isSubmitting={isSubmitting}
+      />
     </div>
   );
 }

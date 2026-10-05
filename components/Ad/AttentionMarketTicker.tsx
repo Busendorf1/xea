@@ -190,9 +190,9 @@ function AttentionMarketTicker({
               <div className={styles.rankHeader}>
                 <div className={styles.rankIconWrap}>
                   {rankStatus === "spotlight" ? (
-                    <Crown size={18} className={styles.goldCrown} />
+                    <Award size={18} className={styles.goldCrown} />
                   ) : rankStatus === "matched" ? (
-                    <Sparkles size={18} className={styles.matchedSparkle} />
+                    <TrendingUp size={18} className={styles.matchedSparkle} />
                   ) : (
                     <TrendingUp size={18} className={styles.challengerIcon} />
                   )}

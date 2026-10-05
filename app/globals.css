@@ -59,9 +59,9 @@
   --sidebar-bg: #f4f4f2;
   --success: #10b981;
   --danger: #ef4444;
-  --badge-gold: #d97706;
-  --badge-gold-bg: rgba(217, 119, 6, 0.08);
-  --badge-gold-border: rgba(217, 119, 6, 0.25);
+  --badge-gold: var(--foreground);
+  --badge-gold-bg: rgba(0, 0, 0, 0.05);
+  --badge-gold-border: var(--card-border);
 }
 
 /* Dark Theme Variables when device is in Dark Mode */
@@ -85,9 +85,9 @@
     --sidebar-bg: var(--obsidian-dark);
     --success: #10b981;
     --danger: #ef4444;
-    --badge-gold: #f59e0b;
-    --badge-gold-bg: rgba(245, 158, 11, 0.12);
-    --badge-gold-border: rgba(245, 158, 11, 0.3);
+    --badge-gold: var(--foreground);
+    --badge-gold-bg: rgba(255, 255, 255, 0.08);
+    --badge-gold-border: var(--card-border);
   }
 }
 
@@ -111,9 +111,9 @@
   --sidebar-bg: var(--obsidian-dark);
   --success: #10b981;
   --danger: #ef4444;
-  --badge-gold: #f59e0b;
-  --badge-gold-bg: rgba(245, 158, 11, 0.12);
-  --badge-gold-border: rgba(245, 158, 11, 0.3);
+  --badge-gold: var(--foreground);
+  --badge-gold-bg: rgba(255, 255, 255, 0.08);
+  --badge-gold-border: var(--card-border);
 }
 
 /* Explicit White and Light Theme */
@@ -137,9 +137,9 @@
   --sidebar-bg: #f4f4f2;
   --success: #10b981;
   --danger: #ef4444;
-  --badge-gold: #d97706;
-  --badge-gold-bg: rgba(217, 119, 6, 0.08);
-  --badge-gold-border: rgba(217, 119, 6, 0.25);
+  --badge-gold: var(--foreground);
+  --badge-gold-bg: rgba(0, 0, 0, 0.05);
+  --badge-gold-border: var(--card-border);
 }
 
 /* Fluid Responsive Typography & Screen Scaling (Scale 7) */

@@ -185,7 +185,7 @@ export default function TransactionReceiptModal({
       return;
     }
 
-    const printWindow = window.open("", "_blank", "width=800,height=900");
+    const printWindow = window.open("", "_blank", "width=440,height=720");
     if (!printWindow) {
       window.print();
       return;
@@ -196,32 +196,41 @@ export default function TransactionReceiptModal({
       <html lang="en">
       <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Receipt_${transaction.reference || "tx"}</title>
         <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; }
           @page {
-            size: auto;
-            margin: 12mm auto;
+            size: 100mm auto;
+            margin: 6mm auto;
           }
-          body {
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          html, body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background: #ffffff;
-            color: #0f172a;
-            padding: 12px;
+            color: #000000;
+            margin: 0;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .receipt-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            padding: 16px 8px;
           }
           .receipt-box {
-            width: 100%;
-            max-width: 410px;
+            width: 360px;
+            max-width: 360px;
+            min-width: 320px;
             border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 22px 24px;
+            border-radius: 16px;
+            padding: 24px 20px;
             background: #ffffff;
-            margin: 0 auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
           }
           .header {
             display: flex;
@@ -232,52 +241,47 @@ export default function TransactionReceiptModal({
             margin-bottom: 16px;
           }
           .brand {
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 800;
             letter-spacing: -0.5px;
-            color: #059669;
+            color: #000000;
           }
           .brand-sub {
-            font-size: 10px;
+            font-size: 11px;
             color: #64748b;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-top: 1px;
-          }
-          .disclaimer-top {
-            font-size: 11px;
-            font-style: italic;
-            color: #475569;
-            text-align: right;
-            margin-bottom: 2px;
+            margin-top: 2px;
           }
           .receipt-title {
             font-size: 11px;
             font-weight: 700;
-            color: #1e293b;
+            color: #64748b;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             text-align: right;
+            margin-top: 5px;
           }
           .amount-section {
             text-align: center;
-            padding: 12px 8px;
+            padding: 14px 10px;
             margin-bottom: 16px;
-            background: #f8fafc;
-            border-radius: 10px;
-            border: 1px dashed #cbd5e1;
+            background: #f9f9f7;
+            border-radius: 12px;
+            border: 1px dashed #e2e8f0;
           }
           .amount-label {
             font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.6px;
             color: #64748b;
-            margin-bottom: 3px;
+            margin-bottom: 4px;
+            font-weight: 600;
           }
           .amount-val {
-            font-size: 24px;
+            font-size: 26px;
             font-weight: 800;
-            color: #0f172a;
+            color: #000000;
             letter-spacing: -0.5px;
           }
           .grid {
@@ -289,16 +293,16 @@ export default function TransactionReceiptModal({
             border-bottom: 1px solid #f1f5f9;
           }
           .grid td {
-            padding: 7px 2px;
+            padding: 8px 2px;
             font-size: 12px;
           }
           .grid td.label {
             color: #64748b;
-            width: 40%;
+            width: 42%;
             font-weight: 500;
           }
           .grid td.value {
-            color: #0f172a;
+            color: #000000;
             font-weight: 600;
             text-align: right;
             word-break: break-word;
@@ -306,50 +310,59 @@ export default function TransactionReceiptModal({
           .badge {
             display: inline-block;
             padding: 2px 7px;
-            border-radius: 5px;
+            border-radius: 9999px;
             font-size: 10px;
             font-weight: 700;
             text-transform: capitalize;
           }
-          .badge-success { background: #dcfce7; color: #15803d; }
-          .badge-pending { background: #fef3c7; color: #b45309; }
-          .badge-failed { background: #fee2e2; color: #b91c1c; }
-          .badge-reversed { background: #e2e8f0; color: #475569; }
+          .badge-success { background: #f4f4f2; color: #000000; border: 1px solid #e2e8f0; }
+          .badge-pending { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+          .badge-failed { background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; }
+          .badge-reversed { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
           .footer-note {
             text-align: center;
-            font-size: 10px;
+            font-size: 11px;
             color: #94a3b8;
-            margin-top: 18px;
-            padding-top: 10px;
+            margin-top: 16px;
+            padding-top: 12px;
             border-top: 1px solid #f1f5f9;
+            font-weight: 500;
           }
           @media print {
-            body {
-              padding: 0;
-              margin: 0;
-              display: flex;
-              justify-content: center;
+            html, body {
+              background: #ffffff !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+            }
+            .receipt-container {
+              padding: 0 !important;
+              margin: 0 !important;
             }
             .receipt-box {
-              width: 390px !important;
-              max-width: 390px !important;
-              margin: 15px auto !important;
+              width: 360px !important;
+              max-width: 360px !important;
+              min-width: 320px !important;
+              margin: 12px auto !important;
               border: 1px solid #e2e8f0 !important;
-              border-radius: 12px !important;
-              padding: 20px 22px !important;
-              page-break-inside: avoid;
+              border-radius: 14px !important;
+              padding: 20px 18px !important;
+              box-shadow: none !important;
+              background: #ffffff !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
             }
           }
         </style>
       </head>
       <body>
-        <div class="receipt-box">
+        <div class="receipt-container">
+          <div class="receipt-box">
           <div class="header">
             <div>
               <div class="brand">Paayh</div>
             </div>
             <div>
-              <div class="disclaimer-top">To whom it may please.</div>
               <div class="receipt-title">Transaction Receipt</div>
             </div>
           </div>
@@ -420,13 +433,16 @@ export default function TransactionReceiptModal({
             </tr>` : ""}
             ${(charge > 0 || discount > 0) ? `
             <tr style="border-top: 1.5px solid #cbd5e1; font-weight: 700;">
-              <td class="label" style="color: #0f172a; font-weight: 700;">Net Amount</td>
-              <td class="value" style="color: #059669; font-size: 14px;">${formatNaira(netAmount)}</td>
+              <td class="label" style="color: #000000; font-weight: 700;">Net Amount</td>
+              <td class="value" style="color: #000000; font-size: 13px;">${formatNaira(netAmount)}</td>
             </tr>` : ""}
           </table>
 
-          <div class="footer-note">Paayh</div>
+          <div class="footer-note">
+            Paayh • Official Transaction Slip
+          </div>
         </div>
+      </div>
         <script>
           window.onload = function() {
             window.print();
@@ -461,7 +477,7 @@ export default function TransactionReceiptModal({
               {/* <span className={styles.brandSub}>Payment Receipt</span> */}
             </div>
             <div className={styles.headerRight}>
-              <div className={styles.disclaimerText}>To whom it may please.</div>
+              {/* <div className={styles.disclaimerText}>To whom it may please.</div> */}
               <div className={styles.receiptLabel}>Transaction Receipt</div>
             </div>
           </div>
@@ -608,9 +624,8 @@ export default function TransactionReceiptModal({
             className={styles.downloadActionBtn}
             title="Download or Print Receipt as PDF"
           >
-            <Download size={14} className={styles.actionBtnIcon} />
-            <span className={styles.btnTextFull}>Download Receipt (PDF)</span>
-            <span className={styles.btnTextShort}>Download PDF</span>
+            <Download size={15} />
+            <span>Download Receipt (PDF)</span>
           </button>
 
           <button
@@ -619,13 +634,8 @@ export default function TransactionReceiptModal({
             className={styles.copyActionBtn}
             title="Copy Transaction Reference"
           >
-            {copied ? (
-              <Check size={14} color="#10b981" className={styles.actionBtnIcon} />
-            ) : (
-              <Copy size={14} className={styles.actionBtnIcon} />
-            )}
-            <span className={styles.btnTextFull}>{copied ? "Copied Reference" : "Copy Reference"}</span>
-            <span className={styles.btnTextShort}>{copied ? "Copied" : "Copy Ref"}</span>
+            {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
+            <span>{copied ? "Copied Reference" : "Copy Reference"}</span>
           </button>
         </div>
       </div>

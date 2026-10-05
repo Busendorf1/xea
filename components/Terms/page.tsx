@@ -487,7 +487,7 @@ export default function TermsPage() {
         </section>
 
         {/* SECTION 12 */}
-        <section>
+        <section id="aml-policy">
           <h2 className={styles.heading}>
             12. Anti Money Laundering (AML), Counter Terrorist Financing (CFT), Sanctions &amp; KYC Compliance
           </h2>

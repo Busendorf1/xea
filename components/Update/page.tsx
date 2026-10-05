@@ -850,7 +850,7 @@ export default function Update({ email }: Props) {
 
           {dbProfile && !dbProfile.has_updated_profile && (
             <p className={styles.cooldownWarningNote}>
-              <AlertTriangle size={15} className={styles.flexShrink0} />
+              <Clock size={15} className={styles.flexShrink0} />
               <span>Note: Once confirmed, you can only update your profile once every 30 days.</span>
             </p>
           )}

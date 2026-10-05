@@ -8,6 +8,7 @@ import styles from "../MyAds/page.module.css";
 import Link from "next/link";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
+import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
 import {
   Megaphone,
   Image as ImageIcon,
@@ -23,6 +24,7 @@ import {
   ShoppingCart,
   AlertTriangle,
   Clock,
+  Info,
   CheckCircle2,
   Check,
   SlidersHorizontal,
@@ -378,6 +380,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   const [boosterMultiLocations, setBoosterMultiLocations] = useState<string[]>([]);
   const [boosterPaymentMethod, setBoosterPaymentMethod] = useState<"wallet" | "card">("wallet");
   const [boosting, setBoosting] = useState(false);
+  const [showBoosterPaymentConfirmModal, setShowBoosterPaymentConfirmModal] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -600,6 +603,47 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
     return null;
   };
+
+  const calculateBoosterCost = () => {
+    if (!boosterAd) return 0;
+    const currentCost = Number(boosterAd.cost_per_impression || 25);
+    const effectiveCost = newBidPrice > 0 && newBidPrice > currentCost ? newBidPrice : currentCost;
+    return addImpressions * effectiveCost;
+  };
+
+  const handleInitiateBoost = () => {
+    if (!boosterAd) return;
+    const reportsCount = reportsMap[boosterAd.id] || 0;
+    const reason = getBoostUnavailableReason(boosterAd, reportsCount);
+    if (reason) {
+      setNoticeModal({ title: "Boosting Unavailable", message: reason, adId: boosterAd.id });
+      setBoosterAd(null);
+      return;
+    }
+
+    const validation = boostSchema.safeParse({
+      adId: boosterAd.id,
+      bidAmount: newBidPrice > 0 ? newBidPrice : 100,
+      paymentMethod: boosterPaymentMethod,
+    });
+
+    if (!validation.success) {
+      setNoticeModal({
+        title: "Validation Notice",
+        message: validation.error.issues[0]?.message || "Invalid boost parameters.",
+      });
+      return;
+    }
+
+    const totalCost = calculateBoosterCost();
+    if (totalCost <= 0) {
+      handleExecuteBoost();
+      return;
+    }
+
+    setShowBoosterPaymentConfirmModal(true);
+  };
+
   const handleExecuteBoost = async () => {
     if (!boosterAd) return;
     const reportsCount = reportsMap[boosterAd.id] || 0;
@@ -653,6 +697,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         return;
       }
 
+      setShowBoosterPaymentConfirmModal(false);
       setNoticeModal({
         title: "Campaign Boosted",
         message: data.message || "Your campaign has been boosted successfully!",
@@ -661,6 +706,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       clearUserCampaignsCache(session?.user?.email || "");
       fetchAds(true);
     } catch (e: any) {
+      setShowBoosterPaymentConfirmModal(false);
       setNoticeModal({
         title: "Boost Notice",
         message: e.message || "An error occurred while boosting your campaign.",
@@ -952,7 +998,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             {ad.admin_statement && (
               <div className={styles.adminNotice}>
                 <strong className={styles.adminNoticeTitle}>
-                  <AlertTriangle size={15} color="var(--primary)" /> Important Notice / Reason:
+                  <Info size={15} color="var(--primary)" /> Important Notice / Reason:
                 </strong>
                 {ad.admin_statement}
               </div>
@@ -1282,7 +1328,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 <div>
                   {daysInfo.isRollover ? (
                     <span className={`${styles.rolloverActiveBadge} ${styles.rolloverBadgeInner}`}>
-                      <AlertTriangle size={12} color="var(--primary)" /> Rollover Active (+{daysInfo.rolloverDays}d exceeded)
+                      <Clock size={12} color="var(--primary)" /> Rollover Active (+{daysInfo.rolloverDays}d exceeded)
                     </span>
                   ) : (
                     <span className={`${styles.rolloverNormalBadge} ${styles.rolloverBadgeInner}`}>
@@ -1871,15 +1917,32 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             <button
               type="button"
               className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
-              onClick={handleExecuteBoost}
+              onClick={handleInitiateBoost}
               disabled={boosting}
             >
-              {boosting ? "Processing Booster..." : "Confirm & Launch Booster"}
+              {boosting ? "Processing Booster..." : "Submit"}
             </button>
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
+
+    {boosterAd && (
+      <PaymentConfirmationModal
+        isOpen={showBoosterPaymentConfirmModal}
+        onClose={() => setShowBoosterPaymentConfirmModal(false)}
+        onConfirm={handleExecuteBoost}
+        serviceTitle="Campaign Attention Booster"
+        amountFormatted={formatCurrency(calculateBoosterCost(), boosterAd.country)}
+        paymentMethodText={boosterPaymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
+        summaryItems={[
+          { label: "Target Attention Added", value: `+${addImpressions.toLocaleString()} views` },
+          { label: "Schedule Extension", value: `+${addDays} ${addDays === 1 ? "day" : "days"}` },
+          { label: "Priority Bid Rate", value: `${formatCurrency(newBidPrice > 0 && newBidPrice > Number(boosterAd.cost_per_impression || 25) ? newBidPrice : Number(boosterAd.cost_per_impression || 25), boosterAd.country)} / view` },
+        ]}
+        isSubmitting={boosting}
+      />
+    )}
 
       {/* ==================================================== */}
       {/* MODAL: CONTAINED NOTICE / BOOST ERROR */}
@@ -1904,7 +1967,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             >
               <div className={styles.modalHeader}>
                 <div className={styles.modalHeaderLeft}>
-                  <AlertTriangle size={22} color="var(--primary)" />
+                  <Info size={22} color="var(--primary)" />
                   <h3 className={`${styles.modalTitle} ${styles.noticeModalTitle}`}>{noticeModal.title}</h3>
                 </div>
                 <button className={styles.modalClose} onClick={() => setNoticeModal(null)}>
