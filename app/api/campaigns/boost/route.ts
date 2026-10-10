@@ -250,15 +250,44 @@ export async function POST(req: NextRequest) {
             additional_impressions: additionalImpressions,
             additional_days: additionalDays,
             cost_per_impression: effectiveCost,
+            boost_reference: reference,
           },
           narration: `Paayh Boost for Ad #${adId.substring(0, 8)}`,
         });
+
+        // If gateway generated a different reference (e.g. kora_pay_*), update payment record so either reference can be resolved
+        if (paymentData.reference && paymentData.reference !== reference) {
+          await supabaseAdmin
+            .from("payments")
+            .update({
+              gateway_reference: paymentData.reference,
+              metadata: {
+                user_email: emailLower,
+                ad_id: adId,
+                type: "boost_campaign",
+                additional_impressions: additionalImpressions,
+                additional_days: additionalDays,
+                cost_per_impression: effectiveCost,
+                user_frequency_cap: userFrequencyCap,
+                gender,
+                country,
+                state,
+                province,
+                industry,
+                interest,
+                payment_method: "card",
+                kora_reference: paymentData.reference,
+                gateway_reference: paymentData.reference,
+              },
+            })
+            .eq("reference", reference);
+        }
 
         return NextResponse.json({
           success: true,
           paymentMethod: "card",
           paymentUrl: paymentData.authorization_url,
-          reference: paymentData.reference,
+          reference: paymentData.reference || reference,
           totalCost,
         });
       } catch (err: any) {

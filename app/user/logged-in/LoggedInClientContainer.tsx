@@ -122,11 +122,19 @@ export default function LoggedInClientContainer({
     }
 
     const boostRef = urlParams.get("boost_ref") || urlParams.get("reference") || urlParams.get("trxref");
+    const gatewayRef = urlParams.get("reference") || urlParams.get("trxref");
     if (boostRef && boostRef.startsWith("BOOST-")) {
       sessionStorage.setItem("paayh_boost_ref", boostRef);
+      if (gatewayRef && gatewayRef !== boostRef) {
+        sessionStorage.setItem("paayh_boost_gateway_ref", gatewayRef);
+      }
       finalTab = "myads";
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("paayh_boost_ref", { detail: { reference: boostRef } }));
+        window.dispatchEvent(
+          new CustomEvent("paayh_boost_ref", {
+            detail: { reference: boostRef, gatewayReference: gatewayRef },
+          })
+        );
       }, 100);
     } else if (urlParams.get("reference") || urlParams.get("trxref")) {
       // General payment callback (e.g. ad, highlight, or brand subscription payment)

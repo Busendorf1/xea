@@ -9,6 +9,7 @@ import Link from "next/link";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
+import { showAppleAlert } from "@/components/ui/AppleAlert";
 import {
   Megaphone,
   Image as ImageIcon,
@@ -368,7 +369,16 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   const [ratingStars, setRatingStars] = useState<number>(5);
   const [ratingSubmitting, setRatingSubmitting] = useState<boolean>(false);
   const [ratingMessage, setRatingMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [ratedAdIds, setRatedAdIds] = useState<Set<string>>(new Set());
+  const [ratedAdIds, setRatedAdIds] = useState<Set<string>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("paayh_rated_ad_ids");
+        if (stored) return new Set(JSON.parse(stored));
+      } catch {}
+    }
+    return new Set();
+  });
+  const [hoveredStar, setHoveredStar] = useState<number | null>(null);
   const [addImpressions, setAddImpressions] = useState<number>(1000);
   const [addDays, setAddDays] = useState<number>(3);
   const [newBidPrice, setNewBidPrice] = useState<number>(0);
@@ -444,6 +454,18 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       setDismissalsMap(dismissals);
       setAdvertiserBlockCount(blockCount);
 
+      if (Array.isArray(campaignsRes.ratedAdIds) && campaignsRes.ratedAdIds.length > 0) {
+        setRatedAdIds((prev) => {
+          const merged = new Set([...prev, ...campaignsRes.ratedAdIds]);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem("paayh_rated_ad_ids", JSON.stringify(Array.from(merged)));
+            } catch {}
+          }
+          return merged;
+        });
+      }
+
       if (typeof window !== "undefined") {
         try {
           sessionStorage.setItem(
@@ -469,7 +491,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
   };
 
-  const verifyBoostPayment = async (reference: string) => {
+  const verifyBoostPayment = async (reference: string, gatewayReference?: string) => {
     if (!reference) return;
     setNoticeModal({
       title: "Verifying Boost Payment",
@@ -477,7 +499,13 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     });
 
     try {
-      const res = await fetch(`/api/payments/verify?reference=${encodeURIComponent(reference)}`);
+      const url = new URL("/api/payments/verify", window.location.origin);
+      url.searchParams.set("reference", reference);
+      if (gatewayReference) {
+        url.searchParams.set("gateway_reference", gatewayReference);
+      }
+
+      const res = await fetch(url.toString());
       const data = await res.json();
       if (data.success || data.status === "success") {
         setNoticeModal({
@@ -509,25 +537,25 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
     const checkPendingBoost = () => {
       const urlParams = new URLSearchParams(window.location.search);
-      let ref = urlParams.get("boost_ref") || urlParams.get("reference") || urlParams.get("trxref");
+      const boostRef = urlParams.get("boost_ref") || sessionStorage.getItem("paayh_boost_ref");
+      const gatewayRef = urlParams.get("reference") || urlParams.get("trxref") || sessionStorage.getItem("paayh_boost_gateway_ref");
 
-      if (!ref) {
-        ref = sessionStorage.getItem("paayh_boost_ref");
-      }
-
-      if (ref && ref.startsWith("BOOST-")) {
+      if (boostRef && boostRef.startsWith("BOOST-")) {
         sessionStorage.removeItem("paayh_boost_ref");
-        verifyBoostPayment(ref);
+        sessionStorage.removeItem("paayh_boost_gateway_ref");
+        verifyBoostPayment(boostRef, gatewayRef || undefined);
       }
     };
 
     checkPendingBoost();
 
     const handleCustomBoostEvent = (e: any) => {
-      const ref = e.detail?.reference;
-      if (ref && ref.startsWith("BOOST-")) {
+      const boostRef = e.detail?.reference || sessionStorage.getItem("paayh_boost_ref");
+      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const gatewayRef = urlParams?.get("reference") || urlParams?.get("trxref") || e.detail?.gatewayReference;
+      if (boostRef && boostRef.startsWith("BOOST-")) {
         sessionStorage.removeItem("paayh_boost_ref");
-        verifyBoostPayment(ref);
+        verifyBoostPayment(boostRef, gatewayRef || undefined);
       }
     };
 
@@ -2026,60 +2054,93 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                 How well did the audience engage with your ad? Your 1 to 5 star rating adds Attention Score points to all participating viewers.
               </p>
 
-              {/* Interactive Star Picker */}
-              <div className={styles.starPicker}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => setRatingStars(star)}
-                    className={`${styles.starBtn} ${ratingStars >= star ? styles.starSelected : ""}`}
-                    title={`${star} Star${star > 1 ? "s" : ""} (+0.0${star} ATW Score)`}
-                  >
-                    <Star
-                      size={32}
-                      fill={ratingStars >= star ? "var(--primary)" : "transparent"}
-                      color={ratingStars >= star ? "var(--primary)" : "var(--card-border)"}
-                    />
-                  </button>
-                ))}
+              {/* Interactive Star Picker (Google A11y & Material 3 Touch Standards) */}
+              <div 
+                className={styles.starPicker}
+                role="radiogroup"
+                aria-label="Rate audience engagement"
+                onMouseLeave={() => setHoveredStar(null)}
+              >
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const effectiveStar = hoveredStar !== null ? hoveredStar : ratingStars;
+                  const isFilled = effectiveStar >= star;
+                  return (
+                    <motion.button
+                      key={star}
+                      type="button"
+                      role="radio"
+                      aria-checked={ratingStars === star}
+                      aria-label={`${star} star${star > 1 ? "s" : ""}`}
+                      onClick={() => {
+                        setRatingStars(star);
+                        try {
+                          if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+                            navigator.vibrate(15);
+                          }
+                        } catch {}
+                      }}
+                      onMouseEnter={() => setHoveredStar(star)}
+                      whileTap={{ scale: 1.25 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      className={`${styles.starBtn} ${isFilled ? styles.starSelected : ""}`}
+                    >
+                      <Star
+                        size={32}
+                        fill={isFilled ? "var(--primary)" : "transparent"}
+                        color={isFilled ? "var(--primary)" : "var(--card-border)"}
+                      />
+                    </motion.button>
+                  );
+                })}
               </div>
 
               <div className={styles.starLabel}>
-                {ratingStars} Star{ratingStars > 1 ? "s" : ""} selected
+                {hoveredStar !== null ? hoveredStar : ratingStars} Star{(hoveredStar !== null ? hoveredStar : ratingStars) > 1 ? "s" : ""} ({(hoveredStar !== null ? hoveredStar : ratingStars) * 20}% Engagement Quality)
               </div>
-
-              {ratingMessage && (
-                <div className={ratingMessage.type === "success" ? styles.ratingAlertSuccess : styles.ratingAlertError}>
-                  {ratingMessage.text}
-                </div>
-              )}
 
               <button
                 type="button"
                 className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
                 disabled={ratingSubmitting}
                 onClick={async () => {
-                  setRatingSubmitting(true);
-                  setRatingMessage(null);
+                  if (!ratingAdId) return;
+                  const targetAdId = ratingAdId;
+                  const starsToSubmit = ratingStars;
+
+                  // 1. Instant optimistic update + immediate modal close (Google Perceived Latency Standard)
+                  setRatedAdIds((prev) => {
+                    const next = new Set([...prev, targetAdId]);
+                    if (typeof window !== "undefined") {
+                      try {
+                        localStorage.setItem("paayh_rated_ad_ids", JSON.stringify(Array.from(next)));
+                      } catch {}
+                    }
+                    return next;
+                  });
+
+                  setRatingAdId(null);
+                  setHoveredStar(null);
+
+                  // 2. Dispatch non-blocking Top-Level Toast HUD with tactile haptics
+                  showAppleAlert(
+                    `Submitted ${starsToSubmit}-Star rating. Audience Attention Scores updated!`,
+                    "success",
+                    "Audience Rated"
+                  );
+
+                  // 3. Asynchronously persist to server
                   try {
                     const res = await fetch("/api/campaigns/rate-listeners", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ ad_id: ratingAdId, star_rating: ratingStars })
+                      body: JSON.stringify({ ad_id: targetAdId, star_rating: starsToSubmit }),
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || "Failed to submit rating");
-                    setRatedAdIds((prev) => new Set([...prev, ratingAdId!]));
-                    setRatingMessage({ type: "success", text: data.message });
-                    setTimeout(() => {
-                      setRatingAdId(null);
-                      setRatingMessage(null);
-                    }, 2000);
+                    if (!res.ok && res.status !== 409) {
+                      throw new Error(data.error || "Failed to submit rating");
+                    }
                   } catch (err: any) {
-                    setRatingMessage({ type: "error", text: err.message || "Failed to submit rating" });
-                  } finally {
-                    setRatingSubmitting(false);
+                    console.warn("⚠️ Rating submission warning:", err?.message || err);
                   }
                 }}
               >

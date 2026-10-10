@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     }
 
     const reference = req.nextUrl.searchParams.get("reference");
+    const paramGatewayRef = req.nextUrl.searchParams.get("gateway_reference");
     if (!reference) {
       return NextResponse.json({ error: "Reference parameter is required" }, { status: 400 });
     }
@@ -152,7 +153,32 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Branch B: Inbound Payment Verification (Ads, Highlights, Brand Subscriptions)
-    const verifyResult = await PayoutProvider.verifyPayment(reference);
+    // Use gateway reference (e.g. kora_pay_*) if available from query param, metadata, or column
+    const targetGatewayRef =
+      paramGatewayRef ||
+      (payment.metadata?.gateway_reference as string) ||
+      (payment.metadata?.kora_reference as string) ||
+      (payment.gateway_reference as string) ||
+      reference;
+    
+    let verifyResult: {
+      success: boolean;
+      status: string;
+      amount: number;
+      reference: string;
+      metadata?: Record<string, unknown>;
+    };
+
+    try {
+      verifyResult = await PayoutProvider.verifyPayment(targetGatewayRef);
+    } catch (gatewayErr: any) {
+      console.warn(`⚠️ Gateway verification check for [${targetGatewayRef}]:`, gatewayErr?.message || gatewayErr);
+      return NextResponse.json({
+        success: false,
+        status: "pending",
+        message: gatewayErr?.message || "Payment is pending verification or charge was not found.",
+      }, { status: 200 });
+    }
 
     if (!verifyResult.success) {
       if (verifyResult.status === "failed") {

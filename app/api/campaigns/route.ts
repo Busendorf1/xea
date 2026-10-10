@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     // Only completed ads from the last 72 hours are relevant (older are omitted from UI)
     const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
 
-    const [adsQueue, adsActiveReal, adsCompleted, highlightsQueue, highlightsActive] = await Promise.all([
+    const [adsQueue, adsActiveReal, adsCompleted, highlightsQueue, highlightsActive, ratingsData] = await Promise.all([
       supabaseReadOnly.from("adds").select("*").ilike("user_email", emailLower),
       supabaseReadOnly.from("addsactive").select("*").ilike("user_email", emailLower),
       supabaseReadOnly
@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
         .limit(50),
       supabaseReadOnly.from("news").select("*").ilike("user_email", emailLower),
       supabaseReadOnly.from("newsactive").select("*").ilike("user_email", emailLower),
+      supabaseReadOnly.from("completed_ads_ratings").select("ad_id").ilike("advertiser_email", emailLower),
     ]);
 
     const combinedActive = [
@@ -72,11 +73,14 @@ export async function GET(req: NextRequest) {
       ...(adsCompleted.data || []),
     ];
 
+    const ratedAdIds = (ratingsData.data || []).map((r: { ad_id: string }) => r.ad_id);
+
     const result = {
       adsQueue: adsQueue.data || [],
       adsActive: combinedActive,
       highlightsQueue: highlightsQueue.data || [],
       highlightsActive: highlightsActive.data || [],
+      ratedAdIds,
     };
 
     // 3. Cache in Redis with 30s TTL in the background

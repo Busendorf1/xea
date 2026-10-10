@@ -54,3 +54,15 @@ export const hlsQueue = new Queue("hls-transcode-events", {
   },
 });
 
+export const adRatingQueue = new Queue("ad-rating-events", {
+  connection: connectionOptions,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 2000,
+    },
+    removeOnComplete: true,
+  },
+});
+

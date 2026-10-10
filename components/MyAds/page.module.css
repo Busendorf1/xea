@@ -1079,7 +1079,8 @@
 .starPicker {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 1.25rem;
 }
 
@@ -1087,19 +1088,32 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px;
-  transition: transform 0.15s ease;
+  padding: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  outline: none;
+  touch-action: manipulation;
+  transition: transform 0.2s cubic-bezier(0.2, 0.0, 0, 1.0);
 }
 
-.starSelected {
+.starBtn:hover {
   transform: scale(1.15);
 }
 
+.starSelected {
+  transform: scale(1.12);
+}
+
 .starLabel {
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: var(--primary);
   margin-bottom: 1.25rem;
+  text-align: center;
 }
 
 .ratingAlertSuccess {

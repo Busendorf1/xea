@@ -3,6 +3,7 @@ import supabaseAdmin from "./utils/dbAdmin";
 import { invalidateCachedProfile, invalidateAllHighlights } from "./utils/cache";
 import { env } from "./env";
 import { streamImpressionsToClickHouse, getClickHouseClient } from "./clickhouse";
+import { flushAtwScoreBufferToDB } from "./atwBuffer";
 
 const connectionOptions = {
   host: env.REDIS_HOST,
@@ -54,6 +55,12 @@ export interface PaymentJobData {
   reference: string;
   timestamp?: string;
   settledImmediately?: boolean;
+}
+
+export interface AdRatingJobData {
+  adId: string;
+  advertiserEmail: string;
+  starRating: number;
 }
 
 interface JobItem {
@@ -587,6 +594,107 @@ paymentWorker.on("failed", async (job, err) => {
 });
 
 // ----------------------------------------------------
+// AD RATING QUEUE: ASYNC CHUNKED ATW SCORE UPDATES
+// ----------------------------------------------------
+
+export const adRatingWorker = new Worker<AdRatingJobData>(
+  "ad-rating-events",
+  async (job) => {
+    const { adId, advertiserEmail, starRating } = job.data;
+    console.log(`⭐ Ad Rating Worker: Processing ${starRating}-star audience rating for ad [${adId}]...`);
+
+    try {
+      // 1. Try chunked cursor-based streaming for zero-lock 100M+ scalability
+      let hasMore = true;
+      let lastEmail: string | null = null;
+      let totalUpdated = 0;
+      let batchCount = 0;
+      const CHUNK_SIZE = 5000;
+      let increment = 0;
+
+      // Attempt high-scale chunked execution first
+      let usedChunked = false;
+      while (hasMore) {
+        batchCount++;
+        const { data: chunkRes, error: chunkErr } = await supabaseAdmin.rpc("apply_ad_rating_chunk", {
+          p_ad_id: adId,
+          p_star_rating: starRating,
+          p_batch_size: CHUNK_SIZE,
+          p_last_email: lastEmail,
+        });
+
+        if (chunkErr) {
+          // If the chunked RPC is not yet applied in Postgres, break and fall back to single RPC
+          console.warn(`⚠️ Ad Rating Worker: Chunked RPC not available (${chunkErr.message}), falling back to direct RPC.`);
+          break;
+        }
+
+        usedChunked = true;
+        const res = chunkRes as { updated_count: number; last_email: string | null; has_more: boolean; increment: number };
+        totalUpdated += res?.updated_count || 0;
+        increment = res?.increment || 0;
+        hasMore = Boolean(res?.has_more && res?.last_email);
+        lastEmail = res?.last_email || null;
+
+        // Yield execution loop slightly to allow regular read/write traffic
+        if (hasMore) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+
+      if (usedChunked) {
+        // Record final summary into completed_ads_ratings ledger
+        await supabaseAdmin
+          .from("completed_ads_ratings")
+          .upsert(
+            {
+              ad_id: adId,
+              advertiser_email: advertiserEmail.toLowerCase(),
+              star_rating: starRating,
+              score_increment: increment,
+              listeners_count: totalUpdated,
+            },
+            { onConflict: "ad_id,advertiser_email" }
+          );
+
+        console.log(`✅ Ad Rating Worker: Successfully updated ${totalUpdated} listeners across ${batchCount} streaming chunk(s) (+${increment} ATW).`);
+        return { totalUpdated, increment, mode: "chunked_streaming" };
+      }
+
+      // Fallback: Legacy set-based RPC
+      const { data: legacyIncrement, error: rpcErr } = await supabaseAdmin.rpc("apply_ad_rating_to_listeners", {
+        p_ad_id: adId,
+        p_advertiser_email: advertiserEmail,
+        p_star_rating: starRating,
+      });
+
+      if (rpcErr) {
+        console.error(`❌ Ad Rating Worker RPC error for ad [${adId}]:`, rpcErr);
+        throw new Error(rpcErr.message || "Failed to apply ad rating to listeners");
+      }
+
+      console.log(`✅ Ad Rating Worker: Successfully applied +${legacyIncrement} ATW score increment to listeners of ad [${adId}].`);
+      return { increment: legacyIncrement, mode: "legacy_set" };
+    } catch (err: unknown) {
+      console.error(`❌ Ad Rating Worker: Error rating ad [${adId}]:`, (err as Error)?.message || err);
+      throw err;
+    }
+  },
+  {
+    connection: connectionOptions,
+    concurrency: 5,
+  }
+);
+
+adRatingWorker.on("completed", (job) => {
+  console.log(`✅ Ad Rating Worker: Job [${job.name}] successfully completed.`);
+});
+
+adRatingWorker.on("failed", (job, err) => {
+  console.error(`❌ Ad Rating Worker: Job [${job?.name}] failed:`, err.message);
+});
+
+// ----------------------------------------------------
 // CLICKHOUSE CLOUD KEEP-ALIVE HEARTBEAT (PREVENTS SLEEP)
 // ----------------------------------------------------
 const CLICKHOUSE_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -613,9 +721,11 @@ export async function pingClickHouseHeartbeat(): Promise<boolean> {
 }
 
 let clickhouseHeartbeatTimer: NodeJS.Timeout | null = null;
+const ATW_FLUSH_INTERVAL_MS = 10 * 1000; // 10 seconds
+let atwFlushTimer: NodeJS.Timeout | null = null;
 
 if (process.env.NODE_ENV !== "test") {
-  // Fire initial warm-up ping 10 seconds after worker boot
+  // Fire initial ClickHouse warm-up ping 10 seconds after worker boot
   setTimeout(() => {
     pingClickHouseHeartbeat().catch(() => {});
   }, 10000);
@@ -624,6 +734,13 @@ if (process.env.NODE_ENV !== "test") {
   clickhouseHeartbeatTimer = setInterval(() => {
     pingClickHouseHeartbeat().catch(() => {});
   }, CLICKHOUSE_HEARTBEAT_INTERVAL_MS);
+
+  // Recurring 10-second ATW write-behind flush
+  atwFlushTimer = setInterval(() => {
+    flushAtwScoreBufferToDB().catch((err) => {
+      console.warn("⚠️ [Write-Behind] ATW flush interval warning:", err?.message || err);
+    });
+  }, ATW_FLUSH_INTERVAL_MS);
 }
 
 /**
@@ -635,6 +752,12 @@ export async function shutdownWorkers(): Promise<void> {
     clearInterval(clickhouseHeartbeatTimer);
     clickhouseHeartbeatTimer = null;
   }
+  if (atwFlushTimer) {
+    clearInterval(atwFlushTimer);
+    atwFlushTimer = null;
+  }
+  // Final flush of any pending in-flight ATW deltas before exit
+  await flushAtwScoreBufferToDB().catch(() => {});
 
   try {
     // 1. Flush any pending batch interactions
@@ -646,6 +769,7 @@ export async function shutdownWorkers(): Promise<void> {
       campaignsWorker.close(),
       hlsWorker.close(),
       paymentWorker.close(),
+      adRatingWorker.close(),
     ]);
     console.log("✅ All BullMQ workers closed gracefully.");
   } catch (err) {
@@ -653,6 +777,6 @@ export async function shutdownWorkers(): Promise<void> {
   }
 }
 
-const workers = { feedWorker, campaignsWorker, hlsWorker, paymentWorker, pingClickHouseHeartbeat, shutdownWorkers };
+const workers = { feedWorker, campaignsWorker, hlsWorker, paymentWorker, adRatingWorker, pingClickHouseHeartbeat, shutdownWorkers };
 export default workers;
 
