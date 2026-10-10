@@ -14,6 +14,14 @@
   --radius-pill: 9999px;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-dialog: cubic-bezier(0.175, 0.885, 0.32, 1.075);
+  /* Google Material Design 3 Motion Tokens */
+  --motion-easing-emphasized: cubic-bezier(0.2, 0.0, 0, 1.0);
+  --motion-easing-standard: cubic-bezier(0.2, 0.0, 0, 1.0);
+  --motion-easing-decelerated: cubic-bezier(0.0, 0.0, 0.2, 1.0);
+  --motion-easing-accelerated: cubic-bezier(0.3, 0.0, 1.0, 1.0);
+  --motion-duration-short: 150ms;
+  --motion-duration-medium: 300ms;
+  --motion-duration-long: 500ms;
 
   /* Brand Typography Scale Tokens (Major Second / Minor Third Scale) */
   --font-size-2xs: 0.6875rem; /* 11px - Micro badges, legal disclosures, counter badges */

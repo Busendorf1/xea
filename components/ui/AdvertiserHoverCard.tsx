@@ -163,6 +163,7 @@ export default function AdvertiserHoverCard({
                 size={48}
                 alt={displayName}
                 gender={profile?.gender}
+                shape="rounded-rect"
               />
             </div>
             <div className={styles.popoverNames}>

@@ -7,6 +7,7 @@ interface AdOptionsMenuProps {
   advertiserEmail?: string;
   showThreeDotMenu: boolean;
   onToggleMenu: (show: boolean) => void;
+  onDismiss?: (adId: string) => void;
 }
 
 const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
@@ -14,6 +15,7 @@ const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
   advertiserEmail,
   showThreeDotMenu,
   onToggleMenu,
+  onDismiss,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +47,9 @@ const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
 
   const handleDontShowAgain = () => {
     onToggleMenu(false);
-    if (typeof window !== "undefined") {
+    if (onDismiss) {
+      onDismiss(adId);
+    } else if (typeof window !== "undefined") {
       window.location.href = `/help?reportAdId=${encodeURIComponent(adId)}&type=dont_show`;
     }
   };

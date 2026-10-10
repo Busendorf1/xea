@@ -55,7 +55,7 @@
   max-width: 48px;
   max-height: 48px;
   aspect-ratio: 1 / 1;
-  border-radius: 50%;
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   align-items: center;

@@ -5,6 +5,7 @@ import { useState } from "react";
 import styles from "./page.module.css";
 import { newsletterSchema } from "@/lib/validationSchemas";
 import { Info } from "lucide-react";
+import { showAppleAlert } from "@/components/ui/AppleAlert";
 
 const faqs = [
   {
@@ -148,7 +149,7 @@ export default function Footer() {
 
               const parseResult = newsletterSchema.safeParse({ email: rawEmail });
               if (!parseResult.success) {
-                alert(parseResult.error.issues[0]?.message || "Please enter a valid email address.");
+                showAppleAlert(parseResult.error.issues[0]?.message || "Please enter a valid email address.", "warning");
                 return;
               }
 
@@ -161,13 +162,13 @@ export default function Footer() {
                 });
                 const data = await res.json();
                 if (data.error) {
-                  alert(data.error);
+                  showAppleAlert(data.error, "error");
                 } else if (data.message) {
-                  alert(data.message);
+                  showAppleAlert(data.message, "success", "Subscribed");
                   if (emailInput) emailInput.value = "";
                 }
               } catch {
-                alert("Subscribed to newsletter updates.");
+                showAppleAlert("Subscribed to newsletter updates.", "success", "Subscribed");
               } finally {
                 setNewsletterSubmitting(false);
               }

@@ -52,6 +52,7 @@ import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
+import { showAppleAlert } from "@/components/ui/AppleAlert";
 
 interface Session {
   user?: {
@@ -407,7 +408,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         updated = currentList.filter((s) => s !== status);
       } else {
         if (currentList.length >= 4) {
-          alert("You can select up to 4 employment statuses.");
+          showAppleAlert("You can select up to 4 employment statuses.", "warning");
           return prev;
         }
         updated = [...currentList, status];
@@ -781,7 +782,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         hint: err?.hint,
         error: err
       });
-      alert(err?.message || "An unexpected error occurred during submission. Please try again.");
+      showAppleAlert(err?.message || "An unexpected error occurred during submission. Please try again.", "error");
       setIsSubmitting(false);
     }
   };
@@ -1384,39 +1385,39 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                           // Validation checks
                           if (formSelections.adMediaType === "image") {
                             if (videos.length > 0) {
-                              alert("Only images are allowed for this type.");
+                              showAppleAlert("Only images are allowed for this type.", "warning");
                               e.target.value = "";
                               return;
                             }
                             if (images.length > 4) {
-                              alert("You can select up to 4 images only.");
+                              showAppleAlert("You can select up to 4 images only.", "warning");
                               e.target.value = "";
                               return;
                             }
                           } else if (formSelections.adMediaType === "video") {
                             if (images.length > 0) {
-                              alert("Only videos are allowed for this type.");
+                              showAppleAlert("Only videos are allowed for this type.", "warning");
                               e.target.value = "";
                               return;
                             }
                             if (videos.length > 1) {
-                              alert("You can select only 1 video.");
+                              showAppleAlert("You can select only 1 video.", "warning");
                               e.target.value = "";
                               return;
                             }
                           } else if (formSelections.adMediaType === "mixed") {
                             if (videos.length > 1) {
-                              alert("You can select at most 1 video.");
+                              showAppleAlert("You can select at most 1 video.", "warning");
                               e.target.value = "";
                               return;
                             }
                             if (images.length > 3) {
-                              alert("You can select at most 3 images.");
+                              showAppleAlert("You can select at most 3 images.", "warning");
                               e.target.value = "";
                               return;
                             }
                             if (images.length + videos.length > 4) {
-                              alert("Total number of files cannot exceed 4.");
+                              showAppleAlert("Total number of files cannot exceed 4.", "warning");
                               e.target.value = "";
                               return;
                             }
@@ -1429,13 +1430,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
                             if (isImage) {
                               if (file.size > 5 * 1024 * 1024) {
-                                alert(`Image ${file.name} exceeds 5MB limit.`);
+                                showAppleAlert(`Image ${file.name} exceeds 5MB limit.`, "warning");
                                 e.target.value = "";
                                 return;
                               }
                             } else if (isVideo) {
                               if (file.size > 60 * 1024 * 1024) {
-                                alert(`Video ${file.name} exceeds 60MB limit.`);
+                                showAppleAlert(`Video ${file.name} exceeds 60MB limit.`, "warning");
                                 e.target.value = "";
                                 return;
                               }
@@ -1466,7 +1467,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                               }
 
                               if (!durationOk) {
-                                alert(`Video ${file.name} must be less than or equal to 5 minutes.`);
+                                showAppleAlert(`Video ${file.name} must be less than or equal to 5 minutes.`, "warning");
                                 e.target.value = "";
                                 return;
                               }

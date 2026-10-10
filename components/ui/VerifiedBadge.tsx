@@ -16,8 +16,8 @@ interface VerifiedBadgeProps {
  */
 export default function VerifiedBadge({
   size = 18,
-  color = "var(--foreground, #000000)",
-  checkColor = "var(--background, #ffffff)",
+  color = "#eab308",
+  checkColor = "#f9f9f7",
   className = "",
   style = {},
   title = "Verified",

@@ -1504,7 +1504,7 @@ export default function DashboardClient({
 
                         {isMonetized && (
                           <div className={styles.detailItem}>
-                            <VerifiedBadge size={14} color="var(--text-muted)" title="Monetized Account" />
+                            <VerifiedBadge size={14} color="var(--text-muted)" checkColor="var(--background, #ffffff)" title="Monetized Account" />
                             <span>Monetized</span>
                           </div>
                         )}

@@ -18,6 +18,7 @@ import HighlightCard from "./HighlightCard";
 import AdOptionsMenu from "./AdOptionsMenu";
 import MediaCarousel from "./MediaCarousel";
 import AdvertiserHoverCard from "./AdvertiserHoverCard";
+import VerifiedBadge from "./VerifiedBadge";
 
 export type BaseAd = {
   id: string;
@@ -223,8 +224,15 @@ function AdCard({
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
-  const [isDismissing] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleDismiss = useCallback((adId: string) => {
+    setIsDismissing(true);
+    setTimeout(() => {
+      _onDismiss(adId);
+    }, 380);
+  }, [_onDismiss]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -502,6 +510,9 @@ function AdCard({
             >
               <div className={styles.sponsorNameWrapper}>
                 <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
+                {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
+                  <VerifiedBadge size={14} title="Verified Account" />
+                )}
               </div>
             </AdvertiserHoverCard>
             <span className={styles.dot}></span>
@@ -533,6 +544,7 @@ function AdCard({
               advertiserEmail={ad.user_email}
               showThreeDotMenu={showThreeDotMenu}
               onToggleMenu={handleToggleMenu}
+              onDismiss={handleDismiss}
             />
           </div>
         </div>

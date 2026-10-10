@@ -14,6 +14,7 @@ export interface AvatarProps {
   className?: string;
   style?: React.CSSProperties;
   bordered?: boolean;
+  shape?: "circle" | "rounded-rect" | "square";
   onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -26,6 +27,7 @@ export default function Avatar({
   className = "",
   style = {},
   bordered = false,
+  shape = "circle",
   onClick,
 }: AvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -66,7 +68,8 @@ export default function Avatar({
     ...style,
   };
 
-  const containerClasses = `${styles.avatar} ${bordered ? styles.avatarBordered : ""} ${className}`.trim();
+  const shapeClass = shape === "rounded-rect" || shape === "square" ? styles.roundedRect : "";
+  const containerClasses = `${styles.avatar} ${shapeClass} ${bordered ? styles.avatarBordered : ""} ${className}`.trim();
 
   // 1. Genuine manual image uploaded by user/advertiser
   if (hasValidImage) {

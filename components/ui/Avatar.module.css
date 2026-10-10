@@ -14,6 +14,15 @@
   border: 1px solid var(--card-border, rgba(255, 255, 255, 0.12));
 }
 
+.roundedRect {
+  border-radius: 8px !important;
+}
+
+.roundedRect .image,
+.roundedRect .silhouetteWrapper {
+  border-radius: 8px !important;
+}
+
 .image {
   width: 100%;
   height: 100%;

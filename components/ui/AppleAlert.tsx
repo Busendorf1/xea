@@ -23,6 +23,23 @@ export function showAppleAlert(
   title?: string
 ) {
   if (typeof window !== "undefined") {
+    // Mobile tactile haptic feedback (Google & Android best practice)
+    try {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        if (type === "success") {
+          navigator.vibrate([15, 30, 25]); // Crisp double tap for success
+        } else if (type === "error") {
+          navigator.vibrate([40, 40, 40]); // Warning buzz for error
+        } else if (type === "warning") {
+          navigator.vibrate([25, 20]);
+        } else {
+          navigator.vibrate(15); // Light subtle tap for info
+        }
+      }
+    } catch (_) {
+      // Ignore vibration errors on unsupported platforms
+    }
+
     window.dispatchEvent(
       new CustomEvent("paayh:apple-alert", {
         detail: { message, type, title, timestamp: Date.now() },
