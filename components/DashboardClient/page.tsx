@@ -3,136 +3,44 @@
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
+import dynamic from "next/dynamic";
+import {
+  User,
+  TrendingUp,
+  Compass,
+  FileText,
+  UserCheck,
+  Wallet,
+  LogOut,
+  Trash2,
+  Settings,
+  Clock,
+} from "lucide-react";
 import { useTheme } from "../ThemeProvider";
 import supabase from "@/lib/utils/db";
-import { sendMoneySchema, withdrawalSchema } from "@/lib/validationSchemas";
-import { 
-  Sun, 
-  Moon, 
-  User, 
-  Settings, 
-  Compass, 
-  LogOut, 
-  UserCheck, 
-  TrendingUp, 
-  FileText, 
-  Trash2, 
-  X, 
-  Bell, 
-  Plus, 
-  Coins, 
-  Send, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  Wallet, 
-  ShieldAlert, 
-  CheckCircle2, 
-  Check,
-  AlertTriangle,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Clock
-} from "lucide-react";
-import dynamic from "next/dynamic";
 import Newsdisplay from "@/components/Newsdisplay/page";
 import InviteLink from "@/components/InviteLink/page";
 import FeedSkeleton from "@/components/ui/FeedSkeleton";
+import Collapsible from "../ui/Collapsible";
+import Footer from "../Footers/page";
+import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
+import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+
+import { UserProfile, DashboardClientProps, parseToArray } from "./types";
+import DashboardHeader from "./DashboardHeader";
+import DashboardProfileCard from "./DashboardProfileCard";
+import DashboardWalletCard from "./DashboardWalletCard";
+import PersonaDrawer from "./PersonaDrawer";
+import WithdrawalModal from "./WithdrawalModal";
+import SendMoneyModal from "./SendMoneyModal";
+import styles from "./page.module.css";
 
 const Feed = dynamic(() => import("@/components/Feed/page"), {
   loading: () => <FeedSkeleton count={3} />,
   ssr: false,
 });
-import Collapsible from "../ui/Collapsible";
-import styles from "./page.module.css";
-import Footer from "../Footers/page";
-import { resolveAtwTier, getAtwBalanceLimit } from "@/lib/attentionTierEngine";
-import RollingCounter from "@/components/ui/RollingCounter";
-import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
-import Avatar from "@/components/ui/Avatar";
-import VerifiedBadge from "@/components/ui/VerifiedBadge";
 
-export interface UserProfile {
-  id: string;
-  profileImage: string | null;
-  username: string;
-  firstName: string | null;
-  lastName: string | null;
-  lastUpdated: string;
-  bio: string | null;
-  interest: string[] | string;
-  email: string;
-  industry: string[] | string;
-  behavior: string[] | string;
-  lifestyle: string[] | string;
-  personality: string[] | string;
-  gender?: string | null;
-  monetized: boolean | string;
-  monetized_at: string | null;
-  created_at: string;
-  monetized_until?: string | null;
-  monetization_type?: string | null;
-  country: string | null;
-  state: string | null;
-  location: string | null;
-  phone: string;
-  business_name: string | null;
-  passphrase: string;
-  mutual_count: number;
-  balance: number;
-  withdrawal: number;
-  bvn_hash?: string | null;
-  monetization_clicks?: number;
-  referral_code?: string | null;
-  referral_downloads_count?: number;
-  atw_tier?: string | null;
-  last_active_at?: string | null;
-  attention_worth_score?: number | null;
-  daysInactive?: number;
-}
-
-interface DashboardClientProps {
-  user: UserProfile;
-  parsedInterest: string[];
-  email: string;
-  initialAds?: any[];
-  initialProfiles?: Record<string, any>;
-  initialHighlights?: any[];
-}
-
-import { formatCurrency as globalFormatCurrency, getCurrencyConfig } from "@/lib/utils/currency";
-
-const DEFAULT_NIGERIAN_BANKS = [
-  { name: "Access Bank", code: "044" },
-  { name: "Citibank Nigeria", code: "023" },
-  { name: "Ecobank Nigeria", code: "050" },
-  { name: "Fidelity Bank", code: "070" },
-  { name: "First Bank of Nigeria", code: "011" },
-  { name: "First City Monument Bank (FCMB)", code: "214" },
-  { name: "Guaranty Trust Bank (GTBank)", code: "058" },
-  { name: "Heritage Bank", code: "030" },
-  { name: "Jaiz Bank", code: "301" },
-  { name: "Keystone Bank", code: "082" },
-  { name: "Kuda Bank", code: "50211" },
-  { name: "Moniepoint MFB", code: "50515" },
-  { name: "Opay (Paycom)", code: "999992" },
-  { name: "Palmpay", code: "999991" },
-  { name: "Polaris Bank", code: "076" },
-  { name: "Providus Bank", code: "101" },
-  { name: "Stanbic IBTC Bank", code: "221" },
-  { name: "Standard Chartered Bank", code: "068" },
-  { name: "Sterling Bank", code: "232" },
-  { name: "Taj Bank", code: "302" },
-  { name: "Titan Trust Bank", code: "102" },
-  { name: "Union Bank of Nigeria", code: "032" },
-  { name: "United Bank for Africa (UBA)", code: "033" },
-  { name: "Unity Bank", code: "215" },
-  { name: "VFD Microfinance Bank", code: "566" },
-  { name: "Wema Bank", code: "035" },
-  { name: "Zenith Bank", code: "057" },
-];
+export type { UserProfile };
 
 export default function DashboardClient({
   user: initialUser,
@@ -151,26 +59,12 @@ export default function DashboardClient({
     setUser(initialUser);
   }, [initialUser]);
 
-  // Withdrawal states
+  // Modal display states
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [banks, setBanks] = useState<any[]>(DEFAULT_NIGERIAN_BANKS);
-  const [selectedBank, setSelectedBank] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawPhone, setWithdrawPhone] = useState("");
-  const [resolvedAccountName, setResolvedAccountName] = useState("");
-  const [resolvingAccount, setResolvingAccount] = useState(false);
-  const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
-  const [withdrawalError, setWithdrawalError] = useState("");
-
-  // Send Money states
   const [showSendMoneyModal, setShowSendMoneyModal] = useState(false);
-  const [sendRecipientEmail, setSendRecipientEmail] = useState("");
-  const [sendAmount, setSendAmount] = useState("");
-  const [submittingSend, setSubmittingSend] = useState(false);
-  const [sendMoneyError, setSendMoneyError] = useState("");
   const [transferSuccessData, setTransferSuccessData] = useState<TransferSuccessData | null>(null);
-  const [showAtwTooltip, setShowAtwTooltip] = useState(false);
+
+  // Inactivity warning state
   const [inactivityDismissed, setInactivityDismissed] = useState(() => {
     if (typeof window !== "undefined") {
       return sessionStorage.getItem("paayh_inactivity_dismissed") === "true";
@@ -178,6 +72,7 @@ export default function DashboardClient({
     return false;
   });
 
+  // Balance visibility toggle
   const [showBalance, setShowBalance] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("paayh_show_balance");
@@ -224,10 +119,7 @@ export default function DashboardClient({
 
   const refreshProfileQuietly = async () => {
     try {
-      const [pRes, mRes] = await Promise.all([
-        fetch("/api/profile"),
-        fetch("/api/monetize"),
-      ]);
+      const [pRes, mRes] = await Promise.all([fetch("/api/profile"), fetch("/api/monetize")]);
       if (pRes.ok) {
         const data = await pRes.json();
         let liveClicks = data.monetization_clicks ?? 0;
@@ -245,7 +137,10 @@ export default function DashboardClient({
             monetization_clicks: Math.max(prev.monetization_clicks || 0, liveClicks),
             mutual_count: Math.max(prev.mutual_count || 0, Number(data.mutual_count) || 0),
             monetized: isMonetized ?? prev.monetized,
-            balance: typeof data.balance !== "undefined" && !isNaN(Number(data.balance)) ? Math.max(prev.balance || 0, Number(data.balance)) : (prev.balance || 0),
+            balance:
+              typeof data.balance !== "undefined" && !isNaN(Number(data.balance))
+                ? Math.max(prev.balance || 0, Number(data.balance))
+                : prev.balance || 0,
           }));
         }
       }
@@ -254,95 +149,8 @@ export default function DashboardClient({
     }
   };
 
-  const handleSendMoneySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSendMoneyError("");
-
-    const cleanEmail = sendRecipientEmail.trim().toLowerCase();
-    const amountNum = parseFloat(sendAmount);
-
-    const validation = sendMoneySchema.safeParse({
-      recipientEmail: cleanEmail,
-      amount: amountNum,
-    });
-
-    if (!validation.success) {
-      setSendMoneyError(validation.error.issues[0]?.message || "Invalid transfer details.");
-      return;
-    }
-
-    if (cleanEmail === email.toLowerCase().trim()) {
-      setSendMoneyError("You cannot send money to your own email account.");
-      return;
-    }
-
-    const max20Percent = user.balance * 0.20;
-    if (amountNum > max20Percent + 0.01) {
-      setSendMoneyError(`Transfer amount cannot exceed 20% of your total balance (${formatCurrency(max20Percent)} max at a time).`);
-      return;
-    }
-
-    if (amountNum > user.balance) {
-      setSendMoneyError("Insufficient wallet balance for this transfer.");
-      return;
-    }
-
-    setSubmittingSend(true);
-    try {
-      const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID 
-        ? `trf_web_${crypto.randomUUID()}` 
-        : `trf_web_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-
-      const res = await fetch("/api/payments/transfer", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-idempotency-key": idempotencyKey,
-        },
-        body: JSON.stringify({
-          recipientEmail: cleanEmail,
-          amount: amountNum,
-          idempotencyKey,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setShowSendMoneyModal(false);
-        setSendRecipientEmail("");
-        setSendAmount("");
-        // Seamlessly update balance without reloading the page
-        const finalBal = typeof data.new_balance === "number" ? data.new_balance : Math.max(0, (user.balance || 0) - amountNum);
-        setUser((prev) => ({
-          ...prev,
-          balance: finalBal,
-        }));
-        setTransferSuccessData({
-          amount: amountNum,
-          recipientEmail: cleanEmail,
-          reference: data.reference,
-          newBalance: finalBal,
-        });
-        refreshProfileQuietly();
-        fetchNotifications();
-      } else {
-        setSendMoneyError(data.error || "Failed to process transfer. Your balance remains unchanged.");
-      }
-    } catch (e: any) {
-      setSendMoneyError(e.message || "Network error occurred. Your balance remains unchanged.");
-    } finally {
-      setSubmittingSend(false);
-    }
-  };
-
   // Notification states
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [selectedNotifs, setSelectedNotifs] = useState<string[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [isDeletingNotifs, setIsDeletingNotifs] = useState(false);
-
-  // Custom header feedback states
   const [showEarnFeedback, setShowEarnFeedback] = useState(false);
   const [showMutualFeedback, setShowMutualFeedback] = useState(false);
 
@@ -361,7 +169,8 @@ export default function DashboardClient({
       setUser((prev) => ({
         ...prev,
         balance: newBalance,
-        monetization_clicks: typeof newClicks === "number" ? Math.max(prev.monetization_clicks || 0, newClicks) : prev.monetization_clicks,
+        monetization_clicks:
+          typeof newClicks === "number" ? Math.max(prev.monetization_clicks || 0, newClicks) : prev.monetization_clicks,
         monetized: (typeof newClicks === "number" && newClicks >= 300) || prev.monetized,
       }));
       return;
@@ -412,7 +221,6 @@ export default function DashboardClient({
   useEffect(() => {
     fetchNotifications();
 
-    // Delay background profile/monetize quiet refresh by 3s so the critical feed pipeline has 100% bandwidth
     const initialQuietTimeout = setTimeout(() => {
       refreshProfileQuietly();
     }, 3000);
@@ -434,9 +242,9 @@ export default function DashboardClient({
       try {
         const isMon = Boolean(
           user.monetized === true ||
-          user.monetized === "yes" ||
-          user.monetized === "true" ||
-          (user.monetization_clicks ?? 0) >= 300
+            user.monetized === "yes" ||
+            user.monetized === "true" ||
+            (user.monetization_clicks ?? 0) >= 300
         );
         const cachePayload = JSON.stringify({
           isMonetized: isMon,
@@ -451,7 +259,7 @@ export default function DashboardClient({
     }
   }, [user.monetized, user.monetization_clicks, user.email]);
 
-  // Supabase Real-Time Cross-Device Synchronization (Laptop, TV, Live Screen, Mobile)
+  // Supabase Real-Time Cross-Device Synchronization
   useEffect(() => {
     if (!email) return;
 
@@ -478,8 +286,12 @@ export default function DashboardClient({
             setUser((prev) => {
               const prevBal = prev?.balance ?? 0;
               const updatedBalance = !isNaN(newBalance) ? newBalance : prevBal;
-              const updatedClicks = !isNaN(newClicks) ? Math.max(prev.monetization_clicks || 0, newClicks) : (prev.monetization_clicks || 0);
-              const updatedMutualCount = !isNaN(newMutualCount) ? Math.max(prev.mutual_count || 0, newMutualCount) : (prev.mutual_count || 0);
+              const updatedClicks = !isNaN(newClicks)
+                ? Math.max(prev.monetization_clicks || 0, newClicks)
+                : prev.monetization_clicks || 0;
+              const updatedMutualCount = !isNaN(newMutualCount)
+                ? Math.max(prev.mutual_count || 0, newMutualCount)
+                : prev.mutual_count || 0;
 
               if (updatedBalance > prevBal) {
                 triggerEarnFeedback();
@@ -490,7 +302,11 @@ export default function DashboardClient({
                 balance: updatedBalance,
                 monetization_clicks: updatedClicks,
                 mutual_count: updatedMutualCount,
-                monetized: newRow.monetized === "yes" || newRow.monetized === "true" || newRow.monetized === true || updatedClicks >= 300,
+                monetized:
+                  newRow.monetized === "yes" ||
+                  newRow.monetized === "true" ||
+                  newRow.monetized === true ||
+                  updatedClicks >= 300,
               };
             });
           }
@@ -536,7 +352,8 @@ export default function DashboardClient({
         } else if (typeof earnedAmount === "number" && !isNaN(earnedAmount)) {
           updatedBal = Math.max(0, Math.round(((prev.balance || 0) + earnedAmount) * 100) / 100);
         }
-        const updatedClicks = typeof clicks === "number" ? Math.max(prev.monetization_clicks || 0, clicks) : prev.monetization_clicks;
+        const updatedClicks =
+          typeof clicks === "number" ? Math.max(prev.monetization_clicks || 0, clicks) : prev.monetization_clicks;
         const updatedMonetized = (typeof clicks === "number" && clicks >= 300) || prev.monetized;
         return {
           ...prev,
@@ -561,17 +378,6 @@ export default function DashboardClient({
     };
   }, [email]);
 
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (showNotifications && !target.closest(`.${styles.notificationContainer}`)) {
-        setShowNotifications(false);
-      }
-    };
-    document.addEventListener("click", handleOutsideClick);
-    return () => document.removeEventListener("click", handleOutsideClick);
-  }, [showNotifications]);
-
   const handleMarkAsRead = async (id: string) => {
     try {
       const res = await fetch("/api/notifications", {
@@ -580,9 +386,7 @@ export default function DashboardClient({
         body: JSON.stringify({ notificationId: id }),
       });
       if (res.ok) {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-        );
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
       }
     } catch (e) {
       console.error(e);
@@ -604,377 +408,28 @@ export default function DashboardClient({
     }
   };
 
-  const handleToggleSelectNotif = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedNotifs((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleSelectAllNotifs = () => {
-    if (selectedNotifs.length === notifications.length) {
-      setSelectedNotifs([]);
-    } else {
-      setSelectedNotifs(notifications.map((n) => n.id));
-    }
-  };
-
-  const handleDeleteSelectedNotifs = async () => {
-    if (selectedNotifs.length === 0) return;
-    if (!confirm(`Delete ${selectedNotifs.length} selected notification(s)?`)) return;
-    setIsDeletingNotifs(true);
-    try {
-      const res = await fetch("/api/notifications", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notificationIds: selectedNotifs }),
-      });
-      if (res.ok) {
-        setNotifications((prev) => prev.filter((n) => !selectedNotifs.includes(n.id)));
-        setSelectedNotifs([]);
-      }
-    } catch (err) {
-      console.error("Failed to delete notifications:", err);
-    } finally {
-      setIsDeletingNotifs(false);
+  const handleDeleteSelectedNotifs = async (ids: string[]) => {
+    const res = await fetch("/api/notifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationIds: ids }),
+    });
+    if (res.ok) {
+      setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
     }
   };
 
   const handleDeleteAllNotifs = async () => {
-    if (notifications.length === 0) return;
-    if (!confirm("Are you sure you want to delete ALL notifications?")) return;
-    setIsDeletingNotifs(true);
-    try {
-      const res = await fetch("/api/notifications", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true }),
-      });
-      if (res.ok) {
-        setNotifications([]);
-        setSelectedNotifs([]);
-      }
-    } catch (err) {
-      console.error("Failed to delete all notifications:", err);
-    } finally {
-      setIsDeletingNotifs(false);
-    }
-  };
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  const stripEmoji = (str: string) => {
-    if (!str) return "";
-    return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}]/gu, "").trim();
-  };
-
-  const getNotificationIcon = (title: string, message: string) => {
-    const t = (title + " " + message).toLowerCase();
-    if (t.includes("sent") || t.includes("transfer_sent") || t.includes("money sent")) {
-      return <ArrowUpRight size={15} color="var(--success)" />;
-    }
-    if (t.includes("received") || t.includes("transfer_received") || t.includes("money received")) {
-      return <ArrowDownLeft size={15} color="var(--success)" />;
-    }
-    if (t.includes("withdrawal") || t.includes("payout") || t.includes("bank")) {
-      return <Wallet size={15} color="var(--primary)" />;
-    }
-    if (t.includes("limit") || t.includes("holding") || t.includes("suspended") || t.includes("alert")) {
-      return <ShieldAlert size={15} color="var(--danger)" />;
-    }
-    if (t.includes("threshold") || t.includes("unlocked") || t.includes("completed") || t.includes("success")) {
-      return <CheckCircle2 size={15} color="var(--success)" />;
-    }
-    return <Bell size={15} color="var(--primary)" />;
-  };
-
-  const renderNotificationBell = () => (
-    <div className={`${styles.notificationContainer} ${styles.notificationRow}`}>
-      {showEarnFeedback && (
-        <span className={styles.feedbackIconWrap} title="Earnings enqueued">
-          <Coins size={18} color="var(--success)" className={styles.feedbackIcon} />
-        </span>
-      )}
-      {showMutualFeedback && (
-        <span className={styles.feedbackIconWrap} title="Mutual connected">
-          <Plus size={18} color="var(--primary)" className={styles.feedbackIcon} />
-        </span>
-      )}
-      <button
-        onClick={() => setShowNotifications(!showNotifications)}
-        className={styles.notificationBell}
-        title="Notifications"
-        aria-label="Toggle notifications panel"
-      >
-        <Bell size={18} />
-        {unreadCount > 0 && <span className={styles.notificationBadge}>{unreadCount}</span>}
-      </button>
-      
-      {showNotifications && (
-        <div className={styles.notificationDropdown}>
-          <div className={styles.notificationHeader}>
-            <div className={styles.notificationHeaderTop}>
-              <h4>Notifications</h4>
-              <div className={styles.notificationActionsGroup}>
-                {unreadCount > 0 && !isSelectionMode && (
-                  <button onClick={handleMarkAllAsRead} className={styles.markAllBtn}>
-                    Mark all as read
-                  </button>
-                )}
-                {notifications.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsSelectionMode((prev) => {
-                        if (prev) setSelectedNotifs([]);
-                        return !prev;
-                      });
-                    }}
-                    title={isSelectionMode ? "Cancel selection" : "Delete notifications"}
-                    className={`${styles.notifToggleSelectionBtn} ${isSelectionMode ? styles.notifToggleSelectionBtnActive : ""}`}
-                  >
-                    <Trash2 size={15} />
-                    {isSelectionMode && <span>Cancel</span>}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Selection and Deletion Controls: Only visible when in Selection Mode */}
-            {isSelectionMode && notifications.length > 0 && (
-              <div className={styles.notifSelectionBar}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectAllNotifs();
-                  }}
-                  className={`${styles.notifSelectAllBtn} ${selectedNotifs.length === notifications.length ? styles.notifSelectAllBtnActive : ""}`}
-                >
-                  {selectedNotifs.length === notifications.length ? "Deselect All" : "Select All"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await handleDeleteSelectedNotifs();
-                    if (notifications.length <= selectedNotifs.length) {
-                      setIsSelectionMode(false);
-                    }
-                  }}
-                  disabled={selectedNotifs.length === 0 || isDeletingNotifs}
-                  className={`${styles.notifDeleteSelectedBtn} ${selectedNotifs.length === 0 || isDeletingNotifs ? styles.notifDeleteSelectedBtnDisabled : ""}`}
-                >
-                  <Trash2 size={12} /> Delete ({selectedNotifs.length})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await handleDeleteAllNotifs();
-                    setIsSelectionMode(false);
-                  }}
-                  disabled={isDeletingNotifs}
-                  className={styles.notifDeleteAllBtn}
-                >
-                  Delete All
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className={styles.notificationList}>
-            {notifications.length === 0 ? (
-              <div className={styles.emptyNotifications}>No notifications yet</div>
-            ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  onClick={() => handleMarkAsRead(n.id)}
-                  className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ""}`}
-                >
-                  {isSelectionMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedNotifs.includes(n.id)}
-                      onClick={(e) => handleToggleSelectNotif(n.id, e)}
-                      onChange={() => {}}
-                      className={styles.notifCheckbox}
-                    />
-                  )}
-                  <div className={styles.notificationIconWrapper}>
-                    {getNotificationIcon(n.title || "", n.message || "")}
-                  </div>
-                  <div className={styles.notificationContent}>
-                    <div className={styles.notificationTitle}>{stripEmoji(n.title)}</div>
-                    <div className={styles.notificationMsg}>{stripEmoji(n.message)}</div>
-                    <span className={styles.notificationTime}>
-                      {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  {!n.read && <span className={styles.unreadDot} />}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  useEffect(() => {
-    if (showWithdrawModal) {
-      setWithdrawAmount(user.balance.toString());
-      setWithdrawPhone("");
-      setWithdrawalError("");
-    }
-  }, [showWithdrawModal, user.balance]);
-
-  useEffect(() => {
-    if (showWithdrawModal) {
-      const fetchBanks = async () => {
-        try {
-          const res = await fetch("/api/withdrawals/banks");
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              setBanks(data);
-            }
-          }
-        } catch (e) {
-          console.error("Failed to fetch banks:", e);
-        }
-      };
-      fetchBanks();
-    }
-  }, [showWithdrawModal]);
-
-  useEffect(() => {
-    if (accountNumber.length === 10 && selectedBank) {
-      const resolveAccount = async () => {
-        setResolvingAccount(true);
-        setWithdrawalError("");
-        setResolvedAccountName("");
-        try {
-          const res = await fetch("/api/withdrawals/resolve", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accountNumber, bankCode: selectedBank }),
-          });
-          const data = await res.json();
-          if (res.ok) {
-            setResolvedAccountName(data.account_name);
-          } else {
-            setWithdrawalError(data.error || "Could not resolve account details");
-          }
-        } catch (e: any) {
-          setWithdrawalError(e.message || "Error resolving account details");
-        } finally {
-          setResolvingAccount(false);
-        }
-      };
-      resolveAccount();
-    } else {
-      setResolvedAccountName("");
-    }
-  }, [accountNumber, selectedBank]);
-
-  const handleWithdrawSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setWithdrawalError("");
-    
-    const amountNum = parseFloat(withdrawAmount);
-    const validation = withdrawalSchema.safeParse({
-      amount: amountNum,
-      bankCode: selectedBank,
-      accountNumber,
-      accountName: resolvedAccountName || "Resolving...",
+    const res = await fetch("/api/notifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ all: true }),
     });
-
-    if (!validation.success) {
-      setWithdrawalError(validation.error.issues[0]?.message || "Invalid withdrawal details.");
-      return;
-    }
-
-    if (user.balance < 10000) {
-      setWithdrawalError("Minimum wallet balance required to initiate a withdrawal is ₦10,000.00.");
-      return;
-    }
-
-    if (amountNum < 10000) {
-      setWithdrawalError("Minimum withdrawal amount per transaction is ₦10,000.00.");
-      return;
-    }
-
-    if (amountNum > user.balance) {
-      setWithdrawalError("Insufficient wallet balance for this withdrawal amount.");
-      return;
-    }
-
-    if (!withdrawPhone.trim()) {
-      setWithdrawalError("Please enter your registered phone number");
-      return;
-    }
-
-    if (!resolvedAccountName) {
-      setWithdrawalError("Please resolve bank account details before submitting");
-      return;
-    }
-
-    setSubmittingWithdrawal(true);
-    try {
-      const bank = banks.find((b) => b.code === selectedBank);
-      const res = await fetch("/api/withdrawals/initiate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bankCode: selectedBank,
-          bankName: bank?.name || "Unknown Bank",
-          accountNumber,
-          amount: amountNum,
-          phone: withdrawPhone,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setShowWithdrawModal(false);
-        const finalBal = typeof data.newBalance === "number" ? data.newBalance : Math.max(0, (user.balance || 0) - amountNum);
-        setUser((prev) => ({
-          ...prev,
-          balance: finalBal,
-          withdrawal: (prev.withdrawal || 0) + amountNum,
-        }));
-        try {
-          sessionStorage.removeItem("paayh_statement_cache");
-        } catch {}
-        setTransferSuccessData({
-          type: "withdrawal",
-          title: data.status === "success" ? "Withdrawal Completed" : (data.status === "queued" ? "Withdrawal Queued" : "Withdrawal Processing"),
-          amount: typeof data.netAmount === "number" ? data.netAmount : Math.max(0, amountNum - 35),
-          bankName: bank?.name || "Bank Account",
-          accountNumber,
-          accountName: resolvedAccountName,
-          reference: data.reference,
-          newBalance: finalBal,
-        });
-        refreshProfileQuietly();
-        fetchNotifications();
-      } else {
-        setWithdrawalError(data.error || "Failed to process withdrawal");
-      }
-    } catch (e: any) {
-      setWithdrawalError(e.message || "Failed to process withdrawal");
-    } finally {
-      setSubmittingWithdrawal(false);
+    if (res.ok) {
+      setNotifications([]);
     }
   };
 
-
-  
   const feedAreaRef = useRef<HTMLElement>(null);
   const highlightsRef = useRef<HTMLDivElement>(null);
 
@@ -987,8 +442,6 @@ export default function DashboardClient({
   // Responsive device state
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
-
-  // Mobile Header scroll behavior states
   const [showHeader, setShowHeader] = useState(true);
 
   // Sync window size state
@@ -1002,11 +455,6 @@ export default function DashboardClient({
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Keep header steadily visible across mobile and desktop to prevent layout shifts and scroll jumps
-  useEffect(() => {
-    setShowHeader(true);
   }, []);
 
   // Lock body scroll when mobile side menu is open
@@ -1031,7 +479,7 @@ export default function DashboardClient({
     }
   }, [isMobile, showProfileMobile, showHighlightsMobile]);
 
-  // Disconnected highlights fade behavior on scroll per user requirement (highlights remain 100% visible)
+  // Highlights remain visible
   useEffect(() => {
     if (highlightsRef.current) {
       highlightsRef.current.style.opacity = "1";
@@ -1039,54 +487,9 @@ export default function DashboardClient({
     }
   }, []);
 
-  // Close all mobile sidebars
   const closeAllToggles = () => {
     setShowProfileMobile(false);
     setShowHighlightsMobile(false);
-  };
-
-  const parseToArray = (val: string[] | string | null | undefined): string[] => {
-    if (!val) return [];
-    return Array.isArray(val) ? val : val.split(",").map((v) => v.trim());
-  };
-
-  const formatRelativeTime = (timestamp: string | Date | null | undefined): string => {
-    if (!timestamp) return "Never";
-    const diffMs = Date.now() - new Date(timestamp).getTime();
-    if (diffMs < 0 || isNaN(diffMs)) return "Just now";
-    const sec = Math.floor(diffMs / 1000);
-    if (sec < 60) return sec <= 1 ? "1 sec ago" : `${sec} secs ago`;
-    const min = Math.floor(sec / 60);
-    if (min < 60) return min === 1 ? "1 min ago" : `${min} mins ago`;
-    const hours = Math.floor(min / 60);
-    if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
-    const days = Math.floor(hours / 24);
-    return days === 1 ? "1 day ago" : `${days} days ago`;
-  };
-
-  const ago = formatRelativeTime(user.lastUpdated);
-
-  const renderThemeSwitcher = () => {
-    const cycleTheme = () => {
-      if (theme === "white") {
-        setTheme("dark");
-      } else {
-        setTheme("white");
-      }
-    };
-
-    return (
-      <div className={styles.themeSwitcher}>
-        <button
-          onClick={cycleTheme}
-          className={`${styles.themeBtn} ${styles.themeBtnActive}`}
-          title={theme === "white" ? "Switch to Dark Mode" : "Switch to Light Mode"}
-          aria-label="Toggle Theme"
-        >
-          {theme === "white" ? <Sun size={14} /> : <Moon size={14} />}
-        </button>
-      </div>
-    );
   };
 
   const selectTab = (tab: string) => {
@@ -1136,137 +539,76 @@ export default function DashboardClient({
   return (
     <div className={styles.appWrapper}>
       {/* 1. Header Section */}
-      <header className={`${styles.header} ${showHeader ? styles.headerVisible : styles.headerHidden}`}>
-        <div className={styles.headerContent}>
-          {/* Logo / App Name */}
-          <div 
-            className={styles.logoGroup}
-            onClick={() => {
-              if (isMobile) {
-                closeAllToggles();
-              } else if (isTablet) {
-                setShowProfileTablet(!showProfileTablet);
-              } else {
-                if (typeof window !== "undefined") {
-                  sessionStorage.setItem("paayh_active_tab", "feed");
-                  document.cookie = "paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax";
-                  window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "feed" } }));
-                }
-              }
-            }}
-            title={isMobile ? "Go to Feed" : isTablet ? "Toggle Profile View" : "Go to Home Feed"}
-          >
-            <div className={styles.nameBlock}>
-              <span className={styles.appName}>Paayh</span>
-              {!isMobile && <span className={styles.appSub}>Your feeds are ads</span>}
-            </div>
-          </div>
-
-          {/* Minimalist Controls: Only visible on Mobile */}
-          {isMobile ? (
-            <div className={styles.mobileControls}>
-              <button 
-                onClick={() => {
-                  const current = showHighlightsMobile;
-                  closeAllToggles();
-                  setShowHighlightsMobile(!current);
-                }} 
-                className={`${styles.controlBtn} ${showHighlightsMobile ? styles.controlBtnActive : ""}`}
-                title="Campaigns"
-              >
-                <Compass size={20} />
-              </button>
-              <button 
-                onClick={() => {
-                  const current = showProfileMobile;
-                  closeAllToggles();
-                  setShowProfileMobile(!current);
-                }} 
-                className={`${styles.controlBtn} ${showProfileMobile ? styles.controlBtnActive : ""}`}
-                title="My Profile"
-              >
-                <User size={20} />
-              </button>
-              {renderNotificationBell()}
-              {renderThemeSwitcher()}
-            </div>
-          ) : (
-            // Desktop/Tablet Right Header Controls
-            <div className={styles.headerRight}>
-              {isTablet && (
-                <button 
-                  onClick={() => setShowProfileTablet(!showProfileTablet)} 
-                  className={`${styles.tabletToggleBtn} ${showProfileTablet ? styles.tabletToggleBtnActive : ""}`}
-                >
-                  <User size={16} />
-                  <span>{showProfileTablet ? "View Highlights" : "View Profile"}</span>
-                </button>
-              )}
-              <div className={styles.desktopNav}>
-                <Link
-                  href="/logged-in?view=feed"
-                  onClick={() => {
-                    if (typeof window !== "undefined") {
-                      sessionStorage.setItem("paayh_active_tab", "feed");
-                      document.cookie = "paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax";
-                      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "feed" } }));
-                    }
-                  }}
-                >
-                  Home
-                </Link>
-                <Link href="/terms">Terms</Link>
-                <Link href="/privacy">Privacy</Link>
-                <Link href="/faq">FAQ</Link>
-              </div>
-              {renderNotificationBell()}
-              {renderThemeSwitcher()}
-            </div>
-          )}
-        </div>
-      </header>
+      <DashboardHeader
+        theme={theme}
+        onCycleTheme={() => setTheme(theme === "white" ? "dark" : "white")}
+        isMobile={isMobile}
+        isTablet={isTablet}
+        showHeader={showHeader}
+        showProfileTablet={showProfileTablet}
+        onToggleProfileTablet={() => setShowProfileTablet(!showProfileTablet)}
+        showHighlightsMobile={showHighlightsMobile}
+        showProfileMobile={showProfileMobile}
+        onToggleHighlightsMobile={() => {
+          const current = showHighlightsMobile;
+          closeAllToggles();
+          setShowHighlightsMobile(!current);
+        }}
+        onToggleProfileMobile={() => {
+          const current = showProfileMobile;
+          closeAllToggles();
+          setShowProfileMobile(!current);
+        }}
+        onCloseAllToggles={closeAllToggles}
+        notifications={notifications}
+        onMarkAsRead={handleMarkAsRead}
+        onMarkAllAsRead={handleMarkAllAsRead}
+        onDeleteSelectedNotifs={handleDeleteSelectedNotifs}
+        onDeleteAllNotifs={handleDeleteAllNotifs}
+        showEarnFeedback={showEarnFeedback}
+        showMutualFeedback={showMutualFeedback}
+      />
 
       {/* 2. Main Dashboard Layout Area */}
       <div className={`${styles.dashboardContainer} ${showHeader ? "" : styles.dashboardContainerHeaderHidden}`}>
-      {/* Centered 30-Day Inactive Account Warning Modal */}
-      {(() => {
-        if (inactivityDismissed) return null;
-        const daysInactive = user.daysInactive ?? (user.last_active_at ? Math.floor((Date.now() - new Date(user.last_active_at).getTime()) / (86400 * 1000)) : 0);
-        if (daysInactive < 30) return null;
-        return (
-          <div className={styles.inactivityModalBackdrop}>
-            <div className={styles.inactivityModalCard}>
-              <div className={styles.inactivityModalIcon}>
-                <Clock size={26} />
+        {/* 30-Day Inactive Account Warning Modal */}
+        {(() => {
+          if (inactivityDismissed) return null;
+          const daysInactive =
+            user.daysInactive ??
+            (user.last_active_at
+              ? Math.floor((Date.now() - new Date(user.last_active_at).getTime()) / (86400 * 1000))
+              : 0);
+          if (daysInactive < 30) return null;
+          return (
+            <div className={styles.inactivityModalBackdrop}>
+              <div className={styles.inactivityModalCard}>
+                <div className={styles.inactivityModalIcon}>
+                  <Clock size={26} />
+                </div>
+                <div>
+                  <h3 className={styles.inactivityModalTitle}>Inactive Account ({daysInactive} Days)</h3>
+                  <p className={styles.inactivityModalText}>
+                    Withdraw balance or view feed ads to keep your wallet active. Unclaimed balances forfeit after 60
+                    days of inactivity.
+                  </p>
+                </div>
+                <button type="button" onClick={handleDismissInactivity} className={styles.inactivityModalBtn}>
+                  Got it
+                </button>
               </div>
-              <div>
-                <h3 className={styles.inactivityModalTitle}>
-                  Inactive Account ({daysInactive} Days)
-                </h3>
-                <p className={styles.inactivityModalText}>
-                  Withdraw balance or view feed ads to keep your wallet active. Unclaimed balances forfeit after 60 days of inactivity.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleDismissInactivity}
-                className={styles.inactivityModalBtn}
-              >
-                Got it
-              </button>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+
         {/* Left Sidebar: Highlights Section */}
-        {/* On tablet: hidden if profile is toggled. On mobile: hidden by default, slides in full screen. */}
-        <aside className={`${styles.leftSidebar} ${
-          isTablet && showProfileTablet ? styles.hiddenTablet : ""
-        } ${
-          isMobile ? (showHighlightsMobile ? styles.showMobileFull : styles.hideMobileFull) : ""
-        }`}>
+        <aside
+          className={`${styles.leftSidebar} ${isTablet && showProfileTablet ? styles.hiddenTablet : ""} ${
+            isMobile ? (showHighlightsMobile ? styles.showMobileFull : styles.hideMobileFull) : ""
+          }`}
+        >
           <div className={styles.sidebarContent}>
-            <div 
+            <div
               className={styles.desktopLeftHeader}
               onClick={() => setShowAccountMenuLeft(!showAccountMenuLeft)}
               title="Toggle Account Menu"
@@ -1279,333 +621,54 @@ export default function DashboardClient({
               </button>
               <h3 className={styles.menuTitle}>Account Menu</h3>
             </div>
-            <Collapsible isOpen={showAccountMenuLeft}>
-              {renderAccountLinks()}
-            </Collapsible>
-            <div 
-              ref={highlightsRef} 
-              className={styles.highlightsWrap}
-            >
+            <Collapsible isOpen={showAccountMenuLeft}>{renderAccountLinks()}</Collapsible>
+            <div ref={highlightsRef} className={styles.highlightsWrap}>
               <p className={styles.offerArea}>Daily Business Highlights:</p>
               <Newsdisplay userInterest={parsedInterest} initialHighlights={initialHighlights} />
             </div>
           </div>
         </aside>
 
-        <main 
+        {/* Main Feed Area */}
+        <main
           ref={feedAreaRef}
           className={`${styles.feedArea} ${
             isMobile && (showProfileMobile || showHighlightsMobile) ? styles.feedAreaLocked : ""
           }`}
         >
           <Suspense fallback={<FeedSkeleton count={3} />}>
-            <Feed 
-              userEmail={email} 
-              initialProfile={user} 
+            <Feed
+              userEmail={email}
+              initialProfile={user}
               initialAds={initialAds}
               initialProfiles={initialProfiles}
-              onEarnSuccess={handleEarnSuccess} 
-              onMutualSuccess={handleMutualSuccess} 
+              onEarnSuccess={handleEarnSuccess}
+              onMutualSuccess={handleMutualSuccess}
             />
           </Suspense>
           <Footer />
         </main>
 
         {/* Right Sidebar: Profile and Wallet details */}
-        {/* On tablet: hidden by default, slides in if profile is toggled. On mobile: hidden by default, slides in full screen. */}
-        <aside className={`${styles.rightSidebar} ${
-          isTablet && !showProfileTablet ? styles.hiddenTablet : ""
-        } ${
-          isMobile ? (showProfileMobile ? styles.showMobileFull : styles.hideMobileFull) : ""
-        }`}>
+        <aside
+          className={`${styles.rightSidebar} ${isTablet && !showProfileTablet ? styles.hiddenTablet : ""} ${
+            isMobile ? (showProfileMobile ? styles.showMobileFull : styles.hideMobileFull) : ""
+          }`}
+        >
           <div className={styles.sidebarContent}>
-            {/* Profile Card */}
-            <div className={styles.profileCard}>
-              <div className={styles.profileBanner}></div>
-              <div className={styles.avatarRow}>
-                <div className={styles.profileImgContainer}>
-                  <Avatar
-                    src={user.profileImage}
-                    name={user.business_name || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username}
-                    email={user.email}
-                    size={70}
-                    alt="Profile picture"
-                    gender={user.gender}
-                  />
-                </div>
-                <Link href="/logged-in" onClick={() => selectTab("profile")} className={styles.editProfileBtn}>
-                  Edit profile
-                </Link>
-              </div>
-
-              <div className={styles.profileInfo}>
-                <h4 className={styles.profileName}>
-                  <span>{user.business_name && user.business_name.trim() !== "" ? user.business_name : `${user.firstName} ${user.lastName}`}</span>
-                  {!!(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) && (
-                    <VerifiedBadge size={21} title="Verified Partner" />
-                  )}
-                </h4>
-                <p className={styles.usernameText}>@{user.username.split("@")[0]}</p>
-
-                {user.business_name && user.business_name.trim() !== "" && (
-                  <p className={styles.detailItem}>
-                    Representative: {user.firstName} {user.lastName}
-                  </p>
-                )}
-
-                <p className={styles.profileBio}>{user.bio || "No bio set yet."}</p>
-
-                {(() => {
-                  const clicksCount = user.monetization_clicks ?? 0;
-                  const isMonetized = !!(
-                    user.monetized === "yes" || user.monetized === "true" || user.monetized === true || clicksCount >= 300
-                  );
-                  const progressPct = Math.min(100, Math.round((clicksCount / 300) * 100));
-
-                  const ago = (() => {
-                    if (!user.lastUpdated) return "Recently";
-                    const diffMs = Date.now() - new Date(user.lastUpdated).getTime();
-                    if (isNaN(diffMs) || diffMs < 0) return "Recently";
-                    const mins = Math.floor(diffMs / 60000);
-                    if (mins < 1) return "Just now";
-                    if (mins < 60) return `${mins}m ago`;
-                    const hours = Math.floor(mins / 60);
-                    if (hours < 24) return `${hours}h ago`;
-                    const days = Math.floor(hours / 24);
-                    if (days < 30) return `${days}d ago`;
-                    return new Date(user.lastUpdated).toLocaleDateString();
-                  })();
-
-                  return (
-                    <>
-                      <div className={styles.profileDetails}>
-                        <div className={styles.detailItem}>
-                          <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                            <path d="M19.708 7.375c-.11-.58-.345-1.13-.683-1.605l.015.018c-.675-.86-1.72-1.39-2.89-1.39h-8.3c-1.17 0-2.215.53-2.89 1.39l.015-.018c-.338.475-.573 1.025-.683 1.605l-.015-.008v9.25c0 1.93 1.57 3.5 3.5 3.5h8.3c1.93 0 3.5-1.57 3.5-3.5v-9.25l-.015.008zM9.15 5.88h5.7c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25h-5.7c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25zm6.55 12.24h-7.4c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25h7.4c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25zm0-3.5h-7.4c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25h7.4c.69 0 1.25.56 1.25 1.25s-.56 1.25-1.25 1.25z" fill="currentColor"/>
-                          </svg>
-                          <span>Last updated: {ago}</span>
-                        </div>
-                        {user.country && user.country !== "PLACEHOLDER" && (
-                          <div className={styles.detailItem}>
-                            <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/>
-                            </svg>
-                            <span>{user.state ? `${user.state}, ` : ""}{user.country}</span>
-                          </div>
-                        )}
-                        <div className={styles.detailItem}>
-                          <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" fill="currentColor"/>
-                          </svg>
-                          <span>Mutuals: {user.mutual_count} / 50</span>
-                        </div>
-
-                        {/* ATW Level: shown between Mutuals and Monetized */}
-                        {(() => {
-                          const score = Number(user.attention_worth_score ?? 0);
-                          const tier = resolveAtwTier(score);
-                          const balanceCap = getAtwBalanceLimit(tier.code);
-                          const currentBal = Number(user.balance ?? 0);
-                          const ratio = Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
-                          const pct = Math.round(ratio * 100);
-
-                          let stateColor = "var(--foreground)";
-                          if (ratio >= 0.90) {
-                            stateColor = "#ef4444";
-                          } else if (ratio >= 0.60) {
-                            stateColor = "var(--text-muted)";
-                          }
-
-                          // Circular gauge geometry
-                          const radius = 7;
-                          const circ = 2 * Math.PI * radius;
-                          const strokeOffset = circ - (ratio * circ);
-
-                          return (
-                            <div className={`${styles.detailItem} ${styles.detailItemCenter}`}>
-                              <svg viewBox="0 0 24 24" className={styles.detailIcon}>
-                                <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="currentColor"/>
-                              </svg>
-                              <span>
-                                <strong className={styles.atwTierCode}>
-                                  {tier.code}
-                                </strong>
-                              </span>
-
-                              {/* Circular Gauge & State Indicator with hover/touch interactive tooltip */}
-                              <div
-                                className={styles.atwGaugeContainer}
-                                onMouseEnter={() => setShowAtwTooltip(true)}
-                                onMouseLeave={() => setShowAtwTooltip(false)}
-                                onClick={() => setShowAtwTooltip((prev) => !prev)}
-                                title={`ATW Capacity: ${pct}%`}
-                                role="button"
-                                tabIndex={0}
-                                aria-label={`Withdrawal limit gauge: ${pct}% capacity`}
-                              >
-                                <div className={styles.atwGaugeWrapper}>
-                                  <svg className={styles.atwGaugeSvg} width="20" height="20" viewBox="0 0 20 20">
-                                    <circle
-                                      className={styles.atwGaugeTrack}
-                                      cx="10"
-                                      cy="10"
-                                      r={radius}
-                                      strokeWidth="2.4"
-                                      fill="none"
-                                    />
-                                    <motion.circle
-                                      className={styles.atwGaugeFill}
-                                      cx="10"
-                                      cy="10"
-                                      r={radius}
-                                      strokeWidth="2.4"
-                                      fill="none"
-                                      stroke={stateColor}
-                                      strokeDasharray={circ}
-                                      initial={{ strokeDashoffset: circ }}
-                                      animate={{ strokeDashoffset: strokeOffset }}
-                                      transition={{ duration: 0.8, ease: "easeOut" }}
-                                      strokeLinecap="round"
-                                    />
-                                  </svg>
-                                </div>
-
-                                <AnimatePresence>
-                                  {showAtwTooltip && (
-                                    <motion.div
-                                      initial={{ opacity: 0, y: 6, scale: 0.95 }}
-                                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                                      exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                                      transition={{ duration: 0.18 }}
-                                      className={styles.atwTooltipBox}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <div className={styles.atwTooltipHeader}>
-                                        <span>ATW Holding Capacity</span>
-                                        <span className={styles.atwPct} style={{ color: stateColor }}>{pct}%</span>
-                                      </div>
-                                      <p className={styles.atwTooltipText}>
-                                        Holding limit: {formatCurrency(balanceCap)} ({tier.code}). Current: {formatCurrency(currentBal)}.
-                                      </p>
-                                      <span className={styles.atwTooltipHint} style={{ color: stateColor }}>
-                                        {ratio >= 0.90
-                                          ? "Max holding reached! Please withdraw your funds."
-                                          : ratio >= 0.60
-                                          ? "Balance is filling up. Prepare to withdraw soon."
-                                          : "Safe holding balance. All systems nominal."}
-                                      </span>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {isMonetized && (
-                          <div className={styles.detailItem}>
-                            <VerifiedBadge size={14} color="var(--text-muted)" checkColor="var(--background, #ffffff)" title="Monetized Account" />
-                            <span>Monetized</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {!isMonetized && (
-                        <div className={styles.renewalSection}>
-                          <div className={styles.monetizeProgressHeader}>
-                            <span>Monetization Progress</span>
-                            <span className={styles.monetizeProgressValue}>{clicksCount} / 300 clicks</span>
-                          </div>
-                          <div className={styles.monetizeProgressTrack}>
-                            <div className={styles.monetizeProgressFill} style={{ width: `${progressPct}%` }} />
-                          </div>
-                          <p className={styles.monetizeProgressNote}>
-                            {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
-                          </p>
-                          <Link
-                            href="/logged-in"
-                            onClick={() => selectTab("monetize")}
-                            className={`${styles.renewBtn} ${styles.monetizeProgressLink}`}
-                          >
-                            View Monetization Details
-                          </Link>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
+            <DashboardProfileCard user={user} formatCurrency={formatCurrency} onSelectTab={selectTab} />
 
             <InviteLink username={user.username} />
 
-            <div className={styles.walletCard}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-                <h4 className={styles.walletHeader} style={{ margin: 0 }}>Wallet Balance</h4>
-                <button
-                  type="button"
-                  onClick={toggleShowBalance}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "4px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: "6px",
-                  }}
-                  title={showBalance ? "Hide balance" : "Show balance"}
-                  aria-label={showBalance ? "Hide balance" : "Show balance"}
-                >
-                  {showBalance ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <div className={styles.walletBalance}>
-                {showBalance ? (
-                  <RollingCounter value={user.balance ?? 0} currencyPrefix="₦" />
-                ) : (
-                  <span style={{ letterSpacing: "2px", fontWeight: 700 }}>₦••••••••</span>
-                )}
-              </div>
-              {user.withdrawal > 0 && (
-                <p className={styles.pendingWithdrawal}>
-                  Pending Withdrawal: {showBalance ? formatCurrency(user.withdrawal) : "₦••••"}
-                </p>
-              )}
-              <div className={styles.walletBtnGroup}>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowWithdrawModal(true)}
-                  className={styles.withdrawBtn}
-                  disabled={
-                    !(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300) ||
-                    (user.balance ?? 0) < 10000
-                  }
-                >
-                  {!(user.monetized === "yes" || user.monetized === "true" || user.monetized === true || (user.monetization_clicks ?? 0) >= 300)
-                    ? "Complete 300 clicks to withdraw earnings"
-                    : (user.balance ?? 0) < 10000
-                    ? `Min. ${formatCurrency(10000)} required to withdraw`
-                    : "Request Withdrawal"}
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowSendMoneyModal(true)}
-                  className={styles.sendMoneyBtn}
-                  title="Send Money to User Email"
-                  type="button"
-                >
-                  <Send size={15} />
-                  <span>Send Money</span>
-                </motion.button>
-              </div>
-              <Link href="/logged-in" onClick={() => selectTab("statement")} className={styles.statementLink}>
-                View Account Statement
-              </Link>
-            </div>
+            <DashboardWalletCard
+              user={user}
+              showBalance={showBalance}
+              onToggleShowBalance={toggleShowBalance}
+              formatCurrency={formatCurrency}
+              onOpenWithdrawModal={() => setShowWithdrawModal(true)}
+              onOpenSendMoneyModal={() => setShowSendMoneyModal(true)}
+              onSelectTab={selectTab}
+            />
 
             <PersonaDrawer
               interest={parseToArray(user.interest)}
@@ -1629,335 +692,44 @@ export default function DashboardClient({
           <div className={styles.backdrop} onClick={closeAllToggles} />
         )}
 
-        {/* Modals rendered directly to document.body to isolate from dashboard flex container */}
-        {mounted && typeof document !== "undefined" && createPortal(
-          <>
-            {/* Withdrawal Modal */}
-            <AnimatePresence>
-              {showWithdrawModal && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className={styles.modalOverlay}
-                  onClick={() => setShowWithdrawModal(false)}
-                >
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96, y: 8 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                    className={styles.modalContent}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className={styles.modalHeader}>
-                      <div className={styles.modalTitleGroup}>
-                        <h3 className={styles.modalTitle}>Request Bank Withdrawal</h3>
-                        <div className={styles.modalSubtitle}>
-                          Available: <span className={styles.balanceHighlight}>{formatCurrency(user.balance ?? 0)}</span>
-                        </div>
-                      </div>
-                      <button onClick={() => setShowWithdrawModal(false)} className={styles.closeBtn} aria-label="Close">
-                        <X size={18} />
-                      </button>
-                    </div>
-                    <form onSubmit={handleWithdrawSubmit} className={styles.modalBodyColumn}>
-                      <div className={styles.formGroup}>
-                        <label className={styles.formLabel}>Select Bank</label>
-                        <select
-                          value={selectedBank}
-                          onChange={(e) => setSelectedBank(e.target.value)}
-                          required
-                          className={styles.formInput}
-                        >
-                          <option value="">Choose Your Bank</option>
-                          {banks.map((b, index) => (
-                            <option key={`${b.code}-${index}`} value={b.code}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+        {/* Modals rendered directly to document.body */}
+        {mounted &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <>
+              <WithdrawalModal
+                isOpen={showWithdrawModal}
+                onClose={() => setShowWithdrawModal(false)}
+                user={user}
+                formatCurrency={formatCurrency}
+                onSuccess={(data) => setTransferSuccessData(data)}
+                onUpdateBalance={(finalBal, finalWithdrawal) =>
+                  setUser((prev) => ({ ...prev, balance: finalBal, withdrawal: finalWithdrawal }))
+                }
+                onRefreshProfile={refreshProfileQuietly}
+                onFetchNotifications={fetchNotifications}
+              />
 
-                      <div className={styles.formGroup}>
-                        <label className={styles.formLabel}>Account Number</label>
-                        <input
-                          type="text"
-                          maxLength={10}
-                          placeholder="10 digit Account Number"
-                          value={accountNumber}
-                          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-                          required
-                          className={styles.formInput}
-                        />
-                      </div>
+              <SendMoneyModal
+                isOpen={showSendMoneyModal}
+                onClose={() => setShowSendMoneyModal(false)}
+                user={user}
+                currentUserEmail={email}
+                formatCurrency={formatCurrency}
+                onSuccess={(data) => setTransferSuccessData(data)}
+                onUpdateBalance={(finalBal) => setUser((prev) => ({ ...prev, balance: finalBal }))}
+                onRefreshProfile={refreshProfileQuietly}
+                onFetchNotifications={fetchNotifications}
+              />
 
-                      {resolvingAccount && (
-                        <div className={styles.resolvingPill}>
-                          Verifying account details with bank...
-                        </div>
-                      )}
-
-                      {resolvedAccountName && (
-                        <div className={styles.resolvedPill}>
-                          <span className={styles.resolvedNameCheck}><Check size={13} strokeWidth={2.5} /></span>
-                          <span className={styles.resolvedName}>{resolvedAccountName}</span>
-                        </div>
-                      )}
-
-                      <div className={styles.formGroup}>
-                        <label className={styles.formLabel}>Withdrawal Amount ({getCurrencyConfig(user?.country).symbol})</label>
-                        <input
-                          type="number"
-                          min={10000}
-                          max={user.balance}
-                          placeholder={`Min ${formatCurrency(10000)}`}
-                          value={withdrawAmount}
-                          onChange={(e) => setWithdrawAmount(e.target.value)}
-                          required
-                          className={styles.formInput}
-                        />
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label className={styles.formLabel}>Registered Phone</label>
-                        <input
-                          type="text"
-                          placeholder="Enter registered phone"
-                          value={withdrawPhone}
-                          onChange={(e) => setWithdrawPhone(e.target.value)}
-                          required
-                          className={styles.formInput}
-                        />
-                      </div>
-
-                      {(user.balance ?? 0) < 10000 && (
-                        <div style={{
-                          background: "rgba(239, 68, 68, 0.1)",
-                          border: "1px solid rgba(239, 68, 68, 0.25)",
-                          borderRadius: "10px",
-                          padding: "10px 14px",
-                          fontSize: "12px",
-                          color: "#ef4444",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          marginBottom: "12px",
-                        }}>
-                          <AlertCircle size={15} />
-                          <span>Your wallet balance is below the minimum required limit of {formatCurrency(10000)}.</span>
-                        </div>
-                      )}
-
-                      {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
-                        <div style={{
-                          background: "var(--sidebar-bg)",
-                          border: "1px solid var(--card-border)",
-                          borderRadius: "12px",
-                          padding: "12px 14px",
-                          fontSize: "13px",
-                          color: "var(--text-muted)",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                          marginBottom: "12px",
-                        }}>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span>Transfer Network Fee:</span>
-                            <span style={{ color: "var(--foreground)", fontWeight: 600 }}>₦35.00</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span>Disbursement Schedule:</span>
-                            <span style={{ color: "var(--foreground)" }}>Instant / Payout Window</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid var(--card-border)", paddingTop: "8px" }}>
-                            <span style={{ fontWeight: 600, color: "var(--foreground)" }}>You will receive:</span>
-                            <span style={{ fontWeight: 700, color: "#10b981" }}>{formatCurrency(Math.max(0, (parseFloat(withdrawAmount) || 0) - 35))}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
-
-                      <button
-                        type="submit"
-                        disabled={
-                          submittingWithdrawal ||
-                          !resolvedAccountName ||
-                          (user.balance ?? 0) < 10000 ||
-                          (parseFloat(withdrawAmount) || 0) < 10000 ||
-                          (parseFloat(withdrawAmount) || 0) > (user.balance ?? 0)
-                        }
-                        className={styles.submitBtn}
-                      >
-                        {submittingWithdrawal
-                          ? "Processing Withdrawal..."
-                          : (user.balance ?? 0) < 10000
-                          ? `Min. ${formatCurrency(10000)} Balance Required`
-                          : (parseFloat(withdrawAmount) || 0) > 0 && (parseFloat(withdrawAmount) || 0) < 10000
-                          ? `Min. Withdrawal is ${formatCurrency(10000)}`
-                          : (parseFloat(withdrawAmount) || 0) > (user.balance ?? 0)
-                          ? "Amount Exceeds Balance"
-                          : "Withdraw Funds"}
-                      </button>
-                    </form>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Send Money Modal */}
-            <AnimatePresence>
-              {showSendMoneyModal && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className={styles.modalOverlay}
-                  onClick={() => setShowSendMoneyModal(false)}
-                >
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96, y: 8 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                    className={styles.modalContent}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className={styles.modalHeader}>
-                      <h3>Send Money to User</h3>
-                      <button onClick={() => setShowSendMoneyModal(false)} className={styles.closeBtn}>
-                        <X size={18} />
-                      </button>
-                    </div>
-                    <form onSubmit={handleSendMoneySubmit} className={styles.modalBody}>
-                      <div className={styles.balanceRow}>
-                        <span>Available Balance:</span>
-                        <span className={styles.balanceValue}>{formatCurrency(user.balance ?? 0)}</span>
-                      </div>
-
-                      <div className={styles.balanceRowSub}>
-                        <span>Max Transfer Limit (20%):</span>
-                        <span className={styles.maxAllowedValue}>{formatCurrency((user.balance ?? 0) * 0.20)}</span>
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label className={styles.formLabel}>Recipient Email Account</label>
-                        <input
-                          type="email"
-                          placeholder="Enter recipient registered email (e.g. user@example.com)"
-                          value={sendRecipientEmail}
-                          onChange={(e) => setSendRecipientEmail(e.target.value)}
-                          required
-                          className={styles.formInput}
-                        />
-                        <span className={styles.formHintSmall}>
-                          Enter the exact email address of the recepient.
-                        </span>
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label className={styles.formLabel}>Amount to Send (₦)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={1}
-                          max={user.balance * 0.20}
-                          placeholder={`Max ${formatCurrency((user.balance ?? 0) * 0.20)}`}
-                          value={sendAmount}
-                          onChange={(e) => setSendAmount(e.target.value)}
-                          required
-                          className={styles.formInput}
-                        />
-                        <span className={styles.formHintSmall}>
-                          Security Rules: Max 20% of your total balance at a time. Max 6 recipient users per day.
-                        </span>
-                      </div>
-
-                      {sendMoneyError && <div className={styles.errorText}>{sendMoneyError}</div>}
-
-                      <button
-                        type="submit"
-                        disabled={submittingSend || user.balance <= 0}
-                        className={styles.submitBtn}
-                      >
-                        {submittingSend ? "Processing Transfer..." : "Send Funds Instantly"}
-                      </button>
-                    </form>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Premium Transfer Success Animation Modal */}
-            <TransferSuccessModal
-              data={transferSuccessData}
-              onClose={() => setTransferSuccessData(null)}
-              formatCurrency={formatCurrency}
-            />
-          </>,
-          document.body
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PersonaDrawer({
-  interest = [],
-  industry = [],
-  behavior = [],
-  lifestyle = [],
-  personality = [],
-}: {
-  interest?: string[];
-  industry?: string[];
-  behavior?: string[];
-  lifestyle?: string[];
-  personality?: string[];
-}) {
-  const [activeTab, setActiveTab] = React.useState<string>("all");
-  const categories = React.useMemo(() => [
-    { id: "all", label: "All", items: Array.from(new Set([...(interest || []), ...(industry || []), ...(behavior || []), ...(lifestyle || []), ...(personality || [])])) },
-    { id: "interest", label: "Interest", items: interest || [] },
-    { id: "industry", label: "Industry", items: industry || [] },
-    { id: "lifestyle", label: "Lifestyle", items: lifestyle || [] },
-    { id: "behavior", label: "Behavior", items: behavior || [] },
-    { id: "personality", label: "Personality", items: personality || [] },
-  ].filter(c => c.items.length > 0 || c.id === "all"), [interest, industry, behavior, lifestyle, personality]);
-
-  const currentItems = categories.find(c => c.id === activeTab)?.items || categories[0]?.items || [];
-
-  return (
-    <div className={styles.personaCard}>
-      <div className={styles.personaHeader}>
-        <h5 className={styles.personaTitle}>Targeting & Persona</h5>
-        <span className={styles.personaCount}>{categories[0]?.items.length || 0} traits</span>
-      </div>
-      <div className={styles.personaTabRow}>
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            className={`${styles.personaTabBtn} ${activeTab === cat.id ? styles.personaTabBtnActive : ""}`}
-            onClick={() => setActiveTab(cat.id)}
-          >
-            {cat.label} ({cat.items.length})
-          </button>
-        ))}
-      </div>
-      <div className={styles.personaTagsGrid}>
-        {currentItems.length > 0 ? (
-          currentItems.map((item) => (
-            <span key={item} className={styles.personaTag}>
-              {item}
-            </span>
-          ))
-        ) : (
-          <span className={styles.emptyPersonaNote}>No targeting attributes assigned yet.</span>
-        )}
+              <TransferSuccessModal
+                data={transferSuccessData}
+                onClose={() => setTransferSuccessData(null)}
+                formatCurrency={formatCurrency}
+              />
+            </>,
+            document.body
+          )}
       </div>
     </div>
   );
