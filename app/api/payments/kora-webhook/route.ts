@@ -5,6 +5,7 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
+import { captureApiException } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -79,6 +80,11 @@ export async function POST(req: NextRequest) {
         await executeKoraWebhookBackground(reference, event, data, isSuccessful, isFailed);
       } catch (bgErr) {
         console.error("❌ Background Kora Webhook processing error:", bgErr);
+        captureApiException(bgErr, {
+          route: "POST /api/payments/kora-webhook (background)",
+          reference,
+          extra: { event, data },
+        });
       }
     })();
 
@@ -86,6 +92,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (err: any) {
     console.error("❌ Kora Webhook error:", err);
+    captureApiException(err, {
+      route: "POST /api/payments/kora-webhook",
+    });
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 }

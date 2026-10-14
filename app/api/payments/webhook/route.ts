@@ -4,6 +4,7 @@ import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
+import { captureApiException } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,6 +54,11 @@ export async function POST(req: NextRequest) {
         await executePaystackWebhookBackground(reference, event, data);
       } catch (bgErr) {
         console.error("❌ Background Paystack Webhook processing error:", bgErr);
+        captureApiException(bgErr, {
+          route: "POST /api/payments/webhook (background)",
+          reference,
+          extra: { event, data },
+        });
       }
     })();
 
@@ -60,6 +66,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (err: any) {
     console.error("❌ Webhook error:", err);
+    captureApiException(err, {
+      route: "POST /api/payments/webhook",
+    });
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 }

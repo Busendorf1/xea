@@ -18,10 +18,12 @@ import {
   freezeUserAccount,
   isUserAccountFrozen,
 } from "@/lib/security/discrepancyAuditor";
+import { captureApiException } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
   let walletLockAcquired = false;
+  let clientKey = "";
   try {
     senderEmail = (await getAuthenticatedEmail(req)) || "";
     if (!senderEmail) {
@@ -79,8 +81,8 @@ export async function POST(req: NextRequest) {
 
     // 3. Strict Mandatory Client Idempotency Lock Check
     const reqHeaderKey = req.headers.get("x-idempotency-key");
-    const clientKey = idempotencyKey || reqHeaderKey;
-    if (!clientKey || typeof clientKey !== "string" || clientKey.trim().length < 8) {
+    clientKey = (idempotencyKey || reqHeaderKey || "").trim();
+    if (!clientKey || clientKey.length < 8) {
       return NextResponse.json(
         { error: "Missing or invalid 'x-idempotency-key' header. Financial transactions require a unique client idempotency key." },
         { status: 400 }
@@ -281,6 +283,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Network error in POST /api/payments/transfer:", err);
+    captureApiException(err, {
+      route: "POST /api/payments/transfer",
+      email: senderEmail,
+      extra: { clientKey },
+    });
     if (senderEmail) {
       await invalidateCachedProfile(senderEmail).catch(() => {});
     }

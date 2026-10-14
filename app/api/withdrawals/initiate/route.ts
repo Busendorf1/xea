@@ -5,12 +5,14 @@ import { KoraService } from "@/lib/payment/kora";
 import redisConnection from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { captureApiException } from "@/lib/logger";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
 
 export async function POST(req: NextRequest) {
+  let email: string | null = null;
   try {
-    const email = await getAuthenticatedEmail(req);
+    email = await getAuthenticatedEmail(req);
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -100,23 +102,39 @@ export async function POST(req: NextRequest) {
       }, { status: 503 });
     }
 
-    // Deduct user's balance atomically using Optimistic Concurrency Control (OCC)
-    const newBalance = Math.max(0, currentBalance - withdrawAmount);
-    const newWithdrawal = currentWithdrawal + withdrawAmount;
+    // Deduct user's balance atomically via PostgreSQL FOR UPDATE row lock RPC (with OCC fallback)
+    let newBalance = Math.max(0, currentBalance - withdrawAmount);
+    let newWithdrawal = currentWithdrawal + withdrawAmount;
 
-    const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
-      .from("users")
-      .update({
-        balance: newBalance,
-        withdrawal: newWithdrawal,
-      })
-      .ilike("email", email)
-      .eq("balance", currentBalance)
-      .select();
+    const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("initiate_atomic_withdrawal", {
+      p_email: email,
+      p_amount: withdrawAmount,
+      p_min_amount: MIN_WITHDRAWAL_AMOUNT,
+      p_is_admin: isAdmin,
+    });
 
-    if (userUpdateErr || !updatedUser || updatedUser.length === 0) {
-      console.error("❌ OCC check failed during withdrawal balance deduction:", userUpdateErr);
-      return NextResponse.json({ error: "Balance mismatch or concurrent transaction detected. Please refresh and try again." }, { status: 409 });
+    if (atomicErr || !atomicResult) {
+      console.warn("⚠️ initiate_atomic_withdrawal RPC not active or failed, using strict OCC fallback:", atomicErr?.message);
+      const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
+        .from("users")
+        .update({
+          balance: newBalance,
+          withdrawal: newWithdrawal,
+        })
+        .ilike("email", email)
+        .eq("balance", currentBalance)
+        .select();
+
+      if (userUpdateErr || !updatedUser || updatedUser.length === 0) {
+        console.error("❌ OCC check failed during withdrawal balance deduction:", userUpdateErr);
+        return NextResponse.json({ error: "Balance mismatch or concurrent transaction detected. Please refresh and try again." }, { status: 409 });
+      }
+    } else if (atomicResult.success === false) {
+      console.error("❌ Atomic withdrawal validation error:", atomicResult.error);
+      return NextResponse.json({ error: atomicResult.error || "Withdrawal validation failed." }, { status: 400 });
+    } else {
+      newBalance = atomicResult.new_balance;
+      newWithdrawal = atomicResult.new_withdrawal;
     }
 
     // Generate unique transaction reference
@@ -368,6 +386,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/withdrawals/initiate:", err);
+    captureApiException(err, {
+      route: "POST /api/withdrawals/initiate",
+      email: email || undefined,
+    });
     return NextResponse.json({ error: err.message || "Failed to process withdrawal request" }, { status: 500 });
   }
 }

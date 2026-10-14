@@ -6,15 +6,18 @@ import { KoraService } from "@/lib/payment/kora";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { captureApiException } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
+  let email: string | null = null;
+  let reference: string | null = null;
   try {
-    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const reference = req.nextUrl.searchParams.get("reference");
+    reference = req.nextUrl.searchParams.get("reference");
     const paramGatewayRef = req.nextUrl.searchParams.get("gateway_reference");
     if (!reference) {
       return NextResponse.json({ error: "Reference parameter is required" }, { status: 400 });
@@ -213,6 +216,11 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/payments/verify:", err);
+    captureApiException(err, {
+      route: "GET /api/payments/verify",
+      email: (typeof email !== "undefined" && email) ? email : undefined,
+      reference: (typeof reference !== "undefined" && reference) ? reference : undefined,
+    });
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
 }
