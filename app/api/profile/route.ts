@@ -10,7 +10,6 @@ function sanitizeProfileResponse(rawUser: Record<string, any> | null) {
   if (!rawUser) return null;
   const sanitized = { ...rawUser };
   delete sanitized.passphrase;
-  delete sanitized.bvn_hash;
   return sanitized;
 }
 

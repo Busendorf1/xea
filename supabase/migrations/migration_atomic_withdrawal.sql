@@ -30,7 +30,7 @@ BEGIN
   END IF;
 
   -- 1. Acquire exclusive row lock on user row
-  SELECT id, email, balance, withdrawal, phone, bvn_hash, monetized, monetization_clicks, atw_tier
+  SELECT id, email, balance, withdrawal, phone, monetized, monetization_clicks, atw_tier
   INTO v_user
   FROM public.users
   WHERE LOWER(email) = v_email_clean
