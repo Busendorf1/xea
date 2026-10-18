@@ -3,6 +3,15 @@
     {
       "path": "/api/cron/database-cleanup",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/process-payouts",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-ledger",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
+

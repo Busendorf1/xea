@@ -15,8 +15,8 @@ const useTls = redisTls || (!!redisUrl && redisUrl.startsWith("rediss://"));
 
 const redisOptions: RedisOptions = {
   maxRetriesPerRequest: 2,
-  connectTimeout: 10000, // 10s for stable cloud TLS handshake (Upstash takes ~2.8s)
-  commandTimeout: 5000,
+  connectTimeout: 4000, // Fail fast on network/DNS timeout instead of freezing requests for 10s
+  commandTimeout: 2500,
   keepAlive: 15000,      // Keep TCP socket alive over NAT firewalls and idle connections
   autoResubscribe: true,
   enableOfflineQueue: false, // Handled via safe proxy below so offline calls fail fast without queuing
@@ -174,6 +174,12 @@ function createSafeRedisProxy(client: Redis): Redis {
             return null;
           }
 
+          // Never allow blocking O(N) KEYS command in production; transparently route to cursor-based SCAN
+          if (method === "keys") {
+            const pattern = String(args[0] || "*");
+            return scanKeys(pattern);
+          }
+
           // Redis is ready: execute command with protection against mid-flight disconnects
           try {
             return await orig.apply(target, args);
@@ -235,5 +241,54 @@ export const isRedisReady = (): boolean => {
   return !!rawClient && rawClient.status === "ready";
 };
 
+/**
+ * Non-blocking cursor-based SCAN replacement for Redis `KEYS`.
+ * Prevents O(N) global event-loop stalls at 100M+ scale.
+ */
+export async function scanKeys(pattern: string, maxKeys = 2000): Promise<string[]> {
+  if (!isRedisReady()) return [];
+  const collected: string[] = [];
+  let cursor = "0";
+  let iterations = 0;
+  const maxIterations = 50;
+
+  try {
+    do {
+      const res = await rawClient.scan(cursor, "MATCH", pattern, "COUNT", 250);
+      if (!res || !Array.isArray(res)) break;
+      cursor = String(res[0] || "0");
+      const batch = Array.isArray(res[1]) ? res[1] : [];
+      for (const k of batch) {
+        collected.push(k);
+        if (collected.length >= maxKeys) return collected;
+      }
+      iterations++;
+    } while (cursor !== "0" && iterations < maxIterations);
+  } catch {}
+
+  return collected;
+}
+
+/**
+ * Non-blocking pattern invalidation using cursor-based SCAN + UNLINK/DEL in chunks.
+ */
+export async function scanDeletePattern(pattern: string): Promise<number> {
+  if (!isRedisReady()) return 0;
+  const keys = await scanKeys(pattern, 2000);
+  if (keys.length === 0) return 0;
+
+  let deleted = 0;
+  const chunkSize = 200;
+  for (let i = 0; i < keys.length; i += chunkSize) {
+    const slice = keys.slice(i, i + chunkSize);
+    try {
+      const count = await redisConnection.del(...slice);
+      deleted += Number(count || 0);
+    } catch {}
+  }
+  return deleted;
+}
+
 export default redisConnection;
+
 

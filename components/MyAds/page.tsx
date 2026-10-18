@@ -3,9 +3,9 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { RotateCw } from "lucide-react";
+import { RotateCw, Search, Plus, ArrowUpDown, Megaphone, Sparkles } from "lucide-react";
 import { Ad, Session } from "./types";
-import { fetchUserCampaignsShared, clearUserCampaignsCache } from "@/lib/campaignsClient";
+import { fetchUserCampaignsShared, clearUserCampaignsCache, readUserCampaignsSyncCache } from "@/lib/campaignsClient";
 import CampaignKpiSummary from "./CampaignKpiSummary";
 import MyAdCard, { getCampaignDaysInfo } from "./MyAdCard";
 import CampaignBoosterModal from "./CampaignBoosterModal";
@@ -17,21 +17,31 @@ type MyAdsProps = {
   session: Session;
 };
 
+type FilterTab = "all" | "active" | "review" | "approved" | "paused" | "completed";
+type SortOption = "newest" | "views" | "clicks" | "bid";
+
 export default function MyAdsDashboard({ session }: MyAdsProps) {
-  const [reviewAds, setReviewAds] = useState<Ad[]>([]);
-  const [activeAds, setActiveAds] = useState<Ad[]>([]);
+  const [initialCached] = useState(() => readUserCampaignsSyncCache(session?.user?.email));
+
+  const [reviewAds, setReviewAds] = useState<Ad[]>(() => initialCached?.adsQueue || []);
+  const [activeAds, setActiveAds] = useState<Ad[]>(() => initialCached?.adsActive || []);
   const [activeAdsPage, setActiveAdsPage] = useState<number>(1);
   const [reviewAdsPage, setReviewAdsPage] = useState<number>(1);
   const ADS_PER_PAGE = 10;
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => !initialCached);
   const [error, setError] = useState(false);
   const [timeNow, setTimeNow] = useState(Date.now());
 
+  // Command Toolbar State (shadcn/ui Tabs + Search + Sort)
+  const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
+
   // Analytics & Health Metrics
-  const [reportsMap, setReportsMap] = useState<Record<string, number>>({});
-  const [dismissalsMap, setDismissalsMap] = useState<Record<string, number>>({});
-  const [advertiserBlockCount, setAdvertiserBlockCount] = useState<number>(0);
+  const [reportsMap, setReportsMap] = useState<Record<string, number>>(() => initialCached?.reportsMap || {});
+  const [dismissalsMap, setDismissalsMap] = useState<Record<string, number>>(() => initialCached?.dismissalsMap || {});
+  const [advertiserBlockCount, setAdvertiserBlockCount] = useState<number>(() => initialCached?.advertiserBlockCount || 0);
 
   // Expandable Specs Drawer State
   const [expandedSpecsMap, setExpandedSpecsMap] = useState<Record<string, boolean>>({});
@@ -41,76 +51,54 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   const [noticeModal, setNoticeModal] = useState<{ title: string; message: string; adId?: string } | null>(null);
   const [ratingAdId, setRatingAdId] = useState<string | null>(null);
   const [ratedAdIds, setRatedAdIds] = useState<Set<string>>(() => {
+    const initialSet = new Set<string>(Array.isArray(initialCached?.ratedAdIds) ? initialCached.ratedAdIds : []);
     if (typeof window !== "undefined") {
       try {
         const stored = localStorage.getItem("paayh_rated_ad_ids");
-        if (stored) return new Set(JSON.parse(stored));
+        if (stored) {
+          for (const id of JSON.parse(stored)) initialSet.add(id);
+        }
       } catch {}
     }
-    return new Set();
+    return initialSet;
   });
 
   const toggleSpecsDrawer = (adId: string) => {
     setExpandedSpecsMap((prev) => ({ ...prev, [adId]: !prev[adId] }));
   };
 
+  const hasCompletedCountdown = useMemo(
+    () => activeAds.some((ad) => !!ad.completed_at),
+    [activeAds]
+  );
+
   useEffect(() => {
+    if (!hasCompletedCountdown) return;
     const timer = setInterval(() => {
       setTimeNow(Date.now());
-    }, 10000); // 10s countdown updater
+    }, 30000);
     return () => clearInterval(timer);
-  }, []);
+  }, [hasCompletedCountdown]);
 
   const fetchAds = async (bypassCache: boolean = false) => {
     const email = session?.user?.email;
     if (!email) return;
 
-    const cacheKey = `my_ads_cache_${email.toLowerCase()}`;
-    const THIRTY_SECONDS = 30 * 1000;
-
-    if (!bypassCache && typeof window !== "undefined") {
-      try {
-        const cachedRaw = sessionStorage.getItem(cacheKey);
-        if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw);
-          if (cached && cached.timestamp && Date.now() - cached.timestamp < THIRTY_SECONDS) {
-            setReviewAds(cached.reviewAds || []);
-            setActiveAds(cached.activeAds || []);
-            setReportsMap(cached.reportsMap || {});
-            setDismissalsMap(cached.dismissalsMap || {});
-            setAdvertiserBlockCount(cached.advertiserBlockCount || 0);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (cacheErr) {
-        console.warn("sessionStorage cache read error:", cacheErr);
-      }
+    if (bypassCache) {
+      clearUserCampaignsCache(email);
     }
 
     try {
-      const [campaignsRes, analyticsRes] = await Promise.all([
-        fetchUserCampaignsShared(email, bypassCache),
-        fetch("/api/campaigns/analytics")
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-      ]);
-
+      const campaignsRes = await fetchUserCampaignsShared(email, bypassCache);
       if (!campaignsRes) {
         throw new Error("Failed to fetch campaigns");
       }
 
       const reviewData = campaignsRes.adsQueue || [];
       const activeData = campaignsRes.adsActive || [];
-      let reports = {};
-      let dismissals = {};
-      let blockCount = 0;
-
-      if (analyticsRes && analyticsRes.success) {
-        reports = analyticsRes.reportsMap || {};
-        dismissals = analyticsRes.dismissalsMap || {};
-        blockCount = analyticsRes.advertiserBlockCount || 0;
-      }
+      const reports = campaignsRes.reportsMap || {};
+      const dismissals = campaignsRes.dismissalsMap || {};
+      const blockCount = campaignsRes.advertiserBlockCount || 0;
 
       setReviewAds(reviewData);
       setActiveAds(activeData);
@@ -129,27 +117,12 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           return merged;
         });
       }
-
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.setItem(
-            cacheKey,
-            JSON.stringify({
-              timestamp: Date.now(),
-              reviewAds: reviewData,
-              activeAds: activeData,
-              reportsMap: reports,
-              dismissalsMap: dismissals,
-              advertiserBlockCount: blockCount,
-            })
-          );
-        } catch (e) {
-          console.warn("sessionStorage cache write error:", e);
-        }
-      }
+      setError(false);
     } catch (err) {
       console.error("Error in fetchAds:", err);
-      setError(true);
+      if (reviewAds.length === 0 && activeAds.length === 0) {
+        setError(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -408,10 +381,81 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     document.body.removeChild(link);
   };
 
-  const totalReviewPages = Math.max(1, Math.ceil(reviewAds.length / ADS_PER_PAGE));
+  // Helper to filter & sort a campaign array
+  const filterAndSortAds = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+
+    const matchesQuery = (ad: Ad) => {
+      if (!q) return true;
+      const industryStr = Array.isArray(ad.industry) ? ad.industry.join(" ") : String(ad.industry || "");
+      return (
+        (ad.ad_content || "").toLowerCase().includes(q) ||
+        (ad.id || "").toLowerCase().includes(q) ||
+        (ad.country || "").toLowerCase().includes(q) ||
+        (ad.state || "").toLowerCase().includes(q) ||
+        industryStr.toLowerCase().includes(q)
+      );
+    };
+
+    const getClicks = (ad: Ad) =>
+      (ad.clicks_phone || 0) +
+      (ad.clicks_whatsapp || 0) +
+      (ad.clicks_website || 0) +
+      (ad.clicks_email || 0) +
+      (ad.clicks_product_cta || 0);
+
+    const sortFn = (a: Ad, b: Ad) => {
+      if (sortBy === "views") return (b.impression_count || 0) - (a.impression_count || 0);
+      if (sortBy === "clicks") return getClicks(b) - getClicks(a);
+      if (sortBy === "bid") return Number(b.cost_per_impression || 25) - Number(a.cost_per_impression || 25);
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    };
+
+    const filteredReview = reviewAds.filter(matchesQuery).sort(sortFn);
+    const filteredActive = activeAds
+      .filter((ad) => {
+        if (!matchesQuery(ad)) return false;
+        const isComp = !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 1000);
+        if (activeTab === "paused") return !!ad.is_paused && !isComp;
+        if (activeTab === "completed") return isComp;
+        if (activeTab === "active") return !ad.is_paused && !isComp;
+        return true;
+      })
+      .sort(sortFn);
+
+    return { filteredReview, filteredActive };
+  }, [reviewAds, activeAds, searchQuery, sortBy, activeTab]);
+
+  const { filteredReview, filteredActive } = filterAndSortAds;
+
+  const pausedCount = useMemo(
+    () =>
+      activeAds.filter(
+        (ad) => !!ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 1000)
+      ).length,
+    [activeAds]
+  );
+
+  const completedCount = useMemo(
+    () =>
+      activeAds.filter(
+        (ad) => !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 1000)
+      ).length,
+    [activeAds]
+  );
+
+  const deliveringCount = useMemo(
+    () =>
+      activeAds.filter(
+        (ad) => !ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 1000)
+      ).length,
+    [activeAds]
+  );
+
+  const totalReviewPages = Math.max(1, Math.ceil(filteredReview.length / ADS_PER_PAGE));
   const safeReviewAdsPage = Math.min(Math.max(1, reviewAdsPage), totalReviewPages);
 
-  const totalActivePages = Math.max(1, Math.ceil(activeAds.length / ADS_PER_PAGE));
+  const totalActivePages = Math.max(1, Math.ceil(filteredActive.length / ADS_PER_PAGE));
   const safeActiveAdsPage = Math.min(Math.max(1, activeAdsPage), totalActivePages);
 
   const renderPageButtons = (
@@ -475,29 +519,50 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     [activeAds]
   );
 
+  const showReviewSection = activeTab === "all" || activeTab === "review";
+  const showActiveSection = activeTab !== "review";
+
   return (
     <div className={styles.feedContainer}>
+      {/* Top Executive Header */}
       <div className={styles.headerBar}>
-        <h2 className={styles.headerTitle}>My Ad Campaigns</h2>
-        <button
-          type="button"
-          onClick={() => fetchAds(true)}
-          className={styles.refreshAdsBtn}
-          title="Force-fetch latest ad campaigns and metrics from database"
-        >
-          <motion.span
-            animate={{ rotate: loading ? 360 : 0 }}
-            transition={{ repeat: loading ? Infinity : 0, duration: 1, ease: "linear" }}
-            style={{ display: "inline-flex" }}
-          >
-            <RotateCw size={13} />
-          </motion.span>
-          <span>Refresh Ads</span>
-        </button>
-      </div>
+        <div className={styles.headerTitleGroup}>
+          <h2 className={styles.headerTitle}>Campaign Manager</h2>
+          <p className={styles.headerSubtitle}>
+            Real-time delivery telemetry, audience targeting specs, and priority bidding controls.
+          </p>
+        </div>
 
-      {loading && <p className={styles.loading}>Loading ads…</p>}
-      {!loading && error && <p className={styles.error}>Error loading ads.</p>}
+        <div className={styles.headerActionsGroup}>
+          <button
+            type="button"
+            onClick={() => fetchAds(true)}
+            className={styles.refreshAdsBtn}
+            title="Force-fetch latest ad campaigns and metrics from database"
+          >
+            <motion.span
+              animate={{ rotate: loading ? 360 : 0 }}
+              transition={{ repeat: loading ? Infinity : 0, duration: 1, ease: "linear" }}
+              style={{ display: "inline-flex" }}
+            >
+              <RotateCw size={13} />
+            </motion.span>
+            <span>Refresh</span>
+          </button>
+
+          <Link
+            href="/logged-in"
+            className={styles.newCampaignBtn}
+            onClick={() => {
+              sessionStorage.setItem("paayh_active_tab", "adPage");
+              window.dispatchEvent(new Event("paayh_tab_change"));
+            }}
+          >
+            <Plus size={14} />
+            <span>New Campaign</span>
+          </Link>
+        </div>
+      </div>
 
       {/* Top KPI Header Summary Grid */}
       {!loading && (
@@ -510,130 +575,272 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         />
       )}
 
-      <h3 className={styles.subheading}>Ads in Review ({reviewAds.length})</h3>
-      {!loading && reviewAds.length === 0 && <p className={styles.noAds}>No ads in review.</p>}
-      <div className={styles.adGrid}>
-        {reviewAds
-          .slice((safeReviewAdsPage - 1) * ADS_PER_PAGE, safeReviewAdsPage * ADS_PER_PAGE)
-          .map((ad) => (
-            <MyAdCard
-              key={ad.id}
-              ad={ad}
-              status="review"
-              reportsCount={reportsMap[ad.id] || 0}
-              dismissalsCount={dismissalsMap[ad.id] || 0}
-              advertiserBlockCount={advertiserBlockCount}
-              isSpecsOpen={!!expandedSpecsMap[ad.id]}
-              onToggleSpecs={() => toggleSpecsDrawer(ad.id)}
-              onOpenBooster={(a) => setBoosterAd(a)}
-              onOpenRating={(id) => setRatingAdId(id)}
-              onTogglePause={handleTogglePause}
-              onShare={handleShare}
-              onEdit={handleEditAd}
-              onCancel={handleCancelAd}
-              onExportCsv={exportCampaignCsv}
-              onShowNotice={(title, message, adId) => setNoticeModal({ title, message, adId })}
-              ratedAdIds={ratedAdIds}
-              timeNow={timeNow}
+      {/* shadcn/ui Command Toolbar: Status Tabs + Search + Sort */}
+      <div className={styles.commandBar}>
+        <div className={styles.tabsList} role="tablist" aria-label="Filter campaigns by status">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "all"}
+            className={`${styles.tabTrigger} ${activeTab === "all" ? styles.tabTriggerActive : ""}`}
+            onClick={() => setActiveTab("all")}
+          >
+            All <span className={styles.tabCount}>{activeAds.length + reviewAds.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "active"}
+            className={`${styles.tabTrigger} ${activeTab === "active" ? styles.tabTriggerActive : ""}`}
+            onClick={() => setActiveTab("active")}
+          >
+            Active <span className={styles.tabCount}>{deliveringCount}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "review"}
+            className={`${styles.tabTrigger} ${activeTab === "review" ? styles.tabTriggerActive : ""}`}
+            onClick={() => setActiveTab("review")}
+          >
+            Pending <span className={styles.tabCount}>{reviewAds.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "approved"}
+            className={`${styles.tabTrigger} ${activeTab === "approved" ? styles.tabTriggerActive : ""}`}
+            onClick={() => setActiveTab("approved")}
+          >
+            Approved <span className={styles.tabCount}>{activeAds.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "paused"}
+            className={`${styles.tabTrigger} ${activeTab === "paused" ? styles.tabTriggerActive : ""}`}
+            onClick={() => setActiveTab("paused")}
+          >
+            Paused <span className={styles.tabCount}>{pausedCount}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "completed"}
+            className={`${styles.tabTrigger} ${activeTab === "completed" ? styles.tabTriggerActive : ""}`}
+            onClick={() => setActiveTab("completed")}
+          >
+            Completed <span className={styles.tabCount}>{completedCount}</span>
+          </button>
+        </div>
+
+        <div className={styles.commandControls}>
+          <div className={styles.searchBox}>
+            <Search size={14} className={styles.searchIcon} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setActiveAdsPage(1);
+                setReviewAdsPage(1);
+              }}
+              placeholder="Search copy, location, industry..."
+              className={styles.searchInput}
             />
-          ))}
-      </div>
-      {reviewAds.length > ADS_PER_PAGE && (
-        <div className={styles.paginationBar}>
-          <span className={styles.paginationInfo}>
-            Showing {(safeReviewAdsPage - 1) * ADS_PER_PAGE + 1}–
-            {Math.min(safeReviewAdsPage * ADS_PER_PAGE, reviewAds.length)} of {reviewAds.length} in review
-          </span>
-          <div className={styles.paginationControls}>
-            <button
-              className={styles.pageBtn}
-              onClick={() => setReviewAdsPage((p) => Math.max(1, p - 1))}
-              disabled={safeReviewAdsPage <= 1}
+          </div>
+
+          <div className={styles.sortWrapper}>
+            <ArrowUpDown size={13} className={styles.sortIcon} />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className={styles.sortSelect}
+              aria-label="Sort campaigns"
             >
-              Prev
-            </button>
-            {renderPageButtons(safeReviewAdsPage, totalReviewPages, setReviewAdsPage)}
-            <button
-              className={styles.pageBtn}
-              onClick={() => setReviewAdsPage((p) => Math.min(totalReviewPages, p + 1))}
-              disabled={safeReviewAdsPage >= totalReviewPages}
-            >
-              Next
-            </button>
+              <option value="newest">Sort: Newest First</option>
+              <option value="views">Sort: Most Views</option>
+              <option value="clicks">Sort: Most Clicks</option>
+              <option value="bid">Sort: Highest Bid (CPI)</option>
+            </select>
           </div>
         </div>
+      </div>
+
+      {loading && <div className={styles.loading}>Loading campaigns & telemetry…</div>}
+      {!loading && error && <div className={styles.error}>Unable to load campaigns. Please click Refresh.</div>}
+
+      {/* Review Queue Section */}
+      {!loading && showReviewSection && (filteredReview.length > 0 || activeTab === "review") && (
+        <section className={styles.sectionBlock}>
+          <div className={styles.sectionHeaderRow}>
+            <h3 className={styles.subheading}>Moderation & Review Queue</h3>
+            <span className={styles.sectionCountBadge}>{filteredReview.length} pending</span>
+          </div>
+
+          {filteredReview.length === 0 ? (
+            <div className={styles.emptyStateCard}>
+              <Sparkles size={22} className={styles.emptyStateIcon} />
+              <p className={styles.emptyStateTitle}>No campaigns waiting in review</p>
+              <p className={styles.emptyStateSub}>All submitted ads have been processed.</p>
+            </div>
+          ) : (
+            <>
+              <div className={styles.adGrid}>
+                {filteredReview
+                  .slice((safeReviewAdsPage - 1) * ADS_PER_PAGE, safeReviewAdsPage * ADS_PER_PAGE)
+                  .map((ad) => (
+                    <MyAdCard
+                      key={ad.id}
+                      ad={ad}
+                      status="review"
+                      reportsCount={reportsMap[ad.id] || 0}
+                      dismissalsCount={dismissalsMap[ad.id] || 0}
+                      advertiserBlockCount={advertiserBlockCount}
+                      isSpecsOpen={!!expandedSpecsMap[ad.id]}
+                      onToggleSpecs={() => toggleSpecsDrawer(ad.id)}
+                      onOpenBooster={(a) => setBoosterAd(a)}
+                      onOpenRating={(id) => setRatingAdId(id)}
+                      onTogglePause={handleTogglePause}
+                      onShare={handleShare}
+                      onEdit={handleEditAd}
+                      onCancel={handleCancelAd}
+                      onExportCsv={exportCampaignCsv}
+                      onShowNotice={(title, message, adId) => setNoticeModal({ title, message, adId })}
+                      ratedAdIds={ratedAdIds}
+                      timeNow={timeNow}
+                    />
+                  ))}
+              </div>
+              {filteredReview.length > ADS_PER_PAGE && (
+                <div className={styles.paginationBar}>
+                  <span className={styles.paginationInfo}>
+                    Showing {(safeReviewAdsPage - 1) * ADS_PER_PAGE + 1}–
+                    {Math.min(safeReviewAdsPage * ADS_PER_PAGE, filteredReview.length)} of {filteredReview.length} in review
+                  </span>
+                  <div className={styles.paginationControls}>
+                    <button
+                      className={styles.pageBtn}
+                      onClick={() => setReviewAdsPage((p) => Math.max(1, p - 1))}
+                      disabled={safeReviewAdsPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    {renderPageButtons(safeReviewAdsPage, totalReviewPages, setReviewAdsPage)}
+                    <button
+                      className={styles.pageBtn}
+                      onClick={() => setReviewAdsPage((p) => Math.min(totalReviewPages, p + 1))}
+                      disabled={safeReviewAdsPage >= totalReviewPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
       )}
 
-      <h3 className={styles.subheading}>Active Ads ({activeAds.length})</h3>
-      {!loading && activeAds.length === 0 ? (
-        <>
-          <p className={styles.noAds}>You do not have any active ads. Post one now!</p>
-          <div className={styles.postButtonContainer}>
-            <Link
-              href="/logged-in"
-              onClick={() => {
-                sessionStorage.setItem("paayh_active_tab", "adPage");
-                window.dispatchEvent(new Event("paayh_tab_change"));
-              }}
-            >
-              <button className={styles.postButton}>Post an Ad</button>
-            </Link>
+      {/* Active / Paused / Completed Section */}
+      {!loading && showActiveSection && (
+        <section className={styles.sectionBlock}>
+          <div className={styles.sectionHeaderRow}>
+            <h3 className={styles.subheading}>
+              {activeTab === "paused"
+                ? "Paused Campaigns"
+                : activeTab === "completed"
+                ? "Completed Campaigns"
+                : "Active & Approved Campaigns"}
+            </h3>
+            <span className={styles.sectionCountBadge}>{filteredActive.length} campaigns</span>
           </div>
-        </>
-      ) : (
-        <>
-          <div className={styles.adGrid}>
-            {activeAds
-              .slice((safeActiveAdsPage - 1) * ADS_PER_PAGE, safeActiveAdsPage * ADS_PER_PAGE)
-              .map((ad) => (
-                <MyAdCard
-                  key={ad.id}
-                  ad={ad}
-                  status="active"
-                  reportsCount={reportsMap[ad.id] || 0}
-                  dismissalsCount={dismissalsMap[ad.id] || 0}
-                  advertiserBlockCount={advertiserBlockCount}
-                  isSpecsOpen={!!expandedSpecsMap[ad.id]}
-                  onToggleSpecs={() => toggleSpecsDrawer(ad.id)}
-                  onOpenBooster={(a) => setBoosterAd(a)}
-                  onOpenRating={(id) => setRatingAdId(id)}
-                  onTogglePause={handleTogglePause}
-                  onShare={handleShare}
-                  onEdit={handleEditAd}
-                  onCancel={handleCancelAd}
-                  onExportCsv={exportCampaignCsv}
-                  onShowNotice={(title, message, adId) => setNoticeModal({ title, message, adId })}
-                  ratedAdIds={ratedAdIds}
-                  timeNow={timeNow}
-                />
-              ))}
-          </div>
-          {activeAds.length > ADS_PER_PAGE && (
-            <div className={styles.paginationBar}>
-              <span className={styles.paginationInfo}>
-                Showing {(safeActiveAdsPage - 1) * ADS_PER_PAGE + 1}–
-                {Math.min(safeActiveAdsPage * ADS_PER_PAGE, activeAds.length)} of {activeAds.length} active
-              </span>
-              <div className={styles.paginationControls}>
-                <button
-                  className={styles.pageBtn}
-                  onClick={() => setActiveAdsPage((p) => Math.max(1, p - 1))}
-                  disabled={safeActiveAdsPage <= 1}
+
+          {filteredActive.length === 0 ? (
+            <div className={styles.emptyStateCard}>
+              <Megaphone size={24} className={styles.emptyStateIcon} />
+              <p className={styles.emptyStateTitle}>
+                {searchQuery
+                  ? "No campaigns match your search filter"
+                  : activeTab === "paused"
+                  ? "No paused campaigns"
+                  : activeTab === "completed"
+                  ? "No completed campaigns in the 48h archive window"
+                  : "No active campaigns running right now"}
+              </p>
+              <p className={styles.emptyStateSub}>
+                Launch a targeted campaign to reach verified audiences across the feed.
+              </p>
+              <div className={styles.postButtonContainer}>
+                <Link
+                  href="/logged-in"
+                  onClick={() => {
+                    sessionStorage.setItem("paayh_active_tab", "adPage");
+                    window.dispatchEvent(new Event("paayh_tab_change"));
+                  }}
                 >
-                  Prev
-                </button>
-                {renderPageButtons(safeActiveAdsPage, totalActivePages, setActiveAdsPage)}
-                <button
-                  className={styles.pageBtn}
-                  onClick={() => setActiveAdsPage((p) => Math.min(totalActivePages, p + 1))}
-                  disabled={safeActiveAdsPage >= totalActivePages}
-                >
-                  Next
-                </button>
+                  <button className={styles.postButton}>
+                    <Plus size={14} /> Create New Campaign
+                  </button>
+                </Link>
               </div>
             </div>
+          ) : (
+            <>
+              <div className={styles.adGrid}>
+                {filteredActive
+                  .slice((safeActiveAdsPage - 1) * ADS_PER_PAGE, safeActiveAdsPage * ADS_PER_PAGE)
+                  .map((ad) => (
+                    <MyAdCard
+                      key={ad.id}
+                      ad={ad}
+                      status="active"
+                      reportsCount={reportsMap[ad.id] || 0}
+                      dismissalsCount={dismissalsMap[ad.id] || 0}
+                      advertiserBlockCount={advertiserBlockCount}
+                      isSpecsOpen={!!expandedSpecsMap[ad.id]}
+                      onToggleSpecs={() => toggleSpecsDrawer(ad.id)}
+                      onOpenBooster={(a) => setBoosterAd(a)}
+                      onOpenRating={(id) => setRatingAdId(id)}
+                      onTogglePause={handleTogglePause}
+                      onShare={handleShare}
+                      onEdit={handleEditAd}
+                      onCancel={handleCancelAd}
+                      onExportCsv={exportCampaignCsv}
+                      onShowNotice={(title, message, adId) => setNoticeModal({ title, message, adId })}
+                      ratedAdIds={ratedAdIds}
+                      timeNow={timeNow}
+                    />
+                  ))}
+              </div>
+              {filteredActive.length > ADS_PER_PAGE && (
+                <div className={styles.paginationBar}>
+                  <span className={styles.paginationInfo}>
+                    Showing {(safeActiveAdsPage - 1) * ADS_PER_PAGE + 1}–
+                    {Math.min(safeActiveAdsPage * ADS_PER_PAGE, filteredActive.length)} of {filteredActive.length} campaigns
+                  </span>
+                  <div className={styles.paginationControls}>
+                    <button
+                      className={styles.pageBtn}
+                      onClick={() => setActiveAdsPage((p) => Math.max(1, p - 1))}
+                      disabled={safeActiveAdsPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    {renderPageButtons(safeActiveAdsPage, totalActivePages, setActiveAdsPage)}
+                    <button
+                      className={styles.pageBtn}
+                      onClick={() => setActiveAdsPage((p) => Math.min(totalActivePages, p + 1))}
+                      disabled={safeActiveAdsPage >= totalActivePages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
-        </>
+        </section>
       )}
 
       {/* Top-Up Booster Modal */}

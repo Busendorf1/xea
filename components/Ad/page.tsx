@@ -140,21 +140,24 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     } catch {}
   }, [editingId]);
 
-  // Autosave draft state on changes
+  // Autosave draft state on changes (debounced 400ms to prevent main-thread INP jank on keystrokes)
   useEffect(() => {
     if (editingId) return;
-    try {
-      const { adMediaFiles, ...restSelections } = formSelections;
-      const draft = {
-        step,
-        adType,
-        isBiddingEnabled,
-        bidPrice,
-        isAiContent,
-        formSelections: restSelections,
-      };
-      localStorage.setItem("paayh_draft_ad_v1", JSON.stringify(draft));
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        const { adMediaFiles, ...restSelections } = formSelections;
+        const draft = {
+          step,
+          adType,
+          isBiddingEnabled,
+          bidPrice,
+          isAiContent,
+          formSelections: restSelections,
+        };
+        localStorage.setItem("paayh_draft_ad_v1", JSON.stringify(draft));
+      } catch {}
+    }, 400);
+    return () => clearTimeout(timer);
   }, [step, adType, isBiddingEnabled, bidPrice, isAiContent, formSelections, editingId]);
 
   const loadAdForEdit = async (targetId: string) => {
@@ -348,8 +351,22 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   useEffect(() => {
     let isMounted = true;
+    const CACHE_KEY = "paayh_active_subscribers_v1";
+    const FIVE_MINS = 5 * 60 * 1000;
+
     const fetchActiveSubscribers = async () => {
       try {
+        if (typeof window !== "undefined") {
+          const cachedRaw = sessionStorage.getItem(CACHE_KEY);
+          if (cachedRaw) {
+            const parsed = JSON.parse(cachedRaw);
+            if (parsed?.ts && Date.now() - parsed.ts < FIVE_MINS && Array.isArray(parsed.domains)) {
+              if (isMounted) setActiveSubscribers(parsed.domains);
+              return;
+            }
+          }
+        }
+
         const res = await fetch("/api/business/subscribe");
         if (res.ok) {
           const data = await res.json();
@@ -358,7 +375,13 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               .filter((s: any) => s.status === "active" && (s.payment_status === "paid" || s.domain === "baggyt.com"))
               .map((s: any) => s.domain.toLowerCase().trim())
               .filter(Boolean);
-            setActiveSubscribers(Array.from(new Set(["baggyt.com", ...domains])));
+            const deduped = Array.from(new Set(["baggyt.com", ...domains]));
+            setActiveSubscribers(deduped);
+            if (typeof window !== "undefined") {
+              try {
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), domains: deduped }));
+              } catch {}
+            }
           }
         }
       } catch (e) {}
@@ -451,6 +474,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     } else {
       const result = adCreativeSchema.safeParse({
         adContent: formSelections.adContent,
+        adMediaType: formSelections.adMediaType,
         actionDetails: formSelections.actionDetails,
         adActionButtons: formSelections.adActionButtons,
       });

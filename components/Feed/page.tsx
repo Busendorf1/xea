@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import styles from "../Feed/page.module.css";
+import adCardStyles from "../ui/AdCard.module.css";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import AdCard, { type Ad } from "../ui/AdCard";
 import Skeleton from "../ui/Skeleton";
@@ -17,13 +18,41 @@ interface FeedProps {
   initialProfile?: InitialProfileInput;
   initialAds?: Ad[];
   initialProfiles?: Record<string, any>;
+  initialHighlights?: any[];
   onEarnSuccess?: (earnedAmount?: number, newBalance?: number, newClicks?: number) => void;
   onMutualSuccess?: () => void;
 }
 
-const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSuccess, onMutualSuccess }: FeedProps) => {
-  const [ads, setAds] = useState<Ad[]>(initialAds || []);
-  const [loading, setLoading] = useState(!initialAds || initialAds.length === 0);
+function readFeedClientCache(email?: string): { ads: Ad[]; profiles: Record<string, any> } | null {
+  if (typeof window === "undefined" || !email) return null;
+  try {
+    const raw = sessionStorage.getItem(`paayh_feed_cache_${email.toLowerCase().trim()}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.ads) && parsed.ads.length > 0) {
+      return {
+        ads: parsed.ads,
+        profiles: parsed.profiles || {},
+      };
+    }
+  } catch {}
+  return null;
+}
+
+const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialHighlights, onEarnSuccess, onMutualSuccess }: FeedProps) => {
+  const [clientCache] = useState(() =>
+    !initialAds || initialAds.length === 0 ? readFeedClientCache(userEmail) : null
+  );
+
+  const [ads, setAds] = useState<Ad[]>(() => {
+    if (initialAds && initialAds.length > 0) return initialAds;
+    return clientCache?.ads || [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (initialAds && initialAds.length > 0) return false;
+    if (clientCache?.ads && clientCache.ads.length > 0) return false;
+    return true;
+  });
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -45,8 +74,34 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         gender?: string;
       }
     >
-  >(initialProfiles || {});
+  >(() => {
+    if (initialProfiles && Object.keys(initialProfiles).length > 0) return initialProfiles;
+    return clientCache?.profiles || {};
+  });
   const [isMobile, setIsMobile] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAdsRef = useRef<boolean>(ads.length > 0);
+  hasAdsRef.current = ads.length > 0;
+
+  useEffect(() => {
+    const handleGlobalToast = (e: Event) => {
+      const customEvt = e as CustomEvent<{ message?: string }>;
+      const msg = customEvt?.detail?.message;
+      if (msg) {
+        setToastMessage(msg);
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = setTimeout(() => {
+          setToastMessage((current) => (current === msg ? null : current));
+        }, 2400);
+      }
+    };
+    window.addEventListener("xea:toast", handleGlobalToast);
+    return () => {
+      window.removeEventListener("xea:toast", handleGlobalToast);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // 1. Hook: Viewer Profile state & balance management
   const {
@@ -58,12 +113,13 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     suspendAccount,
   } = useViewerProfile(userEmail, initialProfile);
 
-  // 2. Hook: Boosted Highlights management & feed interleaving
+  // 2. Hook: Boosted Highlights management & feed interleaving (pre-hydrated on SSR)
   const {
     highlights,
+    hasFetched: highlightsFetched,
     fetchHighlights,
     buildDisplayFeed,
-  } = useFeedHighlights(isMobile);
+  } = useFeedHighlights(isMobile, initialHighlights);
 
   // 3. Hook: Feed Interaction Handlers (Earn, Mutual, Seen, Share)
   const {
@@ -86,9 +142,14 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     onMutualSuccess,
   });
 
-  // 4. Hook: Real-Time Live Feed Updates (Tier-1 Signal PubSub)
-  const { pendingCount, clearPending } = useLiveFeedUpdates({
+  const existingAdIds = useMemo(() => ads.map((a) => String(a.id)), [ads]);
+
+  // 4. Hook: Real-Time Webhook SSE & Realtime Feed Updates
+  const { pendingCount, clearPending, consumePendingAds } = useLiveFeedUpdates({
     userInterests: viewerProfile?.interest || initialProfile?.interest,
+    userEmail,
+    viewerProfile: (viewerProfile || initialProfile) as any,
+    existingAdIds,
   });
 
   // Sync window size state
@@ -101,9 +162,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Fetch highlights when mobile or profile interests change
+  // Fetch highlights when mobile if not already SSR-hydrated
   useEffect(() => {
-    if (userEmail && isMobile && highlights.length === 0) {
+    if (userEmail && isMobile && !highlightsFetched && highlights.length === 0) {
       const rawInterest = viewerProfile?.interest || initialProfile?.interest;
       const parsedInterests = Array.isArray(rawInterest)
         ? rawInterest
@@ -114,17 +175,21 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         fetchHighlights(parsedInterests);
       }
     }
-  }, [userEmail, isMobile, highlights.length, viewerProfile?.interest, initialProfile?.interest, fetchHighlights]);
+  }, [userEmail, isMobile, highlightsFetched, highlights.length, viewerProfile?.interest, initialProfile?.interest, fetchHighlights]);
 
   // Paginated Feed Fetcher
   const fetchRelevantAds = useCallback(
-    async (pageNum: number, isLoadMore = false) => {
+    async (pageNum: number, isLoadMore = false, isSilentRefresh = false) => {
       if (isLoadMore) {
         setLoadingMore(true);
       } else {
-        setLoading(true);
+        if (!isSilentRefresh && !hasAdsRef.current) {
+          setLoading(true);
+        }
         setPage(0);
-        setSeenAds([]);
+        if (!isSilentRefresh) {
+          setSeenAds([]);
+        }
       }
       setError(false);
 
@@ -153,7 +218,6 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         let response = await fetch(fetchUrl, { headers });
 
         // Resilient progressive retry for initial feed load (e.g. serverless cold starts)
-        // CRITICAL: Never pass &refresh=true on retry, as that actively destroys the Redis cache being warmed in background.
         if (!response.ok && pageNum === 0 && !isLoadMore) {
           console.warn("⚠️ Feed initial fetch non-OK status:", response.status, "- Retrying with warm cache...");
           await new Promise((r) => setTimeout(r, 1000));
@@ -173,19 +237,46 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
         const profilesMap = data.profiles || {};
 
         if (Object.keys(profilesMap).length > 0) {
-          setAdvertiserProfiles((prev) => ({ ...prev, ...profilesMap }));
+          setAdvertiserProfiles((prev) => {
+            const merged = { ...prev, ...profilesMap };
+            if (!isLoadMore && typeof window !== "undefined" && userEmail && feedAds.length > 0) {
+              try {
+                sessionStorage.setItem(
+                  `paayh_feed_cache_${userEmail.toLowerCase().trim()}`,
+                  JSON.stringify({ ads: feedAds.slice(0, 15), profiles: merged, timestamp: Date.now() })
+                );
+              } catch {}
+            }
+            return merged;
+          });
+        } else if (!isLoadMore && typeof window !== "undefined" && userEmail && feedAds.length > 0) {
+          try {
+            sessionStorage.setItem(
+              `paayh_feed_cache_${userEmail.toLowerCase().trim()}`,
+              JSON.stringify({ ads: feedAds.slice(0, 15), profiles: {}, timestamp: Date.now() })
+            );
+          } catch {}
         }
 
         setHasMore(feedAds.length >= LIMIT);
         setAds((prev) => {
-          if (!isLoadMore) return feedAds;
+          if (!isLoadMore) {
+            if (isSilentRefresh && prev.length > 0) {
+              const incomingIds = new Set(feedAds.map((a) => a.id));
+              const remainingExisting = prev.filter((a) => !incomingIds.has(a.id));
+              return [...feedAds, ...remainingExisting];
+            }
+            return feedAds;
+          }
           const existingIds = new Set(prev.map((a) => a.id));
           const newUnique = feedAds.filter((a) => !existingIds.has(a.id));
           return [...prev, ...newUnique];
         });
       } catch (err) {
         console.error("❌ Error loading feed:", err);
-        setError(true);
+        if (!hasAdsRef.current) {
+          setError(true);
+        }
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -194,11 +285,29 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
     [userEmail, setSeenAds]
   );
 
+  // Persist SSR-preloaded initialAds into sessionStorage so subsequent tab switches are 0ms
+  useEffect(() => {
+    if (initialAds && initialAds.length > 0 && typeof window !== "undefined" && userEmail) {
+      try {
+        sessionStorage.setItem(
+          `paayh_feed_cache_${userEmail.toLowerCase().trim()}`,
+          JSON.stringify({
+            ads: initialAds.slice(0, 15),
+            profiles: initialProfiles || {},
+            timestamp: Date.now(),
+          })
+        );
+      } catch {}
+    }
+  }, [initialAds, initialProfiles, userEmail]);
+
   useEffect(() => {
     if (!initialAds || initialAds.length === 0) {
-      fetchRelevantAds(0, false);
+      // If we hydrated synchronously from sessionStorage, revalidate silently in the background without spinner
+      const hasWarmClientCache = Boolean(clientCache?.ads && clientCache.ads.length > 0);
+      fetchRelevantAds(0, false, hasWarmClientCache);
     }
-  }, [fetchRelevantAds, initialAds]);
+  }, [fetchRelevantAds, initialAds, clientCache]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore) return;
@@ -242,16 +351,38 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
   }, [virtualItems, hasMore, loadingMore, loading, displayFeed.length, loadMore]);
 
   const handlePillClick = useCallback(() => {
+    const { ads: droppedAds, profiles: droppedProfiles } = consumePendingAds();
     clearPending();
+
     const scrollEl = parentRef.current?.parentElement || (typeof window !== "undefined" ? window : null);
     if (scrollEl && "scrollTo" in scrollEl) {
       scrollEl.scrollTo({ top: 0, behavior: "smooth" });
     }
+
+    if (droppedAds.length > 0) {
+      if (Object.keys(droppedProfiles).length > 0) {
+        setAdvertiserProfiles((prev) => ({ ...prev, ...(droppedProfiles as any) }));
+      }
+      setAds((prev) => {
+        const existingIds = new Set(prev.map((a) => a.id));
+        const uniqueDropped = droppedAds.filter((a) => !existingIds.has(a.id)) as unknown as Ad[];
+        return [...uniqueDropped, ...prev];
+      });
+      // If any dropped ad came via Supabase Realtime fallback without an HMAC token, silently hydrate in background
+      if (droppedAds.some((a) => !a.verification_token && !(a as any)._token)) {
+        if (typeof window !== "undefined") {
+          (window as any).__xea_force_refresh = true;
+        }
+        fetchRelevantAds(0, false, true);
+      }
+      return;
+    }
+
     if (typeof window !== "undefined") {
       (window as any).__xea_force_refresh = true;
     }
-    fetchRelevantAds(0, false);
-  }, [clearPending, fetchRelevantAds]);
+    fetchRelevantAds(0, false, true);
+  }, [consumePendingAds, clearPending, fetchRelevantAds]);
 
   // Drag Pull-to-Refresh
   const [pullDistance, setPullDistance] = useState(0);
@@ -307,7 +438,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
           if (typeof window !== "undefined") {
             (window as any).__xea_force_refresh = true;
           }
-          fetchRelevantAds(0, false).finally(() => {
+          fetchRelevantAds(0, false, true).finally(() => {
             setIsPullRefreshing(false);
             setPullDistance(0);
           });
@@ -429,6 +560,12 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, onEarnSu
       {loadingMore && (
         <div className={styles.loadMoreContainer}>
           <span className={styles.loadingSpinner}></span>
+        </div>
+      )}
+
+      {toastMessage && (
+        <div className={adCardStyles.toastHud} role="status" aria-live="polite">
+          {toastMessage}
         </div>
       )}
     </div>

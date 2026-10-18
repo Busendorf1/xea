@@ -9,15 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    let email = await getAuthenticatedEmail(req);
-
-    // Resilient fallback for mobile app
-    if (!email) {
-      const mobileEmail = req.headers.get("x-user-email") || url.searchParams.get("email");
-      if (mobileEmail && mobileEmail.includes("@")) {
-        email = mobileEmail.toLowerCase().trim();
-      }
-    }
+    const email = await getAuthenticatedEmail(req);
 
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

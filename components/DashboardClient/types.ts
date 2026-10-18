@@ -27,7 +27,6 @@ export interface UserProfile {
   mutual_count: number;
   balance: number;
   withdrawal: number;
-  bvn_hash?: string | null;
   monetization_clicks?: number;
   referral_code?: string | null;
   referral_downloads_count?: number;

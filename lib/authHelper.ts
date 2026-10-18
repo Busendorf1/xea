@@ -35,9 +35,18 @@ async function isEmailDeactivated(email: string): Promise<boolean> {
   return false;
 }
 
+import crypto from "crypto";
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 /**
- * Secure helper to fetch email from Auth0 access token (mobile Bearer)
+ * Secure helper to fetch email from Auth0 access/ID token (mobile Bearer)
  * or fallback to cookie session (web client).
+ *
+ * SECURITY: Never trusts raw `x-user-email` headers unless explicitly running
+ * in a non-production test harness with ALLOW_UNVERIFIED_MOBILE_HEADER=true.
  */
 export async function getAuthenticatedEmail(
   req: NextRequest,
@@ -45,90 +54,113 @@ export async function getAuthenticatedEmail(
 ): Promise<string | null> {
   const authHeader = req.headers.get("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.substring(7);
-    
-    // 1. Check in-memory cache to resolve instantly
-    const cached = tokenCache.get(token);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.email;
-    }
-
-    console.log("🔑 Next.js Server: Verifying mobile Auth0 access token...");
-    let email: string | undefined = undefined;
-    let expiresAt = Date.now() + 3600000; // default 1 hour
-
-    try {
-      // 2. Try local cryptographic verification of signature using JWKS
-      const { payload } = await jwtVerify(token, JWKS, {
-        issuer: `https://${cleanDomain}/`,
-      });
-
-      // Extract email if present directly in token claims
-      email = (payload["https://xea.app/email"] || payload.email) as string | undefined;
-      if (payload.exp) {
-        expiresAt = payload.exp * 1000;
+    const token = authHeader.substring(7).trim();
+    if (token) {
+      // 1. Check L1 in-memory cache to resolve in <0.1ms
+      const cached = tokenCache.get(token);
+      if (cached && cached.expiresAt > Date.now()) {
+        if (await isEmailDeactivated(cached.email)) {
+          return null;
+        }
+        return cached.email;
       }
-      console.log("✅ Next.js Server: Local JWT signature verified successfully.");
-    } catch (err: unknown) {
-      console.warn("⚠️ Next.js Server: Local JWT verification failed, falling back to Auth0 userinfo fetch:", (err as Error)?.message);
-    }
 
-    // 3. Fallback to /userinfo fetch with Abort timeout and retries (resilience to flaky hotspot networks)
-    if (!email) {
-      const attempts = 3;
-      for (let i = 0; i < attempts; i++) {
-        try {
-          console.log(`📡 Next.js Server: Fetching email from Auth0 userinfo (Attempt ${i + 1}/${attempts})...`);
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 seconds timeout
-
-          const res = await fetch(`https://${cleanDomain}/userinfo`, {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-
-          if (res.ok) {
-            const userInfo = await res.json();
-            email = userInfo.email;
-            break;
-          } else {
-            const errText = await res.text();
-            console.warn("❌ Next.js Server: Auth0 userinfo request failed:", errText);
+      // 1b. Check L2 Redis cache across serverless instances to avoid Auth0 /userinfo rate limits
+      const tokenDigest = hashToken(token);
+      const redisTokenKey = `auth:bearer:${tokenDigest}`;
+      try {
+        const { default: redisConnection, isRedisReady } = await import("./redis");
+        if (isRedisReady()) {
+          const redisEmail = await redisConnection.get(redisTokenKey);
+          if (redisEmail && redisEmail.includes("@")) {
+            const normalizedRedisEmail = redisEmail.toLowerCase().trim();
+            tokenCache.set(token, { email: normalizedRedisEmail, expiresAt: Date.now() + 900_000 });
+            if (await isEmailDeactivated(normalizedRedisEmail)) {
+              return null;
+            }
+            return normalizedRedisEmail;
           }
-        } catch (fetchErr: unknown) {
-          console.warn(`⚠️ Next.js Server: Auth0 userinfo fetch attempt ${i + 1} failed:`, (fetchErr as Error)?.message || fetchErr);
-          if (i < attempts - 1) {
-            await new Promise((r) => setTimeout(r, 800)); // wait 800ms before retrying
+        }
+      } catch {}
+
+      let email: string | undefined = undefined;
+      let expiresAt = Date.now() + 3600000; // default 1 hour
+
+      try {
+        // 2. Local cryptographic verification of RS256 signature using Auth0 JWKS
+        const { payload } = await jwtVerify(token, JWKS, {
+          issuer: `https://${cleanDomain}/`,
+        });
+
+        email = (payload["https://xea.app/email"] || payload.email) as string | undefined;
+        if (payload.exp) {
+          expiresAt = payload.exp * 1000;
+        }
+      } catch {
+        // Opaque access token: proceed to Auth0 /userinfo verification
+      }
+
+      // 3. Fallback to /userinfo fetch with Abort timeout and retries
+      if (!email) {
+        const attempts = 3;
+        for (let i = 0; i < attempts; i++) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+            const res = await fetch(`https://${cleanDomain}/userinfo`, {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+              const userInfo = await res.json();
+              email = userInfo.email;
+              break;
+            } else if (res.status === 401 || res.status === 403) {
+              // Invalid or expired token; do not retry
+              break;
+            }
+          } catch {
+            if (i < attempts - 1) {
+              await new Promise((r) => setTimeout(r, 500));
+            }
           }
         }
       }
-    }
 
-    if (email) {
-      const normalizedEmail = email.toLowerCase().trim();
-      // Bound cache to prevent memory leaks in serverless/Node instances
-      if (tokenCache.size >= MAX_CACHE_SIZE) {
-        cleanExpiredTokens();
+      if (email) {
+        const normalizedEmail = email.toLowerCase().trim();
         if (tokenCache.size >= MAX_CACHE_SIZE) {
-          const firstKey = tokenCache.keys().next().value;
-          if (firstKey) tokenCache.delete(firstKey);
+          cleanExpiredTokens();
+          if (tokenCache.size >= MAX_CACHE_SIZE) {
+            const firstKey = tokenCache.keys().next().value;
+            if (firstKey) tokenCache.delete(firstKey);
+          }
         }
+        tokenCache.set(token, { email: normalizedEmail, expiresAt });
+
+        try {
+          const { default: redisConnection, isRedisReady } = await import("./redis");
+          if (isRedisReady()) {
+            const ttlSeconds = Math.max(60, Math.min(3600, Math.floor((expiresAt - Date.now()) / 1000)));
+            await redisConnection.set(redisTokenKey, normalizedEmail, "EX", ttlSeconds);
+          }
+        } catch {}
+
+        if (await isEmailDeactivated(normalizedEmail)) {
+          return null;
+        }
+        return normalizedEmail;
       }
-      tokenCache.set(token, { email: normalizedEmail, expiresAt });
-      
-      // Instant Tombstone Guard: Immediately deny deactivated accounts
-      if (await isEmailDeactivated(normalizedEmail)) {
-        return null;
-      }
-      return normalizedEmail;
     }
   }
 
   // 4. Resolve Web Cookie Session (passing req first for Route Handlers, then fallback)
   let resolvedCookieEmail: string | null = null;
   try {
-    const sessionWithReq = await (auth0 as any).getSession(req);
+    const sessionWithReq = await (auth0 as unknown as { getSession: (r?: NextRequest) => Promise<{ user?: { email?: string } } | null> }).getSession(req);
     if (sessionWithReq?.user?.email) {
       resolvedCookieEmail = sessionWithReq.user.email.toLowerCase().trim();
     }
@@ -150,10 +182,14 @@ export async function getAuthenticatedEmail(
     return resolvedCookieEmail;
   }
 
-  // 5. Mobile Client Fallback (x-user-email header)
-  if (options?.allowMobileHeader !== false) {
+  // 5. Explicitly gated non-production test harness fallback ONLY
+  if (
+    options?.allowMobileHeader === true &&
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_UNVERIFIED_MOBILE_HEADER === "true"
+  ) {
     const mobileHeader = req.headers.get("x-user-email");
-    if (mobileHeader && mobileHeader.includes("@")) {
+    if (mobileHeader && mobileHeader.includes("@") && mobileHeader.length <= 254) {
       const normalizedMobile = mobileHeader.toLowerCase().trim();
       if (await isEmailDeactivated(normalizedMobile)) {
         return null;

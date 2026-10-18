@@ -18,7 +18,15 @@ export async function POST(req: NextRequest) {
     const timestampHeader = req.headers.get("x-xea-timestamp");
     const nonceHeader = req.headers.get("x-xea-nonce");
 
-    const webhookSecret = process.env.WEBHOOK_SECRET_KEY || process.env.AUTH0_SECRET || "xea-secure-webhook-secret";
+    const webhookSecret =
+      process.env.WEBHOOK_SECRET_KEY ||
+      process.env.AUTH0_SECRET ||
+      (process.env.NODE_ENV === "production" ? "" : "xea-secure-webhook-secret");
+
+    if (!webhookSecret) {
+      console.error("❌ CRITICAL: WEBHOOK_SECRET_KEY is not configured in production.");
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
 
     // 1. Signature & Header Verification
     if (!signature || !timestampHeader || !nonceHeader) {
@@ -29,14 +37,16 @@ export async function POST(req: NextRequest) {
     const now = Date.now();
 
     // Prevent Replay Attacks (Max 5 minutes timestamp skew)
-    if (Math.abs(now - timestamp) > 300000) {
+    if (Number.isNaN(timestamp) || Math.abs(now - timestamp) > 300000) {
       return NextResponse.json({ error: "Webhook timestamp expired or out of bounds" }, { status: 401 });
     }
 
     const signaturePayload = `${timestampHeader}.${nonceHeader}.${rawBody}`;
     const expectedSignature = crypto.createHmac("sha256", webhookSecret).update(signaturePayload).digest("hex");
 
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+    const sigBuffer = Buffer.from(signature, "utf8");
+    const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
       return NextResponse.json({ error: "Invalid HMAC signature" }, { status: 403 });
     }
 

@@ -6,6 +6,16 @@ const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "placeholder-key";
 
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+const globalForSupabase = globalThis as unknown as {
+  __xeaSupabaseClient?: SupabaseClient;
+};
+
+const supabase: SupabaseClient =
+  globalForSupabase.__xeaSupabaseClient ?? createClient(supabaseUrl, supabaseKey);
+
+if (!globalForSupabase.__xeaSupabaseClient) {
+  globalForSupabase.__xeaSupabaseClient = supabase;
+}
 
 export default supabase;
+

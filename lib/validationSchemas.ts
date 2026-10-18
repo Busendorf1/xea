@@ -151,17 +151,27 @@ const actionDetailsSchema = z.object({
     .optional().or(z.literal("")),
 }).optional();
 
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
 /** Step 3 — ad creative (non-product_sales) */
 export const adCreativeSchema = z.object({
   adContent: z.string().min(5, "Ad content is too short"),
+  adMediaType: z.string().optional(),
   actionDetails: actionDetailsSchema,
   adActionButtons: z.array(z.string()).optional(),
 }).refine((data) => {
-  const hasReadMore = data.adActionButtons?.includes("read_more");
-  const maxLen = hasReadMore ? 500 : 220;
-  return data.adContent.length <= maxLen;
+  const isLongFormAllowed =
+    data.adMediaType === "text" || data.adActionButtons?.includes("read_more");
+  if (isLongFormAllowed) {
+    return countWords(data.adContent) <= 1500 && data.adContent.length <= 15000;
+  }
+  return data.adContent.length <= 220;
 }, {
-  message: "Ad content must be 220 characters or fewer (or up to 500 characters if 'Read More' button is selected)",
+  message: "Ad content must be up to 1,500 words for Text-Only / 'Read More' posts, or 220 characters for standard media captions",
   path: ["adContent"]
 }).refine((data) => !hasLinks(data.adContent), {
   message: "Links are not allowed in Ad content",

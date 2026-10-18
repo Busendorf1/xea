@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils/cache";
 import { dispatchEarningWebhook } from "@/lib/webhookDispatcher";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
+import { getEarnTokenSecret } from "@/lib/targetingEngine";
 
 function logToTerminal(message: string) {
   if (process.env.NODE_ENV !== "production") {
@@ -73,7 +74,12 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session?.user?.sub || email;
-    const secretKey = env.AUTH0_SECRET || process.env.AUTH0_SECRET || "xea-default-auth0-secret-key-32ch";
+    const secretKey = getEarnTokenSecret();
+    const fallbackAuth0Key = env.AUTH0_SECRET || process.env.AUTH0_SECRET || "";
+    if (!secretKey) {
+      console.error("❌ CRITICAL: Earn token secret is not configured in production for /api/earn.");
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
     const now = Date.now();
 
     // 2. Cryptographic HMAC verification token & dwell time verification
@@ -86,14 +92,15 @@ export async function POST(request: NextRequest) {
       }
 
       const rawEmail = (email || "").trim();
-      const payloadSub = `${adId}:${userId}:${servedAt}`;
-      const payloadEmailLower = `${adId}:${emailKey}:${servedAt}`;
-      const payloadEmailRaw = `${adId}:${rawEmail}:${servedAt}`;
-      const expectedSub = crypto.createHmac("sha256", secretKey).update(payloadSub).digest("hex");
-      const expectedEmailLower = crypto.createHmac("sha256", secretKey).update(payloadEmailLower).digest("hex");
-      const expectedEmailRaw = crypto.createHmac("sha256", secretKey).update(payloadEmailRaw).digest("hex");
-
-      const isValidToken = token === expectedSub || token === expectedEmailLower || token === expectedEmailRaw;
+      const payloads = [
+        `${adId}:${userId}:${servedAt}`,
+        `${adId}:${emailKey}:${servedAt}`,
+        `${adId}:${rawEmail}:${servedAt}`,
+      ];
+      const candidateKeys = Array.from(new Set([secretKey, fallbackAuth0Key].filter(Boolean)));
+      const isValidToken = candidateKeys.some((k) =>
+        payloads.some((p) => crypto.createHmac("sha256", k).update(p).digest("hex") === token)
+      );
       if (!isValidToken) {
         console.warn("🚨 Potential ad fraud: HMAC Token mismatch in /api/earn for user:", emailKey, "Ad:", adId);
         return NextResponse.json(
@@ -104,9 +111,9 @@ export async function POST(request: NextRequest) {
 
       const parsedServedAt = parseInt(servedAt, 10);
       const viewDuration = now - parsedServedAt;
-      if (isNaN(parsedServedAt) || viewDuration < -60000) {
+      if (isNaN(parsedServedAt) || viewDuration < 12000) {
         return NextResponse.json(
-          { error: "Invalid ad timestamp." },
+          { error: "Minimum attention duration not met. Please view the ad completely before claiming." },
           { status: 400 }
         );
       }
@@ -115,6 +122,52 @@ export async function POST(request: NextRequest) {
           { error: "Ad session expired (Max 30m). Please refresh feed." },
           { status: 400 }
         );
+      }
+
+      // 2.2 Anti-Replay & Global Per-User Attention Pacing Lock (Blocks multi-tab farming & replay scripts)
+      if (isRedisReady()) {
+        try {
+          const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32);
+          const tokenBurnKey = `used:earn_token:${tokenHash}`;
+          const globalPaceKey = `lock:attention_pace:${emailKey}`;
+
+          const [tokenFresh, paceAcquired] = await Promise.all([
+            redisConnection.set(tokenBurnKey, "1", "EX", 2100, "NX"),
+            redisConnection.set(globalPaceKey, "1", "EX", 10, "NX"),
+          ]);
+
+          if (!tokenFresh) {
+            return NextResponse.json(
+              { error: "This verification token has already been used.", code: "ALREADY_EARNED" },
+              { status: 403 }
+            );
+          }
+
+          if (!paceAcquired) {
+            return NextResponse.json(
+              { error: "Please view one ad at a time before claiming the next reward." },
+              { status: 429 }
+            );
+          }
+
+          // Telemetry Replay Fingerprint Check: Reject recorded/replayed mouse or touch trajectories
+          if (Array.isArray(telemetry) && telemetry.length > 0) {
+            const normalizedSig = telemetry
+              .slice(0, 24)
+              .map((pt: any) => `${Math.round(Number(pt.x || 0))},${Math.round(Number(pt.y || 0))},${Math.round(Number(pt.p || 0) * 100)}`)
+              .join("|");
+            const telemetryHash = crypto.createHash("sha256").update(normalizedSig).digest("hex").slice(0, 24);
+            const telemetryReplayKey = `used:telemetry:${emailKey}:${telemetryHash}`;
+            const isFreshTelemetry = await redisConnection.set(telemetryReplayKey, "1", "EX", 86400, "NX");
+            if (!isFreshTelemetry) {
+              console.warn("🚨 Telemetry replay attack blocked in /api/earn for user:", emailKey);
+              return NextResponse.json(
+                { error: "Synthetic or replayed interaction detected.", code: "POH_RETRY", retryable: true },
+                { status: 403 }
+              );
+            }
+          }
+        } catch {}
       }
 
       // 2.5 Proof of Human: Kinematic Motor Biometrics & Adaptive Turnstile Defense
@@ -206,11 +259,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Active Earning Cooldown / Suspension Guard
+    // 3 & 4. Pipelined Cooldown, Velocity History & Ad Detail Lookup (Single Redis Round-Trip)
+    let rawCpi = 25.0;
+    let isPlatformPost = false;
+
     if (isRedisReady()) {
       try {
         const cooldownKey = `user:cooldown:${emailKey}`;
-        const cachedCooldownRaw = await redisConnection.get(cooldownKey).catch(() => null);
+        const historyKey = `user:earn_history:${emailKey}`;
+        const violationsKey = `user:violations:${emailKey}`;
+        const adDetailKey = `ad:detail:${adId}`;
+
+        const [cachedCooldownRaw, historyListRaw, violationsCountRaw, cachedAd] = await Promise.all([
+          redisConnection.get(cooldownKey).catch(() => null),
+          type === "earn" ? redisConnection.lrange(historyKey, 0, 19).catch(() => []) : Promise.resolve([]),
+          type === "earn" ? redisConnection.get(violationsKey).catch(() => "0") : Promise.resolve("0"),
+          redisConnection.get(adDetailKey).catch(() => null),
+        ]);
+
         if (cachedCooldownRaw) {
           const { cooldownUntil, cooldownType } = JSON.parse(cachedCooldownRaw);
           if (new Date(cooldownUntil).getTime() > now) {
@@ -223,67 +289,48 @@ export async function POST(request: NextRequest) {
             });
           }
         }
-      } catch (e) {
-        console.warn("Cooldown parse error:", e);
-      }
-    }
 
-    // 4. Sliding Window Velocity & Entropy (Anti-Bot & Click Farm Defense)
-    if (type === "earn" && isRedisReady()) {
-      try {
-        const historyKey = `user:earn_history:${emailKey}`;
-        const violationsKey = `user:violations:${emailKey}`;
+        if (type === "earn") {
+          const lastEarnTimestamps = (historyListRaw || [])
+            .map((t) => parseInt(t, 10))
+            .filter((n) => !isNaN(n))
+            .reverse();
+          const consecutivePacingViolations = parseInt(violationsCountRaw || "0", 10) || 0;
 
-        const [historyListRaw, violationsCountRaw] = await Promise.all([
-          redisConnection.lrange(historyKey, 0, 19).catch(() => []),
-          redisConnection.get(violationsKey).catch(() => "0"),
-        ]);
-
-        const lastEarnTimestamps = (historyListRaw || []).map((t) => parseInt(t, 10)).filter((n) => !isNaN(n)).reverse();
-        const consecutivePacingViolations = parseInt(violationsCountRaw || "0", 10) || 0;
-
-        const { evaluateEarningVelocity } = await import("@/lib/botDetection");
-        const velocityResult = evaluateEarningVelocity(now, {
-          lastEarnTimestamps,
-          consecutivePacingViolations,
-        });
-
-        if (velocityResult.isBotSuspect && velocityResult.cooldownDurationMinutes) {
-          const cooldownMinutes = velocityResult.cooldownDurationMinutes;
-          const cooldownUntil = new Date(now + cooldownMinutes * 60 * 1000).toISOString();
-          const cooldownType = velocityResult.cooldownType || "pacing_15m";
-          const cooldownKey = `user:cooldown:${emailKey}`;
-
-          await Promise.all([
-            redisConnection.set(cooldownKey, JSON.stringify({ cooldownUntil, cooldownType }), "EX", cooldownMinutes * 60).catch(() => {}),
-            redisConnection.incr(violationsKey).catch(() => {}),
-            redisConnection.expire(violationsKey, 7 * 24 * 3600).catch(() => {}),
-          ]);
-
-          return NextResponse.json({
-            success: false,
-            code: "COOLDOWN_ACTIVE",
-            cooldownUntil,
-            cooldownType,
-            message: "Pacing limit reached.",
+          const { evaluateEarningVelocity } = await import("@/lib/botDetection");
+          const velocityResult = evaluateEarningVelocity(now, {
+            lastEarnTimestamps,
+            consecutivePacingViolations,
           });
+
+          if (velocityResult.isBotSuspect && velocityResult.cooldownDurationMinutes) {
+            const cooldownMinutes = velocityResult.cooldownDurationMinutes;
+            const cooldownUntil = new Date(now + cooldownMinutes * 60 * 1000).toISOString();
+            const cooldownType = velocityResult.cooldownType || "pacing_15m";
+
+            await Promise.all([
+              redisConnection.set(cooldownKey, JSON.stringify({ cooldownUntil, cooldownType }), "EX", cooldownMinutes * 60).catch(() => {}),
+              redisConnection.incr(violationsKey).catch(() => {}),
+              redisConnection.expire(violationsKey, 7 * 24 * 3600).catch(() => {}),
+            ]);
+
+            return NextResponse.json({
+              success: false,
+              code: "COOLDOWN_ACTIVE",
+              cooldownUntil,
+              cooldownType,
+              message: "Pacing limit reached.",
+            });
+          }
+
+          // Pipeline ring buffer update in background (non-blocking)
+          const pipe = redisConnection.pipeline();
+          pipe.lpush(historyKey, String(now));
+          pipe.ltrim(historyKey, 0, 19);
+          pipe.expire(historyKey, 24 * 3600);
+          pipe.exec().catch(() => {});
         }
 
-        // Record timestamp in ring buffer
-        await redisConnection.lpush(historyKey, String(now)).catch(() => {});
-        await redisConnection.ltrim(historyKey, 0, 19).catch(() => {});
-        await redisConnection.expire(historyKey, 24 * 3600).catch(() => {});
-      } catch (botErr) {
-        console.warn("⚠️ Bot detection Redis error:", botErr);
-      }
-    }
-
-    // Resolve expected rate (Viewer earns exactly 60% of the ad CPI budget)
-    let rawCpi = 25.0;
-    let isPlatformPost = false;
-    if (isRedisReady()) {
-      try {
-        const cachedAd = await redisConnection.get(`ad:detail:${adId}`);
         if (cachedAd) {
           const parsed = JSON.parse(cachedAd);
           isPlatformPost = Boolean(
@@ -298,7 +345,9 @@ export async function POST(request: NextRequest) {
             rawCpi = parseFloat(String(parsed.cost_per_impression));
           }
         }
-      } catch {}
+      } catch (botErr) {
+        console.warn("⚠️ Pipelined earn Redis check warning:", botErr);
+      }
     }
 
     if (type === "earn" && isPlatformPost) {
@@ -318,8 +367,9 @@ export async function POST(request: NextRequest) {
 
     if (type === "earn") {
       const earnedSetKey = `earned:ads:${emailKey}`;
+      const hasAlreadyEarned = false;
 
-      // 5. Atomic Redis Lock: Verify Ad Not Claimed on another device concurrently
+      // 5. Atomic Redis Lua Lock: Verifies ad is NOT in earned:ads:<email> and acquires 30s lock
       if (isRedisReady()) {
         const lockResult = await atomicCheckAndAcquireEarnLock(emailKey, adId, 30);
         if (!lockResult.allowed) {
@@ -346,21 +396,6 @@ export async function POST(request: NextRequest) {
       // 6. Authoritative Atomic Transaction in PostgreSQL (Single ACID RPC)
       atomicViews = 1;
       atomicCap = 1;
-
-      let hasAlreadyEarned = false;
-      if (isRedisReady()) {
-        try {
-          hasAlreadyEarned = Boolean(await redisConnection.sismember(earnedSetKey, adId));
-        } catch {}
-      }
-
-      if (hasAlreadyEarned) {
-        return NextResponse.json({
-          success: false,
-          code: "ALREADY_EARNED",
-          error: "This ad reward has already been claimed on your account.",
-        }, { status: 400 });
-      }
 
       const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("claim_ad_earning_atomic", {
         p_ad_id: adId,
@@ -502,11 +537,11 @@ export async function POST(request: NextRequest) {
           }, { status: 400 });
         }
 
-        const rateToApply = Math.round(adCpi * 0.60 * 100) / 100;
+        const rateToApply = isMonetized ? Math.round(adCpi * 0.60 * 100) / 100 : 0;
         const { getAtwBalanceLimit } = await import("@/lib/attentionTierEngine");
         const atwCap = getAtwBalanceLimit(dbUser?.atw_tier, isAdminEmail(emailKey));
         const uncappedBalance = Math.round((currentBal + rateToApply) * 100) / 100;
-        updatedBalance = Math.min(atwCap, uncappedBalance);
+        updatedBalance = isMonetized ? Math.min(atwCap, uncappedBalance) : currentBal;
         liveClicks = currentClicks + 1;
         earnedRateNumber = rateToApply;
 
@@ -531,14 +566,33 @@ export async function POST(request: NextRequest) {
             });
         }
 
+        const isNowExhausted = impressionsTarget > 0 && (impressionCount + 1) >= impressionsTarget;
+        const completedIso = isNowExhausted ? new Date().toISOString() : null;
+
         // Increment impression count on addsactive
-        await supabaseAdmin
+        const { data: updatedAdRow } = await supabaseAdmin
           .from("addsactive")
           .update({
             impression_count: impressionCount + 1,
-            completed_at: (impressionsTarget > 0 && (impressionCount + 1) >= impressionsTarget) ? new Date().toISOString() : null,
+            completed_at: completedIso,
           })
-          .eq("id", adId);
+          .eq("id", adId)
+          .select("*")
+          .maybeSingle();
+
+        // If ad is exhausted, move it out of addsactive into addscompleted
+        if (isNowExhausted) {
+          try {
+            if (updatedAdRow) {
+              await supabaseAdmin.from("addscompleted").upsert([updatedAdRow], { onConflict: "id" });
+            }
+            await supabaseAdmin.from("addsactive").delete().eq("id", adId);
+            await supabaseAdmin.from("adds").update({ completed_at: completedIso, impression_count: impressionCount + 1 }).eq("id", adId);
+            if (isRedisReady()) {
+              await redisConnection.del(`ad:detail:${adId}`).catch(() => {});
+            }
+          } catch {}
+        }
 
         const { error: userUpdateErr } = await supabaseAdmin
           .from("users")
@@ -572,6 +626,9 @@ export async function POST(request: NextRequest) {
         liveClicks = Number(atomicResult.clicks);
         earnedRateNumber = Number(atomicResult.amount);
         atomicViews = Number(atomicResult.views || 1);
+        if (atomicResult.cap) {
+          atomicCap = Number(atomicResult.cap);
+        }
         logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Atomic RPC)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 60% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n   👁️ View Cap   : ${atomicViews}/${atomicCap}\n========================================================================\n`);
 
         // Stream earned impression directly to ClickHouse Cloud (high-throughput non-blocking)
@@ -590,14 +647,18 @@ export async function POST(request: NextRequest) {
       if (isRedisReady()) {
         try {
           const reachedCap = atomicViews >= atomicCap;
-          const todayDate = new Date().toISOString().slice(0, 10);
+          const nowIso = new Date().toISOString();
+          const todayDate = nowIso.slice(0, 10);
 
           const syncPromises: Promise<any>[] = [
             redisConnection.set(`user:live_clicks:${emailKey}`, String(liveClicks), "EX", 86400 * 30).catch(() => {}),
+            redisConnection.del(`monetize:status:${emailKey}`).catch(() => {}),
             redisConnection.hincrby(`user:freq:${emailKey}:${todayDate}`, adId, 1).catch(() => {}),
             redisConnection.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2).catch(() => {}),
             redisConnection.hincrby(`user:freq_lifetime:${emailKey}`, adId, 1).catch(() => {}),
             redisConnection.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30).catch(() => {}),
+            redisConnection.hset(`user:last_viewed:${emailKey}`, adId, nowIso).catch(() => {}),
+            redisConnection.expire(`user:last_viewed:${emailKey}`, 86400 * 30).catch(() => {}),
           ];
 
           if (reachedCap) {

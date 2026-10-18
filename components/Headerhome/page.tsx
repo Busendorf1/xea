@@ -41,16 +41,26 @@ export default function Header() {
     window.addEventListener("resize", handleResize);
 
     let lastScrollPos = 0;
+    let isCurrentlyVisible = true;
     const handleScrollEvent = (scrollTop: number) => {
       const isMobile = window.innerWidth <= 768;
       if (!isMobile) {
-        setShowHeader(true);
+        if (!isCurrentlyVisible) {
+          isCurrentlyVisible = true;
+          setShowHeader(true);
+        }
         return;
       }
       if (scrollTop > lastScrollPos && scrollTop > 30) {
-        setShowHeader(false);
+        if (isCurrentlyVisible) {
+          isCurrentlyVisible = false;
+          setShowHeader(false);
+        }
       } else if (scrollTop < lastScrollPos || scrollTop <= 15) {
-        setShowHeader(true);
+        if (!isCurrentlyVisible) {
+          isCurrentlyVisible = true;
+          setShowHeader(true);
+        }
       }
       lastScrollPos = scrollTop;
     };
@@ -87,6 +97,7 @@ export default function Header() {
 
   const fetchNotifications = async () => {
     if (!user) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     try {
       const res = await fetch("/api/notifications");
       if (res.ok) {

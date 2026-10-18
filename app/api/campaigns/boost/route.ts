@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
+import redisConnection from "@/lib/redis";
+import { spendWalletBalanceAtomic } from "@/lib/services/payoutSettlementService";
+import { invalidateCachedProfile, invalidateCachedUserCampaigns } from "@/lib/utils/cache";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  let walletLockKey: string | null = null;
+  let lockAcquired = false;
   try {
-    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    const email = await getAuthenticatedEmail(req);
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -30,6 +35,12 @@ export async function POST(req: NextRequest) {
 
     if (!adId) {
       return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
+    }
+
+    const addImpressionsNum = Number(additionalImpressions || 0);
+    const addDaysNum = Number(additionalDays || 0);
+    if (!Number.isFinite(addImpressionsNum) || addImpressionsNum < 0 || !Number.isFinite(addDaysNum) || addDaysNum < 0) {
+      return NextResponse.json({ error: "Additional impressions and days must be non-negative numbers" }, { status: 400 });
     }
 
     const emailLower = email.toLowerCase().trim();
@@ -86,13 +97,13 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const currentCost = Number(ad.cost_per_impression || 25);
+    const currentCost = Math.max(15, Number(ad.cost_per_impression || 25));
     const effectiveCost = newCostPerImpression && Number(newCostPerImpression) > currentCost
       ? Number(newCostPerImpression)
       : currentCost;
 
     // Calculate total cost based ONLY on additional Attention (Impressions) * Bid Price
-    const totalCost = (Number(additionalImpressions) / 1000) * (effectiveCost * 1000);
+    const totalCost = Number((addImpressionsNum * effectiveCost).toFixed(2));
 
     // Build targeting & specs update object
     const updatePayload: Record<string, any> = {
@@ -101,11 +112,11 @@ export async function POST(req: NextRequest) {
       is_paused: false,
     };
 
-    if (additionalImpressions > 0) {
-      updatePayload.impressions = Number(ad.impressions || 1000) + Number(additionalImpressions);
+    if (addImpressionsNum > 0) {
+      updatePayload.impressions = Number(ad.impressions || 1000) + addImpressionsNum;
     }
-    if (additionalDays > 0) {
-      updatePayload.campaign_days = Number(ad.campaign_days || 1) + Number(additionalDays);
+    if (addDaysNum > 0) {
+      updatePayload.campaign_days = Number(ad.campaign_days || 1) + addDaysNum;
     }
     if (userFrequencyCap !== undefined && Number(userFrequencyCap) > 0) {
       updatePayload.user_frequency_cap = Number(userFrequencyCap);
@@ -124,6 +135,7 @@ export async function POST(req: NextRequest) {
         supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
         supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
       ]);
+      await invalidateCachedUserCampaigns(emailLower).catch(() => {});
       return NextResponse.json({
         success: true,
         message: "Campaign targeting and frequency settings updated successfully!"
@@ -131,52 +143,48 @@ export async function POST(req: NextRequest) {
     }
 
     if (paymentMethod === "wallet") {
-      // 2. Fetch user wallet balance
-      const { data: user, error: userErr } = await supabaseAdmin
-        .from("users")
-        .select("balance")
-        .ilike("email", emailLower)
-        .maybeSingle();
-
-      if (userErr || !user) {
-        return NextResponse.json({ error: "User profile not found" }, { status: 404 });
+      walletLockKey = `lock:wallet:${emailLower}`;
+      const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
+      if (!acquired) {
+        return NextResponse.json(
+          { error: "Another wallet transaction is currently in progress. Please wait a moment." },
+          { status: 429 }
+        );
       }
+      lockAcquired = true;
 
-      const currentBalance = Number(user.balance || 0);
-      if (currentBalance < totalCost) {
+      const reference = `wallet_boost_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+      const spendRes = await spendWalletBalanceAtomic(
+        emailLower,
+        totalCost,
+        "boost_campaign",
+        reference
+      );
+
+      if (!spendRes.success) {
         return NextResponse.json({
-          error: `Insufficient wallet balance. Total cost is ₦${totalCost.toLocaleString()} but your balance is ₦${currentBalance.toLocaleString()}.`
+          error: spendRes.error || `Insufficient wallet balance. Total cost is ₦${totalCost.toLocaleString()}.`
         }, { status: 400 });
       }
 
-      // 3. Deduct from wallet balance atomically
-      const newBalance = currentBalance - totalCost;
-      const { error: balanceErr } = await supabaseAdmin
-        .from("users")
-        .update({ balance: newBalance })
-        .ilike("email", emailLower);
-
-      if (balanceErr) {
-        console.error("❌ Error updating user balance:", balanceErr);
-        return NextResponse.json({ error: "Failed to process wallet payment." }, { status: 500 });
-      }
+      const newBalance = spendRes.newBalance ?? 0;
 
       // Log wallet transaction in payments table
-      const reference = `wallet_boost_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
       await supabaseAdmin.from("payments").insert({
         user_email: emailLower,
         reference,
         amount: totalCost,
         status: "success",
         type: "boost_campaign",
-        description: `Boost priority top-up for Ad #${adId.substring(0, 8)}`,
+        description: `Non-refundable Boost priority top-up for Ad #${adId.substring(0, 8)}`,
         metadata: {
           ad_id: adId,
           type: "boost_campaign",
-          additional_impressions: additionalImpressions,
-          additional_days: additionalDays,
+          additional_impressions: addImpressionsNum,
+          additional_days: addDaysNum,
           cost_per_impression: effectiveCost,
-          payment_method: "wallet"
+          payment_method: "wallet",
+          non_refundable: true,
         }
       });
 
@@ -186,11 +194,32 @@ export async function POST(req: NextRequest) {
         supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
       ]);
 
+      if (effectiveCost > 25) {
+        try {
+          const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
+          await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId);
+          await supabaseAdmin.from("bidded_ads").insert({
+            ad_id: adId,
+            user_email: emailLower,
+            industry: adIndustry,
+            bid_price: effectiveCost,
+            is_active: true,
+          });
+          await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, adId).catch(() => {});
+          await redisConnection.del("attention:market_rates").catch(() => {});
+        } catch (bidErr) {
+          console.warn("⚠️ bidded_ads update notice in wallet boost:", bidErr);
+        }
+      }
+
+      await invalidateCachedProfile(emailLower);
+      await invalidateCachedUserCampaigns(emailLower).catch(() => {});
+
       // Insert notification
       await supabaseAdmin.from("notifications").insert({
         user_email: emailLower,
         title: "Campaign Priority Boosted",
-        message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost} and ${additionalImpressions || 0} additional impressions.`,
+        message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost} and ${addImpressionsNum} additional impressions.`,
       });
 
       return NextResponse.json({
@@ -292,9 +321,12 @@ export async function POST(req: NextRequest) {
         });
       } catch (err: any) {
         console.error("❌ PayoutProvider boost init error:", err);
+        if (process.env.NODE_ENV === "production") {
+          return NextResponse.json({ error: "Failed to initialize payment gateway" }, { status: 502 });
+        }
       }
 
-      // Fallback test payment URL if secret key is not set
+      // Fallback test payment URL only in non-production environments
       const mockUrl = new URL(callbackUrl);
       mockUrl.searchParams.set("reference", reference);
       mockUrl.searchParams.set("trxref", reference);
@@ -315,5 +347,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("❌ Error in /api/campaigns/boost:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+  } finally {
+    if (lockAcquired && walletLockKey) {
+      await redisConnection.del(walletLockKey).catch(() => {});
+    }
   }
 }

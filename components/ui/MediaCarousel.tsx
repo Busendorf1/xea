@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./AdCard.module.css";
 import VideoControlBar from "./VideoControlBar";
@@ -20,6 +21,7 @@ interface MediaCarouselProps {
   isPreloadWarm?: boolean;
   isMuted: boolean;
   onToggleMute: () => void;
+  onMediaClick?: (index: number) => void;
 }
 
 export const isVideoUrl = (url?: string | null): boolean => {
@@ -49,7 +51,7 @@ if (typeof window !== "undefined") {
         }
       });
     }
-  } catch (e) {}
+  } catch {}
 }
 
 const saveRatioToCache = (url: string, ratio: number) => {
@@ -65,7 +67,7 @@ const saveRatioToCache = (url: string, ratio: number) => {
         delete parsed[keys[0]];
       }
       sessionStorage.setItem("xea_media_aspect_ratios", JSON.stringify(parsed));
-    } catch (e) {}
+    } catch {}
   }
 };
 
@@ -76,8 +78,10 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   isPreloadWarm = true,
   isMuted,
   onToggleMute,
+  onMediaClick,
 }) => {
   const [mediaError, setMediaError] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [playingStates, setPlayingStates] = useState<Record<number, boolean>>({});
   const [videoDurations, setVideoDurations] = useState<Record<number, number>>({});
   const [videoCurrentTimes, setVideoCurrentTimes] = useState<Record<number, number>>({});
@@ -85,13 +89,19 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const [controlsVisible, setControlsVisible] = useState<Record<number, boolean>>({});
   const hideControlsTimers = useRef<Record<number, NodeJS.Timeout>>({});
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const firstImgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRafRef = useRef<number | null>(null);
 
   const formatVideoTime = useCallback((seconds: number) => {
     if (isNaN(seconds) || seconds <= 0) return "0:00";
-    const mins = Math.floor(seconds / 60);
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    }
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }, []);
 
@@ -108,7 +118,21 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     }, 2800);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      Object.values(hideControlsTimers.current).forEach((timer) => clearTimeout(timer));
+      hideControlsTimers.current = {};
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
+
   const toggleFullscreen = useCallback((index: number) => {
+    if (onMediaClick) {
+      onMediaClick(index);
+      return;
+    }
     const video = videoRefs.current[index];
     if (!video) return;
 
@@ -147,7 +171,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         setIsFullscreen(true);
       }
     }
-  }, []);
+  }, [onMediaClick]);
 
   useEffect(() => {
     const handleFSChange = () => {
@@ -181,8 +205,6 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const isFirstVideo = Boolean(
     firstUrl && (isVideoUrl(firstUrl) || firstUrl.includes(".m3u8") || !!hlsUrl)
   );
-  // Default to 1.0 (standard 1:1 feed square) for images so they never start compressed in a 16:9 letterbox.
-  // Videos fallback to 16:9.
   const fallbackRatio = isFirstVideo ? 16 / 9 : 1.0;
 
   const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => {
@@ -192,7 +214,6 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     return fallbackRatio;
   });
 
-  // Synchronously probe image/video to apply true aspect ratio on initial load without requiring a refresh
   useEffect(() => {
     if (!firstUrl) return;
 
@@ -224,14 +245,12 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       return false;
     };
 
-    // If DOM img element is already complete (from browser cache)
     if (firstImgRef.current && firstImgRef.current.complete) {
       if (applyRatio(firstImgRef.current.naturalWidth, firstImgRef.current.naturalHeight)) {
         return;
       }
     }
 
-    // Pre-probe with new Image() to bypass React synthetic onLoad race conditions
     const probe = new Image();
     probe.src = firstUrl;
     if (probe.complete) {
@@ -243,11 +262,11 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     }
   }, [firstUrl, isFirstVideo]);
 
-  // Keep first video playing when card is in view
+  // Only play the currently active slide's video when the card is visible; pause all non-active slides
   useEffect(() => {
     videoRefs.current.forEach((video, idx) => {
       if (!video) return;
-      if (isCardVisible) {
+      if (isCardVisible && idx === activeIndex) {
         video.muted = isMuted;
         video.defaultMuted = isMuted;
         const p = video.play();
@@ -260,11 +279,13 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
           });
         }
       } else {
-        video.pause();
-        setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+        if (!video.paused) {
+          video.pause();
+        }
+        setPlayingStates((prev) => (prev[idx] ? { ...prev, [idx]: false } : prev));
       }
     });
-  }, [isCardVisible, isMuted, showControlsTemporarily]);
+  }, [isCardVisible, activeIndex, isMuted, showControlsTemporarily]);
 
   const togglePlayVideo = useCallback((idx: number) => {
     const video = videoRefs.current[idx];
@@ -281,12 +302,61 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     }
   }, [isMuted, showControlsTemporarily]);
 
-  // Desktop mouse drag-to-scroll support without interfering with vertical feed scroll
+  // Track active slide index on horizontal scroll using requestAnimationFrame
+  const handleCarouselScroll = useCallback(() => {
+    if (mediaUrls.length <= 1 || scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const container = containerRef.current;
+      if (!container) return;
+
+      const containerCenter = container.scrollLeft + container.clientWidth / 2;
+      let closestIdx = 0;
+      let minDistance = Infinity;
+
+      slideRefs.current.forEach((slide, idx) => {
+        if (!slide) return;
+        const slideCenter = slide.offsetLeft + slide.offsetWidth / 2;
+        const dist = Math.abs(containerCenter - slideCenter);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIdx = idx;
+        }
+      });
+
+      setActiveIndex((prev) => (prev === closestIdx ? prev : closestIdx));
+    });
+  }, [mediaUrls.length]);
+
+  const scrollToSlide = useCallback(
+    (targetIdx: number, e?: React.MouseEvent) => {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      const clampedIdx = Math.max(0, Math.min(mediaUrls.length - 1, targetIdx));
+      const container = containerRef.current;
+      const slide = slideRefs.current[clampedIdx];
+      if (!container || !slide) return;
+
+      const targetLeft = slide.offsetLeft - (container.clientWidth - slide.offsetWidth) / 2;
+      container.scrollTo({
+        left: Math.max(0, targetLeft),
+        behavior: "smooth",
+      });
+      setActiveIndex(clampedIdx);
+    },
+    [mediaUrls.length]
+  );
+
+  // Desktop mouse drag-to-scroll support without interfering with vertical feed scroll or click-to-open
   const isMouseDown = useRef(false);
+  const dragMovedRef = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    dragMovedRef.current = false;
     if (!containerRef.current || mediaUrls.length <= 1) return;
     isMouseDown.current = true;
     startX.current = e.pageX - containerRef.current.offsetLeft;
@@ -296,6 +366,9 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isMouseDown.current || !containerRef.current) return;
     const x = e.pageX - containerRef.current.offsetLeft;
+    if (Math.abs(x - startX.current) > 8) {
+      dragMovedRef.current = true;
+    }
     const walk = (x - startX.current) * 1.2;
     containerRef.current.scrollLeft = scrollLeft.current - walk;
   };
@@ -304,13 +377,60 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     isMouseDown.current = false;
   };
 
+  const handleItemActivate = useCallback(
+    (index: number, e?: React.MouseEvent) => {
+      if (dragMovedRef.current) {
+        dragMovedRef.current = false;
+        return;
+      }
+      if (e) {
+        e.stopPropagation();
+      }
+      if (onMediaClick) {
+        onMediaClick(index);
+      }
+    },
+    [onMediaClick]
+  );
+
   if (mediaUrls.length === 0 || mediaError) return null;
+
+  const isMulti = mediaUrls.length > 1;
 
   return (
     <div className={styles.carouselOuterWrapper}>
+      {isMulti && (
+        <div className={styles.mediaBadge} aria-label={`Slide ${activeIndex + 1} of ${mediaUrls.length}`}>
+          {activeIndex + 1} / {mediaUrls.length}
+        </div>
+      )}
+
+      {isMulti && activeIndex > 0 && (
+        <button
+          type="button"
+          className={`${styles.carouselNavBtn} ${styles.carouselNavBtnPrev}`}
+          onClick={(e) => scrollToSlide(activeIndex - 1, e)}
+          aria-label="Previous media"
+        >
+          <ChevronLeft size={16} strokeWidth={2.5} />
+        </button>
+      )}
+
+      {isMulti && activeIndex < mediaUrls.length - 1 && (
+        <button
+          type="button"
+          className={`${styles.carouselNavBtn} ${styles.carouselNavBtnNext}`}
+          onClick={(e) => scrollToSlide(activeIndex + 1, e)}
+          aria-label="Next media"
+        >
+          <ChevronRight size={16} strokeWidth={2.5} />
+        </button>
+      )}
+
       <div
         ref={containerRef}
         className={styles.mediaRowContainer}
+        onScroll={isMulti ? handleCarouselScroll : undefined}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUpOrLeave}
@@ -319,19 +439,33 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         {mediaUrls.map((url, index) => {
           const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
           const itemHlsSrc = url.includes(".m3u8") ? url : (index === 0 && hlsUrl ? hlsUrl : undefined);
+          const shouldEagerLoad = index === 0 || index === activeIndex || index === activeIndex + 1;
 
           return (
             <div
               key={`${url}-${index}`}
+              ref={(el) => {
+                slideRefs.current[index] = el;
+              }}
               className={`${styles.mediaRowItem} ${mediaUrls.length === 1 ? styles.mediaRowItemSingle : styles.mediaRowItemMulti}`}
               style={{
                 aspectRatio: `${baseAspectRatio}`,
+                cursor: onMediaClick ? "pointer" : undefined,
               }}
+              onClick={(e) => handleItemActivate(index, e)}
             >
               {isVideo ? (
                 <div
                   className={styles.webVideoContainer}
-                  onClick={() => togglePlayVideo(index)}
+                  style={{ cursor: onMediaClick ? "pointer" : undefined }}
+                  onClick={(e) => {
+                    if (onMediaClick) {
+                      handleItemActivate(index, e);
+                    } else {
+                      e.stopPropagation();
+                      togglePlayVideo(index);
+                    }
+                  }}
                   onPointerMove={() => showControlsTemporarily(index)}
                   onTouchStart={() => showControlsTemporarily(index)}
                   onMouseEnter={() => showControlsTemporarily(index)}
@@ -349,8 +483,8 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     hlsSrc={itemHlsSrc}
                     loop
                     playsInline
-                    autoPlay={isCardVisible && index === 0}
-                    preload={isPreloadWarm ? "auto" : "metadata"}
+                    autoPlay={isCardVisible && index === activeIndex}
+                    preload={isPreloadWarm && shouldEagerLoad ? "auto" : "metadata"}
                     muted={isMuted}
                     controls={false}
                     className={styles.mediaVideo}
@@ -380,7 +514,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                         const rawRatio = v.videoWidth / v.videoHeight;
                         const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
                         if (firstUrl) saveRatioToCache(firstUrl, clamped);
-                        setBaseAspectRatio(clamped);
+                        setBaseAspectRatio((prev) => (mediaAspectRatioCache.has(firstUrl) ? prev : clamped));
                       }
                     }}
                     onDurationChange={(e) => {
@@ -391,10 +525,9 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     }}
                   />
 
-                  {/* Video Control Bar: duration display, pause/play, mute, fullscreen */}
                   <VideoControlBar
                     index={index}
-                    isPlaying={playingStates[index] ?? (isCardVisible && index === 0)}
+                    isPlaying={playingStates[index] ?? (isCardVisible && index === activeIndex)}
                     isMuted={isMuted}
                     isFullscreen={isFullscreen}
                     showControls={controlsVisible[index] ?? true}
@@ -410,17 +543,20 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                 <img
                   ref={index === 0 ? firstImgRef : undefined}
                   src={url}
-                  alt="Ad Media"
+                  alt={`Ad media ${index + 1} of ${mediaUrls.length}`}
                   className={styles.adImgElement}
+                  style={{ cursor: onMediaClick ? "zoom-in" : undefined }}
                   draggable={false}
-                  loading={index === 0 ? "eager" : "lazy"}
+                  loading={shouldEagerLoad ? "eager" : "lazy"}
+                  decoding="async"
+                  onClick={(e) => handleItemActivate(index, e)}
                   onLoad={(e) => {
-                    if (index === 0) {
+                    if (index === 0 && firstUrl && !mediaAspectRatioCache.has(firstUrl)) {
                       const img = e.currentTarget;
                       if (img.naturalWidth && img.naturalHeight) {
                         const rawRatio = img.naturalWidth / img.naturalHeight;
                         const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
-                        if (firstUrl) saveRatioToCache(firstUrl, clamped);
+                        saveRatioToCache(firstUrl, clamped);
                         setBaseAspectRatio(clamped);
                       }
                     }

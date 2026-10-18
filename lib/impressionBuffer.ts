@@ -33,10 +33,17 @@ export async function bufferAdImpression(adId: string): Promise<void> {
   try {
     await supabaseAdmin.rpc("increment_ad_impression", { p_ad_id: adId });
   } catch (_e) {
-    await supabaseAdmin
+    const { data: currentAd } = await supabaseAdmin
       .from("addsactive")
-      .update({ impression_count: 1 }) // fallback incremental update
-      .eq("id", adId);
+      .select("impression_count")
+      .eq("id", adId)
+      .maybeSingle();
+    if (currentAd) {
+      await supabaseAdmin
+        .from("addsactive")
+        .update({ impression_count: Number(currentAd.impression_count || 0) + 1 })
+        .eq("id", adId);
+    }
   }
 }
 

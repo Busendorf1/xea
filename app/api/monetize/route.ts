@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
+import { calculateAtwTier } from "@/lib/referralEngine";
 
 export const dynamic = "force-dynamic";
 
@@ -36,23 +37,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 2. High-Scale Direct Query Path (Fast Index Read, ~10ms)
-    const { data: uData, error: uErr } = await supabaseReadOnly
-      .from("users")
-      .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at")
-      .eq("email", emailLower)
-      .maybeSingle();
+    // 2. High-Scale Parallel Direct Query + Redis Live Clicks Read (~5-10ms)
+    const [{ data: uData, error: uErr }, rawLiveClicks] = await Promise.all([
+      supabaseReadOnly
+        .from("users")
+        .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at")
+        .eq("email", emailLower)
+        .maybeSingle(),
+      isRedisReady()
+        ? redisConnection.get(`user:live_clicks:${emailLower}`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
 
     let payload: any;
-
-    // Check live real-time clicks from Redis counter (instant real-time updates)
-    let liveClicksDelta = 0;
-    if (isRedisReady()) {
-      try {
-        const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
-        if (liveVal) liveClicksDelta = Number(liveVal) || 0;
-      } catch {}
-    }
+    const liveClicksDelta = rawLiveClicks ? Number(rawLiveClicks) || 0 : 0;
 
     if (uErr || !uData) {
       // Fallback to RPC if single-read fails or user row not found
@@ -102,16 +100,32 @@ export async function GET(req: NextRequest) {
         effectiveClicks = 0;
       }
 
-      const { calculateAtwTier } = await import("@/lib/referralEngine");
-      const { tier: computedTier } = calculateAtwTier(effectiveClicks);
+      const { tier: computedTier, level: computedLevel } = calculateAtwTier(effectiveClicks);
+      const dbLevelMatch = (uData.atw_tier || "ATW1").match(/\d+/);
+      const dbLevel = dbLevelMatch ? parseInt(dbLevelMatch[0], 10) : 1;
+      const finalLevel = Math.max(dbLevel, computedLevel);
+      const effectiveAtwTier = `ATW${Math.min(3, Math.max(1, finalLevel))}`;
+
+      if (effectiveAtwTier !== uData.atw_tier || (effectiveMonetized && uData.monetized !== "true" && uData.monetized !== true)) {
+        supabaseAdmin
+          .from("users")
+          .update({
+            atw_tier: effectiveAtwTier,
+            monetized: effectiveMonetized ? "true" : "false",
+          })
+          .eq("email", emailLower)
+          .then(() => {});
+      }
+
+      const nextTargetClicks = effectiveClicks < 300 ? 300 : effectiveClicks < 600 ? 600 : 900;
 
       payload = {
         success: true,
         isMonetized: effectiveMonetized,
         clicksCount: effectiveClicks,
-        clicksRemaining: Math.max(0, 300 - effectiveClicks),
-        targetClicks: 300,
-        atwTier: uData.atw_tier || computedTier,
+        clicksRemaining: Math.max(0, nextTargetClicks - effectiveClicks),
+        targetClicks: nextTargetClicks,
+        atwTier: effectiveAtwTier,
         referralCode: uData.referral_code || null,
         daysInactive,
         lastActiveAt: uData.last_active_at || null,

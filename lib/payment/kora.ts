@@ -54,10 +54,20 @@ export class KoraService {
   }
 
   private static getSecretKey(): string {
-    return process.env.KORA_SECRET_KEY || "sk_test_mock_kora_1234567890";
+    const key = process.env.KORA_SECRET_KEY;
+    if (!key) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("CRITICAL: KORA_SECRET_KEY is not configured in production.");
+      }
+      return "sk_test_mock_kora_1234567890";
+    }
+    return key;
   }
 
   private static isMock(): boolean {
+    if (process.env.NODE_ENV === "production") {
+      return false;
+    }
     const key = this.getSecretKey();
     return key.startsWith("sk_test_mock");
   }

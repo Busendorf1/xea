@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import {
   Phone,
   MessageCircle,
@@ -9,6 +11,9 @@ import {
   Apple,
   ChevronDown,
   Video,
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -16,9 +21,11 @@ import { InteractionData } from "@/lib/hooks/useFeedActions";
 import Avatar from "./Avatar";
 import HighlightCard from "./HighlightCard";
 import AdOptionsMenu from "./AdOptionsMenu";
-import MediaCarousel from "./MediaCarousel";
+import MediaCarousel, { isVideoUrl } from "./MediaCarousel";
 import AdvertiserHoverCard from "./AdvertiserHoverCard";
 import VerifiedBadge from "./VerifiedBadge";
+
+const HlsVideoPlayer = dynamic(() => import("./HlsVideoPlayer"), { ssr: false });
 
 export type BaseAd = {
   id: string;
@@ -221,42 +228,93 @@ function AdCard({
   const [isCardVisible, setIsCardVisible] = useState(false);
   const [isPreloadWarm, setIsPreloadWarm] = useState(false);
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [showLightboxMenu, setShowLightboxMenu] = useState(false);
+  const [isTextReaderOpen, setIsTextReaderOpen] = useState(false);
+  const [showReaderMenu, setShowReaderMenu] = useState(false);
+  const [interactionSecondsLeft, setInteractionSecondsLeft] = useState(16);
+  const [interactionStage, setInteractionStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
+  const lightboxTouchStartXRef = useRef<number | null>(null);
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [isDismissing, setIsDismissing] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const mediaUrls = useMemo(() => {
+    return ad.ad_media
+      ? ad.ad_media.split(",").map((url) => url.trim()).filter(Boolean)
+      : [];
+  }, [ad.ad_media]);
+
+  const isTextOnlyAd = mediaUrls.length === 0 && !ad.hls_url;
+
+  const formattedAdContent = useMemo(() => {
+    if (!ad.ad_content) return "";
+    const trimmed = ad.ad_content.trim();
+    return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : "";
+  }, [ad.ad_content]);
+
+  const adWordCount = useMemo(() => {
+    return formattedAdContent ? formattedAdContent.split(/\s+/).length : 0;
+  }, [formattedAdContent]);
+
+  const isLongTextAd = useMemo(() => {
+    return Boolean(
+      ad.ad_type !== "product_sales" &&
+        (ad.ad_action_buttons?.includes("read_more") || formattedAdContent.length > 220)
+    );
+  }, [ad.ad_type, ad.ad_action_buttons, formattedAdContent.length]);
+
+  const canOpenTextReader = useMemo(() => {
+    return Boolean(
+      ad.ad_type !== "product_sales" &&
+        formattedAdContent.length > 0 &&
+        (isTextOnlyAd || isLongTextAd)
+    );
+  }, [ad.ad_type, formattedAdContent.length, isTextOnlyAd, isLongTextAd]);
+
+  useEffect(() => {
+    if (lightboxIndex === null && !isTextReaderOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setLightboxIndex(null);
+        setShowLightboxMenu(false);
+        setIsTextReaderOpen(false);
+        setShowReaderMenu(false);
+      } else if (lightboxIndex !== null && e.key === "ArrowLeft" && mediaUrls.length > 1) {
+        setLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+      } else if (lightboxIndex !== null && e.key === "ArrowRight" && mediaUrls.length > 1) {
+        setLightboxIndex((prev) => (prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxIndex, isTextReaderOpen, mediaUrls.length]);
 
   const handleDismiss = useCallback((adId: string) => {
+    setLightboxIndex(null);
+    setShowLightboxMenu(false);
+    setIsTextReaderOpen(false);
+    setShowReaderMenu(false);
     setIsDismissing(true);
-    setTimeout(() => {
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => {
       _onDismiss(adId);
     }, 380);
   }, [_onDismiss]);
 
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage((current) => (current === msg ? null : current));
-    }, 2400);
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
   }, []);
 
-  useEffect(() => {
-    const handleGlobalToast = (e: Event) => {
-      const customEvt = e as CustomEvent<{ message?: string }>;
-      if (customEvt?.detail?.message) {
-        showToast(customEvt.detail.message);
-      }
-    };
+  const showToast = useCallback((msg: string) => {
     if (typeof window !== "undefined") {
-      window.addEventListener("xea:toast", handleGlobalToast);
+      window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: msg } }));
     }
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("xea:toast", handleGlobalToast);
-      }
-    };
-  }, [showToast]);
+  }, []);
 
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -403,7 +461,8 @@ function AdCard({
       if (emailLower === "admin@paayh.com" || emailLower === "system@paayh.com" || ad.ad_type === "admin_broadcast") {
         return "Paayh";
       }
-      return ad.user_email.split("@")[0];
+      // Never expose raw user email prefix publicly if username/name is unset
+      return "Sponsored";
     }
     return "Paayh";
   }, [ad, advertiserProfile]);
@@ -435,9 +494,9 @@ function AdCard({
       "action_ios",
       "action_android",
       "action_watch_now",
-      ...(ad.ad_action_buttons?.includes("read_more") ? ["action_read_more"] : []),
+      ...(ad.ad_action_buttons?.includes("read_more") || isLongTextAd ? ["action_read_more"] : []),
     ].filter((key) => key === "action_read_more" || ad[key as keyof Ad]) as string[];
-  }, [ad]);
+  }, [ad, isLongTextAd]);
 
   const isVerified = useMemo(() => {
     return seenAds.includes(ad.id) || ad.user_email?.toLowerCase() === userEmail.toLowerCase() || isPlatformPost;
@@ -563,13 +622,33 @@ function AdCard({
 
         {/* Content Message (if NOT product sales) */}
         {ad.ad_type !== "product_sales" && (
-          <p className={styles.adText}>
-            {(() => {
-              const formattedContent = ad.ad_content ? ad.ad_content.trim().charAt(0).toUpperCase() + ad.ad_content.trim().slice(1) : "";
-              return ad.ad_action_buttons?.includes("read_more") && !isExpanded
-                ? formattedContent.slice(0, 220) + "..."
-                : formattedContent;
-            })()}
+          <p
+            className={`${styles.adText} ${canOpenTextReader ? styles.adTextClickable : ""}`}
+            onClick={(e) => {
+              if (canOpenTextReader) {
+                e.stopPropagation();
+                setIsTextReaderOpen(true);
+                handleCtaClick("read_more");
+              }
+            }}
+            title={canOpenTextReader ? "Click to read full post" : undefined}
+          >
+            {formattedAdContent.length > 220 && !isExpanded
+              ? `${formattedAdContent.slice(0, 220)}...`
+              : formattedAdContent}
+            {(formattedAdContent.length > 220 || ad.ad_action_buttons?.includes("read_more")) && (
+              <button
+                type="button"
+                className={styles.inlineReadMoreBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsTextReaderOpen(true);
+                  handleCtaClick("read_more");
+                }}
+              >
+                Read more
+              </button>
+            )}
           </p>
         )}
 
@@ -577,10 +656,11 @@ function AdCard({
         <MediaCarousel
           adMedia={ad.ad_media}
           hlsUrl={ad.hls_url}
-          isCardVisible={isCardVisible}
+          isCardVisible={isCardVisible && lightboxIndex === null && !isTextReaderOpen}
           isPreloadWarm={isPreloadWarm}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
+          onMediaClick={(idx) => setLightboxIndex(idx)}
         />
 
         {/* Action bar */}
@@ -669,7 +749,7 @@ function AdCard({
                       )}
                     </div>
                   ) : (
-                    !seenAds.includes(ad.id) && (
+                    !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
                       <AdInteractionHandler
                         ad={ad}
                         userEmail={userEmail}
@@ -687,7 +767,30 @@ function AdCard({
                         onAdMutual={onAdMutual}
                         brandName={brandName}
                         targetLink={targetLink}
+                        externalSecondsLeft={interactionSecondsLeft}
+                        onSecondsLeftChange={setInteractionSecondsLeft}
+                        externalStage={interactionStage}
+                        onStageChange={setInteractionStage}
                       />
+                    ) : (
+                      <div className={styles.fromBrandContainer}>
+                        {targetLink && targetLink !== "#" ? (
+                          <a
+                            href={targetLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={styles.fromBrandBtn}
+                            title={`Visit ${brandName}`}
+                            onClick={() => handleCtaClick("brand_visit")}
+                          >
+                            Visit {brandName}
+                          </a>
+                        ) : (
+                          <span className={styles.fromBrandText}>
+                            Visit {brandName}
+                          </span>
+                        )}
+                      </div>
                     )
                   )}
                 </div>
@@ -717,10 +820,10 @@ function AdCard({
                     <button
                       key={`${type}-${ad.id}`}
                       type="button"
-                      className={`${styles.iconButton} ${isExpanded ? styles.expandedButton : ""}`}
-                      title="Read More"
+                      className={`${styles.iconButton} ${isTextReaderOpen ? styles.expandedButton : ""}`}
+                      title="Read Full Post"
                       onClick={() => {
-                        setIsExpanded(!isExpanded);
+                        setIsTextReaderOpen(true);
                         handleCtaClick("read_more");
                       }}
                     >
@@ -786,38 +889,543 @@ function AdCard({
                     </span>
                   )}
                 </div>
+              ) : !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
+                <AdInteractionHandler
+                  ad={ad}
+                  userEmail={userEmail}
+                  isPlatformPost={isPlatformPost}
+                  isMutualTarget={isMutualTarget}
+                  isAlreadyMutual={isAlreadyMutual}
+                  viewerProfile={viewerProfile}
+                  isProcessing={isProcessing}
+                  isSuspended={isSuspended}
+                  successAction={successAction}
+                  activeAction={activeAction}
+                  handleAction={handleAction}
+                  onMarkSeen={onMarkSeen}
+                  onAdEarn={onAdEarn}
+                  onAdMutual={onAdMutual}
+                  brandName={brandName}
+                  targetLink={targetLink}
+                  externalSecondsLeft={interactionSecondsLeft}
+                  onSecondsLeftChange={setInteractionSecondsLeft}
+                  externalStage={interactionStage}
+                  onStageChange={setInteractionStage}
+                />
               ) : (
-                !seenAds.includes(ad.id) && (
-                  <AdInteractionHandler
-                    ad={ad}
-                    userEmail={userEmail}
-                    isPlatformPost={isPlatformPost}
-                    isMutualTarget={isMutualTarget}
-                    isAlreadyMutual={isAlreadyMutual}
-                    viewerProfile={viewerProfile}
-                    isProcessing={isProcessing}
-                    isSuspended={isSuspended}
-                    successAction={successAction}
-                    activeAction={activeAction}
-                    handleAction={handleAction}
-                    onMarkSeen={onMarkSeen}
-                    onAdEarn={onAdEarn}
-                    onAdMutual={onAdMutual}
-                    brandName={brandName}
-                    targetLink={targetLink}
-                  />
-                )
+                <div className={styles.fromBrandContainer}>
+                  {targetLink && targetLink !== "#" ? (
+                    <a
+                      href={targetLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.fromBrandBtn}
+                      title={`Visit ${brandName}`}
+                      onClick={() => handleCtaClick("brand_visit")}
+                    >
+                      Visit {brandName}
+                    </a>
+                  ) : (
+                    <span className={styles.fromBrandText}>
+                      Visit {brandName}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
         )}
       </div>
 
-      {toastMessage && (
-        <div className={styles.toastHud} role="status" aria-live="polite">
-          {toastMessage}
-        </div>
-      )}
+      {/* X (Twitter)-Style Media Lightbox: Modal on Desktop, Full-Screen on Mobile */}
+      {lightboxIndex !== null &&
+        mediaUrls[lightboxIndex] &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className={styles.lightboxOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Media view"
+            onClick={() => {
+              setLightboxIndex(null);
+              setShowLightboxMenu(false);
+            }}
+          >
+            <div
+              className={styles.lightboxDialog}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Top Bar: Back Arrow (Left) + Slide Counter (Center) + Report Ad Menu (Right) */}
+              <div className={styles.lightboxTopBar}>
+                <button
+                  type="button"
+                  className={styles.lightboxIconBtn}
+                  onClick={() => {
+                    setLightboxIndex(null);
+                    setShowLightboxMenu(false);
+                  }}
+                  aria-label="Back to feed"
+                  title="Back"
+                >
+                  <ArrowLeft size={20} strokeWidth={2.2} />
+                </button>
+
+                {mediaUrls.length > 1 && (
+                  <span className={styles.lightboxSlideCounter}>
+                    {lightboxIndex + 1} / {mediaUrls.length}
+                  </span>
+                )}
+
+                <div className={styles.lightboxMenuContainer}>
+                  <AdOptionsMenu
+                    adId={ad.id}
+                    advertiserEmail={ad.user_email}
+                    showThreeDotMenu={showLightboxMenu}
+                    onToggleMenu={setShowLightboxMenu}
+                    onDismiss={handleDismiss}
+                  />
+                </div>
+              </div>
+
+              {/* Center Media Stage */}
+              <div
+                className={styles.lightboxStage}
+                onTouchStart={(e) => {
+                  if (mediaUrls.length > 1 && e.touches.length === 1) {
+                    lightboxTouchStartXRef.current = e.touches[0].clientX;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (
+                    mediaUrls.length > 1 &&
+                    lightboxTouchStartXRef.current !== null &&
+                    e.changedTouches.length > 0
+                  ) {
+                    const deltaX = e.changedTouches[0].clientX - lightboxTouchStartXRef.current;
+                    lightboxTouchStartXRef.current = null;
+                    if (Math.abs(deltaX) > 45) {
+                      if (deltaX < 0) {
+                        setLightboxIndex((prev) =>
+                          prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null
+                        );
+                      } else {
+                        setLightboxIndex((prev) =>
+                          prev !== null ? Math.max(0, prev - 1) : null
+                        );
+                      }
+                    }
+                  }
+                }}
+              >
+                {mediaUrls.length > 1 && lightboxIndex > 0 && (
+                  <button
+                    type="button"
+                    className={`${styles.lightboxNavArrow} ${styles.lightboxNavPrev}`}
+                    onClick={() => setLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null))}
+                    aria-label="Previous media"
+                  >
+                    <ChevronLeft size={24} strokeWidth={2.5} />
+                  </button>
+                )}
+
+                {(() => {
+                  const activeUrl = mediaUrls[lightboxIndex];
+                  const isVid = isVideoUrl(activeUrl) || (lightboxIndex === 0 && !!ad.hls_url);
+                  const itemHlsSrc = activeUrl.includes(".m3u8")
+                    ? activeUrl
+                    : lightboxIndex === 0 && ad.hls_url
+                    ? ad.hls_url
+                    : undefined;
+
+                  if (isVid) {
+                    return (
+                      <HlsVideoPlayer
+                        key={`lightbox-${activeUrl}`}
+                        src={activeUrl}
+                        hlsSrc={itemHlsSrc}
+                        controls
+                        autoPlay
+                        playsInline
+                        muted={false}
+                        className={styles.lightboxMediaVideo}
+                      />
+                    );
+                  }
+                  return (
+                    <img
+                      src={activeUrl}
+                      alt={`${brandName} media ${lightboxIndex + 1}`}
+                      className={styles.lightboxMediaImage}
+                      draggable={false}
+                    />
+                  );
+                })()}
+
+                {mediaUrls.length > 1 && lightboxIndex < mediaUrls.length - 1 && (
+                  <button
+                    type="button"
+                    className={`${styles.lightboxNavArrow} ${styles.lightboxNavNext}`}
+                    onClick={() =>
+                      setLightboxIndex((prev) => (prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null))
+                    }
+                    aria-label="Next media"
+                  >
+                    <ChevronRight size={24} strokeWidth={2.5} />
+                  </button>
+                )}
+              </div>
+
+              {/* Bottom Bar: CTA Buttons + Mutual / Seen / Earn Interaction Handler */}
+              <div className={styles.lightboxBottomBar}>
+                <div className={styles.lightboxCtaGroup}>
+                  {ad.ad_type === "product_sales" && ad.product_price ? (
+                    <span className={styles.productPriceText}>
+                      {formatCurrency(ad.product_price || 0, ad.country)}
+                    </span>
+                  ) : null}
+
+                  {ad.product_cta_link && (
+                    <a
+                      href={
+                        ad.product_cta_link.startsWith("http")
+                          ? ad.product_cta_link
+                          : `https://${ad.product_cta_link}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.productCtaButton}
+                      onClick={() =>
+                        handleCtaClick(
+                          (ad.product_cta_type || (ad.ad_type === "product_sales" ? "Buy" : "Comment"))
+                            .toLowerCase()
+                            .replace(/\s+/g, "_")
+                        )
+                      }
+                    >
+                      {ad.product_cta_type || (ad.ad_type === "product_sales" ? "Buy" : "Comment")}
+                    </a>
+                  )}
+
+                  {actionButtons
+                    .filter((type) => type !== "action_read_more")
+                    .map((type) => (
+                      <a
+                        key={`lb-${type}-${ad.id}`}
+                        href={getHref(type, ad[type as keyof Ad] as string, ad)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.lightboxActionBtn}
+                        title={type.replace("action_", "")}
+                        onClick={() => handleCtaClick(type.replace("action_", ""))}
+                      >
+                        {getIcon(type)}
+                      </a>
+                    ))}
+
+                  <button
+                    title="Share Ad"
+                    className={styles.lightboxActionBtn}
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const encodedId = btoa(ad.id.toString());
+                        const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
+                        navigator.clipboard
+                          .writeText(shareUrl)
+                          .then(() => {
+                            showToast("Link copied to clipboard");
+                          })
+                          .catch(() => {
+                            onShare(ad.id);
+                          });
+                      } catch {
+                        onShare(ad.id);
+                      }
+                    }}
+                  >
+                    <Share2 size={15} strokeWidth={1.7} />
+                  </button>
+                </div>
+
+                <div className={styles.lightboxInteractionGroup}>
+                  {isPlatformPost || isOwner ? (
+                    <div className={styles.fromBrandContainer}>
+                      {targetLink && targetLink !== "#" ? (
+                        <a
+                          href={targetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.fromBrandBtn}
+                          title={`Visit ${brandName}`}
+                          onClick={() => handleCtaClick("brand_visit")}
+                        >
+                          Visit {brandName}
+                        </a>
+                      ) : (
+                        <span className={styles.fromBrandText}>Visit {brandName}</span>
+                      )}
+                    </div>
+                  ) : !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
+                    <AdInteractionHandler
+                      ad={ad}
+                      userEmail={userEmail}
+                      isPlatformPost={isPlatformPost}
+                      isMutualTarget={isMutualTarget}
+                      isAlreadyMutual={isAlreadyMutual}
+                      viewerProfile={viewerProfile}
+                      isProcessing={isProcessing}
+                      isSuspended={isSuspended}
+                      successAction={successAction}
+                      activeAction={activeAction}
+                      handleAction={handleAction}
+                      onMarkSeen={onMarkSeen}
+                      onAdEarn={onAdEarn}
+                      onAdMutual={onAdMutual}
+                      brandName={brandName}
+                      targetLink={targetLink}
+                      forceInView={true}
+                      externalSecondsLeft={interactionSecondsLeft}
+                      onSecondsLeftChange={setInteractionSecondsLeft}
+                      externalStage={interactionStage}
+                      onStageChange={setInteractionStage}
+                    />
+                  ) : (
+                    <div className={styles.fromBrandContainer}>
+                      {targetLink && targetLink !== "#" ? (
+                        <a
+                          href={targetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.fromBrandBtn}
+                          title={`Visit ${brandName}`}
+                          onClick={() => handleCtaClick("brand_visit")}
+                        >
+                          Visit {brandName}
+                        </a>
+                      ) : (
+                        <span className={styles.fromBrandText}>Visit {brandName}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* X (Twitter)-Style Long-Form Text Reader: Modal on Desktop, Full-Screen on Mobile */}
+      {isTextReaderOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className={styles.lightboxOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Full post reader"
+            onClick={() => {
+              setIsTextReaderOpen(false);
+              setShowReaderMenu(false);
+            }}
+          >
+            <div
+              className={styles.textReaderDialog}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Top Bar: Back Arrow (Left) + Word Count / Read Time (Center) + Report Ad Menu (Right) */}
+              <div className={styles.textReaderTopBar}>
+                <button
+                  type="button"
+                  className={styles.lightboxIconBtn}
+                  onClick={() => {
+                    setIsTextReaderOpen(false);
+                    setShowReaderMenu(false);
+                  }}
+                  aria-label="Back to feed"
+                  title="Back"
+                >
+                  <ArrowLeft size={20} strokeWidth={2.2} />
+                </button>
+
+                <span className={styles.lightboxSlideCounter}>
+                  {adWordCount.toLocaleString()} {adWordCount === 1 ? "word" : "words"} •{" "}
+                  {Math.max(1, Math.ceil(adWordCount / 200))} min read
+                </span>
+
+                <div className={styles.lightboxMenuContainer}>
+                  <AdOptionsMenu
+                    adId={ad.id}
+                    advertiserEmail={ad.user_email}
+                    showThreeDotMenu={showReaderMenu}
+                    onToggleMenu={setShowReaderMenu}
+                    onDismiss={handleDismiss}
+                  />
+                </div>
+              </div>
+
+              {/* Scrollable Full-Text Reader Body */}
+              <div className={styles.textReaderBody}>
+                <div className={styles.textReaderAuthorRow}>
+                  <Avatar
+                    src={ad.custom_sponsor_logo || advertiserProfile?.profileImage}
+                    name={brandName}
+                    email={ad.user_email}
+                    size={42}
+                    alt={brandName}
+                    gender={advertiserProfile?.gender || (ad as any).gender || null}
+                  />
+                  <div className={styles.textReaderAuthorMeta}>
+                    <div className={styles.textReaderAuthorNameRow}>
+                      <span>{brandName}</span>
+                      {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
+                        <VerifiedBadge size={14} title="Verified Account" />
+                      )}
+                      {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
+                        <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
+                          AI Content
+                        </span>
+                      )}
+                    </div>
+                    <span className={styles.textReaderAuthorSub}>
+                      {formatTimestamp(ad.created_at)} · Sponsored Post
+                    </span>
+                  </div>
+                </div>
+
+                <p className={styles.textReaderContent}>{formattedAdContent}</p>
+              </div>
+
+              {/* Bottom Bar: CTA Buttons + Mutual / Seen / Earn Interaction Handler */}
+              <div className={styles.lightboxBottomBar}>
+                <div className={styles.lightboxCtaGroup}>
+                  {ad.product_cta_link && (
+                    <a
+                      href={
+                        ad.product_cta_link.startsWith("http")
+                          ? ad.product_cta_link
+                          : `https://${ad.product_cta_link}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.productCtaButton}
+                      onClick={() =>
+                        handleCtaClick(
+                          (ad.product_cta_type || "Comment").toLowerCase().replace(/\s+/g, "_")
+                        )
+                      }
+                    >
+                      {ad.product_cta_type || "Comment"}
+                    </a>
+                  )}
+
+                  {actionButtons
+                    .filter((type) => type !== "action_read_more")
+                    .map((type) => (
+                      <a
+                        key={`reader-${type}-${ad.id}`}
+                        href={getHref(type, ad[type as keyof Ad] as string, ad)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.lightboxActionBtn}
+                        title={type.replace("action_", "")}
+                        onClick={() => handleCtaClick(type.replace("action_", ""))}
+                      >
+                        {getIcon(type)}
+                      </a>
+                    ))}
+
+                  <button
+                    title="Share Ad"
+                    className={styles.lightboxActionBtn}
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const encodedId = btoa(ad.id.toString());
+                        const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
+                        navigator.clipboard
+                          .writeText(shareUrl)
+                          .then(() => {
+                            showToast("Link copied to clipboard");
+                          })
+                          .catch(() => {
+                            onShare(ad.id);
+                          });
+                      } catch {
+                        onShare(ad.id);
+                      }
+                    }}
+                  >
+                    <Share2 size={15} strokeWidth={1.7} />
+                  </button>
+                </div>
+
+                <div className={styles.lightboxInteractionGroup}>
+                  {isPlatformPost || isOwner ? (
+                    <div className={styles.fromBrandContainer}>
+                      {targetLink && targetLink !== "#" ? (
+                        <a
+                          href={targetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.fromBrandBtn}
+                          title={`Visit ${brandName}`}
+                          onClick={() => handleCtaClick("brand_visit")}
+                        >
+                          Visit {brandName}
+                        </a>
+                      ) : (
+                        <span className={styles.fromBrandText}>Visit {brandName}</span>
+                      )}
+                    </div>
+                  ) : !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
+                    <AdInteractionHandler
+                      ad={ad}
+                      userEmail={userEmail}
+                      isPlatformPost={isPlatformPost}
+                      isMutualTarget={isMutualTarget}
+                      isAlreadyMutual={isAlreadyMutual}
+                      viewerProfile={viewerProfile}
+                      isProcessing={isProcessing}
+                      isSuspended={isSuspended}
+                      successAction={successAction}
+                      activeAction={activeAction}
+                      handleAction={handleAction}
+                      onMarkSeen={onMarkSeen}
+                      onAdEarn={onAdEarn}
+                      onAdMutual={onAdMutual}
+                      brandName={brandName}
+                      targetLink={targetLink}
+                      forceInView={true}
+                      externalSecondsLeft={interactionSecondsLeft}
+                      onSecondsLeftChange={setInteractionSecondsLeft}
+                      externalStage={interactionStage}
+                      onStageChange={setInteractionStage}
+                    />
+                  ) : (
+                    <div className={styles.fromBrandContainer}>
+                      {targetLink && targetLink !== "#" ? (
+                        <a
+                          href={targetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.fromBrandBtn}
+                          title={`Visit ${brandName}`}
+                          onClick={() => handleCtaClick("brand_visit")}
+                        >
+                          Visit {brandName}
+                        </a>
+                      ) : (
+                        <span className={styles.fromBrandText}>Visit {brandName}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

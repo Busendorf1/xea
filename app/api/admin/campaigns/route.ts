@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
-import redisConnection, { isRedisReady } from "@/lib/redis";
+import redisConnection, { isRedisReady, scanDeletePattern } from "@/lib/redis";
 import { invalidateCachedUserCampaigns } from "@/lib/utils/cache";
 import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
+import { dispatchFeedDropWebhook } from "@/lib/webhookDispatcher";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -64,25 +65,17 @@ async function invalidateAdminCampaignCache(
         }
         await pipeline.exec().catch(() => {});
 
-        // Evict admin campaigns tab caches
-        const keys = await redisConnection.keys(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}*`).catch(() => []);
-        if (keys && keys.length > 0) {
-          await redisConnection.del(keys).catch(() => {});
-        }
-
-        // Evict feed & highlights keys
+        const scanTasks: Promise<unknown>[] = [
+          scanDeletePattern(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}*`),
+        ];
         if (action?.includes("ad")) {
-          const feedKeys = await redisConnection.keys("feed:ads:*").catch(() => []);
-          if (feedKeys && feedKeys.length > 0) {
-            await redisConnection.del(feedKeys).catch(() => {});
-          }
+          scanTasks.push(scanDeletePattern("feed:ads:*"));
+          scanTasks.push(scanDeletePattern("feed:ad_ids:*"));
         }
         if (action?.includes("highlight")) {
-          const highlightKeys = await redisConnection.keys("highlights:*").catch(() => []);
-          if (highlightKeys && highlightKeys.length > 0) {
-            await redisConnection.del(highlightKeys).catch(() => {});
-          }
+          scanTasks.push(scanDeletePattern("highlights:*"));
         }
+        await Promise.all(scanTasks);
       } catch (err) {
         console.warn("⚠️ Failed to invalidate admin campaign cache:", err);
       }
@@ -297,21 +290,26 @@ export async function POST(req: NextRequest) {
       };
 
       // Insert into active ads
-      const { error: insertErr } = await supabaseAdmin.from("addsactive").insert([activeAd]);
+      const { data: insertedRows, error: insertErr } = await supabaseAdmin
+        .from("addsactive")
+        .insert([activeAd])
+        .select("*");
       if (insertErr) throw insertErr;
 
       // Delete from pending queue
       await supabaseAdmin.from("adds").delete().eq("id", id);
 
+      const publishedAd = insertedRows?.[0] || activeAd;
+      dispatchFeedDropWebhook(publishedAd).catch(() => {});
+
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
       return NextResponse.json({ success: true, message: "Ad approved and published to active feed!" });
     }
 
-    // 2. REJECT AD CAMPAIGN
+    // 2. REJECT AD CAMPAIGN (Non-refundable closed-loop payment policy enforced)
     if (action === "reject_ad") {
       if (!id) return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
 
-      // Optional refund & notification & storage purge
       const { data: adToDelete } = await supabaseAdmin
         .from("adds")
         .select("user_email, total_cost, ad_media, ad_media_url")
@@ -322,17 +320,6 @@ export async function POST(req: NextRequest) {
         const mediaUrls = adToDelete.ad_media || adToDelete.ad_media_url;
         if (mediaUrls) {
           await purgeStorageMedia(mediaUrls, "ad-media");
-        }
-      }
-
-      if (adToDelete?.user_email && payload?.refund) {
-        const refundAmount = Number(adToDelete.total_cost || 0);
-        if (refundAmount > 0) {
-          const { data: userRecord } = await supabaseAdmin.from("users").select("balance").ilike("email", adToDelete.user_email).maybeSingle();
-          if (userRecord) {
-            const newBal = (Number(userRecord.balance) || 0) + refundAmount;
-            await supabaseAdmin.from("users").update({ balance: newBal }).ilike("email", adToDelete.user_email);
-          }
         }
       }
 
@@ -352,10 +339,14 @@ export async function POST(req: NextRequest) {
       }
 
       // Update in both active and pending tables
-      await Promise.all([
-        supabaseAdmin.from("addsactive").update(updateData).eq("id", id),
+      const [activeRes] = await Promise.all([
+        supabaseAdmin.from("addsactive").update(updateData).eq("id", id).select("*").maybeSingle(),
         supabaseAdmin.from("adds").update(updateData).eq("id", id),
       ]);
+
+      if (!isPaused && activeRes?.data) {
+        dispatchFeedDropWebhook(activeRes.data).catch(() => {});
+      }
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
       return NextResponse.json({ success: true, message: `Ad campaign ${isPaused ? "paused" : "resumed"} successfully.` });
@@ -525,8 +516,14 @@ export async function POST(req: NextRequest) {
         created_at: now,
       };
 
-      const { error: directAdErr } = await supabaseAdmin.from("addsactive").insert([adRecord]);
+      const { data: insertedRows, error: directAdErr } = await supabaseAdmin
+        .from("addsactive")
+        .insert([adRecord])
+        .select("*");
       if (directAdErr) throw directAdErr;
+
+      const publishedAd = insertedRows?.[0] || adRecord;
+      dispatchFeedDropWebhook(publishedAd).catch(() => {});
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
       return NextResponse.json({ success: true, message: "Ad published directly to active feed!" });

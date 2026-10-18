@@ -5,9 +5,16 @@ import { v4 as uuidv4 } from "uuid";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
-// PaystackService is also accessible via PayoutProvider or directly from "@/lib/payment/paystack"
+import {
+  spendWalletBalanceAtomic,
+  refundWalletDeductionAtomic,
+} from "@/lib/services/payoutSettlementService";
+
+const USD_TO_NGN_RATE = 1500;
 
 export async function POST(req: NextRequest) {
+  let walletLockKey: string | null = null;
+  let lockAcquired = false;
   try {
     const authEmail = await getAuthenticatedEmail(req);
     if (!authEmail) {
@@ -60,43 +67,38 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const requiredAmount = Number(subscriber.amount || 150000);
-    const currency = subscriber.currency || "NGN";
+    const rawAmount = Number(subscriber.amount || 150000);
+    const currency = String(subscriber.currency || "NGN").toUpperCase();
+    // Convert USD ($100) to NGN (₦150,000) so NGN wallets and NGN payment gateways charge the true Naira equivalent
+    const requiredAmountNgn = currency === "USD" ? rawAmount * USD_TO_NGN_RATE : rawAmount;
 
     // 2. Handle Wallet Payment
     if (payment_method === "wallet") {
-      // Fetch user's current wallet balance
-      const { data: userProfile, error: userErr } = await supabaseAdmin
-        .from("users")
-        .select("id, balance, email")
-        .ilike("email", cleanEmail)
-        .maybeSingle();
-
-      if (userErr || !userProfile) {
-        return NextResponse.json({ error: "User wallet account not found." }, { status: 404 });
+      walletLockKey = `lock:wallet:${cleanEmail}`;
+      const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
+      if (!acquired) {
+        return NextResponse.json(
+          { error: "Another wallet transaction is currently in progress. Please wait a moment." },
+          { status: 429 }
+        );
       }
+      lockAcquired = true;
 
-      const currentBalance = parseFloat(userProfile.balance || "0");
-      if (currentBalance < requiredAmount) {
+      const paymentRef = `sub_wallet_${uuidv4()}`;
+      const spendRes = await spendWalletBalanceAtomic(
+        cleanEmail,
+        requiredAmountNgn,
+        "brand_subscription",
+        paymentRef
+      );
+
+      if (!spendRes.success) {
         return NextResponse.json({
-          error: `Insufficient wallet balance. You have ${currency === "NGN" ? "₦" + currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 }) : "$" + currentBalance.toFixed(2)}, but ${currency === "NGN" ? "₦" + requiredAmount.toLocaleString() : "$" + requiredAmount} is required.`,
+          error: `Insufficient wallet balance. ₦${requiredAmountNgn.toLocaleString("en-NG", { minimumFractionDigits: 2 })} is required.`,
         }, { status: 400 });
       }
 
-      const newBalance = currentBalance - requiredAmount;
-
-      // Deduct balance atomically
-      const { error: balanceErr } = await supabaseAdmin
-        .from("users")
-        .update({ balance: newBalance })
-        .eq("id", userProfile.id);
-
-      if (balanceErr) {
-        console.error("❌ Error deducting wallet balance for brand subscription:", balanceErr);
-        return NextResponse.json({ error: "Failed to deduct wallet balance. Please try again." }, { status: 500 });
-      }
-
-      const paymentRef = `sub_wallet_${uuidv4()}`;
+      const newBalance = spendRes.newBalance ?? 0;
 
       // Update subscriber status to active and payment_status to paid
       const { data: updatedSub, error: updateSubErr } = await supabaseAdmin
@@ -113,21 +115,28 @@ export async function POST(req: NextRequest) {
 
       if (updateSubErr) {
         console.error("❌ Error updating subscriber status after payment:", updateSubErr);
+        await refundWalletDeductionAtomic(cleanEmail, requiredAmountNgn, "brand_sub_update_failed", paymentRef);
+        return NextResponse.json({ error: "Failed to activate subscription. Wallet balance has been restored." }, { status: 500 });
       }
 
       // Record transaction ledger entry
       try {
         await supabaseAdmin.from("payments").insert({
           user_email: cleanEmail,
-          amount: requiredAmount,
-          currency: currency.toLowerCase(),
+          amount: requiredAmountNgn,
+          currency: "ngn",
           status: "success",
           type: "brand_subscription",
           reference: paymentRef,
+          description: `Non-refundable Brand Subscription for ${subscriber.business_name} (${subscriber.domain})`,
           metadata: {
             brand_id: subscriber.id,
+            subscriber_id: subscriber.id,
             business_name: subscriber.business_name,
             domain: subscriber.domain,
+            original_amount: rawAmount,
+            original_currency: currency,
+            non_refundable: true,
             type: "brand_subscription",
           },
         });
@@ -157,7 +166,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Payment of ${currency === "NGN" ? "₦" + requiredAmount.toLocaleString() : "$" + requiredAmount} successful! ${subscriber.business_name} (${subscriber.domain}) is now an active Premium Subscriber brand. All advertisers promoting links from this domain will receive a 30% discount!`,
+        message: `Payment of ₦${requiredAmountNgn.toLocaleString()} successful! ${subscriber.business_name} (${subscriber.domain}) is now an active Premium Subscriber brand. All advertisers promoting links from this domain will receive a 30% discount!`,
         subscriber: updatedSub || subscriber,
         new_balance: newBalance,
       });
@@ -167,18 +176,34 @@ export async function POST(req: NextRequest) {
     if (payment_method === "card") {
       try {
         const callback = callback_url || `${process.env.NEXT_PUBLIC_BASE_URL || ""}/business/subscribe?payment=success`;
+        const paymentMetadata = {
+          type: "brand_subscription",
+          subscriber_id: subscriber.id,
+          brand_id: subscriber.id,
+          business_name: subscriber.business_name,
+          domain: subscriber.domain,
+          user_email: cleanEmail,
+          non_refundable: true,
+          provider: PayoutProvider.getActiveGateway(),
+        };
+
         const initData = await PayoutProvider.initializePayment({
           email: cleanEmail,
-          amountInNaira: requiredAmount,
+          amountInNaira: requiredAmountNgn,
           callbackUrl: callback,
-          metadata: {
-            type: "brand_subscription",
-            subscriber_id: subscriber.id,
-            domain: subscriber.domain,
-            user_email: cleanEmail,
-            provider: PayoutProvider.getActiveGateway(),
-          },
+          metadata: paymentMetadata,
           narration: `Brand Subscription for ${subscriber.business_name} (${subscriber.domain})`,
+        });
+
+        // Insert pending payment record so /api/payments/verify and webhooks can fulfill it
+        await supabaseAdmin.from("payments").insert({
+          user_email: cleanEmail,
+          reference: initData.reference,
+          amount: requiredAmountNgn,
+          status: "pending",
+          type: "brand_subscription",
+          description: `Non-refundable Brand Subscription for ${subscriber.business_name} (${subscriber.domain})`,
+          metadata: paymentMetadata,
         });
 
         return NextResponse.json({
@@ -199,5 +224,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("❌ Error in POST /api/business/subscribe/pay:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+  } finally {
+    if (lockAcquired && walletLockKey) {
+      await redisConnection.del(walletLockKey).catch(() => {});
+    }
   }
 }

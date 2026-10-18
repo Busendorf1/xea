@@ -6,6 +6,7 @@ import { PayoutProvider, PayoutGateway } from "@/lib/payment/payoutProvider";
 import { KoraService } from "@/lib/payment/kora";
 import redisConnection from "@/lib/redis";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +135,14 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { action, reference, references, allowTestMode, simulate } = body;
-    const isTestMode = allowTestMode === true || simulate === true;
+    const requestedTestMode = allowTestMode === true || simulate === true;
+    if (requestedTestMode && process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Test simulation mode is disabled in production environments." },
+        { status: 400 }
+      );
+    }
+    const isTestMode = requestedTestMode && process.env.NODE_ENV !== "production";
 
     const invalidatePayoutCaches = async () => {
       await KoraService.invalidateBalanceCache();
@@ -155,15 +163,15 @@ export async function POST(req: NextRequest) {
           floatBalance = await KoraService.getNairaBalance();
           if (floatBalance <= 0) {
             return NextResponse.json({
-              error: "Cannot process payouts: Kora float balance is ₦0.00. Please top up your Kora balance first or use Test Mode.",
+              error: "Cannot process payouts: Kora float balance is ₦0.00. Please top up your Kora balance first.",
               floatBalance: 0,
-              canSimulate: true,
+              canSimulate: process.env.NODE_ENV !== "production",
             }, { status: 400 });
           }
         } catch (balErr: any) {
           return NextResponse.json({ 
             error: `Could not verify Kora balance: ${balErr?.message}`,
-            canSimulate: true 
+            canSimulate: process.env.NODE_ENV !== "production" 
           }, { status: 500 });
         }
       }
@@ -222,38 +230,32 @@ export async function POST(req: NextRequest) {
             gatewayRef = payoutRes.reference || payment.reference;
           }
 
-          await supabaseAdmin
-            .from("payments")
-            .update({
-              status: pStatus,
-              metadata: {
-                ...payment.metadata,
-                gateway_status: pStatus,
-                gateway_reference: gatewayRef,
-                manual_admin_dispatched_at: new Date().toISOString(),
-                dispatched_by: admin.email,
-                simulated_test: isTestMode,
-              },
-            })
-            .eq("id", payment.id);
+          const dispatchMeta = {
+            gateway_status: pStatus,
+            gateway_reference: gatewayRef,
+            manual_admin_dispatched_at: new Date().toISOString(),
+            dispatched_by: admin.email,
+            simulated_test: isTestMode,
+          };
 
-          // If success, clear user withdrawal escrow hold
           if (pStatus === "success") {
-            const { data: userProfile } = await supabaseAdmin
-              .from("users")
-              .select("withdrawal")
-              .ilike("email", payment.user_email)
-              .maybeSingle();
-
-            if (userProfile) {
-              const currentEscrow = parseFloat(userProfile.withdrawal || 0);
-              const newEscrow = Math.max(0, currentEscrow - rawAmount);
-              await supabaseAdmin
-                .from("users")
-                .update({ withdrawal: newEscrow })
-                .ilike("email", payment.user_email);
-              await invalidateCachedProfile(payment.user_email);
-            }
+            await settleWithdrawalByReference(
+              payment.reference,
+              "success",
+              "admin_manual_batch_dispatched",
+              dispatchMeta
+            );
+          } else {
+            await supabaseAdmin
+              .from("payments")
+              .update({
+                status: pStatus,
+                metadata: {
+                  ...payment.metadata,
+                  ...dispatchMeta,
+                },
+              })
+              .eq("id", payment.id);
           }
 
           runningTotal += netDisburseAmount;
@@ -309,8 +311,8 @@ export async function POST(req: NextRequest) {
       }
 
       const withdrawAmount = parseFloat(payment.amount);
-      const userEmail = payment.user_email;
-      const { bankCode, accountNumber, accountName, bankName } = payment.metadata || {};
+      const userEmail = payment.user_email.toLowerCase().trim();
+      const { bankCode, accountNumber, accountName } = payment.metadata || {};
 
       if (!bankCode || !accountNumber) {
         return NextResponse.json({ error: "Missing destination bank details in payment record." }, { status: 400 });
@@ -321,7 +323,7 @@ export async function POST(req: NextRequest) {
         const { data: user } = await supabaseAdmin
           .from("users")
           .select("balance, withdrawal")
-          .ilike("email", userEmail)
+          .eq("email", userEmail)
           .maybeSingle();
 
         if (!user) {
@@ -331,20 +333,28 @@ export async function POST(req: NextRequest) {
         const currentBalance = parseFloat(user.balance || 0);
         const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-        // If the balance has the funds, deduct it back to withdrawal escrow
+        // If the balance has the funds, deduct it back to withdrawal escrow and transition payment back to queued before settlement
         if (currentBalance >= withdrawAmount) {
-          const newBal = currentBalance - withdrawAmount;
-          const newWith = currentWithdrawal + withdrawAmount;
+          const newBal = Number((currentBalance - withdrawAmount).toFixed(2));
+          const newWith = Number((currentWithdrawal + withdrawAmount).toFixed(2));
 
-          const { error: userUpdateErr } = await supabaseAdmin
+          const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
             .from("users")
             .update({ balance: newBal, withdrawal: newWith })
-            .ilike("email", userEmail)
-            .eq("balance", currentBalance);
+            .eq("email", userEmail)
+            .gte("balance", withdrawAmount)
+            .select("balance")
+            .maybeSingle();
 
-          if (userUpdateErr) {
+          if (userUpdateErr || !updatedUser) {
             return NextResponse.json({ error: "User balance concurrent update conflict. Please try again." }, { status: 409 });
           }
+
+          await supabaseAdmin
+            .from("payments")
+            .update({ status: "queued" })
+            .eq("id", payment.id);
+
           await invalidateCachedProfile(userEmail);
         } else if (currentWithdrawal < withdrawAmount) {
           return NextResponse.json({
@@ -377,37 +387,32 @@ export async function POST(req: NextRequest) {
           gatewayRef = payoutRes.reference || reference;
         }
 
-        await supabaseAdmin
-          .from("payments")
-          .update({
-            status: newStatus,
-            metadata: {
-              ...payment.metadata,
-              gateway_status: newStatus,
-              gateway_reference: gatewayRef,
-              admin_retried_at: new Date().toISOString(),
-              retried_by: admin.email,
-              simulated_test: isTestMode,
-            },
-          })
-          .eq("reference", reference);
+        const retryMeta = {
+          gateway_status: newStatus,
+          gateway_reference: gatewayRef,
+          admin_retried_at: new Date().toISOString(),
+          retried_by: admin.email,
+          simulated_test: isTestMode,
+        };
 
         if (newStatus === "success") {
-          const { data: userProfile } = await supabaseAdmin
-            .from("users")
-            .select("withdrawal")
-            .ilike("email", userEmail)
-            .maybeSingle();
-
-          if (userProfile) {
-            const currentEscrow = parseFloat(userProfile.withdrawal || 0);
-            const newEscrow = Math.max(0, currentEscrow - withdrawAmount);
-            await supabaseAdmin
-              .from("users")
-              .update({ withdrawal: newEscrow })
-              .ilike("email", userEmail);
-            await invalidateCachedProfile(userEmail);
-          }
+          await settleWithdrawalByReference(
+            reference,
+            "success",
+            "admin_single_retry_dispatched",
+            retryMeta
+          );
+        } else {
+          await supabaseAdmin
+            .from("payments")
+            .update({
+              status: newStatus,
+              metadata: {
+                ...payment.metadata,
+                ...retryMeta,
+              },
+            })
+            .eq("reference", reference);
         }
 
         await invalidatePayoutCaches();
@@ -462,7 +467,7 @@ export async function POST(req: NextRequest) {
       if (targetRefs.length > 0) {
         query = query.in("reference", targetRefs);
       } else {
-        query = query.in("status", ["failed", "queued"]);
+        query = query.in("status", ["queued"]);
       }
 
       const { data: targets, error: targetErr } = await query.limit(50);
@@ -474,6 +479,10 @@ export async function POST(req: NextRequest) {
       let queuedCount = 0;
 
       for (const t of targets) {
+        if (t.status === "failed") {
+          // Skip previously refunded failed records in bulk retry unless re-escrowed via retry_single
+          continue;
+        }
         const withdrawAmount = parseFloat(t.amount);
         const netDisburseAmount = t.metadata?.net_amount ?? Math.max(0, withdrawAmount - 35);
         const { bankCode, accountNumber, accountName } = t.metadata || {};
@@ -500,35 +509,31 @@ export async function POST(req: NextRequest) {
             gRef = payoutRes.reference || t.reference;
           }
 
-          await supabaseAdmin
-            .from("payments")
-            .update({
-              status: pStatus,
-              metadata: {
-                ...t.metadata,
-                gateway_status: pStatus,
-                gateway_reference: gRef,
-                admin_bulk_retried_at: new Date().toISOString(),
-                simulated_test: isTestMode,
-              },
-            })
-            .eq("id", t.id);
+          const bulkMeta = {
+            gateway_status: pStatus,
+            gateway_reference: gRef,
+            admin_bulk_retried_at: new Date().toISOString(),
+            simulated_test: isTestMode,
+          };
 
           if (pStatus === "success") {
-            const { data: userProfile } = await supabaseAdmin
-              .from("users")
-              .select("withdrawal")
-              .ilike("email", t.user_email)
-              .maybeSingle();
-
-            if (userProfile) {
-              const currentEscrow = parseFloat(userProfile.withdrawal || 0);
-              const newEscrow = Math.max(0, currentEscrow - withdrawAmount);
-              await supabaseAdmin
-                .from("users")
-                .update({ withdrawal: newEscrow })
-                .ilike("email", t.user_email);
-            }
+            await settleWithdrawalByReference(
+              t.reference,
+              "success",
+              "admin_bulk_retry_dispatched",
+              bulkMeta
+            );
+          } else {
+            await supabaseAdmin
+              .from("payments")
+              .update({
+                status: pStatus,
+                metadata: {
+                  ...t.metadata,
+                  ...bulkMeta,
+                },
+              })
+              .eq("id", t.id);
           }
 
           successCount++;

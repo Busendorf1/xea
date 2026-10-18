@@ -12,7 +12,6 @@ import {
   Globe,
   Users,
   Target,
-  Tag,
   SlidersHorizontal,
   CheckCircle2,
   Phone,
@@ -23,6 +22,11 @@ import {
   Star,
   ChevronUp,
   FileText,
+  Share2,
+  Pencil,
+  Pause,
+  Play,
+  XCircle,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/currency";
 import { Ad, parseTargetingList, formatAgeRange } from "./types";
@@ -68,15 +72,15 @@ function getHref(type: string, value: string): string {
 function getIcon(type: string): React.ReactNode {
   switch (type) {
     case "action_phone":
-      return <Phone size={14} />;
+      return <Phone size={13} />;
     case "action_whatsapp":
-      return <MessageSquare size={14} />;
+      return <MessageSquare size={13} />;
     case "action_email":
-      return <Mail size={14} />;
+      return <Mail size={13} />;
     case "action_website":
-      return <Globe size={14} />;
+      return <Globe size={13} />;
     default:
-      return <Globe size={14} />;
+      return <Globe size={13} />;
   }
 }
 
@@ -157,7 +161,7 @@ function getBoostUnavailableReason(ad: Ad, reportsCount: number): string | null 
   return null;
 }
 
-export default function MyAdCard({
+function MyAdCard({
   ad,
   status,
   reportsCount,
@@ -196,7 +200,7 @@ export default function MyAdCard({
   const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productCtaClicks;
   const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
 
-  // Parse all targeting dimensions for rich targeting display
+  // Parse all targeting dimensions
   const industryList = parseTargetingList(ad.industry);
   const interestList = parseTargetingList(ad.interest);
   const lifestyleList = parseTargetingList(ad.lifestyle);
@@ -204,17 +208,23 @@ export default function MyAdCard({
   const personalityList = parseTargetingList(ad.personality);
   const employmentList = parseTargetingList(ad.employment_status);
   const ageRangeText = formatAgeRange(ad.age_range);
-  const geoText = [ad.province, ad.state, ad.country].filter(Boolean).join(" • ") || (ad.country ? ad.country : "Global");
+  const geoText =
+    [ad.province, ad.state, ad.country].filter(Boolean).join(" • ") || (ad.country ? ad.country : "Global");
   const totalCategoriesCount =
-    industryList.length + interestList.length + lifestyleList.length + behaviorList.length + personalityList.length;
+    industryList.length +
+    interestList.length +
+    lifestyleList.length +
+    behaviorList.length +
+    personalityList.length +
+    employmentList.length;
 
   const targetImpressions = ad.impressions ?? 1000;
+  const remainingImpressions = Math.max(0, targetImpressions - seenCount);
   const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
 
   const isCompleted = !!ad.completed_at || seenCount >= targetImpressions;
   const deletionCountdown = ad.completed_at ? getDeletionCountdown(ad.completed_at, timeNow) : null;
   if (isCompleted && ad.completed_at && deletionCountdown === null) {
-    // 48 hours grace window has passed -> automatically omit from UI
     return null;
   }
 
@@ -224,14 +234,15 @@ export default function MyAdCard({
     rawMediaString.toLowerCase() !== "text" &&
     rawMediaString.toLowerCase() !== "null";
 
+  const isBiddedOrBoosted = !!ad.is_bidded || Number(ad.cost_per_impression || 25) > 25;
+
   return (
     <motion.div
       key={ad.id}
       layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -2 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.22 }}
       className={styles.card}
     >
       {/* Main Horizontal Row Body */}
@@ -243,70 +254,78 @@ export default function MyAdCard({
 
         {/* Main Content & Delivery Column */}
         <div className={styles.mainInfoCol}>
+          {/* Top Badges Strip */}
           <div className={styles.tagsRow}>
             <span className={`${styles.tagPill} ${styles.tagPillMediaType}`}>
               {hasValidMedia ? (
                 mediaType === "video" ? (
                   <>
-                    <Video size={13} /> Video Ad
+                    <Video size={12} /> Video
                   </>
                 ) : (
                   <>
-                    <ImageIcon size={13} /> Image Ad
+                    <ImageIcon size={12} /> Image
                   </>
                 )
               ) : (
                 <>
-                  <Megaphone size={13} /> Text Ad
+                  <Megaphone size={12} /> Text Post
                 </>
               )}
             </span>
 
-            {status === "review" && (
+            {status === "review" ? (
               <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
-                <Clock size={13} /> PENDING REVIEW
+                <Clock size={12} /> Pending Review
+              </span>
+            ) : (
+              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                <CheckCircle2 size={12} color="#10b981" /> Approved
               </span>
             )}
 
-            {Number(ad.cost_per_impression || 25) > 25 && (
+            {isBiddedOrBoosted && (
               <span
                 className={`${styles.tagPill} ${styles.tagPillBidded}`}
-                title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds. You can boost priority anytime."
+                title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds."
               >
-                <Zap size={13} color="var(--primary)" /> Bidded Priority Ad ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
+                <Zap size={12} /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} •{" "}
+                {formatCurrency(ad.cost_per_impression, ad.country)}/view
+              </span>
+            )}
+
+            {ad.display_mutual_button && (
+              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
+                <CheckCircle2 size={12} color="var(--primary)" /> Mutual+
               </span>
             )}
 
             {(ad.is_ai_content || (ad as any).isAiContent) && (
               <span className={`${styles.tagPill} ${styles.tagPillAi}`} title="AI-generated content">
-                AI Content
+                AI
               </span>
             )}
           </div>
 
+          {/* Ad Copy Preview */}
           <p className={styles.adDescription}>{ad.ad_content}</p>
 
           {ad.admin_statement && (
             <div className={styles.adminNotice}>
               <strong className={styles.adminNoticeTitle}>
-                <Info size={15} color="var(--primary)" /> Important Notice / Reason:
+                <Info size={14} color="var(--primary)" /> Admin Notice:
               </strong>
               {ad.admin_statement}
             </div>
           )}
 
-          {/* Target Specs Pills */}
+          {/* Compact Targeting Summary Strip */}
           <div className={styles.targetTagsRow}>
-            {(!!ad.is_bidded || Number(ad.cost_per_impression || 0) > 25) && (
-              <span className={`${styles.tagPill} ${styles.tagPillBidded}`}>
-                <Zap size={13} color="var(--primary)" /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} ({formatCurrency(ad.cost_per_impression, ad.country)}/view)
-              </span>
-            )}
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              <Globe size={13} /> Geo: {geoText}
+              <Globe size={12} /> {geoText}
             </span>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              <Users size={13} />{" "}
+              <Users size={12} />{" "}
               {ad.gender
                 ? ad.gender.toLowerCase() === "both"
                   ? "All Genders"
@@ -314,58 +333,30 @@ export default function MyAdCard({
                 : "All Genders"}{" "}
               • {ageRangeText}
             </span>
-            {industryList.length > 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Target size={13} /> Industry ({industryList.length}): {industryList.join(", ")}
-              </span>
-            )}
-            {interestList.length > 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Tag size={13} /> Interests ({interestList.length}): {interestList.join(", ")}
-              </span>
-            )}
-            {lifestyleList.length > 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <SlidersHorizontal size={13} /> Lifestyle ({lifestyleList.length}): {lifestyleList.join(", ")}
-              </span>
-            )}
-            {behaviorList.length > 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Target size={13} /> Behavior ({behaviorList.length}): {behaviorList.join(", ")}
-              </span>
-            )}
-            {personalityList.length > 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Users size={13} /> Personality ({personalityList.length}): {personalityList.join(", ")}
-              </span>
-            )}
-            {employmentList.length > 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Users size={13} /> Employment: {employmentList.join(", ")}
-              </span>
-            )}
-            {totalCategoriesCount === 0 && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <Target size={13} /> Targeting: Broad Delivery
-              </span>
-            )}
+            <button
+              type="button"
+              onClick={onToggleSpecs}
+              className={`${styles.tagPill} ${styles.tagPillInteractive}`}
+              title="Click to inspect full audience targeting matrix"
+            >
+              <Target size={12} />{" "}
+              {totalCategoriesCount > 0 ? `${totalCategoriesCount} Audience Segments` : "Broad Delivery"}
+            </button>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              <Zap size={13} /> {ad.user_frequency_cap || 1} View/Viewer/Day
+              {ad.user_frequency_cap || 1}× / Viewer / Day
             </span>
-            <span className={styles.tagPill}>{daysInfo.scheduled} Days Cap</span>
-            {ad.display_mutual_button && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <CheckCircle2 size={13} color="var(--primary)" /> Mutual+ Enabled
-              </span>
-            )}
+            <span className={styles.tagPill}>{daysInfo.scheduled}d Schedule</span>
           </div>
 
           {/* Live Delivery Progress */}
           <div className={styles.deliveryProgressWrapper}>
             <div className={styles.deliveryProgressRow}>
-              <span>Delivery Progress</span>
-              <span>
-                {deliveryPercent}% ({seenCount.toLocaleString()} / {targetImpressions.toLocaleString()} views)
+              <span className={styles.deliveryLabel}>
+                Delivery Progress • <strong>{deliveryPercent}%</strong>
+              </span>
+              <span className={styles.deliveryCountText}>
+                {seenCount.toLocaleString()} / {targetImpressions.toLocaleString()} views
+                {remainingImpressions > 0 ? ` (${remainingImpressions.toLocaleString()} left)` : ""}
               </span>
             </div>
             <div className={styles.deliveryProgressTrack}>
@@ -373,34 +364,34 @@ export default function MyAdCard({
                 className={styles.deliveryProgressFill}
                 initial={{ width: 0 }}
                 animate={{ width: `${deliveryPercent}%` }}
-                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
               />
             </div>
           </div>
 
-          {/* CTA Buttons Click Counter Row */}
+          {/* CTA Conversion Breakdown Pills */}
           <div className={styles.ctaClickRow}>
             <span className={styles.ctaClickItem}>
-              <Phone size={13} /> Phone: <strong>{phoneClicks}</strong>
+              <Phone size={12} /> Phone <strong>{phoneClicks}</strong>
             </span>
             <span className={styles.ctaClickItem}>
-              <MessageSquare size={13} /> WhatsApp: <strong>{whatsappClicks}</strong>
+              <MessageSquare size={12} /> WhatsApp <strong>{whatsappClicks}</strong>
             </span>
             <span className={styles.ctaClickItem}>
-              <Globe size={13} /> Website: <strong>{websiteClicks}</strong>
+              <Globe size={12} /> Website <strong>{websiteClicks}</strong>
             </span>
             <span className={styles.ctaClickItem}>
-              <Mail size={13} /> Email: <strong>{emailClicks}</strong>
+              <Mail size={12} /> Email <strong>{emailClicks}</strong>
             </span>
             {productCtaClicks > 0 && (
               <span className={styles.ctaClickItem}>
-                <ShoppingCart size={13} /> Product CTA: <strong>{productCtaClicks}</strong>
+                <ShoppingCart size={12} /> Product <strong>{productCtaClicks}</strong>
               </span>
             )}
           </div>
         </div>
 
-        {/* Key Metrics Grid Column */}
+        {/* Key Metrics 2x2 Bento Panel */}
         <div className={styles.metricsCol}>
           <div className={styles.metricCell}>
             <span className={styles.metricTitle}>Views Delivered</span>
@@ -409,18 +400,18 @@ export default function MyAdCard({
           <div className={styles.metricCell}>
             <span className={styles.metricTitle}>Clicks / CTR</span>
             <span className={styles.metricVal}>
-              {clicksCount} ({ctr}%)
+              {clicksCount} <span className={styles.metricSubVal}>({ctr}%)</span>
             </span>
           </div>
           <div className={styles.metricCell}>
             <span className={styles.metricTitle}>Mutual Adds</span>
-            <span className={styles.metricVal}>{ad.mutual_adds_count ?? 0}</span>
+            <span className={styles.metricVal}>{(ad.mutual_adds_count ?? 0).toLocaleString()}</span>
           </div>
           <div className={styles.metricCell}>
-            <span className={styles.metricTitle}>Ad Health</span>
+            <span className={styles.metricTitle}>Safety Status</span>
             {reportsCount === 0 && advertiserBlockCount === 0 ? (
               <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
-                <CheckCircle2 size={13} color="var(--primary)" /> Clean
+                <CheckCircle2 size={13} color="#10b981" /> Clean
               </span>
             ) : (
               <span className={`${styles.metricVal} ${styles.metricValRed}`}>
@@ -435,21 +426,27 @@ export default function MyAdCard({
       <div className={styles.rowFooter}>
         <div className={`${styles.footerLeftGroup} ${styles.footerLeftGroupInner}`}>
           {ad.is_paused ? (
-            <span className={styles.badgePaused}>PAUSED</span>
+            <span className={styles.badgePaused}>Paused</span>
           ) : isCompleted ? (
-            <span className={styles.badgeCompleted} title="100% of paid impressions have been delivered and archived">
-              COMPLETED {deletionCountdown ? `(Archiving in ${deletionCountdown})` : "(100% Delivered)"}
+            <span className={styles.badgeCompleted} title="100% of paid impressions have been delivered">
+              Completed {deletionCountdown ? `• Archiving in ${deletionCountdown}` : "• 100% Delivered"}
             </span>
           ) : daysInfo.isRollover ? (
             <span
               className={styles.badgeRollover}
               title="Campaign schedule passed but impressions remain unfulfilled. Actively delivering in Rollover mode."
             >
-              ROLLOVER (+{daysInfo.rolloverDays}d)
+              Rollover (+{daysInfo.rolloverDays}d)
             </span>
           ) : (
             <span className={status === "active" ? styles.badgeActive : styles.badgeReview}>
-              {status === "active" ? "Active" : "In Review"}
+              {status === "active" ? (
+                <>
+                  <span className={styles.liveDot} /> Active
+                </>
+              ) : (
+                "In Review"
+              )}
             </span>
           )}
 
@@ -466,7 +463,7 @@ export default function MyAdCard({
                 className={`${styles.rateBtn} ${styles.rateBtnGlow}`}
                 title="Rate campaign conversion outcomes to boost top-performing listener Attention Scores"
               >
-                <Star size={13} fill="var(--primary)" color="var(--primary)" /> Rate Audience
+                <Star size={12} fill="var(--primary)" color="var(--primary)" /> Rate Audience
               </button>
             ))}
 
@@ -489,7 +486,7 @@ export default function MyAdCard({
                   target="_blank"
                   rel="noopener noreferrer"
                   className={styles.iconButton}
-                  title={type}
+                  title={type.replace("action_", "Test ")}
                 >
                   {getIcon(type)}
                 </a>
@@ -504,7 +501,7 @@ export default function MyAdCard({
               </span>
             ) : (
               <span className={styles.specsBtnInner}>
-                <SlidersHorizontal size={13} /> Specs and Budget
+                <SlidersHorizontal size={13} /> Specs & Budget
               </span>
             )}
           </button>
@@ -516,7 +513,15 @@ export default function MyAdCard({
                 onClick={() => onTogglePause(ad.id, !!ad.is_paused, ad.admin_statement)}
                 className={ad.is_paused ? styles.resumeBtn : styles.pauseBtn}
               >
-                {ad.is_paused ? "Resume" : "Pause"}
+                {ad.is_paused ? (
+                  <>
+                    <Play size={12} /> Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause size={12} /> Pause
+                  </>
+                )}
               </button>
               {(() => {
                 const reason = getBoostUnavailableReason(ad, reportsCount);
@@ -528,12 +533,12 @@ export default function MyAdCard({
                         onClick={() => onShowNotice("Boosting Unavailable", reason, ad.id)}
                         className={`${styles.boostBtn} ${styles.boostUnavailableBtn}`}
                       >
-                        <AlertTriangle size={14} color="var(--text-muted)" />
-                        Boosting Unavailable
+                        <AlertTriangle size={13} color="var(--text-muted)" />
+                        Boost Unavailable
                       </button>
                       <div className={styles.boostTooltipContent}>
                         <div className={styles.boostTooltipRow}>
-                          <AlertTriangle size={14} />
+                          <AlertTriangle size={13} />
                           Boosting Unavailable
                         </div>
                         {reason}
@@ -543,12 +548,12 @@ export default function MyAdCard({
                 }
                 return (
                   <button type="button" onClick={() => onOpenBooster(ad)} className={styles.boostBtn}>
-                    Boost
+                    <Zap size={12} /> Boost
                   </button>
                 );
               })()}
-              <button type="button" onClick={() => onShare(ad.id)} className={styles.shareAdBtn}>
-                Share
+              <button type="button" onClick={() => onShare(ad.id)} className={styles.shareAdBtn} title="Copy campaign share link">
+                <Share2 size={12} /> Share
               </button>
               <a
                 href="/logged-in"
@@ -558,7 +563,7 @@ export default function MyAdCard({
                   onEdit(ad.id);
                 }}
               >
-                Edit Ad
+                <Pencil size={12} /> Edit
               </a>
               <button
                 type="button"
@@ -566,14 +571,15 @@ export default function MyAdCard({
                 className={styles.shareAdBtn}
                 title="Download CSV Performance Report"
               >
-                <FileText size={13} /> Export CSV
+                <FileText size={12} /> CSV
               </button>
               <button
                 type="button"
                 onClick={() => onCancel(ad.id)}
                 className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
+                title="Stop and cancel campaign"
               >
-                Cancel
+                <XCircle size={12} /> Cancel
               </button>
             </>
           )}
@@ -592,3 +598,5 @@ export default function MyAdCard({
     </motion.div>
   );
 }
+
+export default React.memo(MyAdCard);

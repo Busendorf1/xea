@@ -55,7 +55,7 @@ export async function processSuccessfulPayment(
 
   console.log(`🚀 Processing successful payment for ${user_email}, type: ${type}, reference: ${reference}`);
 
-  // 2. Perform business action based on type (Only Ad & Highlight campaigns)
+  // 2. Perform business action based on type (Closed-loop non-refundable payments only: Ad, Highlight, Boost, Brand Subscription)
   if (type === "highlight") {
     const {
       title,
@@ -68,47 +68,79 @@ export async function processSuccessfulPayment(
       campaign_days,
       is_bidded,
       bid_price,
-      is_admin_post,
       custom_sponsor_name,
       custom_sponsor_handle,
       is_ai_content: rawAiContent,
       isAiContent: rawAiContentAlt,
-    } = metadata as any;
+      editingId,
+    } = mergedMetadata as any;
 
     const isAiContent = !!(rawAiContent ?? rawAiContentAlt);
 
-    // All submitted user highlights strictly go to 'news' review queue for admin moderation
-    const targetTable = "news";
+    if (editingId) {
+      await Promise.all([
+        supabaseAdmin.from("news").update({
+          title,
+          content,
+          image_url,
+          interest,
+          country: country || null,
+          state: state || null,
+          province: province || null,
+          campaign_days: campaign_days || 1,
+          is_bidded: !!is_bidded,
+          bid_price: bid_price ? parseFloat(bid_price) : null,
+          custom_sponsor_name: custom_sponsor_name || null,
+          custom_sponsor_handle: custom_sponsor_handle || null,
+          is_ai_content: isAiContent,
+        }).eq("id", editingId),
+        supabaseAdmin.from("newsactive").update({
+          title,
+          content,
+          image_url,
+          interest,
+          country: country || null,
+          state: state || null,
+          province: province || null,
+          campaign_days: campaign_days || 1,
+          is_bidded: !!is_bidded,
+          bid_price: bid_price ? parseFloat(bid_price) : null,
+          custom_sponsor_name: custom_sponsor_name || null,
+          custom_sponsor_handle: custom_sponsor_handle || null,
+          is_ai_content: isAiContent,
+        }).eq("id", editingId),
+      ]);
+    } else {
+      const targetTable = "news";
+      const { error: insertError } = await supabaseAdmin.from(targetTable).insert([
+        {
+          title,
+          content,
+          image_url,
+          interest,
+          country: country || null,
+          state: state || null,
+          province: province || null,
+          campaign_days: campaign_days || 1,
+          is_bidded: !!is_bidded,
+          bid_price: bid_price ? parseFloat(bid_price) : null,
+          custom_sponsor_name: custom_sponsor_name || null,
+          custom_sponsor_handle: custom_sponsor_handle || null,
+          user_email,
+          is_ai_content: isAiContent,
+        },
+      ]);
 
-    const { error: insertError } = await supabaseAdmin.from(targetTable).insert([
-      {
-        title,
-        content,
-        image_url,
-        interest,
-        country: country || null,
-        state: state || null,
-        province: province || null,
-        campaign_days: campaign_days || 1,
-        is_bidded: !!is_bidded,
-        bid_price: bid_price ? parseFloat(bid_price) : null,
-        custom_sponsor_name: custom_sponsor_name || null,
-        custom_sponsor_handle: custom_sponsor_handle || null,
-        user_email,
-        is_ai_content: isAiContent,
-      },
-    ]);
-
-    if (insertError) {
-      console.error(`❌ Error inserting highlight to ${targetTable} table:`, insertError);
-      throw insertError;
+      if (insertError) {
+        console.error(`❌ Error inserting highlight to ${targetTable} table:`, insertError);
+        throw insertError;
+      }
     }
 
-    // Insert user notification
     await sendIdempotentNotification(
       user_email,
-      "Highlight Submitted 🚀",
-      `Your highlight "${title}" has been submitted for review. It will be published after admin approval!`
+      editingId ? "Highlight Updated 🚀" : "Highlight Submitted 🚀",
+      `Your highlight "${title}" has been ${editingId ? "updated" : "submitted for review"}. It will be published after admin approval!`
     );
   } else if (type === "boost_campaign" || type === "boost") {
     const {
@@ -123,7 +155,7 @@ export async function processSuccessfulPayment(
       province,
       industry,
       interest
-    } = (mergedMetadata || metadata) as any;
+    } = mergedMetadata as any;
 
     if (ad_id) {
       let { data: ad } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).maybeSingle();
@@ -133,7 +165,7 @@ export async function processSuccessfulPayment(
       }
 
       if (ad) {
-        const currentCost = Number(ad.cost_per_impression || 25);
+        const currentCost = Math.max(15, Number(ad.cost_per_impression || 25));
         const effectiveCost = cost_per_impression && Number(cost_per_impression) > currentCost
           ? Number(cost_per_impression)
           : currentCost;
@@ -167,15 +199,18 @@ export async function processSuccessfulPayment(
 
         if (effectiveCost > 25) {
           try {
-            const adIndustry = Array.isArray(ad.industry) ? ad.industry[0] : (ad.industry || "business");
+            const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
             await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", ad_id);
             await supabaseAdmin.from("bidded_ads").insert({
               ad_id,
               user_email: user_email.toLowerCase().trim(),
-              industry: (adIndustry || "business").toLowerCase(),
+              industry: adIndustry,
               bid_price: effectiveCost,
               is_active: true,
             });
+            const redisConnection = (await import("@/lib/redis")).default;
+            await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, ad_id).catch(() => {});
+            await redisConnection.del("attention:market_rates").catch(() => {});
           } catch (bidErr) {
             console.warn("⚠️ bidded_ads update notice in boost:", bidErr);
           }
@@ -189,10 +224,14 @@ export async function processSuccessfulPayment(
       }
     }
   } else if (type === "ad") {
-    const adData = metadata.adData as Record<string, unknown> | undefined;
+    const adData = mergedMetadata.adData as Record<string, unknown> | undefined;
     if (!adData) {
       throw new Error("Ad data missing from payment metadata");
     }
+
+    const isBidded = !!adData.isBidded;
+    const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice as string) : null;
+    const effectiveRate = isBidded && bidPrice ? bidPrice : adData.costPerImpression;
 
     // Call submit_ad_campaign RPC using supabaseAdmin
     const { error: rpcError } = await supabaseAdmin.rpc("submit_ad_campaign", {
@@ -220,7 +259,7 @@ export async function processSuccessfulPayment(
       p_action_whatsapp: adData.actionWhatsapp || null,
       p_action_website: adData.actionWebsite || null,
       p_action_email: adData.actionEmail || null,
-      p_cost_per_impression: adData.costPerImpression,
+      p_cost_per_impression: effectiveRate,
       p_total_cost: adData.totalCost,
       p_user_email: user_email,
       p_ad_media: (adData.adMedia as string) || (adData.ad_media as string) || null,
@@ -250,9 +289,7 @@ export async function processSuccessfulPayment(
       } catch {}
     }
 
-    // If ad is bidded, record in bidded_ads table for instant priority auction inclusion
-    const isBidded = !!adData.isBidded;
-    const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice as string) : null;
+    // If ad is bidded, record in bidded_ads table and Redis ZSET for instant priority auction inclusion
     if (isBidded && bidPrice) {
       const adIndustry = ((adData.adType as string) || "business").toLowerCase();
       const { error: bidInsertErr } = await supabaseAdmin.from("bidded_ads").insert({
@@ -265,6 +302,13 @@ export async function processSuccessfulPayment(
       if (bidInsertErr) {
         console.error("❌ Failed to insert bidded ad in processPayment:", bidInsertErr);
       }
+      try {
+        const redisConnection = (await import("@/lib/redis")).default;
+        await redisConnection.zadd(`bids:zset:${adIndustry}`, bidPrice, String(adData.id));
+        await redisConnection.del("attention:market_rates");
+      } catch (redisErr) {
+        console.warn("⚠️ Redis ZSET update warning in processPayment:", redisErr);
+      }
     }
 
     // Insert user notification
@@ -273,6 +317,46 @@ export async function processSuccessfulPayment(
       "Ad Campaign Created 📢",
       `Your ad campaign with ${adData.impressions} impressions was successfully created and submitted for review.`
     );
+  } else if (type === "brand_subscription") {
+    const subscriberId = (mergedMetadata.subscriber_id || mergedMetadata.brand_id) as string | undefined;
+    if (subscriberId) {
+      const { data: updatedSub } = await supabaseAdmin
+        .from("premium_subscribers")
+        .update({
+          status: "active",
+          payment_status: "paid",
+          paid_at: new Date().toISOString(),
+          payment_reference: reference,
+        })
+        .eq("id", subscriberId)
+        .select("*")
+        .maybeSingle();
+
+      const domain = String(updatedSub?.domain || mergedMetadata.domain || "").toLowerCase().trim();
+      const businessName = String(updatedSub?.business_name || mergedMetadata.business_name || "Premium Brand");
+
+      if (domain) {
+        try {
+          const redisConnection = (await import("@/lib/redis")).default;
+          await redisConnection.set(
+            `cache:domain_subscriber:${domain}`,
+            JSON.stringify({
+              is_subscriber: true,
+              discount_percentage: 30,
+              business_name: businessName,
+            }),
+            "EX",
+            600
+          );
+        } catch {}
+      }
+
+      await sendIdempotentNotification(
+        user_email,
+        "Brand Subscription Activated 🌟",
+        `Your Premium Brand Subscription for ${businessName} (${domain}) is now active!`
+      );
+    }
   }
 
   // 3. Update the payment record status in DB

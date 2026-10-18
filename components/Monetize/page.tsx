@@ -36,63 +36,60 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
   const email = session?.user?.email;
   const [, startTransition] = useTransition();
 
-  // Instant SWR state initialization from client storage or props for 0ms load
-  const [hasResolved, setHasResolved] = useState(() => {
-    if (typeof initialMonetized === "boolean") return true;
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
-        if (cached) return true;
-      } catch {}
-    }
-    return false;
-  });
-
-  const [isMonetized, setIsMonetized] = useState(() => {
-    if (typeof initialMonetized === "boolean") return initialMonetized;
+  const [initialCache] = useState<{
+    hasCached: boolean;
+    isMonetized?: boolean;
+    clicksCount?: number;
+    clicksRemaining?: number;
+    atwTier?: string;
+  }>(() => {
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (typeof parsed.isMonetized === "boolean") return parsed.isMonetized;
+          if (!parsed.email || !email || parsed.email === email.toLowerCase()) {
+            return {
+              hasCached: true,
+              isMonetized: typeof parsed.isMonetized === "boolean" ? parsed.isMonetized : undefined,
+              clicksCount: typeof parsed.clicksCount === "number" ? parsed.clicksCount : undefined,
+              clicksRemaining: typeof parsed.clicksRemaining === "number" ? parsed.clicksRemaining : undefined,
+              atwTier: parsed.atwTier || undefined,
+            };
+          }
         }
       } catch {}
     }
-    // Default to true as requested: show monetized first, only unmonetize if API confirms it is not
+    return { hasCached: false };
+  });
+
+  // Instant SWR state initialization from client storage or props for 0ms load
+  const [hasResolved, setHasResolved] = useState(() => {
+    if (typeof initialMonetized === "boolean") return true;
+    return initialCache.hasCached;
+  });
+
+  const [isMonetized, setIsMonetized] = useState(() => {
+    if (typeof initialMonetized === "boolean") return initialMonetized;
+    if (typeof initialCache.isMonetized === "boolean") return initialCache.isMonetized;
     return true;
   });
 
   const [clicksCount, setClicksCount] = useState(() => {
     if (typeof initialClicks === "number") return initialClicks;
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
-        if (cached) return JSON.parse(cached).clicksCount || 0;
-      } catch {}
-    }
+    if (typeof initialCache.clicksCount === "number") return initialCache.clicksCount;
     return 300;
   });
 
   const [clicksRemaining, setClicksRemaining] = useState(() => {
     if (typeof initialClicks === "number") return Math.max(0, 300 - initialClicks);
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
-        if (cached) return JSON.parse(cached).clicksRemaining ?? 0;
-      } catch {}
-    }
+    if (typeof initialCache.clicksRemaining === "number") return initialCache.clicksRemaining;
     return 0;
   });
 
   const [atwTier, setAtwTier] = useState(() => {
     if (initialAtwTier) return initialAtwTier;
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("paayh_monetize_cache") || sessionStorage.getItem("paayh_monetize_cache");
-        if (cached) return JSON.parse(cached).atwTier || "ATW1";
-      } catch {}
-    }
+    if (initialCache.atwTier) return initialCache.atwTier;
     return "ATW1";
   });
 
@@ -104,6 +101,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
 
   const fetchStatus = async () => {
     if (!email) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     try {
       const res = await fetch("/api/monetize");
       if (!res.ok) {
@@ -123,6 +121,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
 
         try {
           const cachePayload = JSON.stringify({
+            email: email.toLowerCase(),
             isMonetized: !!data.isMonetized,
             clicksCount: data.clicksCount || 0,
             clicksRemaining: data.clicksRemaining ?? Math.max(0, 300 - (data.clicksCount || 0)),
@@ -152,8 +151,14 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
       const customEvent = e as CustomEvent;
       const totalClicks = customEvent.detail?.totalClicks;
       if (typeof totalClicks === "number") {
+        const nextTarget = totalClicks < 300 ? 300 : totalClicks < 600 ? 600 : 900;
+        const computedLvl = totalClicks >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((totalClicks - 300) / 300))) : 1;
         setClicksCount(totalClicks);
-        setClicksRemaining(Math.max(0, 300 - totalClicks));
+        setClicksRemaining(Math.max(0, nextTarget - totalClicks));
+        setAtwTier((prev) => {
+          const prevLvl = parseInt(prev.replace(/\D/g, ""), 10) || 1;
+          return `ATW${Math.max(prevLvl, computedLvl)}`;
+        });
         if (typeof customEvent.detail?.isMonetized === "boolean") {
           setIsMonetized(customEvent.detail.isMonetized);
         } else if (totalClicks >= 300) {
@@ -163,7 +168,13 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
         const delta = customEvent.detail?.delta || 1;
         setClicksCount((prev: number) => {
           const next = prev + delta;
-          setClicksRemaining(Math.max(0, 300 - next));
+          const nextTarget = next < 300 ? 300 : next < 600 ? 600 : 900;
+          const computedLvl = next >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((next - 300) / 300))) : 1;
+          setClicksRemaining(Math.max(0, nextTarget - next));
+          setAtwTier((prevTier) => {
+            const prevLvl = parseInt(prevTier.replace(/\D/g, ""), 10) || 1;
+            return `ATW${Math.max(prevLvl, computedLvl)}`;
+          });
           if (next >= 300) setIsMonetized(true);
           return next;
         });
@@ -182,9 +193,13 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
     };
   }, [email]);
 
-  const clicksPercent = Math.min(100, Math.round((clicksCount / 300) * 100));
+  const currentMilestoneTarget = clicksCount < 300 ? 300 : clicksCount < 600 ? 600 : 900;
+  const effectiveRemaining = Math.max(0, currentMilestoneTarget - clicksCount);
+  const clicksPercent = Math.min(100, Math.round((clicksCount / currentMilestoneTarget) * 100));
 
-  const atwLevelNum = parseInt(atwTier.replace(/\D/g, ""), 10) || 1;
+  const computedLevelFromClicks = clicksCount >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((clicksCount - 300) / 300))) : 1;
+  const atwLevelNum = Math.max(parseInt(atwTier.replace(/\D/g, ""), 10) || 1, computedLevelFromClicks);
+  const displayAtwTier = `ATW${atwLevelNum}`;
 
   return (
     <div className={styles.container}>
@@ -215,7 +230,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                   </h2>
                   <p className={styles.statusSub}>
                     {isMonetized
-                      ? `Your account is monetized at ATW Tier ${atwTier}.`
+                      ? `Your account is monetized at ATW Tier ${displayAtwTier} (₦${(atwLevelNum * 30000).toLocaleString()} holding cap).`
                       : "Complete 300 ad clicks in the feed to unlock monetization."}
                   </p>
                 </div>
@@ -334,14 +349,21 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
 
           {/* QUALIFICATION PROGRESS CARD */}
           <div className={styles.progressGrid}>
-            {/* 300 Ad Clicks */}
             <div className={styles.progressCard}>
               <div className={styles.progressHeaderRow}>
                 <h3 className={`${styles.cardSectionTitle} ${styles.cardSectionTitleFlex}`}>
                   <div className={styles.titleIconBox}>
                     <Award size={18} color="var(--primary)" />
                   </div>
-                  <span>Requirement: 300 Ad Clicks</span>
+                  <span>
+                    {clicksCount < 300
+                      ? "Requirement: 300 Ad Clicks"
+                      : clicksCount < 600
+                      ? "Next Milestone: 600 Ad Clicks (ATW2)"
+                      : clicksCount < 900
+                      ? "Next Milestone: 900 Ad Clicks (ATW3)"
+                      : "Maximum Tier Unlocked: ATW3 (900+ Clicks)"}
+                  </span>
                 </h3>
                 <span className={styles.percentBadge}>
                   {clicksPercent}%
@@ -349,7 +371,23 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
               </div>
 
               <p className={styles.cardInstructionText}>
-                Click <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> on ads to increment your progress.
+                {clicksCount < 300 ? (
+                  <>
+                    Click <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> on ads to unlock monetization and ATW1 (₦30,000 cap).
+                  </>
+                ) : clicksCount < 600 ? (
+                  <>
+                    You unlocked <strong>Earn+</strong>! Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach <strong>600 clicks</strong> and upgrade to <strong>ATW2 (₦60,000 cap)</strong>.
+                  </>
+                ) : clicksCount < 900 ? (
+                  <>
+                    Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach <strong>900 clicks</strong> and unlock <strong>ATW3 (₦90,000 max cap)</strong>.
+                  </>
+                ) : (
+                  <>
+                    You have reached the highest tier (<strong>ATW3 • ₦90,000 wallet holding cap</strong>). Every <strong>Earn+</strong> click continues crediting 60% of the ad CPI directly to your wallet.
+                  </>
+                )}
               </p>
 
               <div className={styles.metricsGrid}>
@@ -357,13 +395,17 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                   <span className={`${styles.metricLabel} ${styles.metricLabelFlex}`}>
                     <MousePointer size={13} color="var(--primary)" /> Completed
                   </span>
-                  <strong className={styles.metricValue}>{clicksCount} / 300</strong>
+                  <strong className={styles.metricValue}>
+                    {clicksCount >= 900 ? `${clicksCount} / 900+` : `${clicksCount} / ${currentMilestoneTarget}`}
+                  </strong>
                 </div>
                 <div className={styles.metricBox}>
                   <span className={`${styles.metricLabel} ${styles.metricLabelFlex}`}>
                     <Clock size={13} color="var(--primary)" /> Remaining
                   </span>
-                  <strong className={styles.metricValueRemaining}>{clicksRemaining} clicks</strong>
+                  <strong className={styles.metricValueRemaining}>
+                    {clicksCount >= 900 ? "Max Tier (ATW3)" : `${effectiveRemaining} clicks`}
+                  </strong>
                 </div>
               </div>
 

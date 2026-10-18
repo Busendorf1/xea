@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./AdCard.module.css";
 import { Ad } from "./AdCard";
 
@@ -9,6 +10,8 @@ interface HighlightCardProps {
 }
 
 const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestamp }) => {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
   useEffect(() => {
     if (ad.is_highlight && ad.id) {
       const recordedKey = `hl_impression_${ad.id}`;
@@ -22,6 +25,20 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
       }
     }
   }, [ad.is_highlight, ad.id]);
+
+  useEffect(() => {
+    if (!isLightboxOpen || typeof window === "undefined") return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsLightboxOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isLightboxOpen]);
 
   const [aspectRatio, setAspectRatio] = React.useState<number>(1.0);
   const imgRef = React.useRef<HTMLImageElement | null>(null);
@@ -90,7 +107,24 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
         <p className={styles.adText}>{ad.ad_content}</p>
 
         {ad.ad_media && (
-          <div className={styles.mediaBox} style={{ aspectRatio: `${aspectRatio}` }}>
+          <div
+            className={styles.mediaBox}
+            style={{ aspectRatio: `${aspectRatio}`, cursor: "pointer" }}
+            role="button"
+            tabIndex={0}
+            aria-label="Open highlight media viewer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsLightboxOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsLightboxOpen(true);
+              }
+            }}
+          >
             <img
               ref={imgRef}
               src={ad.ad_media}
@@ -108,6 +142,72 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
           </div>
         )}
       </div>
+
+      {isLightboxOpen &&
+        ad.ad_media &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className={styles.lightboxOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Highlight media viewer"
+            onClick={() => setIsLightboxOpen(false)}
+          >
+            <div
+              className={styles.lightboxDialog}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.lightboxTopBar}>
+                <button
+                  type="button"
+                  className={styles.lightboxIconBtn}
+                  onClick={() => setIsLightboxOpen(false)}
+                  aria-label="Back to feed"
+                  title="Close"
+                >
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="12 19 5 12 12 5" />
+                  </svg>
+                </button>
+                <span className={styles.lightboxSlidePill}>Highlight</span>
+                <div style={{ width: 42 }} />
+              </div>
+
+              <div
+                className={styles.lightboxStage}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setIsLightboxOpen(false);
+                }}
+              >
+                <img
+                  src={ad.ad_media}
+                  alt={ad.title || "Highlight Media"}
+                  className={styles.lightboxImage}
+                />
+              </div>
+
+              <div className={styles.lightboxBottomBar}>
+                <div className={styles.lightboxBottomInner}>
+                  {ad.ad_content && (
+                    <p className={styles.lightboxCaption}>{ad.ad_content}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

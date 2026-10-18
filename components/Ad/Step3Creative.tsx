@@ -59,9 +59,9 @@ export default function Step3Creative({
                 {
                   value: "text",
                   title: "Text Only",
-                  badge: "Fastest Load",
-                  desc: "Clean message copy & typography. No visual upload needed.",
-                  icon: <FileText size={15} color="#3b82f6" />,
+                  badge: "Up to 1,500 Words",
+                  desc: "Long-form copy & stories (up to 1,500 words) with full-screen reader.",
+                  icon: <FileText size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "image",
@@ -73,15 +73,15 @@ export default function Step3Creative({
                 {
                   value: "video",
                   title: "Video Only",
-                  badge: "Max 5 Mins",
-                  desc: "High-impact video storytelling (MP4, MOV, max 60MB).",
+                  badge: "Max 60 Mins",
+                  desc: "High-impact video storytelling (MP4, MOV, up to 60 mins / 500MB).",
                   icon: <Video size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "mixed",
                   title: "Mixed Media",
                   badge: "Images + Video",
-                  desc: "Up to 3 high-res images and 1 video for maximum engagement.",
+                  desc: "Up to 3 high-res images and 1 video (up to 60 mins) for maximum engagement.",
                   icon: <Layers size={15} color="var(--foreground)" />,
                 },
               ].map((format) => {
@@ -175,6 +175,9 @@ export default function Step3Creative({
                     }
                   }
 
+                  const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500MB for up to 60-minute videos
+                  const MAX_VIDEO_DURATION_SECONDS = 3600; // 60 minutes
+
                   for (const file of fileArray) {
                     const isImage =
                       file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
@@ -188,8 +191,8 @@ export default function Step3Creative({
                         return;
                       }
                     } else if (isVideo) {
-                      if (file.size > 60 * 1024 * 1024) {
-                        showAppleAlert(`Video ${file.name} exceeds 60MB limit.`, "warning");
+                      if (file.size > MAX_VIDEO_BYTES) {
+                        showAppleAlert(`Video ${file.name} exceeds 500MB limit.`, "warning");
                         e.target.value = "";
                         return;
                       }
@@ -198,26 +201,30 @@ export default function Step3Creative({
                         durationOk = await new Promise<boolean>((resolve) => {
                           const videoEl = document.createElement("video");
                           videoEl.preload = "metadata";
+                          const objectUrl = URL.createObjectURL(file);
                           const timer = setTimeout(() => {
-                            resolve(file.size <= 60 * 1024 * 1024);
-                          }, 3500);
+                            URL.revokeObjectURL(objectUrl);
+                            resolve(file.size <= MAX_VIDEO_BYTES);
+                          }, 5000);
 
                           videoEl.onloadedmetadata = () => {
                             clearTimeout(timer);
-                            resolve(videoEl.duration <= 300);
+                            URL.revokeObjectURL(objectUrl);
+                            resolve(videoEl.duration <= MAX_VIDEO_DURATION_SECONDS);
                           };
                           videoEl.onerror = () => {
                             clearTimeout(timer);
-                            resolve(file.size <= 60 * 1024 * 1024);
+                            URL.revokeObjectURL(objectUrl);
+                            resolve(file.size <= MAX_VIDEO_BYTES);
                           };
-                          videoEl.src = URL.createObjectURL(file);
+                          videoEl.src = objectUrl;
                         });
                       } catch {
-                        durationOk = file.size <= 60 * 1024 * 1024;
+                        durationOk = file.size <= MAX_VIDEO_BYTES;
                       }
 
                       if (!durationOk) {
-                        showAppleAlert(`Video ${file.name} must be less than or equal to 5 minutes.`, "warning");
+                        showAppleAlert(`Video ${file.name} must be less than or equal to 60 minutes.`, "warning");
                         e.target.value = "";
                         return;
                       }
@@ -515,52 +522,109 @@ export default function Step3Creative({
         )}
 
         <div className={styles.modernSectionCard}>
-          <div className={styles.modernSectionHeader}>
-            <span className={styles.modernSectionTitle}>
-              {adType === "product_sales" ? "Product Description" : "Ad Message Copy"}
-            </span>
-            <span className={styles.modernSectionBadge}>
-              {formSelections.adContent.length}/
-              {adType === "product_sales"
-                ? 200
-                : formSelections.adActionButtons.includes("read_more")
-                ? 500
-                : 220}
-            </span>
-          </div>
-          <div className={styles.modernSectionBody}>
-            <div className={styles.formGroup}>
-              <textarea
-                maxLength={
-                  adType === "product_sales"
-                    ? 200
-                    : formSelections.adActionButtons.includes("read_more")
-                    ? 500
-                    : 220
+          {(() => {
+            const isLongFormAllowed =
+              adType !== "product_sales" &&
+              (formSelections.adMediaType === "text" ||
+                formSelections.adActionButtons.includes("read_more"));
+
+            const clampToMaxWords = (rawText: string, maxWords: number) => {
+              const regex = /\S+/g;
+              let match: RegExpExecArray | null;
+              let count = 0;
+              let cutIndex = rawText.length;
+              let exceeded = false;
+
+              while ((match = regex.exec(rawText)) !== null) {
+                count++;
+                if (count === maxWords) {
+                  cutIndex = match.index + match[0].length;
+                } else if (count > maxWords) {
+                  exceeded = true;
+                  break;
                 }
-                value={formSelections.adContent}
-                placeholder={
-                  adType === "product_sales"
-                    ? "Write product description here (no links allowed)"
-                    : "Write your ad message here (no links allowed)"
-                }
-                onChange={(e) => {
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                  setFormSelections((prev) => ({
-                    ...prev,
-                    adContent: e.target.value,
-                  }));
-                }}
-                className={`${styles.inputBox} ${styles.textareaAutoResize} ${
-                  containsLink(formSelections.adContent) ? styles.inputError : ""
-                }`}
-              />
-              {containsLink(formSelections.adContent) && (
-                <p className={styles.error}>Links are not allowed in the ad content.</p>
-              )}
-            </div>
-          </div>
+              }
+
+              if (exceeded) {
+                return { text: rawText.slice(0, cutIndex), wordCount: maxWords };
+              }
+              if (count === maxWords && rawText.length > cutIndex + 1) {
+                return { text: rawText.slice(0, cutIndex + 1), wordCount: maxWords };
+              }
+              return { text: rawText, wordCount: count };
+            };
+
+            const wordMatches = formSelections.adContent.trim().match(/\S+/g);
+            const wordCount = wordMatches ? wordMatches.length : 0;
+            const charLimit = adType === "product_sales" ? 200 : 220;
+
+            return (
+              <>
+                <div className={styles.modernSectionHeader}>
+                  <span className={styles.modernSectionTitle}>
+                    {adType === "product_sales" ? "Product Description" : "Ad Message Copy"}
+                  </span>
+                  <span className={styles.modernSectionBadge}>
+                    {isLongFormAllowed
+                      ? `${wordCount.toLocaleString()} / 1,500 words`
+                      : `${formSelections.adContent.length} / ${charLimit} chars`}
+                  </span>
+                </div>
+                <div className={styles.modernSectionBody}>
+                  <div className={styles.formGroup}>
+                    <div className={styles.textareaContainerWithCounter}>
+                      <textarea
+                        maxLength={isLongFormAllowed ? undefined : charLimit}
+                        rows={isLongFormAllowed ? 5 : 3}
+                        value={formSelections.adContent}
+                        placeholder={
+                          adType === "product_sales"
+                            ? "Write product description here (no links allowed)"
+                            : isLongFormAllowed
+                            ? "Ad message here"
+                            : "Ad message here"
+                        }
+                        onChange={(e) => {
+                          let nextVal = e.target.value;
+                          if (isLongFormAllowed) {
+                            const clamped = clampToMaxWords(nextVal, 1500);
+                            nextVal = clamped.text;
+                          } else if (nextVal.length > charLimit) {
+                            nextVal = nextVal.slice(0, charLimit);
+                          }
+                          setFormSelections((prev) => ({
+                            ...prev,
+                            adContent: nextVal,
+                          }));
+                        }}
+                        className={`${styles.inputBox} ${styles.textareaAutoResize} ${
+                          containsLink(formSelections.adContent) ? styles.inputError : ""
+                        }`}
+                      />
+                      {/* <span
+                        className={`${styles.textareaWordCounter} ${
+                          isLongFormAllowed
+                            ? wordCount >= 1500
+                              ? styles.textareaWordCounterLimit
+                              : ""
+                            : formSelections.adContent.length >= charLimit
+                            ? styles.textareaWordCounterLimit
+                            : ""
+                        }`}
+                      >
+                        {isLongFormAllowed
+                          ? `${wordCount.toLocaleString()} / 1,500 words${wordCount >= 1500 ? " (Max)" : ""}`
+                          : `${formSelections.adContent.length} / ${charLimit} chars`}
+                      </span> */}
+                    </div>
+                    {containsLink(formSelections.adContent) && (
+                      <p className={styles.error}>Links are not allowed in the ad content.</p>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         <div className={styles.modernSectionCard}>
@@ -607,7 +671,7 @@ export default function Step3Creative({
                       ) {
                         baseButtons.push("watch_now");
                       }
-                      if (formSelections.adMediaType === "text") {
+                      if (adType !== "product_sales") {
                         baseButtons.push("read_more");
                       }
 
@@ -617,8 +681,6 @@ export default function Step3Creative({
                           title: string;
                           subtitle: string;
                           icon: React.ReactNode;
-                          color: string;
-                          bg: string;
                           previewLabel: string;
                           inputType: string;
                           placeholder: string;
@@ -628,8 +690,6 @@ export default function Step3Creative({
                           title: "WhatsApp Direct",
                           subtitle: "Direct 1-tap chat with your WhatsApp number",
                           icon: <MessageCircle size={18} />,
-                          color: "#25D366",
-                          bg: "rgba(37, 211, 102, 0.14)",
                           previewLabel: "WhatsApp",
                           inputType: "tel",
                           placeholder: "e.g. 234904567890 (no plus or spaces)",
@@ -638,8 +698,6 @@ export default function Step3Creative({
                           title: "Direct Phone Call",
                           subtitle: "Immediate phone dialer prompt on user device",
                           icon: <Phone size={18} />,
-                          color: "#10b981",
-                          bg: "rgba(16, 185, 129, 0.14)",
                           previewLabel: "Call Now",
                           inputType: "tel",
                           placeholder: "e.g. 234904567890",
@@ -648,8 +706,6 @@ export default function Step3Creative({
                           title: "External Website",
                           subtitle: "Directs audience to your target web address",
                           icon: <Globe size={18} />,
-                          color: "#0284c7",
-                          bg: "rgba(2, 132, 199, 0.14)",
                           previewLabel: "Website",
                           inputType: "url",
                           placeholder: "e.g. https://yourwebsite.com",
@@ -658,8 +714,6 @@ export default function Step3Creative({
                           title: "Email Inquiry",
                           subtitle: "Opens email composer with your recipient address",
                           icon: <Mail size={18} />,
-                          color: "#8b5cf6",
-                          bg: "rgba(139, 92, 246, 0.14)",
                           previewLabel: "Email Us",
                           inputType: "email",
                           placeholder: "e.g. hello@yourbrand.com",
@@ -668,8 +722,6 @@ export default function Step3Creative({
                           title: "Install iOS App",
                           subtitle: "App Store link for iPhone and iPad devices",
                           icon: <Smartphone size={18} />,
-                          color: "#94a3b8",
-                          bg: "rgba(148, 163, 184, 0.16)",
                           previewLabel: "App Store",
                           inputType: "url",
                           placeholder: "e.g. https://apps.apple.com/app/...",
@@ -678,8 +730,6 @@ export default function Step3Creative({
                           title: "Install Android App",
                           subtitle: "Google Play Store listing link for Android users",
                           icon: <Smartphone size={18} />,
-                          color: "#22c55e",
-                          bg: "rgba(34, 197, 94, 0.14)",
                           previewLabel: "Play Store",
                           inputType: "url",
                           placeholder: "e.g. https://play.google.com/store/apps/details?id=...",
@@ -688,18 +738,14 @@ export default function Step3Creative({
                           title: "Watch Video",
                           subtitle: "Direct link to video premiere, stream, or channel",
                           icon: <PlayCircle size={18} />,
-                          color: "#ef4444",
-                          bg: "rgba(239, 68, 68, 0.14)",
                           previewLabel: "Watch Now",
                           inputType: "url",
                           placeholder: "e.g. https://youtube.com/watch?v=...",
                         },
                         read_more: {
-                          title: "Expand Story",
-                          subtitle: "Unlocks up to 500 characters of rich ad copy",
+                          title: "Read More (Full-Screen Reader)",
+                          subtitle: "Unlocks up to 1,500 words of rich copy & full-screen reader modal",
                           icon: <BookOpen size={18} />,
-                          color: "var(--foreground)",
-                          bg: "var(--sidebar-bg)",
                           previewLabel: "Read More",
                           inputType: "none",
                           placeholder: "",
@@ -714,8 +760,6 @@ export default function Step3Creative({
                           title: type.toUpperCase().replace("_", " "),
                           subtitle: "Custom interactive action",
                           icon: <Zap size={18} />,
-                          color: "var(--primary)",
-                          bg: "var(--sidebar-bg)",
                           previewLabel: type,
                           inputType: "text",
                           placeholder: "",
@@ -755,10 +799,7 @@ export default function Step3Creative({
                             }`}
                           >
                             <div className={styles.actionCardHeader} onClick={toggleButton}>
-                              <div
-                                className={styles.actionIconWrapper}
-                                style={{ backgroundColor: meta.bg, color: meta.color }}
-                              >
+                              <div className={styles.actionIconWrapper}>
                                 {meta.icon}
                               </div>
 
@@ -785,40 +826,36 @@ export default function Step3Creative({
                               </div>
                             </div>
 
-                            {isSelected && type !== "read_more" && (
+                            {isSelected && (
                               <div className={styles.actionConfigDrawer}>
-                                <div className={styles.actionInputContainer}>
-                                  <span
-                                    className={styles.actionInputLeadingIcon}
-                                    style={{ color: meta.color }}
-                                  >
-                                    {meta.icon}
-                                  </span>
-                                  <input
-                                    type={isEmail ? "email" : meta.inputType}
-                                    placeholder={meta.placeholder}
-                                    value={value}
-                                    onChange={(e) =>
-                                      setFormSelections((prev) => ({
-                                        ...prev,
-                                        actionDetails: {
-                                          ...prev.actionDetails,
-                                          [type]: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    className={`${styles.inputBox} ${styles.actionInputStyled} ${
-                                      isEmailInvalid ? styles.inputError : ""
-                                    }`}
-                                  />
-                                </div>
+                                {type !== "read_more" && (
+                                  <div className={styles.actionInputContainer}>
+                                    <span className={styles.actionInputLeadingIcon}>
+                                      {meta.icon}
+                                    </span>
+                                    <input
+                                      type={isEmail ? "email" : meta.inputType}
+                                      placeholder={meta.placeholder}
+                                      value={value}
+                                      onChange={(e) =>
+                                        setFormSelections((prev) => ({
+                                          ...prev,
+                                          actionDetails: {
+                                            ...prev.actionDetails,
+                                            [type]: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      className={`${styles.inputBox} ${styles.actionInputStyled} ${
+                                        isEmailInvalid ? styles.inputError : ""
+                                      }`}
+                                    />
+                                  </div>
+                                )}
 
                                 <div className={styles.actionPreviewChip}>
                                   <span>Feed Button Preview:</span>
-                                  <span
-                                    className={styles.actionPreviewButton}
-                                    style={{ backgroundColor: meta.color, color: "#fff" }}
-                                  >
+                                  <span className={styles.actionPreviewButton}>
                                     {meta.icon}
                                     <span>{meta.previewLabel}</span>
                                   </span>

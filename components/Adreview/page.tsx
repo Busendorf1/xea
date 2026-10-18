@@ -35,6 +35,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   productCtaLink = "",
 }) => {
   const [mediaURLs, setMediaURLs] = useState<string[]>([]);
+  const [isTextExpanded, setIsTextExpanded] = useState(false);
 
   useEffect(() => {
     if (mediaFiles && mediaFiles.length > 0) {
@@ -174,7 +175,28 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
 
       {/* Product Description / Ad Content (if NOT product sales) */}
       {adType !== "product_sales" && (
-        <p className={styles.adText}>{adContent || "Ad Message"}</p>
+        <p className={styles.adText}>
+          {adContent.length > 240 && !isTextExpanded
+            ? `${adContent.slice(0, 240)}... `
+            : adContent || "Ad Message"}
+          {adContent.length > 240 && (
+            <button
+              type="button"
+              onClick={() => setIsTextExpanded((prev) => !prev)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--primary)",
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: "0 0 0 4px",
+                fontSize: "inherit",
+              }}
+            >
+              {isTextExpanded ? "Show less" : "Read more"}
+            </button>
+          )}
+        </p>
       )}
 
       {/* Action Bar / Buttons */}

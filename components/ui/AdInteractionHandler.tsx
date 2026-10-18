@@ -35,6 +35,11 @@ interface AdInteractionHandlerProps {
   onAdMutual: (ad: Ad) => Promise<boolean>;
   brandName: string;
   targetLink: string;
+  forceInView?: boolean;
+  externalSecondsLeft?: number;
+  onSecondsLeftChange?: React.Dispatch<React.SetStateAction<number>>;
+  externalStage?: "countdown" | "challenge" | "unlocked";
+  onStageChange?: React.Dispatch<React.SetStateAction<"countdown" | "challenge" | "unlocked">>;
 }
 
 type ChallengeType = "swipe" | "hold" | "tap";
@@ -56,12 +61,23 @@ export default function AdInteractionHandler({
   onAdMutual,
   brandName,
   targetLink,
+  forceInView = false,
+  externalSecondsLeft,
+  onSecondsLeftChange,
+  externalStage,
+  onStageChange,
 }: AdInteractionHandlerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [secondsLeft, setSecondsLeft] = useState(16);
-  const [inView, setInView] = useState(false);
+  const [localSecondsLeft, setLocalSecondsLeft] = useState(16);
+  const [observedInView, setObservedInView] = useState(false);
   const [tabVisible, setTabVisible] = useState(true);
-  const [stage, setStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
+  const [localStage, setLocalStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
+
+  const secondsLeft = externalSecondsLeft !== undefined ? externalSecondsLeft : localSecondsLeft;
+  const setSecondsLeft = onSecondsLeftChange || setLocalSecondsLeft;
+  const stage = externalStage !== undefined ? externalStage : localStage;
+  const setStage = onStageChange || setLocalStage;
+  const inView = forceInView || observedInView;
 
   const isCooldownActive = useMemo(() => {
     if (viewerProfile?.cooldown_until) {
@@ -89,9 +105,13 @@ export default function AdInteractionHandler({
 
   // 1. Intersection Observer to check if 65% of ad card is visible in view
   useEffect(() => {
+    if (forceInView) {
+      setObservedInView(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setInView(entry.isIntersecting && entry.intersectionRatio >= 0.65);
+        setObservedInView(entry.isIntersecting && entry.intersectionRatio >= 0.65);
       },
       { threshold: [0.6, 0.65, 0.75] } // Must be 60%-75% visible in view
     );
@@ -101,7 +121,7 @@ export default function AdInteractionHandler({
     }
 
     return () => observer.disconnect();
-  }, []);
+  }, [forceInView]);
 
   // Dynamic Scroll-Away Seen Registration
   const isAutoSeenTriggered = useRef(false);
@@ -137,6 +157,9 @@ export default function AdInteractionHandler({
 
   useEffect(() => {
     return () => {
+      if (holdInterval.current) {
+        clearInterval(holdInterval.current);
+      }
       if (
         stageRef.current === "unlocked" &&
         !activeActionRef.current &&
@@ -184,14 +207,15 @@ export default function AdInteractionHandler({
   }, [inView, tabVisible, secondsLeft, stage]);
 
   useEffect(() => {
+    if (stage !== "challenge" || challengeType !== "swipe") return;
     const handleGlobalUp = () => handleSwipeEnd();
     window.addEventListener("mouseup", handleGlobalUp);
-    window.addEventListener("touchend", handleGlobalUp);
+    window.addEventListener("touchend", handleGlobalUp, { passive: true });
     return () => {
       window.removeEventListener("mouseup", handleGlobalUp);
       window.removeEventListener("touchend", handleGlobalUp);
     };
-  }, []);
+  }, [stage, challengeType]);
 
   // For unpaid platform ads or ads without budget, do not show interactive buttons (earn, seen, mutual)
   if (
@@ -406,11 +430,6 @@ export default function AdInteractionHandler({
 
       {stage === "challenge" && (
         <div className={styles.challengeContainer}>
-          <div className={styles.challengeHeader}>
-            <ShieldCheck size={11} className={styles.shieldIcon} />
-            <span className={styles.challengeTitle}>Verify to unlock:</span>
-          </div>
-
           {challengeType === "swipe" && (
             <div 
               ref={trackRef} 
@@ -424,9 +443,9 @@ export default function AdInteractionHandler({
                 onMouseDown={handleSwipeStart}
                 onTouchStart={handleSwipeStart}
               >
-                <ArrowRight size={16} />
+                <ArrowRight size={14} />
               </div>
-              <span className={styles.swipeText}>Swipe Right to Verify</span>
+              <span className={styles.swipeText}>Swipe to Verify</span>
             </div>
           )}
 
@@ -447,7 +466,7 @@ export default function AdInteractionHandler({
                 className={styles.holdProgressBar} 
               />
               <span className={styles.holdBtnText}>
-                {holdProgress > 0 ? "Holding..." : "Press & Hold for 2s"}
+                {holdProgress > 0 ? "Holding..." : "Hold 2s to Verify"}
               </span>
             </button>
           )}
@@ -459,9 +478,9 @@ export default function AdInteractionHandler({
               onClick={handleTap}
             >
               <span className={styles.tapBtnText}>
-                {tapCount === 0 && "Tap 3 times to Verify"}
-                {tapCount === 1 && "Tap 2 more times"}
-                {tapCount === 2 && "Tap 1 more time!"}
+                {tapCount === 0 && "Tap 3x to Verify"}
+                {tapCount === 1 && "Tap 2x more"}
+                {tapCount === 2 && "Tap 1x more!"}
               </span>
               <div className={styles.tapIndicatorRow}>
                 {[1, 2, 3].map((num) => (
@@ -474,17 +493,15 @@ export default function AdInteractionHandler({
             </button>
           )}
 
-          <div className={styles.challengeFooterRow}>
-            <button
-              type="button"
-              className={styles.challengeActionLink}
-              onClick={handleRetryChallenge}
-              title="Try another verification challenge"
-            >
-              <RefreshCw size={10} />
-              <span>Retry Task</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            className={styles.challengeActionLink}
+            onClick={handleRetryChallenge}
+            title="Switch verification task"
+            aria-label="Switch verification task"
+          >
+            <RefreshCw size={11} />
+          </button>
         </div>
       )}
 

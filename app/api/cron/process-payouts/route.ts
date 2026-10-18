@@ -5,6 +5,7 @@ import { KoraService } from "@/lib/payment/kora";
 import { PaystackService } from "@/lib/payment/paystack";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
+import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 
 // Kora supports up to 50 payouts per bulk batch; Paystack supports up to 100.
 // Setting safe threshold to 45 items per batch.
@@ -26,10 +27,10 @@ async function handleCron(req: NextRequest) {
   let lockAcquired = false;
 
   try {
-    // 1. Optional security check: verify CRON_SECRET if configured
+    // 1. Mandatory CRON_SECRET verification in production
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if ((process.env.NODE_ENV === "production" && !cronSecret) || (cronSecret && authHeader !== `Bearer ${cronSecret}`)) {
       console.warn("⚠️ Unauthorized cron trigger attempt.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -71,13 +72,14 @@ async function handleCron(req: NextRequest) {
       `🏦 Cron: Found ${pendingPayments.length} pending/queued payouts. Using gateway: [${activeGateway.toUpperCase()}].`
     );
 
-    // 3. Pre-flight Balance Verification (ensures float is sufficient)
+    // 3. Pre-flight Balance Verification (ensures float is sufficient against net disbursement amounts)
     let eligiblePayments = pendingPayments;
     if (activeGateway === "kora") {
       try {
         const floatBalance = await KoraService.getNairaBalance();
-        const totalPending = pendingPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-        console.log(`💰 Kora Available Float: ₦${floatBalance.toLocaleString()} | Required: ₦${totalPending.toLocaleString()}`);
+        const getNetAmt = (p: any) => p.metadata?.net_amount ?? Math.max(0, (p.amount || 0) - 35);
+        const totalPendingNet = pendingPayments.reduce((sum, p) => sum + getNetAmt(p), 0);
+        console.log(`💰 Kora Available Float: ₦${floatBalance.toLocaleString()} | Required Net: ₦${totalPendingNet.toLocaleString()}`);
 
         if (floatBalance <= 0) {
           console.warn("⚠️ Kora float balance is empty (₦0). Holding all queued withdrawals until merchant funds account.");
@@ -88,13 +90,14 @@ async function handleCron(req: NextRequest) {
           });
         }
 
-        if (floatBalance < totalPending) {
+        if (floatBalance < totalPendingNet) {
           console.warn("⚠️ Insufficient Kora float balance to process all payouts. Batching up to available float.");
           let runningTotal = 0;
           eligiblePayments = [];
           for (const payment of pendingPayments) {
-            if (runningTotal + (payment.amount || 0) <= floatBalance) {
-              runningTotal += payment.amount || 0;
+            const netAmt = getNetAmt(payment);
+            if (runningTotal + netAmt <= floatBalance) {
+              runningTotal += netAmt;
               eligiblePayments.push(payment);
             } else {
               console.log(`⏳ Holding payout ${payment.reference} in queue (surpasses available float).`);
@@ -173,13 +176,22 @@ async function handleCron(req: NextRequest) {
               narration: vp.narration,
             });
 
-            paymentUpdates.push(
-              updatePaymentStatus(vp.id, pRes.status === "success" ? "success" : "processing", {
-                ...vp.metadata,
-                gateway: "kora",
-                dispatched_at: new Date().toISOString(),
-              })
-            );
+            if (pRes.status === "success") {
+              paymentUpdates.push(
+                settleWithdrawalByReference(vp.reference, "success", "Dispatched and settled via Kora Single Payout", {
+                  gateway: "kora",
+                  dispatched_at: new Date().toISOString(),
+                })
+              );
+            } else {
+              paymentUpdates.push(
+                updatePaymentStatus(vp.id, "processing", {
+                  ...vp.metadata,
+                  gateway: "kora",
+                  dispatched_at: new Date().toISOString(),
+                })
+              );
+            }
             processedCount++;
           } catch (singleErr: any) {
             console.error(`❌ Cron: Single payout failed for ${vp.reference}:`, singleErr?.message);
@@ -196,9 +208,11 @@ async function handleCron(req: NextRequest) {
             const batchReference = `kora_batch_${Date.now()}_${idx}`;
             console.log(`🏦 Cron: Calling Kora Bulk Payout API for ${validPayouts.length} items (batchRef=${batchReference})`);
 
+            // Note: Since `net_amount` already has the ₦35 fee deducted from the user's gross withdrawal,
+            // `merchantBearsCost` MUST be `true` so Kora does not deduct the fee a second time from the user's payout.
             await KoraService.initiateBulkPayout({
               batchReference,
-              merchantBearsCost: false, // User bears withdrawal charges
+              merchantBearsCost: true,
               description: `Paayh Batch Withdrawal Payout #${idx + 1}`,
               payouts: validPayouts.map((vp) => ({
                 reference: vp.reference,
@@ -226,27 +240,28 @@ async function handleCron(req: NextRequest) {
           } catch (bulkErr: any) {
             console.error(`❌ Cron: Kora bulk payout failed for batch ${idx + 1}:`, bulkErr?.message || bulkErr);
             const errStr = (bulkErr?.message || "").toLowerCase();
-            const isFloatOrTemp =
-              errStr.includes("balance") ||
-              errStr.includes("insufficient") ||
-              errStr.includes("fund") ||
-              errStr.includes("temporarily") ||
-              errStr.includes("limit");
+            const isTerminalAccountErr =
+              errStr.includes("invalid account") ||
+              errStr.includes("account closed") ||
+              errStr.includes("no such account") ||
+              errStr.includes("invalid bank");
 
-            // If float or temporary downtime, keep queued; only refund on invalid account data
+            // Keep queued for retry unless explicit terminal account rejection
             for (const vp of validPayouts) {
-              if (isFloatOrTemp) {
+              const retries = Number(vp.metadata?.retry_count || 0) + 1;
+              if (!isTerminalAccountErr && retries < 6) {
                 paymentUpdates.push(
                   updatePaymentStatus(vp.id, "queued", {
                     ...vp.metadata,
                     gateway: "kora",
+                    retry_count: retries,
                     hold_reason: bulkErr?.message || "Held for next payout window",
                     held_at: new Date().toISOString(),
                   })
                 );
               } else {
                 failedCount++;
-                paymentUpdates.push(failPayment(vp, bulkErr?.message || "Kora bulk payout initiation failed"));
+                paymentUpdates.push(failPayment(vp, bulkErr?.message || "Kora bulk payout terminal failure"));
               }
             }
           }
@@ -281,7 +296,7 @@ async function handleCron(req: NextRequest) {
 
             validTransfers.push({
               id: payment.id,
-              amountInNaira: payment.amount,
+              amountInNaira: payment.metadata?.net_amount ?? Math.max(0, (payment.amount || 0) - 35),
               recipientCode,
               reference: payment.reference,
               reason: payment.description || "Wallet Withdrawal",
@@ -289,8 +304,23 @@ async function handleCron(req: NextRequest) {
             });
           } catch (recipErr: any) {
             console.error(`❌ Cron (Paystack): Recipient creation failed for ${payment.reference}:`, recipErr.message);
-            failedCount++;
-            paymentUpdates.push(failPayment(payment, recipErr.message || "Failed to create transfer recipient"));
+            const rErrStr = (recipErr?.message || "").toLowerCase();
+            const isTerminalRecipErr =
+              rErrStr.includes("invalid") ||
+              rErrStr.includes("cannot resolve") ||
+              rErrStr.includes("account");
+            if (isTerminalRecipErr) {
+              failedCount++;
+              paymentUpdates.push(failPayment(payment, recipErr.message || "Invalid bank beneficiary details"));
+            } else {
+              paymentUpdates.push(
+                updatePaymentStatus(payment.id, "queued", {
+                  ...payment.metadata,
+                  hold_reason: recipErr.message || "Held for retry",
+                  held_at: new Date().toISOString(),
+                })
+              );
+            }
           }
         }
 
@@ -324,8 +354,21 @@ async function handleCron(req: NextRequest) {
           } catch (bulkErr: any) {
             console.error(`❌ Cron (Paystack): Bulk transfer call failed:`, bulkErr.message);
             for (const vt of validTransfers) {
-              failedCount++;
-              paymentUpdates.push(failPayment(vt, bulkErr.message || "Bulk transfer initiation failed"));
+              const retries = Number(vt.metadata?.retry_count || 0) + 1;
+              if (retries < 6) {
+                paymentUpdates.push(
+                  updatePaymentStatus(vt.id, "queued", {
+                    ...vt.metadata,
+                    gateway: "paystack",
+                    retry_count: retries,
+                    hold_reason: bulkErr.message || "Held for next payout window",
+                    held_at: new Date().toISOString(),
+                  })
+                );
+              } else {
+                failedCount++;
+                paymentUpdates.push(failPayment(vt, bulkErr.message || "Bulk transfer initiation failed after retries"));
+              }
             }
           }
         }
@@ -337,6 +380,26 @@ async function handleCron(req: NextRequest) {
       if (idx < chunks.length - 1) {
         await sleep(COOLDOWN_MS);
       }
+    }
+
+    // 5. Clean up processed references from Redis queue:payouts
+    try {
+      const queuedItems = await redisConnection.lrange("queue:payouts", 0, -1);
+      if (queuedItems && queuedItems.length > 0) {
+        const processedRefs = new Set(eligiblePayments.map((p: any) => p.reference));
+        const pipe = redisConnection.pipeline();
+        for (const itemStr of queuedItems) {
+          try {
+            const item = JSON.parse(itemStr);
+            if (processedRefs.has(item.reference)) {
+              pipe.lrem("queue:payouts", 0, itemStr);
+            }
+          } catch {}
+        }
+        await pipe.exec();
+      }
+    } catch (cleanErr) {
+      console.warn("⚠️ Redis queue:payouts cleanup warning:", cleanErr);
     }
 
     console.log(`✅ Cron: Completed processing. Processed: ${processedCount}, Failed: ${failedCount}`);
@@ -357,53 +420,12 @@ async function handleCron(req: NextRequest) {
 }
 
 /**
- * Marks a payment as failed, refunds the user's balance, and alerts them via notification
+ * Marks a payment as failed, refunds the user's gross balance atomically, and alerts them via notification
  */
 async function failPayment(payment: any, reason: string) {
-  const userEmail = payment.user_email;
-  const refundAmount = payment.amount;
-
   try {
-    const { data: user } = await supabaseAdmin
-      .from("users")
-      .select("balance, withdrawal")
-      .ilike("email", userEmail)
-      .maybeSingle();
-
-    if (user) {
-      const currentBalance = parseFloat(user.balance || 0);
-      const currentWithdrawal = parseFloat(user.withdrawal || 0);
-
-      await supabaseAdmin
-        .from("users")
-        .update({
-          balance: currentBalance + refundAmount,
-          withdrawal: Math.max(0, currentWithdrawal - refundAmount),
-        })
-        .ilike("email", userEmail);
-    }
-
-    await supabaseAdmin
-      .from("payments")
-      .update({
-        status: "failed",
-        metadata: {
-          ...(payment.metadata || {}),
-          failure_reason: reason,
-        },
-      })
-      .eq("id", payment.id);
-
-    await supabaseAdmin.from("notifications").insert({
-      user_email: userEmail,
-      title: "Withdrawal Failed",
-      message: `Your withdrawal of ₦${refundAmount.toLocaleString("en-NG", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} could not be processed. The funds have been refunded to your wallet.`,
-    });
-
-    console.log(`⚠️ Cron: Refunded payment ${payment.reference} for ${userEmail}`);
+    await settleWithdrawalByReference(payment.reference, "failed", reason);
+    console.log(`⚠️ Cron: Refunded payment ${payment.reference}`);
   } catch (err) {
     console.error(`❌ Cron: Error refunding payment ${payment.reference}:`, err);
   }

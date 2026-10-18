@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
@@ -61,6 +61,46 @@ const steps = [
   "Review and Submit",
 ];
 
+const CooldownBanner = React.memo(function CooldownBanner({
+  nextAvailableMs,
+  onExpire,
+}: {
+  nextAvailableMs: number;
+  onExpire: () => void;
+}) {
+  const [countdownText, setCountdownText] = useState("");
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const diff = nextAvailableMs - Date.now();
+      if (diff <= 0) {
+        setCountdownText("");
+        onExpire();
+      } else {
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setCountdownText(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [nextAvailableMs, onExpire]);
+
+  if (!countdownText) return null;
+
+  return (
+    <div className={styles.cooldownBanner}>
+      <Clock size={16} className={styles.flexShrink0} />
+      <span>Next update available in: </span>
+      <span className={styles.cooldownCountdown}>{countdownText}</span>
+    </div>
+  );
+});
+
 export default function Update({ email }: Props) {
   const isAdmin = isAdminEmail(email);
   const [currentStep, setCurrentStep] = useState(0);
@@ -76,7 +116,7 @@ export default function Update({ email }: Props) {
     personality: false,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [countdownText, setCountdownText] = useState("");
+  const [nextAvailableMs, setNextAvailableMs] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const router = useRouter();
 
@@ -186,33 +226,24 @@ export default function Update({ email }: Props) {
   }, [email]);
 
   useEffect(() => {
-    if (isAdmin || !dbProfile || !dbProfile.has_updated_profile) return;
+    if (isAdmin || !dbProfile || !dbProfile.has_updated_profile) {
+      setTimeRemaining(null);
+      setNextAvailableMs(null);
+      return;
+    }
 
     const lastUpdated = new Date(dbProfile.lastUpdated || 0);
-    const nextAvailableDate = new Date(lastUpdated.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const targetMs = lastUpdated.getTime() + 30 * 24 * 60 * 60 * 1000;
+    const diff = targetMs - Date.now();
 
-    const updateCountdown = () => {
-      const diff = nextAvailableDate.getTime() - Date.now();
-      if (diff <= 0) {
-        setTimeRemaining(null);
-        setCountdownText("");
-      } else {
-        setTimeRemaining(diff);
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-        setCountdownText(
-          `${days}d ${hours}h ${minutes}m ${seconds}s`
-        );
-      }
-    };
-
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
-    return () => clearInterval(interval);
-  }, [dbProfile]);
+    if (diff <= 0) {
+      setTimeRemaining(null);
+      setNextAvailableMs(null);
+    } else {
+      setTimeRemaining(diff);
+      setNextAvailableMs(targetMs);
+    }
+  }, [dbProfile, isAdmin]);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -507,12 +538,14 @@ export default function Update({ email }: Props) {
         </div>
       )}
 
-      {isFormDisabled && (
-        <div className={styles.cooldownBanner}>
-          <Clock size={16} className={styles.flexShrink0} />
-          <span>Next update available in: </span>
-          <span className={styles.cooldownCountdown}>{countdownText}</span>
-        </div>
+      {isFormDisabled && nextAvailableMs && (
+        <CooldownBanner
+          nextAvailableMs={nextAvailableMs}
+          onExpire={() => {
+            setTimeRemaining(null);
+            setNextAvailableMs(null);
+          }}
+        />
       )}
 
       <AnimatePresence>

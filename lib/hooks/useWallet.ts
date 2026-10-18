@@ -22,32 +22,24 @@ export function useWallet({ initialUser, autoRefreshIntervalMs = 20000 }: UseWal
   }, []);
 
   const refreshProfile = useCallback(async () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
     setIsRefreshing(true);
     try {
-      const [pRes, mRes] = await Promise.all([
-        fetch("/api/profile"),
-        fetch("/api/monetize")
-      ]);
+      const pRes = await fetch("/api/profile");
 
       if (pRes.ok) {
         const data = await pRes.json();
-        let liveClicks = data.monetization_clicks ?? 0;
-        let isMonetized = data.monetized;
-
-        if (mRes.ok) {
-          const mData = await mRes.json();
-          if (mData && mData.success) {
-            liveClicks = Math.max(liveClicks, mData.clicksCount || 0);
-            if (mData.isMonetized) isMonetized = true;
-          }
-        }
+        const liveClicks = Number(data.monetization_clicks) || 0;
+        const isMonetized = data.monetized === true || data.monetized === "yes" || liveClicks >= 300;
 
         if (data && !data.error && data.email) {
           setUser((prev) => ({
             ...data,
             monetization_clicks: Math.max(prev.monetization_clicks || 0, liveClicks),
             mutual_count: Math.max(prev.mutual_count || 0, Number(data.mutual_count) || 0),
-            monetized: isMonetized ?? prev.monetized,
+            monetized: isMonetized || prev.monetized,
             balance:
               typeof data.balance !== "undefined" && !isNaN(Number(data.balance))
                 ? Math.max(prev.balance || 0, Number(data.balance))

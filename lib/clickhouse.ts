@@ -121,11 +121,8 @@ export async function getCampaignDeliveryCounts(adIds?: string[]): Promise<Recor
   if (!client) return {};
 
   try {
-    let whereClause = "";
-    if (adIds && adIds.length > 0) {
-      const escapedIds = adIds.map((id) => `'${id.replace(/'/g, "\\'")}'`).join(",");
-      whereClause = `WHERE ad_id IN (${escapedIds})`;
-    }
+    const hasFilter = Array.isArray(adIds) && adIds.length > 0;
+    const whereClause = hasFilter ? "WHERE ad_id IN ({adIds:Array(String)})" : "";
 
     const resultSet = await client.query({
       query: `
@@ -134,6 +131,7 @@ export async function getCampaignDeliveryCounts(adIds?: string[]): Promise<Recor
         ${whereClause}
         GROUP BY ad_id
       `,
+      query_params: hasFilter ? { adIds } : undefined,
       format: "JSONEachRow",
     });
 

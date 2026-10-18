@@ -1021,10 +1021,44 @@
   color: var(--text-muted);
 }
 
-/* ── Textarea auto-resize ── */
+/* ── Textarea bounded height & in-box word counter ── */
+.textareaContainerWithCounter {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .textareaAutoResize {
-  overflow: hidden;
-  resize: none;
+  min-height: 115px;
+  max-height: 210px;
+  overflow-y: auto;
+  resize: vertical;
+  padding-bottom: 2.25rem !important;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.textareaWordCounter {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.textareaWordCounterLimit {
+  color: var(--primary);
+  border-color: var(--primary);
+  background-color: var(--primary-glow);
 }
 
 /* ── Section Title Spaced ── */
@@ -1322,8 +1356,9 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 9999px;
-  background: rgba(234, 179, 8, 0.16);
+  background: var(--primary-glow);
   color: var(--primary);
+  border: 1px solid var(--card-border);
 }
 
 .actionDeckGrid {
@@ -1350,8 +1385,8 @@
 
 .actionCardActive {
   border-color: var(--primary);
-  background: rgba(234, 179, 8, 0.04);
-  box-shadow: 0 0 0 1px var(--primary-glow);
+  background: var(--primary-glow);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 .actionCardDisabled {
@@ -1376,6 +1411,16 @@
   height: 36px;
   border-radius: 10px;
   flex-shrink: 0;
+  background: var(--sidebar-bg);
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+  transition: all 0.2s ease;
+}
+
+.actionCardActive .actionIconWrapper {
+  background: var(--primary);
+  color: var(--background);
+  border-color: var(--primary);
 }
 
 .actionTextCol {
@@ -1406,27 +1451,34 @@
   width: 44px;
   height: 24px;
   border-radius: 9999px;
-  background: var(--card-border);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
   display: inline-flex;
   align-items: center;
   padding: 2px;
   box-sizing: border-box;
   flex-shrink: 0;
   cursor: pointer;
-  transition: background-color 0.25s ease;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
 .actionToggleSwitchActive {
   background: var(--primary);
+  border-color: var(--primary);
 }
 
 .actionToggleThumb {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  background: var(--text-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   display: block;
+  transition: background-color 0.2s ease;
+}
+
+.actionToggleSwitchActive .actionToggleThumb {
+  background: var(--background);
 }
 
 /* Action Configuration Drawer */
@@ -1448,7 +1500,7 @@
 .actionInputLeadingIcon {
   position: absolute;
   left: 12px;
-  color: var(--text-muted);
+  color: var(--foreground);
   pointer-events: none;
   display: inline-flex;
   align-items: center;
@@ -1472,14 +1524,15 @@
 .actionPreviewButton {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 6px;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 9999px;
   background: var(--primary);
-  color: #000;
+  color: var(--background);
+  border: 1px solid var(--primary);
   font-weight: 700;
   font-size: 0.72rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Live CTA Preview Row */
@@ -1491,8 +1544,8 @@
   margin-top: 6px;
   padding: 6px 10px;
   border-radius: 8px;
-  background: rgba(234, 179, 8, 0.08);
-  border: 1px solid rgba(234, 179, 8, 0.2);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
 }
 
 .ctaPreviewLabel {
@@ -1507,12 +1560,12 @@
   gap: 6px;
   background: var(--primary);
   color: var(--background);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--primary);
   padding: 5px 12px;
-  border-radius: 6px;
+  border-radius: 9999px;
   font-size: 0.8rem;
   font-weight: 700;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Gender Segment Pills */

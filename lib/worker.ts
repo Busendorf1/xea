@@ -95,21 +95,8 @@ export const flushBatch = async (): Promise<void> => {
 
   const failedJobIds = new Set<string>();
 
-  // 1. Process Seen clicks in bulk
+  // 1. Process Seen clicks in bulk via record_ad_seen RPC (atomically increments view_count)
   if (seens.length > 0) {
-    const rows = seens.map((s) => ({
-      ad_id: s.job.data.adId,
-      user_email: s.job.data.email,
-      view_count: 1,
-    }));
-    try {
-      await supabaseAdmin
-        .from("ad_impressions")
-        .upsert(rows, { onConflict: "user_email,ad_id" });
-    } catch (err: unknown) {
-      console.error("❌ Error upserting ad_impressions:", (err as Error)?.message || err);
-    }
-
     await Promise.all(
       seens.map(async (s) => {
         try {
@@ -241,12 +228,14 @@ export const flushBatch = async (): Promise<void> => {
     ).catch((err) => console.warn("⚠️ Worker ClickHouse stream (action) warning:", err));
   }
 
-  // 5. Count clicks per email in this batch and increment click progress
+  // 5. Check ATW balance limits and invalidate profile cache per user in this batch
   const emailClickCounts = new Map<string, number>();
   currentBatch.forEach((item) => {
     const email = item.job?.data?.email?.toLowerCase().trim();
     if (email) {
-      emailClickCounts.set(email, (emailClickCounts.get(email) || 0) + 1);
+      // Note: 'seen' and 'earn' already increment click progress synchronously in their API routes
+      const needsClickIncrement = item.job?.data?.type === "action-click";
+      emailClickCounts.set(email, (emailClickCounts.get(email) || 0) + (needsClickIncrement ? 1 : 0));
     }
   });
 
@@ -266,11 +255,13 @@ export const flushBatch = async (): Promise<void> => {
         const balanceCap = getAtwBalanceLimit(userData?.atw_tier, isAdmin);
         const formattedCap = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(balanceCap);
 
-        // 1. Always increment user 300-clicks monetization progress
-        await supabaseAdmin.rpc("increment_user_click_progress", {
-          p_email: userEmail,
-          p_count: clickCount,
-        });
+        // 1. Increment user 300-clicks monetization progress only if not already incremented in API route
+        if (clickCount > 0) {
+          await supabaseAdmin.rpc("increment_user_click_progress", {
+            p_email: userEmail,
+            p_count: clickCount,
+          });
+        }
 
         // 2. Check ATW Balance Cap
         if (currentBal >= balanceCap) {
@@ -339,6 +330,11 @@ export const flushBatch = async (): Promise<void> => {
     currentBatch.forEach((j) => j.reject(batchErr as Error));
   } finally {
     isFlushing = false;
+    if (pendingJobs.length > 0 && !flushTimeout) {
+      flushTimeout = setTimeout(() => {
+        flushBatch().catch((err) => console.error("❌ Error during follow-up flushBatch:", err));
+      }, 50);
+    }
   }
 };
 
@@ -406,8 +402,12 @@ export const campaignsWorker = new Worker<CampaignJobData>(
     try {
       if (type === "ad") {
         const targetTable = payload.is_admin_post ? "addsactive" : "adds";
-        const { error } = await supabaseAdmin.from(targetTable).insert([payload]);
+        const { data: insertedRows, error } = await supabaseAdmin.from(targetTable).insert([payload]).select("*");
         if (error) throw new Error(error.message);
+        if (targetTable === "addsactive" && insertedRows?.[0]) {
+          const { dispatchFeedDropWebhook } = await import("./webhookDispatcher");
+          dispatchFeedDropWebhook(insertedRows[0]).catch(() => {});
+        }
       } else if (type === "highlight") {
         const targetTable = payload.is_admin_post ? "newsactive" : "news";
         const { error } = await supabaseAdmin.from(targetTable).insert([payload]);

@@ -59,7 +59,11 @@ export function useFeedActions({
         const response = await fetch("/api/seen", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ adId: ad.id }),
+          body: JSON.stringify({
+            adId: ad.id,
+            token: ad.verification_token || (ad as any)._token,
+            servedAt: ad.served_at || (ad as any)._served_at,
+          }),
         });
         if (!response.ok) {
           if (response.status === 401 || response.status === 429) {
@@ -72,14 +76,30 @@ export function useFeedActions({
         try {
           const data = await response.json();
           if (data && typeof data.clicksCount === "number") {
+            const isNowMonetized = Boolean(data.isMonetized || data.clicksCount >= 300);
+
+            if (setViewerProfile) {
+              setViewerProfile((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      monetization_clicks: Math.max(prev.monetization_clicks || 0, data.clicksCount),
+                      monetized: isNowMonetized || prev.monetized,
+                    }
+                  : null
+              );
+            }
+
             try {
               const existing = localStorage.getItem("paayh_monetize_cache");
               const parsed = existing ? JSON.parse(existing) : {};
+              const nextLevel = data.clicksCount >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((data.clicksCount - 300) / 300))) : 1;
               const updatedCache = {
                 ...parsed,
                 clicksCount: data.clicksCount,
-                clicksRemaining: Math.max(0, 300 - data.clicksCount),
-                isMonetized: data.isMonetized ?? (data.clicksCount >= 300),
+                clicksRemaining: Math.max(0, (data.clicksCount < 300 ? 300 : data.clicksCount < 600 ? 600 : 900) - data.clicksCount),
+                isMonetized: isNowMonetized,
+                atwTier: `ATW${nextLevel}`,
               };
               const serialized = JSON.stringify(updatedCache);
               localStorage.setItem("paayh_monetize_cache", serialized);
@@ -92,7 +112,7 @@ export function useFeedActions({
                   detail: {
                     delta: 1,
                     totalClicks: data.clicksCount,
-                    isMonetized: data.isMonetized,
+                    isMonetized: isNowMonetized,
                   },
                 })
               );
@@ -109,7 +129,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, incrementClicks]
+    [userEmail, incrementClicks, setViewerProfile]
   );
 
   // Claim Earn reward
@@ -154,8 +174,8 @@ export function useFeedActions({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             adId: ad.id,
-            token: ad.verification_token,
-            servedAt: ad.served_at,
+            token: ad.verification_token || (ad as any)._token,
+            servedAt: ad.served_at || (ad as any)._served_at,
             type: "earn",
             telemetry: interactionData?.telemetry || [],
             turnstileToken: interactionData?.turnstileToken || undefined,
@@ -253,6 +273,34 @@ export function useFeedActions({
           }
 
           if (typeof window !== "undefined") {
+            if (typeof authClicks === "number") {
+              try {
+                const existing = localStorage.getItem("paayh_monetize_cache");
+                const parsed = existing ? JSON.parse(existing) : {};
+                const nextLevel = authClicks >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((authClicks - 300) / 300))) : 1;
+                const updatedCache = {
+                  ...parsed,
+                  clicksCount: authClicks,
+                  clicksRemaining: Math.max(0, 300 - authClicks),
+                  isMonetized: authClicks >= 300 || Boolean(parsed.isMonetized),
+                  atwTier: `ATW${nextLevel}`,
+                };
+                const serialized = JSON.stringify(updatedCache);
+                localStorage.setItem("paayh_monetize_cache", serialized);
+                sessionStorage.setItem("paayh_monetize_cache", serialized);
+              } catch {}
+
+              window.dispatchEvent(
+                new CustomEvent("xea:click-increment", {
+                  detail: {
+                    delta: 1,
+                    totalClicks: authClicks,
+                    isMonetized: authClicks >= 300,
+                  },
+                })
+              );
+            }
+
             window.dispatchEvent(
               new CustomEvent("xea:live-balance-sync", {
                 detail: { newBalance: authBal, clicks: authClicks, earnedAmount: rate },
@@ -331,6 +379,35 @@ export function useFeedActions({
           }
           suspendAccount(2);
           return false;
+        }
+
+        if (typeof resData.clicks === "number" && typeof window !== "undefined") {
+          const authClicks = resData.clicks;
+          try {
+            const existing = localStorage.getItem("paayh_monetize_cache");
+            const parsed = existing ? JSON.parse(existing) : {};
+            const nextLevel = authClicks >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((authClicks - 300) / 300))) : 1;
+            const updatedCache = {
+              ...parsed,
+              clicksCount: authClicks,
+              clicksRemaining: Math.max(0, 300 - authClicks),
+              isMonetized: authClicks >= 300 || Boolean(parsed.isMonetized),
+              atwTier: `ATW${nextLevel}`,
+            };
+            const serialized = JSON.stringify(updatedCache);
+            localStorage.setItem("paayh_monetize_cache", serialized);
+            sessionStorage.setItem("paayh_monetize_cache", serialized);
+          } catch {}
+
+          window.dispatchEvent(
+            new CustomEvent("xea:click-increment", {
+              detail: {
+                delta: 1,
+                totalClicks: authClicks,
+                isMonetized: authClicks >= 300,
+              },
+            })
+          );
         }
 
         if (mutualResult === 1) {

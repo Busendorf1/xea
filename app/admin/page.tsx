@@ -34,13 +34,8 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  const envAdmins = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  const adminEmails = envAdmins;
   const isAdmin = isAdminEmail(email);
+  const adminEmails = isAdmin ? [email] : [];
 
   if (!isAdmin) {
     return (

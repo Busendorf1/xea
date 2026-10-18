@@ -79,6 +79,7 @@ interface Props {
   email?: string;
   initialAds?: any[];
   initialProfiles?: Record<string, any>;
+  initialHighlights?: any[];
 }
 
 const VALID_TABS: TabKey[] = ["feed", "adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
@@ -94,6 +95,7 @@ export default function LoggedInClientContainer({
   email,
   initialAds,
   initialProfiles,
+  initialHighlights,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTab]));
@@ -235,22 +237,74 @@ export default function LoggedInClientContainer({
     });
   }, [activeTab]);
 
-  // Background preloading of dynamic import JS bundles during browser idle time
+  // Background preloading of dynamic import JS bundles & SWR data caches during browser idle time
   useEffect(() => {
+    const resolvedEmail = (email || session?.user?.email || "").toLowerCase().trim();
+    if (typeof window !== "undefined" && resolvedEmail) {
+      try {
+        if (typeof initialMonetized === "boolean" && !sessionStorage.getItem("paayh_monetize_cache")) {
+          const monetizePayload = JSON.stringify({
+            email: resolvedEmail,
+            isMonetized: initialMonetized,
+            clicksCount: initialClicks || 0,
+            clicksRemaining: Math.max(0, 300 - (initialClicks || 0)),
+            atwTier: initialAtwTier || "ATW1",
+            daysInactive: 0,
+          });
+          sessionStorage.setItem("paayh_monetize_cache", monetizePayload);
+        }
+      } catch {}
+    }
+
+    const warmIdleResources = () => {
+      import("@/components/Ad/page");
+      import("@/components/Monetize/page");
+      import("@/components/MyAds/page");
+      import("@/components/MyNews/page");
+      import("@/components/News/page");
+      import("@/components/Statement/page");
+      import("@/components/Update/page");
+      import("@/components/Deactivate/page");
+
+      if (typeof window !== "undefined" && resolvedEmail) {
+        // Warm MyAds / MyNews shared cache in background if not yet cached
+        if (!sessionStorage.getItem(`my_campaigns_data_${resolvedEmail}`)) {
+          import("@/lib/campaignsClient")
+            .then(({ fetchUserCampaignsShared }) => fetchUserCampaignsShared(resolvedEmail))
+            .catch(() => {});
+        }
+        // Warm Statement cache in background if not yet cached
+        if (!sessionStorage.getItem("paayh_statement_cache")) {
+          fetch("/api/payments/history?type=all")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((unifiedData) => {
+              if (unifiedData) {
+                sessionStorage.setItem(
+                  "paayh_statement_cache",
+                  JSON.stringify({
+                    profile: user || null,
+                    payments: Array.isArray(unifiedData.payments) ? unifiedData.payments : [],
+                    withdrawals: Array.isArray(unifiedData.withdrawals) ? unifiedData.withdrawals : [],
+                  })
+                );
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    };
+
     const idleCallback = typeof window !== "undefined" && (window as any).requestIdleCallback;
     if (idleCallback) {
-      idleCallback(() => {
-        import("@/components/Ad/page");
-        import("@/components/Monetize/page");
-        import("@/components/MyAds/page");
-        import("@/components/MyNews/page");
-        import("@/components/News/page");
-        import("@/components/Statement/page");
-        import("@/components/Update/page");
-        import("@/components/Deactivate/page");
-      });
+      const id = idleCallback(warmIdleResources, { timeout: 2500 });
+      return () => {
+        if ((window as any).cancelIdleCallback) (window as any).cancelIdleCallback(id);
+      };
+    } else {
+      const timer = setTimeout(warmIdleResources, 1200);
+      return () => clearTimeout(timer);
     }
-  }, []);
+  }, [email, session?.user?.email, initialMonetized, initialClicks, initialAtwTier, user]);
 
   if (activeTab === "feed") {
     return (
@@ -260,6 +314,7 @@ export default function LoggedInClientContainer({
         email={email || session?.user?.email} 
         initialAds={initialAds}
         initialProfiles={initialProfiles}
+        initialHighlights={initialHighlights}
       />
     );
   }
@@ -268,7 +323,7 @@ export default function LoggedInClientContainer({
     <div className="min-h-screen flex flex-col bg-black text-white">
       <HeaderJoin />
 
-      {/* Main Dynamic View Content driven by Gear Menu & Caching */}
+      {/* Main Dynamic View Content: Keep adPage form state alive if visited; unmount polling tabs when inactive */}
       <main className="flex-1">
         {visitedTabs.has("adPage") && (
           <div style={{ display: activeTab === "adPage" ? "block" : "none" }} className="py-4">
@@ -276,8 +331,8 @@ export default function LoggedInClientContainer({
           </div>
         )}
 
-        {visitedTabs.has("monetize") && (
-          <div style={{ display: activeTab === "monetize" ? "block" : "none" }} className="py-4">
+        {activeTab === "monetize" && (
+          <div className="py-4">
             <Monetize 
               session={session} 
               initialMonetized={initialMonetized}
@@ -287,8 +342,8 @@ export default function LoggedInClientContainer({
           </div>
         )}
 
-        {visitedTabs.has("myads") && (
-          <div style={{ display: activeTab === "myads" ? "block" : "none" }} className={myAdsStyles.pageContainer}>
+        {activeTab === "myads" && (
+          <div className={myAdsStyles.pageContainer}>
             <h1 className={myAdsStyles.pageTitle}>Publications</h1>
             <section className={myAdsStyles.section}>
               <h2 className={myAdsStyles.sectionTitle}>Highlights</h2>
@@ -301,26 +356,26 @@ export default function LoggedInClientContainer({
           </div>
         )}
 
-        {visitedTabs.has("news") && (
-          <div style={{ display: activeTab === "news" ? "block" : "none" }} className="py-4">
+        {activeTab === "news" && (
+          <div className="py-4">
             <NewsComponent session={session} />
           </div>
         )}
 
-        {visitedTabs.has("statement") && (
-          <div style={{ display: activeTab === "statement" ? "block" : "none" }}>
-            <StatementPageContent />
+        {activeTab === "statement" && (
+          <div>
+            <StatementPageContent initialProfile={user} />
           </div>
         )}
 
-        {visitedTabs.has("profile") && (
-          <div style={{ display: activeTab === "profile" ? "block" : "none" }} className="py-4">
+        {activeTab === "profile" && (
+          <div className="py-4">
             <UpdateProfile email={session.user?.email} />
           </div>
         )}
 
-        {visitedTabs.has("deactivate") && (
-          <div style={{ display: activeTab === "deactivate" ? "block" : "none" }} className="py-4">
+        {activeTab === "deactivate" && (
+          <div className="py-4">
             <DeactivateAccount session={session} />
           </div>
         )}

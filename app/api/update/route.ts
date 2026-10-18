@@ -100,6 +100,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const { encryptSensitiveField } = await import("@/lib/security/piiCrypto");
+    const encryptedPassphrase = updateData.passphrase ? encryptSensitiveField(updateData.passphrase) : null;
+
     const { error } = await supabaseAdmin.rpc("update_user_profile", {
       p_email: email,
       p_username: updateData.username || null,
@@ -108,7 +111,7 @@ export async function POST(req: NextRequest) {
       p_state: updateData.state || null,
       p_location: updateData.location || null,
       p_phone: updateData.phone || null,
-      p_passphrase: updateData.passphrase || null,
+      p_passphrase: encryptedPassphrase,
       p_industry: updateData.industry || null,
       p_interest: updateData.interest || null,
       p_behavior: updateData.behavior || null,

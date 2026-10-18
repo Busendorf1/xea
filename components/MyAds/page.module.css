@@ -634,50 +634,114 @@
   border-radius: 5px;
 }
 
-/* KPI Summary Cards */
+/* KPI Summary Cards (shadcn/ui New York Bento Grid) */
 .kpiContainer {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-top: 1.5rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 .kpiCard {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
-  padding: 1.25rem;
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  gap: 0.4rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.kpiLabel {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+.kpiCard:hover {
+  border-color: rgba(234, 179, 8, 0.45);
+}
+
+.kpiHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.kpiIconBox {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--primary-glow);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kpiIconBoxMuted {
+  background: var(--sidebar-bg);
+  border-color: var(--card-border);
   color: var(--text-muted);
 }
 
+.kpiLabel {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+}
+
+.kpiValueGroup {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
 .kpiValue {
-  font-size: 1.4rem;
+  font-size: 1.55rem;
   font-weight: 700;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
   color: var(--foreground);
+  line-height: 1.15;
+}
+
+.kpiTrendBadge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  font-variant-numeric: tabular-nums;
 }
 
 .kpiSub {
-  font-size: 0.75rem;
-  color: var(--primary);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  display: inline-block;
+  flex-shrink: 0;
 }
 
 /* Health Shield Badges */
 .healthSection {
   background: var(--sidebar-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 0.75rem 1rem;
   margin-bottom: 1.25rem;
   display: flex;
@@ -685,29 +749,13 @@
   gap: 0.4rem;
 }
 
-.badgePaused {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  padding: 0.25rem 0.6rem;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background-color: var(--sidebar-bg);
-  color: var(--text-muted);
-  border: 1px solid var(--card-border);
-  z-index: 5;
-}
-
 .pauseBtn {
-  background-color: var(--sidebar-bg);
+  background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  color: var(--text-muted);
-  padding: 6px 12px;
+  color: var(--foreground);
+  padding: 0 12px;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -722,9 +770,9 @@
   background-color: var(--primary-glow);
   border: 1px solid var(--primary);
   color: var(--primary);
-  padding: 6px 12px;
+  padding: 0 12px;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -737,12 +785,12 @@
 
 .boostBtn {
   background-color: var(--primary);
-  border: 1px solid var(--primary-hover);
+  border: 1px solid var(--primary);
   color: var(--background);
-  padding: 6px 12px;
+  padding: 0 13px;
   border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.76rem;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1766,17 +1814,288 @@
 
 .headerBar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
+}
+
+.headerTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .headerTitle {
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 700;
+  letter-spacing: -0.025em;
   margin: 0;
+  color: var(--foreground);
+}
+
+.headerSubtitle {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.headerActionsGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.newCampaignBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background-color: var(--primary);
+  color: var(--background);
+  text-decoration: none;
+  border: 1px solid var(--primary);
+  transition: all 0.18s ease;
+}
+
+.newCampaignBtn:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+/* shadcn/ui New York Command Toolbar */
+.commandBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 0.85rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.tabsList {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  flex-wrap: wrap;
+}
+
+.tabTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.tabTrigger:hover {
+  color: var(--foreground);
+}
+
+.tabTriggerActive {
+  background: var(--card-bg);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.tabCount {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: var(--sidebar-bg);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabTriggerActive .tabCount {
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.commandControls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 240px;
+}
+
+.searchBox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 210px;
+  flex: 1;
+  max-width: 300px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 32px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--sidebar-bg);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.searchInput:focus {
+  border-color: var(--primary);
+}
+
+.sortWrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sortIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.sortSelect {
+  height: 34px;
+  padding: 0 12px 0 28px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--sidebar-bg);
+  color: var(--foreground);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.sortSelect:focus {
+  border-color: var(--primary);
+}
+
+.sectionBlock {
+  margin-bottom: 2rem;
+}
+
+.sectionHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.sectionHeaderRow .subheading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sectionCountBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.emptyStateCard {
+  background: var(--card-bg);
+  border: 1px dashed var(--card-border);
+  border-radius: 14px;
+  padding: 2.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.45rem;
+}
+
+.emptyStateIcon {
+  color: var(--primary);
+  opacity: 0.85;
+  margin-bottom: 0.25rem;
+}
+
+.emptyStateTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.emptyStateSub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 380px;
+}
+
+.tagPillInteractive {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.tagPillInteractive:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.deliveryLabel {
+  color: var(--foreground);
+}
+
+.deliveryCountText {
+  font-variant-numeric: tabular-nums;
+}
+
+.metricSubVal {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .kpiValueMuted {
@@ -1786,4 +2105,5 @@
 .kpiSubMuted {
   color: var(--text-muted) !important;
 }
+
 

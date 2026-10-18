@@ -22,7 +22,17 @@ services:
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: AUTH0_SECRET
         sync: false
+      - key: CLICKHOUSE_HOST
+        sync: false
+      - key: CLICKHOUSE_USER
+        value: "default"
+      - key: CLICKHOUSE_PASSWORD
+        sync: false
+      - key: CLICKHOUSE_DATABASE
+        value: "default"

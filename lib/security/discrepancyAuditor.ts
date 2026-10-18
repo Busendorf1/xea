@@ -36,13 +36,10 @@ export async function runAutomatedDiscrepancyCheck(): Promise<{
   message: string;
 }> {
   try {
-    // 1. Inspect live Redis in-flight balance delta
+    // 1. Inspect live Redis in-flight balance delta atomically via MGET
     let redisVarianceKobo = 0;
     if (isRedisReady()) {
-      const [debitsRaw, creditsRaw] = await Promise.all([
-        redisConnection.get(REDIS_DEBITS_KEY),
-        redisConnection.get(REDIS_CREDITS_KEY),
-      ]);
+      const [debitsRaw, creditsRaw] = await redisConnection.mget(REDIS_DEBITS_KEY, REDIS_CREDITS_KEY);
       const debits = parseInt(debitsRaw || "0", 10);
       const credits = parseInt(creditsRaw || "0", 10);
       redisVarianceKobo = Math.abs(debits - credits);

@@ -1,5 +1,5 @@
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
+import { getCachedProfile, setCachedProfile, getCachedHighlights } from "@/lib/utils/cache";
 import { safeParseArray } from "@/lib/utils/parsers";
 import { UserProfile } from "@/components/DashboardClient/page";
 import redisConnection, { isRedisReady } from "@/lib/redis";
@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { isAdminEmail } from "@/lib/authHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
 import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
+import { signAdImpressionToken, evaluateAdTargeting } from "@/lib/targetingEngine";
 
 export interface DashboardProfileResult {
   user?: UserProfile;
@@ -14,6 +15,7 @@ export interface DashboardProfileResult {
   email?: string;
   initialAds?: any[];
   initialProfiles?: Record<string, any>;
+  initialHighlights?: any[];
   redirectUrl?: string;
   error?: string;
 }
@@ -54,7 +56,6 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     mutual_count,
     balance,
     withdrawal,
-    bvn_hash,
     monetization_clicks,
     last_active_at
   `;
@@ -88,7 +89,6 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
     mutual_count,
     balance,
     withdrawal,
-    bvn_hash,
     monetization_clicks,
     last_active_at,
     referral_code,
@@ -98,8 +98,32 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
 
   let dbError: any = null;
 
-  // 1. Attempt to fetch from Redis cache first (<0.1ms)
-  let user: any = await getCachedProfile(email);
+  // 1. Attempt to fetch profile, live clicks, and preloaded feed keys in a single Redis MGET (<0.5ms)
+  let user: any = null;
+  let prefetchedLiveClicksStr: string | null = null;
+  let prefetchedAdIdsStr: string | null = null;
+  let prefetchedProfilesStr: string | null = null;
+
+  if (isRedisReady()) {
+    try {
+      const [rawProfile, rawLiveClicks, rawAdIds, rawProfiles] = await redisConnection.mget([
+        `profile:${email}`,
+        `user:live_clicks:${email}`,
+        `feed:ad_ids:${email}`,
+        `feed:profiles:${email}`,
+      ]);
+      if (rawProfile) {
+        user = JSON.parse(rawProfile);
+      }
+      prefetchedLiveClicksStr = rawLiveClicks;
+      prefetchedAdIdsStr = rawAdIds;
+      prefetchedProfilesStr = rawProfiles;
+    } catch {
+      user = await getCachedProfile(email);
+    }
+  } else {
+    user = await getCachedProfile(email);
+  }
 
   if (user) {
     console.log(`🚀 Profile cache hit in Server Component for: ${email}`);
@@ -167,16 +191,13 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
   }
 
   // Reconcile monetization_clicks with live Redis counter if present to ensure SSR matches real-time clicks
-  if (user && isRedisReady()) {
-    try {
-      const liveVal = await redisConnection.get(`user:live_clicks:${email}`);
-      if (liveVal) {
-        const liveClicks = Number(liveVal) || 0;
-        if (liveClicks > (user.monetization_clicks || 0)) {
-          user.monetization_clicks = liveClicks;
-        }
+  if (user) {
+    if (prefetchedLiveClicksStr) {
+      const liveClicks = Number(prefetchedLiveClicksStr) || 0;
+      if (liveClicks > (user.monetization_clicks || 0)) {
+        user.monetization_clicks = liveClicks;
       }
-    } catch {}
+    }
     if ((user.monetization_clicks || 0) >= 300) {
       user.monetized = true;
     }
@@ -306,21 +327,28 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
   // Lazy evaluation of activity & 7-day inactivity reset on login
   touchUserActivity(email, user).catch(() => {});
 
-  // 4. Server-Side Feed Pre-load: If Redis already has candidate ads cached, hydrate initialAds
+  // 4. Server-Side Feed & Highlights Pre-load: Hydrate initialAds & initialHighlights from Redis in parallel
   let initialAds: any[] | undefined = undefined;
   let initialProfiles: Record<string, any> | undefined = undefined;
+  let initialHighlights: any[] | undefined = undefined;
   try {
-    const [cachedAdIdsStr, cachedProfilesStr] = await Promise.all([
-      redisConnection.get(`feed:ad_ids:${email}`).catch(() => null),
-      redisConnection.get(`feed:profiles:${email}`).catch(() => null),
-    ]);
+    const highlightsPromise = getCachedHighlights(
+      parsedInterest,
+      user.country || null,
+      user.state || null
+    ).catch(() => null);
 
-    if (cachedAdIdsStr) {
-      const adIds: string[] = JSON.parse(cachedAdIdsStr).slice(0, 10);
+    if (prefetchedAdIdsStr && isRedisReady()) {
+      const adIds: string[] = JSON.parse(prefetchedAdIdsStr).slice(0, 10);
       if (adIds.length > 0) {
         const detailKeys = adIds.map((id) => `ad:detail:${id}`);
-        const rawDetails = await redisConnection.mget(detailKeys).catch(() => []);
-        const secretKey = process.env.AUTH0_SECRET || "xea-default-auth0-secret-key-32ch";
+        const [rawDetails, cachedHighlights] = await Promise.all([
+          redisConnection.mget(detailKeys).catch(() => []),
+          highlightsPromise,
+        ]);
+        if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
+          initialHighlights = cachedHighlights;
+        }
         const servedAt = Date.now();
 
         initialAds = (rawDetails || [])
@@ -328,6 +356,9 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
             if (!raw) return null;
             try {
               const ad = JSON.parse(raw);
+              const targetCheck = evaluateAdTargeting(ad, user as any, { allowRolloverPsychographics: true });
+              if (!targetCheck.matches) return null;
+
               const isPlatformPost = Boolean(
                 ad.is_admin_post ||
                 isAdminEmail(ad.user_email || ad.email) ||
@@ -336,13 +367,14 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
                 !ad.impressions ||
                 Number(ad.impressions) <= 0
               );
-              const payload = `${ad.id}:${email}:${servedAt}`;
-              const token = crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
+              const token = signAdImpressionToken(String(ad.id), email, servedAt);
               return {
                 ...ad,
                 is_admin_post: isPlatformPost,
                 cost_per_impression: isPlatformPost ? 0 : Number(ad.cost_per_impression || 0),
                 impressions: isPlatformPost ? 0 : Number(ad.impressions || 0),
+                _token: token,
+                _served_at: servedAt,
                 verification_token: token,
                 served_at: servedAt,
               };
@@ -352,22 +384,39 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
           })
           .filter(Boolean);
 
-        if (cachedProfilesStr) {
+        if (prefetchedProfilesStr) {
           try {
-            initialProfiles = JSON.parse(cachedProfilesStr);
+            initialProfiles = JSON.parse(prefetchedProfilesStr);
           } catch {}
         }
+      } else {
+        const cachedHighlights = await highlightsPromise;
+        if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
+          initialHighlights = cachedHighlights;
+        }
+      }
+    } else {
+      const cachedHighlights = await highlightsPromise;
+      if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
+        initialHighlights = cachedHighlights;
       }
     }
-  } catch (err) {
+  } catch {
     // Non-blocking prefetch failure fallback
   }
 
+  // Strip sensitive credentials from RSC client payload
+  const sanitizedUser = {
+    ...user,
+    passphrase: "",
+  };
+
   return {
-    user: user as UserProfile,
+    user: sanitizedUser as UserProfile,
     parsedInterest,
     email,
     initialAds,
     initialProfiles,
+    initialHighlights,
   };
 }

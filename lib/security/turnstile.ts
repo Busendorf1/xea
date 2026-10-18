@@ -30,10 +30,16 @@ export async function verifyTurnstileToken(
     return { success: false, errorCodes: ["missing-input-response"] };
   }
 
-  const secretKey =
+  const configuredSecret =
     process.env.TURNSTILE_SECRET_KEY ||
-    process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ||
-    DEFAULT_TEST_SECRET;
+    process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
+
+  if (!configuredSecret && process.env.NODE_ENV === "production") {
+    console.error("❌ Security Error: TURNSTILE_SECRET_KEY is not configured in production.");
+    return { success: false, errorCodes: ["missing-input-secret"] };
+  }
+
+  const secretKey = configuredSecret || DEFAULT_TEST_SECRET;
 
   try {
     const formData = new URLSearchParams();

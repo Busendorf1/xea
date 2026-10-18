@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import supabase from "@/lib/utils/db";
 import {
@@ -67,11 +67,13 @@ import {
 import styles from "./page.module.css";
 import { v4 as uuidv4 } from "uuid";
 import { ALL_INDUSTRIES, ALL_INTERESTS } from "@/lib/categoryTargetingMap";
+import dynamic from "next/dynamic";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
-import AdminPayoutsTab from "./AdminPayoutsTab";
-import AdminMasterStatementTab from "./AdminMasterStatementTab";
-import AdminReconciliationTab from "./AdminReconciliationTab";
-import AdminBrandSubscribersTab from "./AdminBrandSubscribersTab";
+
+const AdminPayoutsTab = dynamic(() => import("./AdminPayoutsTab"), { ssr: false });
+const AdminMasterStatementTab = dynamic(() => import("./AdminMasterStatementTab"), { ssr: false });
+const AdminReconciliationTab = dynamic(() => import("./AdminReconciliationTab"), { ssr: false });
+const AdminBrandSubscribersTab = dynamic(() => import("./AdminBrandSubscribersTab"), { ssr: false });
 
 interface AdminDashboardClientProps {
   session: {
@@ -264,23 +266,32 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [editAdData, setEditAdData] = useState<any | null>(null);
   const [editHighlightData, setEditHighlightData] = useState<any | null>(null);
 
-  // Quick Stats State
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    monetizedUsers: 0,
-    suspendedUsers: 0,
-    totalBalance: 0,
-    totalWithdrawal: 0,
-    pendingAdsCount: 0,
-    activeAdsCount: 0,
-    pendingHighlightsCount: 0,
-    activeHighlightsCount: 0,
-    totalClicks: 0,
-    totalMutuals: 0,
-    clickRate: 0,
-    reportedCount: 0,
-    helpTicketsCount: 0,
-    pausedAdsCount: 0
+  // Quick Stats State (hydrated synchronously from sessionStorage for 0ms Overview load)
+  const [stats, setStats] = useState(() => {
+    const fallback = {
+      totalUsers: 0,
+      monetizedUsers: 0,
+      suspendedUsers: 0,
+      totalBalance: 0,
+      totalWithdrawal: 0,
+      pendingAdsCount: 0,
+      activeAdsCount: 0,
+      pendingHighlightsCount: 0,
+      activeHighlightsCount: 0,
+      totalClicks: 0,
+      totalMutuals: 0,
+      clickRate: 0,
+      reportedCount: 0,
+      helpTicketsCount: 0,
+      pausedAdsCount: 0,
+    };
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("paayh_admin_stats_cache");
+        if (cached) return { ...fallback, ...JSON.parse(cached) };
+      } catch {}
+    }
+    return fallback;
   });
 
   // DLQ Queues state
@@ -331,45 +342,51 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const fetchOverviewStats = async (fresh = false) => {
     try {
-      const res = await fetch(`/api/admin/stats${fresh ? "?fresh=true" : ""}`);
-      if (!res.ok) throw new Error("Failed to fetch admin stats");
-      const statsData = await res.json();
+      const [res, subRes] = await Promise.all([
+        fetch(`/api/admin/stats${fresh ? "?fresh=true" : ""}`),
+        fetch(`/api/admin/subscribers?limit=1${fresh ? "&fresh=true" : ""}`).catch(() => null),
+      ]);
 
-      setStats({
-        totalUsers: statsData.totalUsers || 0,
-        monetizedUsers: statsData.monetizedUsers || 0,
-        suspendedUsers: statsData.suspendedUsers || 0,
-        totalBalance: statsData.totalBalance || 0,
-        totalWithdrawal: statsData.totalWithdrawal || 0,
-        pendingAdsCount: statsData.pendingAdsCount || 0,
-        activeAdsCount: statsData.activeAdsCount || 0,
-        pendingHighlightsCount: statsData.pendingHighlightsCount || 0,
-        activeHighlightsCount: statsData.activeHighlightsCount || 0,
-        totalClicks: statsData.totalClicks || 0,
-        totalMutuals: statsData.totalMutuals || 0,
-        clickRate: statsData.clickRate || 0,
-        reportedCount: statsData.reportedCount || 0,
-        helpTicketsCount: statsData.helpTicketsCount || 0,
-        pausedAdsCount: statsData.pausedAdsCount || 0
-      });
-
-      // Fetch subscriber metrics
-      try {
-        const subRes = await fetch(`/api/admin/subscribers?limit=1${fresh ? "&fresh=true" : ""}`);
-        if (subRes.ok) {
-          const subData = await subRes.json();
-          if (subData.metrics && typeof subData.metrics.pending === "number") {
-            setPendingSubscribersCount(subData.metrics.pending);
-          }
+      if (res.ok) {
+        const statsData = await res.json();
+        const nextStats = {
+          totalUsers: statsData.totalUsers || 0,
+          monetizedUsers: statsData.monetizedUsers || 0,
+          suspendedUsers: statsData.suspendedUsers || 0,
+          totalBalance: statsData.totalBalance || 0,
+          totalWithdrawal: statsData.totalWithdrawal || 0,
+          pendingAdsCount: statsData.pendingAdsCount || 0,
+          activeAdsCount: statsData.activeAdsCount || 0,
+          pendingHighlightsCount: statsData.pendingHighlightsCount || 0,
+          activeHighlightsCount: statsData.activeHighlightsCount || 0,
+          totalClicks: statsData.totalClicks || 0,
+          totalMutuals: statsData.totalMutuals || 0,
+          clickRate: statsData.clickRate || 0,
+          reportedCount: statsData.reportedCount || 0,
+          helpTicketsCount: statsData.helpTicketsCount || 0,
+          pausedAdsCount: statsData.pausedAdsCount || 0,
+        };
+        setStats(nextStats);
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem("paayh_admin_stats_cache", JSON.stringify(nextStats));
+          } catch {}
         }
-      } catch (subErr) {}
+      }
+
+      if (subRes && subRes.ok) {
+        const subData = await subRes.json().catch(() => null);
+        if (subData?.metrics && typeof subData.metrics.pending === "number") {
+          setPendingSubscribersCount(subData.metrics.pending);
+        }
+      }
     } catch (e) {
       console.error("Error fetching overview stats:", e);
     }
   };
 
   const fetchUsersTab = async (page: number, search: string, limit: number = usersLimit, fresh = false) => {
-    setLoading(true);
+    if (users.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search || "")}${fresh ? "&fresh=true" : ""}`);
       if (!res.ok) throw new Error("Failed to fetch admin users");
@@ -379,14 +396,14 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       setUsers(resolvedUsers || []);
     } catch (e) {
       console.error("Error fetching users page:", e);
-      setUsers([]);
+      if (users.length === 0) setUsers([]);
     } finally {
       setLoading(false);
     }
   };
 
   const fetchPendingAdsTab = async (page: number) => {
-    setLoading(true);
+    if (pendingAds.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/campaigns?tab=ad-approvals&page=${page}&limit=10`);
       if (!res.ok) throw new Error("Failed to fetch pending ads");
@@ -401,7 +418,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   const fetchActiveAdsTab = async (page: number, search: string) => {
-    setLoading(true);
+    if (activeAds.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/campaigns?tab=active-ads&page=${page}&limit=10&search=${encodeURIComponent(search || "")}`);
       if (!res.ok) throw new Error("Failed to fetch active ads");
@@ -416,7 +433,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   const fetchPendingHighlightsTab = async (page: number) => {
-    setLoading(true);
+    if (pendingHighlights.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/campaigns?tab=highlight-approvals&page=${page}&limit=10`);
       if (!res.ok) throw new Error("Failed to fetch pending highlights");
@@ -431,7 +448,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   const fetchActiveHighlightsTab = async (page: number, search: string) => {
-    setLoading(true);
+    if (activeHighlights.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/campaigns?tab=active-highlights&page=${page}&limit=10&search=${encodeURIComponent(search || "")}`);
       if (!res.ok) throw new Error("Failed to fetch active highlights");
@@ -446,20 +463,20 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   const fetchReportedAds = async (page: number, search: string = "", fresh = false) => {
-    setLoading(true);
+    if (reportedAds.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/reports?page=${page}&search=${encodeURIComponent(search)}${fresh ? "&fresh=true" : ""}`);
       const json = await res.json();
       if (res.ok && json.reports) {
         setReportedAds(json.reports);
         setReportedAdsCount(json.count || 0);
-      } else {
+      } else if (reportedAds.length === 0) {
         setReportedAds([]);
         setReportedAdsCount(0);
       }
     } catch (e) {
       console.error("Error fetching reported ads:", e);
-      setReportedAds([]);
+      if (reportedAds.length === 0) setReportedAds([]);
     } finally {
       setLoading(false);
     }
@@ -630,28 +647,57 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     }
   };
 
-  // Synchronize loading on state changes
+  // Synchronize loading on state changes (instant on tab/page change, 220ms debounced on search typing)
+  const prevTabRef = useRef<Tab>(activeTab);
   useEffect(() => {
-    if (activeTab === "overview") {
-      fetchOverviewStats();
-    } else if (activeTab === "accounts") {
-      fetchUsersTab(usersPage, searchQuery, usersLimit);
-    } else if (activeTab === "ad-approvals") {
-      fetchPendingAdsTab(pendingAdsPage);
-    } else if (activeTab === "active-ads") {
-      fetchActiveAdsTab(activeAdsPage, searchQuery);
-    } else if (activeTab === "highlight-approvals") {
-      fetchPendingHighlightsTab(pendingHighlightsPage);
-    } else if (activeTab === "active-highlights") {
-      fetchActiveHighlightsTab(activeHighlightsPage, searchQuery);
-    } else if (activeTab === "help-center") {
-      fetchHelpTickets(helpTicketsPage, helpTicketSearch);
-    } else if (activeTab === "reported-ads") {
-      fetchReportedAds(reportedAdsPage, reportedAdsSearch);
-    } else if (activeTab === "queues") {
-      fetchDlqJobs();
+    const isTabSwitch = prevTabRef.current !== activeTab;
+    prevTabRef.current = activeTab;
+
+    const hasActiveSearch =
+      (activeTab === "accounts" && Boolean(searchQuery)) ||
+      (activeTab === "active-ads" && Boolean(searchQuery)) ||
+      (activeTab === "active-highlights" && Boolean(searchQuery)) ||
+      (activeTab === "help-center" && Boolean(helpTicketSearch)) ||
+      (activeTab === "reported-ads" && Boolean(reportedAdsSearch));
+
+    const runTabFetch = () => {
+      if (activeTab === "overview") {
+        fetchOverviewStats();
+      } else if (activeTab === "accounts") {
+        fetchUsersTab(usersPage, searchQuery, usersLimit);
+      } else if (activeTab === "ad-approvals") {
+        fetchPendingAdsTab(pendingAdsPage);
+      } else if (activeTab === "active-ads") {
+        fetchActiveAdsTab(activeAdsPage, searchQuery);
+      } else if (activeTab === "highlight-approvals") {
+        fetchPendingHighlightsTab(pendingHighlightsPage);
+      } else if (activeTab === "active-highlights") {
+        fetchActiveHighlightsTab(activeHighlightsPage, searchQuery);
+      } else if (activeTab === "help-center") {
+        fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+      } else if (activeTab === "reported-ads") {
+        fetchReportedAds(reportedAdsPage, reportedAdsSearch);
+      } else if (activeTab === "queues") {
+        fetchDlqJobs();
+      }
+    };
+
+    if (!isTabSwitch && hasActiveSearch) {
+      const debounceTimer = setTimeout(runTabFetch, 220);
+      return () => clearTimeout(debounceTimer);
     }
+
+    runTabFetch();
   }, [activeTab, usersPage, usersLimit, pendingAdsPage, activeAdsPage, pendingHighlightsPage, activeHighlightsPage, searchQuery, helpTicketsPage, helpTicketSearch, reportedAdsPage, reportedAdsSearch]);
+
+  // Background idle prefetch of approval queues so switching to Ad/Highlight Approvals is 0ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (pendingAds.length === 0) fetchPendingAdsTab(0);
+      if (pendingHighlights.length === 0) fetchPendingHighlightsTab(0);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -695,7 +741,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   // ----------------------------------------------------
 
   const fetchHelpTickets = async (page: number, search: string, fresh = false) => {
-    setLoading(true);
+    if (helpTickets.length === 0) setLoading(true);
     try {
       const res = await fetch(`/api/admin/help-tickets?page=${page}&limit=10&search=${encodeURIComponent(search || "")}${fresh ? "&fresh=true" : ""}`);
       if (!res.ok) throw new Error("Failed to fetch help tickets");
@@ -704,8 +750,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       setHelpTicketsCount(json.count || 0);
     } catch (e) {
       console.error("Error fetching help tickets:", e);
-      setHelpTickets([]);
-      setHelpTicketsCount(0);
+      if (helpTickets.length === 0) {
+        setHelpTickets([]);
+        setHelpTicketsCount(0);
+      }
     } finally {
       setLoading(false);
     }

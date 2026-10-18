@@ -11,6 +11,22 @@ export default function LogoutPage() {
       try {
         if (typeof window !== "undefined") {
           sessionStorage.clear();
+          try {
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (
+                key &&
+                (key.startsWith("paayh_") ||
+                  key.startsWith("xea_") ||
+                  key.startsWith("my_ads_cache_") ||
+                  key.startsWith("dashboard_"))
+              ) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach((k) => localStorage.removeItem(k));
+          } catch {}
           document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         }
         await supabase.auth.signOut(); // Clear Supabase session

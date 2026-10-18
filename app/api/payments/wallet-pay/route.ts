@@ -4,31 +4,42 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { v4 as uuidv4 } from "uuid";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
+import {
+  spendWalletBalanceAtomic,
+  refundWalletDeductionAtomic,
+} from "@/lib/services/payoutSettlementService";
 
 export async function POST(req: NextRequest) {
+  let walletLockKey: string | null = null;
+  let lockAcquired = false;
   try {
     const email = await getAuthenticatedEmail(req);
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const emailLower = email.toLowerCase().trim();
     const body = await req.json();
     const { type, amount, metadata } = body;
 
-    // Validate type (Only Ad & Highlight campaigns)
+    // Closed-loop non-refundable policy: Only Ad & Highlight campaigns allowed (no wallet deposits)
     const validTypes = ["ad", "highlight"];
     if (!validTypes.includes(type)) {
-      return NextResponse.json({ error: "Invalid payment type" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid payment type. Only non-refundable payments for ads and highlights are allowed." },
+        { status: 400 }
+      );
     }
 
     const { isAdminEmail } = await import("@/lib/authHelper");
-    const isAdmin = isAdminEmail(email);
+    const isAdmin = isAdminEmail(emailLower);
     const amountNum = parseFloat(amount);
 
-    if (!isAdmin && (isNaN(amountNum) || amountNum <= 0)) {
+    if (!isAdmin && (!Number.isFinite(amountNum) || amountNum <= 0)) {
       return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
     }
 
+    // 1. Pre-validate payload & rate limits BEFORE touching user balance
     if (type === "ad") {
       const adData = metadata?.adData;
       if (!adData) {
@@ -38,17 +49,69 @@ export async function POST(req: NextRequest) {
       const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
       const rate = isBidded && bidPrice ? bidPrice : parseFloat(adData.costPerImpression || 15);
       const impressions = parseInt(adData.impressions || 1000, 10);
+      if (!isAdmin && (rate < 10 || impressions < 1000)) {
+        return NextResponse.json({ error: "Invalid campaign rate or impressions configuration." }, { status: 400 });
+      }
       const expectedCost = rate * impressions;
-      if (!isAdmin && Math.abs(amountNum - expectedCost) > 0.01) {
-        return NextResponse.json({ error: "Cost validation mismatch. Payment amount does not match campaign configurations." }, { status: 400 });
+      if (!isAdmin && Math.abs(amountNum - expectedCost) > 1) {
+        return NextResponse.json(
+          { error: "Cost validation mismatch. Payment amount does not match campaign configurations." },
+          { status: 400 }
+        );
+      }
+
+      if (adData.id) {
+        const [{ data: existingAd }, { data: existingActiveAd }] = await Promise.all([
+          supabaseAdmin.from("adds").select("id").eq("id", adData.id).maybeSingle(),
+          supabaseAdmin.from("addsactive").select("id").eq("id", adData.id).maybeSingle(),
+        ]);
+        if (existingAd || existingActiveAd) {
+          const editLimitKey = `ratelimit:edit_ad:${adData.id}`;
+          const isEditLimited = await redisConnection.get(editLimitKey).catch(() => null);
+          if (isEditLimited) {
+            return NextResponse.json({ error: "Limit reached, try again later." }, { status: 429 });
+          }
+        }
+      }
+    } else if (type === "highlight") {
+      if (!metadata?.title || !metadata?.content) {
+        return NextResponse.json({ error: "Highlight title and content are required" }, { status: 400 });
+      }
+      const days = Math.min(5, Math.max(1, parseInt(metadata?.campaign_days || 1, 10)));
+      const isBidded = !!metadata?.is_bidded;
+      const bidPrice = metadata?.bid_price ? parseFloat(metadata.bid_price) : 1000;
+      const expectedHighlightCost = (isBidded ? Math.max(1000, bidPrice) : 1000) * days;
+      if (!isAdmin && Math.abs(amountNum - expectedHighlightCost) > 1) {
+        return NextResponse.json(
+          { error: "Cost validation mismatch for highlight campaign." },
+          { status: 400 }
+        );
+      }
+      if (metadata?.editingId) {
+        const editLimitKey = `ratelimit:edit_highlight:${metadata.editingId}`;
+        const isEditLimited = await redisConnection.get(editLimitKey).catch(() => null);
+        if (isEditLimited) {
+          return NextResponse.json({ error: "Limit reached, try again later." }, { status: 429 });
+        }
       }
     }
 
-    // 1. Fetch current user balance and check advertiser account restrictions
+    // 2. Acquire per-user wallet mutex to prevent concurrent double-spend
+    walletLockKey = `lock:wallet:${emailLower}`;
+    const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
+    if (!acquired) {
+      return NextResponse.json(
+        { error: "Another wallet transaction is currently in progress. Please wait a moment." },
+        { status: 429 }
+      );
+    }
+    lockAcquired = true;
+
+    // 3. Check advertiser account restrictions
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
       .select("balance, ad_account_status, ad_ban_until, ad_ban_reason")
-      .ilike("email", email)
+      .ilike("email", emailLower)
       .maybeSingle();
 
     if (userError || !user) {
@@ -75,50 +138,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const currentBalance = parseFloat(user.balance || 0);
-    if (!isAdmin && currentBalance < amountNum) {
-      return NextResponse.json({ error: "Insufficient wallet balance" }, { status: 400 });
-    }
+    const reference = `wallet_${uuidv4()}`;
 
-    const newBalance = isAdmin ? currentBalance : currentBalance - amountNum;
-
-    // 2. Deduct user balance (skip if admin)
+    // 4. Deduct user balance atomically (skip if admin)
     if (!isAdmin) {
-      const { error: balanceUpdateError } = await supabaseAdmin
-        .from("users")
-        .update({ balance: newBalance })
-        .ilike("email", email);
-
-      if (balanceUpdateError) {
-        console.error("❌ Error updating user balance:", balanceUpdateError);
-        return NextResponse.json({ error: "Failed to update wallet balance" }, { status: 500 });
+      const spendRes = await spendWalletBalanceAtomic(
+        emailLower,
+        amountNum,
+        `wallet_pay_${type}`,
+        reference
+      );
+      if (!spendRes.success) {
+        return NextResponse.json(
+          { error: spendRes.error || "Insufficient wallet balance" },
+          { status: 400 }
+        );
       }
     }
 
-    // 3. Create successful payment record
-    const reference = `wallet_${uuidv4()}`;
+    // 5. Create payment record
     const paystackMetadata = {
       type,
-      user_email: email,
+      user_email: emailLower,
+      non_refundable: true,
       ...(metadata || {}),
     };
 
     const { error: insertPaymentError } = await supabaseAdmin.from("payments").insert({
-      user_email: email,
+      user_email: emailLower,
       reference,
-      amount: amountNum,
+      amount: isAdmin ? 0 : amountNum,
       status: "success",
       type,
-      description: `Payment for ${type} using Wallet Balance`,
+      description: `payment for ${type} using Wallet Balance`,
       metadata: paystackMetadata,
     });
 
     if (insertPaymentError) {
       console.error("❌ Error logging wallet payment record:", insertPaymentError);
-      // Note: We don't rollback balance here because balance deduction has already occurred, but we log the warning.
     }
 
-    // 4. Perform business logic
+    // 6. Perform business logic (with automatic balance rollback if DB write fails)
     if (type === "highlight") {
       const {
         title,
@@ -135,21 +195,15 @@ export async function POST(req: NextRequest) {
         custom_sponsor_handle,
         is_ai_content: rawAiContent,
         isAiContent: rawAiContentAlt,
-        editingId
+        editingId,
       } = metadata;
 
       const isAiContent = !!(rawAiContent ?? rawAiContentAlt);
 
-      // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers if editing
       if (editingId) {
         const editLimitKey = `ratelimit:edit_highlight:${editingId}`;
-        const isEditLimited = await redisConnection.get(editLimitKey).catch(() => null);
-        if (isEditLimited) {
-          return NextResponse.json({ error: "Limit reached, try again later." }, { status: 429 });
-        }
         await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
 
-        // Update existing highlight across news and newsactive
         await Promise.all([
           supabaseAdmin.from("news").update({
             title,
@@ -180,7 +234,7 @@ export async function POST(req: NextRequest) {
             custom_sponsor_name: custom_sponsor_name || null,
             custom_sponsor_handle: custom_sponsor_handle || null,
             is_ai_content: isAiContent,
-          }).eq("id", editingId)
+          }).eq("id", editingId),
         ]);
       } else {
         const { error: insertHighlightError } = await supabaseAdmin.from("news").insert([
@@ -197,56 +251,31 @@ export async function POST(req: NextRequest) {
             bid_price: bid_price ? parseFloat(bid_price) : null,
             custom_sponsor_name: custom_sponsor_name || null,
             custom_sponsor_handle: custom_sponsor_handle || null,
-            user_email: email,
+            user_email: emailLower,
             is_ai_content: isAiContent,
           },
         ]);
 
         if (insertHighlightError) {
           console.error("❌ Wallet pay: Error inserting news highlight:", insertHighlightError);
-          return NextResponse.json({ error: "Payment succeeded but failed to post highlight" }, { status: 500 });
+          if (!isAdmin) {
+            await refundWalletDeductionAtomic(emailLower, amountNum, "highlight_insert_failed", reference);
+          }
+          await supabaseAdmin.from("payments").update({ status: "failed" }).eq("reference", reference);
+          return NextResponse.json({ error: "Failed to post highlight. Wallet balance has been restored." }, { status: 500 });
         }
       }
 
-      // Highlights cache relies on natural 30-second TTL expiry for maximum 100M+ write throughput
-
-      // Add user notification
       await supabaseAdmin.from("notifications").insert({
-        user_email: email,
+        user_email: emailLower,
         title: editingId ? "Highlight Updated" : "Highlight Posted",
         message: `Your highlight "${title}" has been ${editingId ? "updated" : "paid using your wallet balance"} and submitted for review. It will be published shortly!`,
       });
-
     } else if (type === "ad") {
       const { adData } = metadata;
-      if (!adData) {
-        return NextResponse.json({ error: "Ad data missing from metadata" }, { status: 400 });
-      }
-
-      // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers
       if (adData.id) {
-        const { data: existingAd } = await supabaseAdmin
-          .from("adds")
-          .select("id")
-          .eq("id", adData.id)
-          .maybeSingle();
-
-        const { data: existingActiveAd } = await supabaseAdmin
-          .from("addsactive")
-          .select("id")
-          .eq("id", adData.id)
-          .maybeSingle();
-
-        if (existingAd || existingActiveAd) {
-          const editLimitKey = `ratelimit:edit_ad:${adData.id}`;
-          const isEditLimited = await redisConnection.get(editLimitKey).catch(() => null);
-          if (isEditLimited) {
-            return NextResponse.json({
-              error: "Limit reached, try again later."
-            }, { status: 429 });
-          }
-          await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
-        }
+        const editLimitKey = `ratelimit:edit_ad:${adData.id}`;
+        await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
       }
 
       const isBidded = !!adData.isBidded;
@@ -295,7 +324,11 @@ export async function POST(req: NextRequest) {
 
       if (rpcError) {
         console.error("❌ Wallet pay: RPC submit_ad_campaign failed:", rpcError);
-        return NextResponse.json({ error: "Payment succeeded but failed to submit ad campaign" }, { status: 500 });
+        if (!isAdmin) {
+          await refundWalletDeductionAtomic(emailLower, amountNum, "ad_rpc_failed", reference);
+        }
+        await supabaseAdmin.from("payments").update({ status: "failed" }).eq("reference", reference);
+        return NextResponse.json({ error: "Failed to submit ad campaign. Wallet balance has been restored." }, { status: 500 });
       }
 
       // Ensure newly submitted ad is only in 'adds' review queue and not in addsactive
@@ -324,7 +357,7 @@ export async function POST(req: NextRequest) {
         const adIndustry = (adData.adType || "business").toLowerCase();
         const { error: bidInsertErr } = await supabaseAdmin.from("bidded_ads").insert({
           ad_id: adData.id,
-          user_email: email,
+          user_email: emailLower,
           industry: adIndustry,
           bid_price: bidPrice,
           is_active: true,
@@ -345,7 +378,7 @@ export async function POST(req: NextRequest) {
 
       // Add user notification
       await supabaseAdmin.from("notifications").insert({
-        user_email: email,
+        user_email: emailLower,
         title: isBidded ? "Priority Ad Campaign Created" : "Ad Campaign Created",
         message: isBidded
           ? `Your priority bidded campaign with ${adData.impressions} attentions was paid using your wallet balance and submitted for priority delivery!`
@@ -353,9 +386,9 @@ export async function POST(req: NextRequest) {
       });
     }
     // Invalidate cached profile and user campaigns in Redis
-    await invalidateCachedProfile(email);
+    await invalidateCachedProfile(emailLower);
     const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
-    await invalidateCachedUserCampaigns(email).catch(() => {});
+    await invalidateCachedUserCampaigns(emailLower).catch(() => {});
 
     return NextResponse.json({
       success: true,
@@ -364,5 +397,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/payments/wallet-pay:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+  } finally {
+    if (lockAcquired && walletLockKey) {
+      await redisConnection.del(walletLockKey).catch(() => {});
+    }
   }
 }

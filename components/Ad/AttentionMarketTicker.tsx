@@ -64,9 +64,18 @@ function AttentionMarketTicker({
 
   useEffect(() => {
     fetchRates();
-    const interval = setInterval(fetchRates, 10000);
-    return () => clearInterval(interval);
   }, [fetchRates]);
+
+  useEffect(() => {
+    if (!isBiddingEnabled) return;
+    fetchRates();
+    const interval = setInterval(() => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        fetchRates();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [isBiddingEnabled, fetchRates]);
 
   const catKey = (selectedCategory || "business").toLowerCase();
   const currentCategoryRate = rates[catKey] || {

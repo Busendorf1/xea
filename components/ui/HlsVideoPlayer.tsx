@@ -161,7 +161,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     if (targetSource) {
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = targetSource;
-        if (autoPlay) {
+        if (autoPlayRef.current) {
           safePlay();
         }
       } else if (Hls.isSupported()) {
@@ -182,7 +182,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (autoPlay) {
+          if (autoPlayRef.current) {
             safePlay();
           }
         });
@@ -195,7 +195,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         });
       } else if (fallbackSource) {
         video.src = fallbackSource;
-        if (autoPlay) {
+        if (autoPlayRef.current) {
           safePlay();
         }
       }
@@ -204,7 +204,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       if (video.src !== directSrc) {
         video.src = directSrc;
       }
-      if (autoPlay) {
+      if (autoPlayRef.current) {
         safePlay();
       }
     }
@@ -215,7 +215,7 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hlsRef.current = null;
       }
     };
-  }, [targetSource, fallbackSource, src, autoPlay, safePlay, triggerFallback]);
+  }, [targetSource, fallbackSource, src, safePlay, triggerFallback]);
 
   return (
     <video

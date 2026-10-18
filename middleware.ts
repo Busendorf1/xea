@@ -51,6 +51,15 @@ export async function middleware(request: NextRequest) {
       );
     }
 
+    const isProtectedUiRoute =
+      pathname.startsWith("/admin") ||
+      pathname.startsWith("/logged-in") ||
+      pathname.startsWith("/user");
+
+    if (isProtectedUiRoute) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
     return NextResponse.next();
   }
 }

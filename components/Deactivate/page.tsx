@@ -97,6 +97,13 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
         throw new Error(data.message || data.error || "Failed to deactivate account.");
       }
 
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.clear();
+          localStorage.clear();
+        } catch {}
+      }
+
       setShowModal(false);
       setStep("done");
 

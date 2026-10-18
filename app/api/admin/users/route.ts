@@ -205,10 +205,8 @@ export async function POST(req: NextRequest) {
     await redisConnection.del("admin:overview_stats").catch(() => {});
     await redisConnection.del("admin:overview:stats").catch(() => {});
     try {
-      const userListKeys = await redisConnection.keys("admin:users:list:*");
-      if (userListKeys && userListKeys.length > 0) {
-        await redisConnection.del(userListKeys);
-      }
+      const { scanDeletePattern } = await import("@/lib/redis");
+      await scanDeletePattern("admin:users:list:*");
     } catch {}
 
     if (action === "toggle_monetization") {
@@ -262,18 +260,83 @@ export async function POST(req: NextRequest) {
     
     else if (action === "adjust_balance") {
       const { newBalance, reason } = payload || {};
+      const parsedNewBalance = Number(newBalance);
+      if (!Number.isFinite(parsedNewBalance) || parsedNewBalance < 0) {
+        return NextResponse.json({ error: "Invalid balance amount" }, { status: 400 });
+      }
+
       const { data: previousUser } = await supabaseAdmin
         .from("users")
         .select("balance, email")
         .eq("id", userId)
         .maybeSingle();
 
+      if (!previousUser) {
+        return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+      }
+
+      const prevBalance = Number(previousUser.balance || 0);
+      const deltaAmount = Math.abs(parsedNewBalance - prevBalance);
+
+      const {
+        checkAdminVelocityLimit,
+        requiresDualApproval,
+        createPendingAdminRequest,
+      } = await import("@/lib/security/adminGuard");
+
+      const velocityCheck = await checkAdminVelocityLimit(adminEmail, deltaAmount);
+      if (!velocityCheck.allowed) {
+        return NextResponse.json({ error: velocityCheck.reason }, { status: 403 });
+      }
+
+      if (requiresDualApproval(deltaAmount)) {
+        const pendingReq = await createPendingAdminRequest({
+          actionType: "balance_adjustment",
+          requestedBy: adminEmail,
+          targetIdentifier: previousUser.email || userId,
+          amountNaira: deltaAmount,
+          payload: {
+            userId,
+            userEmail: previousUser.email,
+            previousBalance: prevBalance,
+            newBalance: parsedNewBalance,
+          },
+          reason: reason || "Manual administrative balance adjustment",
+        });
+
+        return NextResponse.json({
+          success: true,
+          requiresDualApproval: true,
+          requestId: pendingReq.id,
+          message: `Balance adjustment of ₦${deltaAmount.toLocaleString("en-NG")} exceeds ₦50,000 threshold and has been queued for dual-admin approval.`,
+        });
+      }
+
       const { error } = await supabaseAdmin
         .from("users")
-        .update({ balance: newBalance })
+        .update({ balance: parsedNewBalance })
         .eq("id", userId);
 
       if (error) throw error;
+
+      if (previousUser.email) {
+        const { invalidateCachedProfile } = await import("@/lib/utils/cache");
+        await invalidateCachedProfile(previousUser.email).catch(() => {});
+        await supabaseAdmin.from("payments").insert({
+          user_email: previousUser.email.toLowerCase().trim(),
+          reference: `admin_adj_${Date.now()}_${userId.substring(0, 6)}`,
+          amount: deltaAmount,
+          status: "success",
+          type: "admin_adjustment",
+          description: reason || `Admin balance adjustment (${prevBalance} -> ${parsedNewBalance})`,
+          metadata: {
+            admin_email: adminEmail,
+            previous_balance: prevBalance,
+            new_balance: parsedNewBalance,
+            reason: reason || "Manual administrative adjustment",
+          },
+        }).then(() => {}, () => {});
+      }
 
       await recordAdminAudit(
         adminEmail,
@@ -281,8 +344,8 @@ export async function POST(req: NextRequest) {
         userId,
         "user",
         reason || "Manual administrative adjustment",
-        { balance: previousUser?.balance, email: previousUser?.email },
-        { balance: newBalance }
+        { balance: prevBalance, email: previousUser.email },
+        { balance: parsedNewBalance }
       );
 
       return NextResponse.json({ success: true });

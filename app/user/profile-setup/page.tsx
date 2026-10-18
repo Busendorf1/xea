@@ -102,14 +102,17 @@ interface ProfileFormData {
     } catch {}
   }, []);
 
-  // Autosave draft on changes
+  // Autosave draft on changes (debounced 400ms)
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "paayh_draft_profile_setup_v1",
-        JSON.stringify({ step, formData })
-      );
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          "paayh_draft_profile_setup_v1",
+          JSON.stringify({ step, formData })
+        );
+      } catch {}
+    }, 400);
+    return () => clearTimeout(timer);
   }, [step, formData]);
 
   useEffect(() => {

@@ -144,27 +144,30 @@ export default function News({ session }: NewsProps) {
     } catch {}
   }, []);
 
-  // Autosave draft state on changes
+  // Autosave draft state on changes (debounced 400ms; omit base64 data URLs to prevent QuotaExceededError & INP freezes)
   useEffect(() => {
-    try {
-      const draft = {
-        step,
-        title,
-        content,
-        interest,
-        country,
-        state,
-        province,
-        campaignDays,
-        isBiddingEnabled,
-        bidPrice,
-        isAiContent,
-        customSponsorName,
-        customSponsorHandle,
-        mediaPreview: mediaPreview && mediaPreview.startsWith("data:") ? mediaPreview : null,
-      };
-      localStorage.setItem("paayh_draft_news_v1", JSON.stringify(draft));
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        const draft = {
+          step,
+          title,
+          content,
+          interest,
+          country,
+          state,
+          province,
+          campaignDays,
+          isBiddingEnabled,
+          bidPrice,
+          isAiContent,
+          customSponsorName,
+          customSponsorHandle,
+          mediaPreview: mediaPreview && !mediaPreview.startsWith("data:") ? mediaPreview : null,
+        };
+        localStorage.setItem("paayh_draft_news_v1", JSON.stringify(draft));
+      } catch {}
+    }, 400);
+    return () => clearTimeout(timer);
   }, [
     step,
     title,
@@ -199,6 +202,16 @@ export default function News({ session }: NewsProps) {
     fetchTopBid();
   }, [interest]);
 
+  useEffect(() => {
+    return () => {
+      if (mediaPreview && mediaPreview.startsWith("blob:")) {
+        try {
+          URL.revokeObjectURL(mediaPreview);
+        } catch {}
+      }
+    };
+  }, [mediaPreview]);
+
   const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setStepError(null);
     const file = e.target.files?.[0];
@@ -215,7 +228,14 @@ export default function News({ session }: NewsProps) {
       }
       setMediaFile(file);
       try {
-        setMediaPreview(URL.createObjectURL(file));
+        setMediaPreview((prev) => {
+          if (prev && prev.startsWith("blob:")) {
+            try {
+              URL.revokeObjectURL(prev);
+            } catch {}
+          }
+          return URL.createObjectURL(file);
+        });
       } catch {
         const reader = new FileReader();
         reader.onload = () => setMediaPreview(reader.result as string);

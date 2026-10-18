@@ -32,6 +32,8 @@ export interface Ad {
   daily_impression_count?: number;
   campaign_days?: number;
   impressions?: number;
+  impression_count?: number | null;
+  view_count?: number | null;
   completed_at?: string | null;
 
   // Targeting fields

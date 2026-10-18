@@ -16,9 +16,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { type, amount, metadata, callbackUrl, channels } = body;
 
-    // Validate payment type (Only Ad & Highlight campaigns)
+    // Closed-loop non-refundable payment policy:
+    // Depositing money into wallet is strictly prohibited. Only direct payments for ads & highlights are allowed here.
     if (!["ad", "highlight"].includes(type)) {
-      return NextResponse.json({ error: "Invalid payment type" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Depositing money to wallet is not allowed. Only non-refundable payments for ads and highlights are permitted." },
+        { status: 400 }
+      );
     }
 
     const { isAdminEmail } = await import("@/lib/authHelper");
@@ -66,13 +70,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Determine and enforce amount based on business rules
+    // Determine and enforce amount server-side based on business rules
     let verifiedAmount = 0;
     if (type === "highlight") {
       const days = parseInt(metadata?.campaign_days || 1, 10);
       const isBidded = !!metadata?.is_bidded;
-      const bidPrice = metadata?.bid_price ? parseFloat(metadata.bid_price) : 1000;
-      verifiedAmount = isBidded ? bidPrice * Math.min(5, Math.max(1, days)) : 1000 * Math.min(5, Math.max(1, days));
+      const bidPrice = metadata?.bid_price ? Math.max(1000, parseFloat(metadata.bid_price)) : 1000;
+      verifiedAmount = (isBidded ? bidPrice : 1000) * Math.min(5, Math.max(1, days));
 
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers if editing
       const editingId = metadata?.editingId;
@@ -85,14 +89,35 @@ export async function POST(req: NextRequest) {
         await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
       }
     } else if (type === "ad") {
-      // Ads have dynamic prices. We expect the client to pass the calculated amount.
-      verifiedAmount = parseFloat(amount);
-      if (isNaN(verifiedAmount) || verifiedAmount <= 0) {
-        return NextResponse.json({ error: "Invalid ad amount" }, { status: 400 });
+      const adData = metadata?.adData;
+      if (!adData) {
+        return NextResponse.json({ error: "Ad details missing from metadata" }, { status: 400 });
+      }
+      const isBidded = !!adData.isBidded;
+      const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
+      const rate = isBidded && bidPrice ? bidPrice : parseFloat(adData.costPerImpression || 15);
+      const impressions = parseInt(adData.impressions || 1000, 10);
+
+      if (!Number.isFinite(rate) || rate < 10 || !Number.isFinite(impressions) || impressions < 1000) {
+        return NextResponse.json({ error: "Invalid ad campaign rate or impressions" }, { status: 400 });
       }
 
+      const expectedCost = Number((rate * impressions).toFixed(2));
+      const clientAmount = parseFloat(amount);
+
+      if (!Number.isFinite(clientAmount) || Math.abs(clientAmount - expectedCost) > 1) {
+        return NextResponse.json(
+          { error: "Cost validation mismatch. Payment amount does not match campaign configuration." },
+          { status: 400 }
+        );
+      }
+
+      verifiedAmount = expectedCost;
+      adData.costPerImpression = rate;
+      adData.totalCost = verifiedAmount;
+
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers
-      const adId = metadata?.adData?.id;
+      const adId = adData.id;
       if (adId) {
         const { data: existingAd } = await supabaseAdmin.from("adds").select("id").eq("id", adId).maybeSingle();
         const { data: existingActiveAd } = await supabaseAdmin.from("addsactive").select("id").eq("id", adId).maybeSingle();
@@ -112,6 +137,7 @@ export async function POST(req: NextRequest) {
     const paymentMetadata = {
       type,
       user_email: email,
+      non_refundable: true,
       provider: PayoutProvider.getActiveGateway(),
       ...(metadata || {}),
     };
@@ -123,7 +149,7 @@ export async function POST(req: NextRequest) {
       callbackUrl: callbackUrl || `${req.nextUrl.origin}/logged-in`,
       metadata: paymentMetadata,
       channels,
-      narration: `Paayh Payment for ${type.replace("_", " ")}`,
+      narration: `Payment for ${type.replace("_", " ")}`,
     });
 
     // Insert pending payment record

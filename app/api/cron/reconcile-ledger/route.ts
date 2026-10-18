@@ -14,74 +14,46 @@ async function handleReconciliation(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if ((process.env.NODE_ENV === "production" && !cronSecret) || (cronSecret && authHeader !== `Bearer ${cronSecret}`)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     console.log("🔍 Running Nightly Financial Ledger Reconciliation Audit...");
 
-    // 1. Calculate Sum of Transfer Debits & Credits from ledger_entries
-    const { data: creditSumData, error: creditErr } = await supabaseAdmin
-      .from("ledger_entries")
-      .select("amount_kobo.sum()")
-      .eq("entry_type", "CREDIT");
-
-    const { data: debitSumData, error: debitErr } = await supabaseAdmin
-      .from("ledger_entries")
-      .select("amount_kobo.sum()")
-      .eq("entry_type", "DEBIT");
-
-    const { data: transferSumData } = await supabaseAdmin
-      .from("ledger_entries")
-      .select("amount_kobo.sum()")
-      .eq("entry_type", "TRANSFER");
-
-    if (creditErr || debitErr) {
-      console.warn("⚠️ Fallback reconciliation computation via payments table...");
-    }
-
-    // Calculate total system user wallet balances
-    const { data: usersData, error: usersErr } = await supabaseAdmin
-      .from("users")
-      .select("balance");
-
-    let totalUserBalanceKobo = 0;
-    if (!usersErr && usersData) {
-      usersData.forEach((u) => {
-        const bal = parseFloat(u.balance || 0);
-        totalUserBalanceKobo += Math.round(bal * 100);
-      });
-    }
-
-    // Check sum of payments table
-    const { data: sentPayments } = await supabaseAdmin
-      .from("payments")
-      .select("amount")
-      .eq("type", "transfer_sent")
-      .eq("status", "success");
-
-    const { data: rcvPayments } = await supabaseAdmin
-      .from("payments")
-      .select("amount")
-      .eq("type", "transfer_received")
-      .eq("status", "success");
-
     let totalSentKobo = 0;
     let totalRcvKobo = 0;
+    let totalUserBalanceKobo = 0;
+    let varianceKobo = 0;
 
-    if (sentPayments) {
-      sentPayments.forEach((p) => {
-        totalSentKobo += Math.round(parseFloat(p.amount || 0) * 100);
-      });
+    // 1. Primary: Authoritative SQL RPC aggregation (no 1000-row PostgREST truncation or OOM)
+    const { data: rpcMetrics, error: rpcErr } = await supabaseAdmin.rpc("get_admin_reconciliation_metrics");
+
+    if (!rpcErr && rpcMetrics) {
+      totalSentKobo = Math.round(parseFloat(rpcMetrics.total_sent_naira || "0") * 100);
+      totalRcvKobo = Math.round(parseFloat(rpcMetrics.total_received_naira || "0") * 100);
+      totalUserBalanceKobo = Math.round(parseFloat(rpcMetrics.total_user_wallets_naira || "0") * 100);
+      varianceKobo = Math.round(parseFloat(rpcMetrics.variance_naira || "0") * 100);
+    } else {
+      console.warn("⚠️ RPC get_admin_reconciliation_metrics unavailable, using bounded fallback:", rpcErr?.message);
+      const { data: sentPayments } = await supabaseAdmin
+        .from("payments")
+        .select("amount.sum()")
+        .eq("type", "transfer_sent")
+        .eq("status", "success");
+
+      const { data: rcvPayments } = await supabaseAdmin
+        .from("payments")
+        .select("amount.sum()")
+        .eq("type", "transfer_received")
+        .eq("status", "success");
+
+      const sentSum = Array.isArray(sentPayments) && sentPayments[0] ? parseFloat((sentPayments[0] as any).sum || "0") : 0;
+      const rcvSum = Array.isArray(rcvPayments) && rcvPayments[0] ? parseFloat((rcvPayments[0] as any).sum || "0") : 0;
+      totalSentKobo = Math.round(sentSum * 100);
+      totalRcvKobo = Math.round(rcvSum * 100);
+      varianceKobo = Math.abs(totalSentKobo - totalRcvKobo);
     }
 
-    if (rcvPayments) {
-      rcvPayments.forEach((p) => {
-        totalRcvKobo += Math.round(parseFloat(p.amount || 0) * 100);
-      });
-    }
-
-    const varianceKobo = Math.abs(totalSentKobo - totalRcvKobo);
     const varianceNaira = varianceKobo / 100;
     const isHealthy = varianceKobo === 0;
     const status = isHealthy ? "HEALTHY" : "FLAGGED";

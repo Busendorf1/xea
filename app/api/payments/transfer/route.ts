@@ -182,19 +182,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: balanceRes.error || "Balance check failed" }, { status: 400 });
     }
 
-    // 7. Execute Lock-Free Append-Only Ledger Entry (Supabase RPC)
+    // 7. Execute Atomic Ledger Transfer (Supabase RPC)
     const reference = rawIdempotency.startsWith("trf_") ? rawIdempotency : `trf_${rawIdempotency}`;
 
+    let fallbackSucceeded = false;
+    let fallbackSenderBalance: number | undefined;
+
     const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc("process_ledger_transfer", {
-      p_reference: reference,
       p_sender_email: cleanSender,
       p_recipient_email: cleanRecipient,
       p_amount_kobo: amountKobo,
+      p_idempotency_key: reference,
     });
 
     if (rpcError) {
       console.error("❌ RPC process_ledger_transfer error:", rpcError);
-      // Execute legacy fallback if function not yet migrated in DB environment
+      // Execute legacy fallback if function signature differs in DB environment
       const { data: fallbackResult, error: fallbackErr } = await supabaseAdmin.rpc("transfer_user_funds", {
         p_sender_email: cleanSender,
         p_recipient_email: cleanRecipient,
@@ -207,21 +210,29 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
+      fallbackSucceeded = true;
+      if (typeof fallbackResult.new_sender_balance === "number") {
+        fallbackSenderBalance = fallbackResult.new_sender_balance;
+      } else if (typeof fallbackResult.sender_balance === "number") {
+        fallbackSenderBalance = fallbackResult.sender_balance;
+      }
     } else if (rpcResult && rpcResult.success === false) {
       return NextResponse.json({ error: rpcResult.error || "Ledger entry creation failed" }, { status: 400 });
     }
 
-    // 8. Ensure atomic balance deduction in PostgreSQL
-    let newBalance = rpcResult?.new_sender_balance;
-    if (typeof newBalance !== "number") {
+    // 8. Synchronize users.balance ONLY if the older process_ledger_transfer (which only touched ledger_accounts) was used
+    let newBalance =
+      typeof rpcResult?.new_sender_balance === "number"
+        ? rpcResult.new_sender_balance
+        : fallbackSenderBalance;
+
+    if (typeof newBalance !== "number" && !fallbackSucceeded) {
       newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
-      // Immediately deduct sender balance in DB using exact indexed equality
       await supabaseAdmin
         .from("users")
         .update({ balance: newBalance })
         .eq("email", cleanSender);
 
-      // Immediately credit recipient balance in DB using exact indexed equality
       const { data: recipientRow } = await supabaseAdmin
         .from("users")
         .select("balance")
@@ -235,6 +246,8 @@ export async function POST(req: NextRequest) {
           .update({ balance: recipBal + amountNum })
           .eq("email", cleanRecipient);
       }
+    } else if (typeof newBalance !== "number") {
+      newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
     }
 
     // 9. Update Redis Unique Recipients Rate Limit Set

@@ -18,6 +18,19 @@ interface Ad {
   created_at: string;
 }
 
+function readHighlightsCache(): Ad[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem("paayh_highlights_cache");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
+      return parsed.items;
+    }
+  } catch {}
+  return [];
+}
+
 export default function AdDisplay({
   userInterest,
   initialHighlights,
@@ -25,14 +38,27 @@ export default function AdDisplay({
   userInterest: string[];
   initialHighlights?: Ad[];
 }) {
-  const [ads, setAds] = useState<Ad[]>(initialHighlights || []);
-  const [loading, setLoading] = useState(!initialHighlights || initialHighlights.length === 0);
+  const [cachedItems] = useState<Ad[]>(() =>
+    !initialHighlights || initialHighlights.length === 0 ? readHighlightsCache() : []
+  );
+
+  const [ads, setAds] = useState<Ad[]>(() => {
+    if (initialHighlights && initialHighlights.length > 0) return initialHighlights;
+    return cachedItems;
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (initialHighlights && initialHighlights.length > 0) return false;
+    if (cachedItems.length > 0) return false;
+    return true;
+  });
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const hasAdsRef = useRef<boolean>(ads.length > 0);
+  hasAdsRef.current = ads.length > 0;
 
   const fetchAll = useCallback(
-    async (pageNum = 0, isLoadMore = false) => {
+    async (pageNum = 0, isLoadMore = false, isSilentRefresh = false) => {
       if (!userInterest || userInterest.length === 0) {
         setAds([]);
         setLoading(false);
@@ -40,13 +66,13 @@ export default function AdDisplay({
       }
 
       if (!isLoadMore) {
-        setLoading(true);
+        if (!isSilentRefresh && !hasAdsRef.current) {
+          setLoading(true);
+        }
         setError(false);
         setPage(0);
         setHasMore(true);
       }
-
-      console.log(`➡️ Fetching active highlights page ${pageNum} via API...`);
 
       try {
         const interestsQuery = userInterest.join(",");
@@ -61,10 +87,17 @@ export default function AdDisplay({
         }
 
         const pageItems = await response.json();
-        console.log("📣 Highlights fetched from API:", pageItems.length);
 
         if (pageNum === 0 || !isLoadMore) {
           setAds(pageItems);
+          if (typeof window !== "undefined" && Array.isArray(pageItems) && pageItems.length > 0) {
+            try {
+              sessionStorage.setItem(
+                "paayh_highlights_cache",
+                JSON.stringify({ items: pageItems, timestamp: Date.now() })
+              );
+            } catch {}
+          }
         } else {
           setAds((prev) => [...prev, ...pageItems]);
         }
@@ -72,7 +105,9 @@ export default function AdDisplay({
         setHasMore(pageItems.length >= ITEMS_PER_PAGE);
       } catch (err: unknown) {
         console.error("❌ Error fetching highlights:", err);
-        setError(true);
+        if (!hasAdsRef.current) {
+          setError(true);
+        }
       } finally {
         setLoading(false);
       }
@@ -87,18 +122,28 @@ export default function AdDisplay({
   };
 
   useEffect(() => {
+    if (initialHighlights && initialHighlights.length > 0 && typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem(
+          "paayh_highlights_cache",
+          JSON.stringify({ items: initialHighlights, timestamp: Date.now() })
+        );
+      } catch {}
+    }
+  }, [initialHighlights]);
+
+  useEffect(() => {
     if (!initialHighlights || initialHighlights.length === 0) {
-      fetchAll(0, false); // Initial fetch only if not pre-seeded
+      fetchAll(0, false, cachedItems.length > 0);
     }
 
-    // Refresh every 10 minutes.
+    // Refresh every 10 minutes silently in background
     const interval = setInterval(() => {
-      console.log("🔁 Refreshing active ads (mandatory 10-minute visibility interval)...");
-      fetchAll(0, false);
-    }, 600000); // 10 minutes in milliseconds
+      fetchAll(0, false, true);
+    }, 600000);
 
-    return () => clearInterval(interval); // Cleanup
-  }, [userInterest, fetchAll, initialHighlights]);
+    return () => clearInterval(interval);
+  }, [userInterest, fetchAll, initialHighlights, cachedItems.length]);
 
   // Real-Time Highlights Auto-Drop (Live Ticker & Spotlight Motion)
   useEffect(() => {

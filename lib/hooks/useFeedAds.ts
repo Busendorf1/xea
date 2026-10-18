@@ -96,7 +96,11 @@ export function useFeedAds({ userEmail, initialLimit = 10 }: UseFeedAdsOptions) 
         const response = await fetch("/api/seen", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ adId: ad.id }),
+          body: JSON.stringify({
+            adId: ad.id,
+            token: ad.verification_token || (ad as any)._token,
+            servedAt: ad.served_at || (ad as any)._served_at,
+          }),
         });
         if (!response.ok) throw new Error("Failed to record ad seen");
         try {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   RefreshCw,
   Wallet,
@@ -32,46 +32,35 @@ interface Transaction {
   created_at: string;
 }
 
-export default function StatementComponent() {
-  const [profile, setProfile] = useState<any>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = sessionStorage.getItem("paayh_statement_cache");
-        if (cached) return JSON.parse(cached).profile || null;
-      } catch {}
-    }
-    return null;
-  });
-  const [payments, setPayments] = useState<Transaction[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = sessionStorage.getItem("paayh_statement_cache");
-        if (cached) return JSON.parse(cached).payments || [];
-      } catch {}
-    }
-    return [];
-  });
-  const [withdrawals, setWithdrawals] = useState<Transaction[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = sessionStorage.getItem("paayh_statement_cache");
-        if (cached) return JSON.parse(cached).withdrawals || [];
-      } catch {}
-    }
-    return [];
-  });
-  const [loading, setLoading] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = sessionStorage.getItem("paayh_statement_cache");
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed.payments || parsed.withdrawals) return false;
-        }
-      } catch {}
-    }
-    return true;
-  });
+function readStatementCache(): {
+  profile: any | null;
+  payments: Transaction[];
+  withdrawals: Transaction[];
+  hasCachedLists: boolean;
+} {
+  if (typeof window !== "undefined") {
+    try {
+      const cached = sessionStorage.getItem("paayh_statement_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          profile: parsed.profile || null,
+          payments: Array.isArray(parsed.payments) ? parsed.payments : [],
+          withdrawals: Array.isArray(parsed.withdrawals) ? parsed.withdrawals : [],
+          hasCachedLists: Boolean(parsed.payments || parsed.withdrawals),
+        };
+      }
+    } catch {}
+  }
+  return { profile: null, payments: [], withdrawals: [], hasCachedLists: false };
+}
+
+export default function StatementComponent({ initialProfile }: { initialProfile?: any } = {}) {
+  const [initialCache] = useState(readStatementCache);
+  const [profile, setProfile] = useState<any>(() => initialProfile || initialCache.profile);
+  const [payments, setPayments] = useState<Transaction[]>(initialCache.payments);
+  const [withdrawals, setWithdrawals] = useState<Transaction[]>(initialCache.withdrawals);
+  const [loading, setLoading] = useState<boolean>(!initialCache.hasCachedLists);
   const [activeTab, setActiveTab] = useState<"payments" | "withdrawals">("payments");
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -83,25 +72,33 @@ export default function StatementComponent() {
 
   const fetchData = async (isRefresh = false) => {
     try {
-      const refreshParam = isRefresh ? "?refresh=true" : "";
-      const [profileRes, paymentsRes, withdrawalsRes] = await Promise.all([
-        fetch("/api/profile"),
-        fetch(`/api/payments/history${refreshParam}`),
-        fetch(`/api/withdrawals/history${refreshParam}`),
+      const refreshQuery = isRefresh ? "&refresh=true" : "";
+      const needsProfileFetch = isRefresh || (!profile && !initialProfile);
+
+      const [profileRes, unifiedRes] = await Promise.all([
+        needsProfileFetch ? fetch("/api/profile").catch(() => null) : Promise.resolve(null),
+        fetch(`/api/payments/history?type=all${refreshQuery}`),
       ]);
 
-      let newProfile = profile;
+      let newProfile = profile || initialProfile;
       let newPayments = payments;
       let newWithdrawals = withdrawals;
 
-      if (profileRes.ok) {
+      if (profileRes && profileRes.ok) {
         newProfile = await profileRes.json();
         setProfile(newProfile);
       }
 
-      if (paymentsRes.ok) {
-        newPayments = await paymentsRes.json();
+      if (unifiedRes.ok) {
+        const unifiedData = await unifiedRes.json();
+        newPayments = Array.isArray(unifiedData?.payments)
+          ? unifiedData.payments
+          : Array.isArray(unifiedData)
+          ? unifiedData
+          : [];
+        newWithdrawals = Array.isArray(unifiedData?.withdrawals) ? unifiedData.withdrawals : [];
         setPayments(newPayments);
+        setWithdrawals(newWithdrawals);
 
         // Auto-verify recent pending transactions (last 15 minutes) to ensure immediate "Completed" state
         const recentPending = (newPayments || []).filter(
@@ -126,11 +123,6 @@ export default function StatementComponent() {
               .catch(() => {});
           });
         }
-      }
-
-      if (withdrawalsRes.ok) {
-        newWithdrawals = await withdrawalsRes.json();
-        setWithdrawals(newWithdrawals);
 
         // Auto-verify recent pending/processing withdrawals (last 15 minutes) to ensure immediate "Completed" state
         const recentPendingWithdrawals = (newWithdrawals || []).filter(
@@ -182,17 +174,6 @@ export default function StatementComponent() {
   };
 
   useEffect(() => {
-    try {
-      const cached = sessionStorage.getItem("paayh_statement_cache");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed.profile) setProfile(parsed.profile);
-        if (parsed.payments) setPayments(parsed.payments);
-        if (parsed.withdrawals) setWithdrawals(parsed.withdrawals);
-        setLoading(false);
-      }
-    } catch {}
-
     fetchData();
 
     const handlePaymentVerified = () => {
@@ -333,34 +314,52 @@ export default function StatementComponent() {
     );
   };
 
-  const filterList = (list: Transaction[]) => {
-    return list.filter((tx) => {
-      const matchesSearch =
-        tx.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (tx.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (tx.type || "").toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesStatus =
-        statusFilter === "all" || tx.status.toLowerCase() === statusFilter.toLowerCase();
+  const { totalSent, totalReceived } = useMemo(() => {
+    let sent = 0;
+    let received = 0;
+    for (const p of payments) {
+      if (p.status.toLowerCase() === "success") {
+        if (p.type === "transfer_sent") sent += Number(p.amount || 0);
+        else if (p.type === "transfer_received") received += Number(p.amount || 0);
+      }
+    }
+    return { totalSent: sent, totalReceived: received };
+  }, [payments]);
 
+  const totalWithdrawn = useMemo(() => {
+    return withdrawals
+      .filter((w) => w.status.toLowerCase() === "success")
+      .reduce((sum, w) => sum + Number(w.amount || 0), 0);
+  }, [withdrawals]);
+
+  const normalizedSearch = searchTerm.toLowerCase();
+  const normalizedStatus = statusFilter.toLowerCase();
+
+  const filteredPayments = useMemo(() => {
+    return payments.filter((tx) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        tx.reference.toLowerCase().includes(normalizedSearch) ||
+        (tx.description || "").toLowerCase().includes(normalizedSearch) ||
+        (tx.type || "").toLowerCase().includes(normalizedSearch);
+      const matchesStatus =
+        normalizedStatus === "all" || tx.status.toLowerCase() === normalizedStatus;
       return matchesSearch && matchesStatus;
     });
-  };
+  }, [payments, normalizedSearch, normalizedStatus]);
 
-  const totalSent = payments
-    .filter((p) => p.status.toLowerCase() === "success" && p.type === "transfer_sent")
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-  const totalReceived = payments
-    .filter((p) => p.status.toLowerCase() === "success" && p.type === "transfer_received")
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-  const totalWithdrawn = withdrawals
-    .filter((w) => w.status.toLowerCase() === "success")
-    .reduce((sum, w) => sum + Number(w.amount || 0), 0);
-
-  const filteredPayments = filterList(payments);
-  const filteredWithdrawals = filterList(withdrawals);
+  const filteredWithdrawals = useMemo(() => {
+    return withdrawals.filter((tx) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        tx.reference.toLowerCase().includes(normalizedSearch) ||
+        (tx.description || "").toLowerCase().includes(normalizedSearch) ||
+        (tx.type || "").toLowerCase().includes(normalizedSearch);
+      const matchesStatus =
+        normalizedStatus === "all" || tx.status.toLowerCase() === normalizedStatus;
+      return matchesSearch && matchesStatus;
+    });
+  }, [withdrawals, normalizedSearch, normalizedStatus]);
 
   // Pagination calculation
   const currentList = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
@@ -368,8 +367,14 @@ export default function StatementComponent() {
   const validPage = Math.min(currentPage, totalPages);
   const startIndex = (validPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, currentList.length);
-  const paginatedPayments = filteredPayments.slice(startIndex, startIndex + pageSize);
-  const paginatedWithdrawals = filteredWithdrawals.slice(startIndex, startIndex + pageSize);
+  const paginatedPayments = useMemo(
+    () => filteredPayments.slice(startIndex, startIndex + pageSize),
+    [filteredPayments, startIndex, pageSize]
+  );
+  const paginatedWithdrawals = useMemo(
+    () => filteredWithdrawals.slice(startIndex, startIndex + pageSize),
+    [filteredWithdrawals, startIndex, pageSize]
+  );
 
   return (
     <main className={styles.container}>

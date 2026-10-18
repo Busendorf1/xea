@@ -16,7 +16,11 @@ interface PageProps {
 const SETTINGS_TABS = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
 
 export default async function LoggedInPage({ searchParams }: PageProps) {
-  const session = await auth0.getSession();
+  const [session, resolvedParams, cookieStore] = await Promise.all([
+    auth0.getSession(),
+    searchParams ? searchParams : Promise.resolve({} as { view?: string; id?: string }),
+    cookies(),
+  ]);
 
   if (!session || !session.user?.email) {
     redirect("/");
@@ -42,8 +46,6 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
     redirect("/");
   }
 
-  const resolvedParams = searchParams ? await searchParams : {};
-  const cookieStore = await cookies();
   const tabCookie = cookieStore.get("paayh_active_tab")?.value as TabKey | undefined;
   const requestedView = (resolvedParams?.view || tabCookie || "feed") as TabKey;
 
@@ -70,6 +72,7 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
       email={profileResult.email}
       initialAds={profileResult.initialAds}
       initialProfiles={profileResult.initialProfiles}
+      initialHighlights={profileResult.initialHighlights}
     />
   );
 }

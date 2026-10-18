@@ -1,12 +1,12 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
+import { NextRequest, NextResponse } from "next/server";
+import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import redisConnection from "@/lib/redis";
+import redisConnection, { scanDeletePattern } from "@/lib/redis";
 
 export async function GET(req: NextRequest) {
   try {
-    const authEmail = await getAuthenticatedEmail(req);
-    if (!authEmail || !isAdminEmail(authEmail)) {
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 
@@ -91,10 +91,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authEmail = await getAuthenticatedEmail(req);
-    if (!authEmail || !isAdminEmail(authEmail)) {
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
+    const authEmail = admin.email;
 
     const body = await req.json().catch(() => ({}));
     const { action, subscriber_id, rejection_reason } = body;
@@ -127,12 +128,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Failed to approve subscriber" }, { status: 500 });
       }
 
-      // Invalidate admin cache
+      // Invalidate admin cache using non-blocking SCAN
       try {
-        const keys = await redisConnection.keys("admin:subscribers:*");
-        if (keys && keys.length > 0) {
-          await redisConnection.del(...keys);
-        }
+        await scanDeletePattern("admin:subscribers:*");
       } catch (cacheErr) {}
 
       return NextResponse.json({
@@ -163,10 +161,7 @@ export async function POST(req: NextRequest) {
 
       // Invalidate admin cache and domain cache if was active
       try {
-        const keys = await redisConnection.keys("admin:subscribers:*");
-        if (keys && keys.length > 0) {
-          await redisConnection.del(...keys);
-        }
+        await scanDeletePattern("admin:subscribers:*");
         if (updatedSub.domain) {
           await redisConnection.del(`cache:domain_subscriber:${updatedSub.domain.toLowerCase().trim()}`);
         }

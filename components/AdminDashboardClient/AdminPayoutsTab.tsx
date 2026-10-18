@@ -19,10 +19,12 @@ import {
   AlertTriangle,
   FlaskConical,
   Eye,
-  EyeOff
+  EyeOff,
+  FileText
 } from "lucide-react";
 import styles from "./page.module.css";
 import { useAdminDialog } from "@/components/ui/AdminDialog";
+import TransactionReceiptModal from "@/components/Receipt/TransactionReceiptModal";
 
 interface PayoutItem {
   id: string;
@@ -55,6 +57,7 @@ export default function AdminPayoutsTab() {
   const [search, setSearch] = useState("");
   const [manualRef, setManualRef] = useState("");
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
+  const [selectedReceiptPayout, setSelectedReceiptPayout] = useState<PayoutItem | null>(null);
   const [testMode, setTestMode] = useState(false);
   const [showBalance, setShowBalance] = useState(() => {
     if (typeof window !== "undefined") {
@@ -751,28 +754,51 @@ export default function AdminPayoutsTab() {
                       {meta.queued_reason || meta.failure_reason || meta.error || item.description || "—"}
                     </td>
                     <td className={styles.td} style={{ textAlign: "right" }}>
-                      {isRetryable && (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                         <button
-                          onClick={() => handleRetrySingle(item.reference)}
-                          disabled={actionLoading}
+                          type="button"
+                          onClick={() => setSelectedReceiptPayout(item)}
                           style={{
-                            background: item.status === "failed" ? "rgba(239, 68, 68, 0.12)" : "rgba(245, 158, 11, 0.12)",
-                            color: item.status === "failed" ? "#ef4444" : "#f59e0b",
-                            border: `1px solid ${item.status === "failed" ? "rgba(239, 68, 68, 0.25)" : "rgba(245, 158, 11, 0.25)"}`,
-                            padding: "6px 12px",
+                            background: "var(--sidebar-bg)",
+                            color: "var(--foreground)",
+                            border: "1px solid var(--card-border)",
+                            padding: "6px 10px",
                             borderRadius: "6px",
                             fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: actionLoading ? "not-allowed" : "pointer",
+                            fontWeight: 500,
+                            cursor: "pointer",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "4px",
                           }}
+                          title="View & Print Payout Receipt"
                         >
-                          <RotateCw size={12} />
-                          <span>Retry</span>
+                          <FileText size={12} />
+                          <span>Receipt</span>
                         </button>
-                      )}
+                        {isRetryable && (
+                          <button
+                            onClick={() => handleRetrySingle(item.reference)}
+                            disabled={actionLoading}
+                            style={{
+                              background: item.status === "failed" ? "rgba(239, 68, 68, 0.12)" : "rgba(245, 158, 11, 0.12)",
+                              color: item.status === "failed" ? "#ef4444" : "#f59e0b",
+                              border: `1px solid ${item.status === "failed" ? "rgba(239, 68, 68, 0.25)" : "rgba(245, 158, 11, 0.25)"}`,
+                              padding: "6px 12px",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: actionLoading ? "not-allowed" : "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <RotateCw size={12} />
+                            <span>Retry</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -835,6 +861,16 @@ export default function AdminPayoutsTab() {
           </button>
         </div>
       </div>
+
+      {selectedReceiptPayout && (
+        <TransactionReceiptModal
+          transaction={{
+            ...selectedReceiptPayout,
+            type: "withdrawal",
+          }}
+          onClose={() => setSelectedReceiptPayout(null)}
+        />
+      )}
     </div>
   );
 }

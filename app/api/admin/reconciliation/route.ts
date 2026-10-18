@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
-
-// Helper to check if email is admin
-async function isAdmin(email: string): Promise<boolean> {
-  const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map((e) => e.trim().toLowerCase());
-  if (adminEmails.includes(email.toLowerCase())) return true;
-
-  const { data: user } = await supabaseAdmin
-    .from("users")
-    .select("role, is_admin")
-    .ilike("email", email)
-    .maybeSingle();
-
-  return user?.role === "admin" || user?.is_admin === true;
-}
 
 // Proactive cache invalidator for reconciliation metrics, treasury, and paginated pages
 async function invalidateReconciliationCaches() {
@@ -36,10 +22,11 @@ async function invalidateReconciliationCaches() {
 
 export async function GET(req: NextRequest) {
   try {
-    const userEmail = await getAuthenticatedEmail(req);
-    if (!userEmail || !(await isAdmin(userEmail))) {
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
+    const userEmail = admin.email;
 
     // Fetch reconciliation logs
     const { data: logs } = await supabaseAdmin
@@ -295,10 +282,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getAuthenticatedEmail(req);
-    if (!userEmail || !(await isAdmin(userEmail))) {
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
+    const userEmail = admin.email;
 
     const body = await req.json();
     const { action, logId, notes } = body;

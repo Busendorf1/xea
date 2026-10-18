@@ -199,7 +199,7 @@
 
 /* Hover effects */
 .iconButton:hover {
-  background-color: rgba(29, 155, 240, 0.1);
+  background-color: var(--primary-glow);
 }
 
 .iconButton:hover svg {

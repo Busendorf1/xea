@@ -16,7 +16,7 @@ async function handleCron(req: NextRequest) {
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
     
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if ((process.env.NODE_ENV === "production" && !cronSecret) || (cronSecret && authHeader !== `Bearer ${cronSecret}`)) {
       console.warn("⚠️ Unauthorized cron database-cleanup attempt.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

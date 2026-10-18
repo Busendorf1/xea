@@ -69,7 +69,7 @@ export default function TransactionReceiptModal({
   // Fee / Charge & Discount extraction
   const charge = typeof meta.fee === "number"
     ? meta.fee
-    : (meta.fee ? parseFloat(meta.fee) : (isWithdrawal ? 50 : 0)); // standard or recorded withdrawal charge
+    : (meta.fee ? parseFloat(meta.fee) : (isWithdrawal ? 35 : 0)); // standard ₦35 interbank transfer charge
 
   const discount = typeof meta.discount === "number"
     ? meta.discount
@@ -146,6 +146,13 @@ export default function TransactionReceiptModal({
         </span>
       );
     }
+    if (s === "queued") {
+      return (
+        <span className={`${styles.statusBadge} ${styles.statusPending}`}>
+          <Clock size={13} /> Queued (Scheduled Window)
+        </span>
+      );
+    }
     if (s === "pending" || s === "processing") {
       return (
         <span className={`${styles.statusBadge} ${styles.statusPending}`}>
@@ -156,13 +163,13 @@ export default function TransactionReceiptModal({
     if (s === "reversed") {
       return (
         <span className={`${styles.statusBadge} ${styles.statusReversed}`}>
-          <RotateCcw size={13} /> Reversed
+          <RotateCcw size={13} /> Reversed (Balance Refunded)
         </span>
       );
     }
     return (
       <span className={`${styles.statusBadge} ${styles.statusFailed}`}>
-        <AlertCircle size={13} /> Failed
+        <AlertCircle size={13} /> {isWithdrawal ? "Failed (Balance Refunded)" : "Failed"}
       </span>
     );
   };
@@ -606,6 +613,35 @@ export default function TransactionReceiptModal({
               <div className={`${styles.detailRow} ${styles.netRow}`}>
                 <span className={styles.netLabel}>Net Settled Amount</span>
                 <span className={styles.netValue}>{formatNaira(netAmount)}</span>
+              </div>
+            )}
+
+            {/* Gateway / Batch Reference for Audit Tracking */}
+            {(meta.gateway_reference || meta.batchReference || meta.transfer_code) && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Gateway Ref</span>
+                <span className={styles.detailValue}>
+                  {meta.gateway_reference || meta.batchReference || meta.transfer_code}
+                </span>
+              </div>
+            )}
+
+            {/* Queue Window / Refund Protection Note */}
+            {transaction.status?.toLowerCase() === "queued" && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Queue Status</span>
+                <span className={styles.detailValue}>
+                  {meta.queued_reason || "Queued for next scheduled batch disbursement"}
+                </span>
+              </div>
+            )}
+
+            {isWithdrawal && (transaction.status?.toLowerCase() === "failed" || transaction.status?.toLowerCase() === "reversed") && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Refund Protection</span>
+                <span className={styles.detailValue} style={{ color: "#10b981", fontWeight: 600 }}>
+                  {formatNaira(rawAmount)} Restored to Wallet
+                </span>
               </div>
             )}
           </div>

@@ -6,8 +6,24 @@ import redisConnection from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { captureApiException } from "@/lib/logger";
+import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
+
+function isTerminalBankAccountError(msg: string): boolean {
+  const m = (msg || "").toLowerCase();
+  return (
+    m.includes("invalid account") ||
+    m.includes("account number") && m.includes("invalid") ||
+    m.includes("could not resolve account") ||
+    m.includes("account closed") ||
+    m.includes("no such account") ||
+    m.includes("invalid bank") ||
+    m.includes("unknown bank") ||
+    m.includes("bvn") ||
+    m.includes("beneficiary") && m.includes("invalid")
+  );
+}
 
 export async function POST(req: NextRequest) {
   let email: string | null = null;
@@ -33,11 +49,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { bankCode, bankName, accountNumber, amount, phone } = body;
 
-    // 1. Fetch user's current profile details
+    // 1. Fetch user's current profile details using indexed .eq lookup
+    const emailLower = email.toLowerCase().trim();
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, bvn_hash, monetized, monetization_clicks, atw_tier")
-      .ilike("email", email)
+      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier")
+      .eq("email", emailLower)
       .maybeSingle();
 
     if (userFetchErr || !user) {
@@ -87,8 +104,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Verification failed. Phone number must match your registered account phone number." }, { status: 400 });
     }
 
-    // Attempt Bank Resolution & Payout Initiation with Network Fault Recovery
+    // Attempt Bank Resolution with High-Volume Queue Fallback (Never reject on gateway timeout/rate-limit)
     let accountName = "Verified Account";
+    let shouldQueue = false;
+    let queueReason = "";
+
     try {
       console.log(`🏦 Resolving bank account ${accountNumber} with code ${bankCode}`);
       const resolvedAccount = await PayoutProvider.resolveAccount(accountNumber, bankCode);
@@ -96,10 +116,17 @@ export async function POST(req: NextRequest) {
         accountName = resolvedAccount.account_name;
       }
     } catch (netErr: any) {
-      console.warn("⚠️ Network/API issue resolving bank account. Resetting balance state for user retry:", netErr?.message || netErr);
-      return NextResponse.json({
-        error: "Network error connecting to payout gateway. Your balance remains unchanged. Please try again shortly.",
-      }, { status: 503 });
+      const errMsg = netErr?.message || "";
+      if (isTerminalBankAccountError(errMsg)) {
+        return NextResponse.json({
+          error: `Bank account verification failed: ${errMsg}. Your wallet balance was not deducted.`,
+        }, { status: 400 });
+      }
+      // High-volume / transient bank resolution timeout: Do NOT cancel! Queue for batch window.
+      console.warn("⚠️ Gateway busy during bank resolution — queueing withdrawal instead of cancelling:", errMsg);
+      accountName = "Verified Beneficiary";
+      shouldQueue = true;
+      queueReason = "High-volume payout queue (bank verification deferred to batch dispatch)";
     }
 
     // Deduct user's balance atomically via PostgreSQL FOR UPDATE row lock RPC (with OCC fallback)
@@ -107,7 +134,7 @@ export async function POST(req: NextRequest) {
     let newWithdrawal = currentWithdrawal + withdrawAmount;
 
     const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("initiate_atomic_withdrawal", {
-      p_email: email,
+      p_email: emailLower,
       p_amount: withdrawAmount,
       p_min_amount: MIN_WITHDRAWAL_AMOUNT,
       p_is_admin: isAdmin,
@@ -121,7 +148,7 @@ export async function POST(req: NextRequest) {
           balance: newBalance,
           withdrawal: newWithdrawal,
         })
-        .ilike("email", email)
+        .eq("email", emailLower)
         .eq("balance", currentBalance)
         .select();
 
@@ -158,7 +185,7 @@ export async function POST(req: NextRequest) {
     };
 
     const { error: paymentInsertErr } = await supabaseAdmin.from("payments").insert({
-      user_email: email,
+      user_email: emailLower,
       reference,
       amount: withdrawAmount,
       status: "processing",
@@ -173,18 +200,15 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin
         .from("users")
         .update({ balance: currentBalance, withdrawal: currentWithdrawal })
-        .ilike("email", email);
+        .eq("email", emailLower);
 
-      await invalidateCachedProfile(email);
+      await invalidateCachedProfile(emailLower);
       return NextResponse.json({ error: "Failed to queue withdrawal record due to network error. Balance restored." }, { status: 500 });
     }
 
-    // 4. Check available disbursement float balance before attempting payout
-    let shouldQueue = false;
-    let queueReason = "";
-
+    // 4. Check available disbursement float balance & queue depth before attempting immediate payout
     try {
-      if (PayoutProvider.getActiveGateway() === "kora") {
+      if (!shouldQueue && PayoutProvider.getActiveGateway() === "kora") {
         const floatBal = await KoraService.getNairaBalance();
         if (floatBal < netDisbursementAmount) {
           shouldQueue = true;
@@ -197,7 +221,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (shouldQueue) {
-      // Mark payment as queued (balance remains safely in withdrawal column)
       await supabaseAdmin
         .from("payments")
         .update({
@@ -218,7 +241,7 @@ export async function POST(req: NextRequest) {
             amount: netDisbursementAmount,
             grossAmount: withdrawAmount,
             fee: WITHDRAWAL_TRANSFER_FEE,
-            email,
+            email: emailLower,
             bankCode,
             bankName,
             accountNumber,
@@ -230,10 +253,10 @@ export async function POST(req: NextRequest) {
         console.warn("⚠️ Failed to push withdrawal to Redis payout queue:", redisErr);
       }
 
-      await invalidateCachedProfile(email);
+      await invalidateCachedProfile(emailLower);
 
       await supabaseAdmin.from("notifications").insert({
-        user_email: email,
+        user_email: emailLower,
         title: "Withdrawal Queued",
         message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Net: ₦${netDisbursementAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} after ₦${WITHDRAWAL_TRANSFER_FEE} network transfer fee) has been queued for our scheduled payout window.`,
       });
@@ -260,7 +283,7 @@ export async function POST(req: NextRequest) {
         bankCode,
         accountNumber,
         accountName,
-        customerEmail: email,
+        customerEmail: emailLower,
         narration: `Paayh Withdrawal to ${accountName}`,
       });
 
@@ -281,20 +304,12 @@ export async function POST(req: NextRequest) {
 
     } catch (payoutErr: any) {
       console.error("❌ Payout Gateway disbursement error:", payoutErr);
-      const errMsg = (payoutErr?.message || "").toLowerCase();
-      const isBalanceOrTempIssue =
-        errMsg.includes("balance") ||
-        errMsg.includes("insufficient") ||
-        errMsg.includes("fund") ||
-        errMsg.includes("unavailable") ||
-        errMsg.includes("timeout") ||
-        errMsg.includes("network") ||
-        errMsg.includes("rate limit") ||
-        errMsg.includes("limit reached") ||
-        errMsg.includes("exceeded");
+      const errMsg = payoutErr?.message || "Gateway disbursement error";
 
-      if (isBalanceOrTempIssue) {
-        console.log(`⏳ Holding withdrawal [${reference}] in queue due to gateway status: ${payoutErr?.message}`);
+      // Only fail & refund immediately if the bank explicitly rejected the beneficiary account.
+      // For ANY high-volume spike, rate limit, timeout, float depletion, or 5xx error, QUEUE IT!
+      if (!isTerminalBankAccountError(errMsg)) {
+        console.log(`⏳ Holding withdrawal [${reference}] in high-volume queue due to transient gateway status: ${errMsg}`);
 
         await supabaseAdmin
           .from("payments")
@@ -302,7 +317,7 @@ export async function POST(req: NextRequest) {
             status: "queued",
             metadata: {
               ...paymentMetadata,
-              queued_reason: payoutErr?.message || "Held for payout window",
+              queued_reason: errMsg || "Held for scheduled payout window",
               queued_at: new Date().toISOString(),
             },
           })
@@ -313,8 +328,10 @@ export async function POST(req: NextRequest) {
             "queue:payouts",
             JSON.stringify({
               reference,
-              amount: withdrawAmount,
-              email,
+              amount: netDisbursementAmount,
+              grossAmount: withdrawAmount,
+              fee: WITHDRAWAL_TRANSFER_FEE,
+              email: emailLower,
               bankCode,
               bankName,
               accountNumber,
@@ -326,45 +343,34 @@ export async function POST(req: NextRequest) {
           console.warn("⚠️ Failed to push withdrawal to Redis payout queue:", redisErr);
         }
 
-        await invalidateCachedProfile(email);
+        await invalidateCachedProfile(emailLower);
 
         await supabaseAdmin.from("notifications").insert({
-          user_email: email,
+          user_email: emailLower,
           title: "Withdrawal Queued",
-          message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been queued and will be disbursed during our scheduled payout window.`,
+          message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been safely queued and will be disbursed during our next payout batch window.`,
         });
 
         return NextResponse.json({
           success: true,
           queued: true,
           status: "queued",
-          message: "Withdrawal received! Your request has been queued and will be disbursed during our scheduled payout window.",
+          message: "Withdrawal received! Your request has been safely queued and will be disbursed during our next payout batch window.",
           reference,
           newBalance,
+          fee: WITHDRAWAL_TRANSFER_FEE,
+          netAmount: netDisbursementAmount,
         });
       }
 
-      // Permanent failure (e.g. Invalid account details): Auto-rollback user's balance
-      await supabaseAdmin
-        .from("users")
-        .update({ balance: currentBalance, withdrawal: currentWithdrawal })
-        .ilike("email", email);
-
-      await supabaseAdmin
-        .from("payments")
-        .update({
-          status: "failed",
-          metadata: {
-            ...paymentMetadata,
-            error: payoutErr?.message || "Gateway disbursement failed",
-          },
-        })
-        .eq("reference", reference);
-
-      await invalidateCachedProfile(email);
+      // Terminal failure (e.g. Invalid/closed bank account): Atomically refund user's full gross balance
+      await settleWithdrawalByReference(reference, "failed", errMsg, {
+        error: errMsg,
+        refunded_at: new Date().toISOString(),
+      });
 
       return NextResponse.json({
-        error: `Payout gateway error: ${payoutErr?.message || "Transaction could not be processed"}. Your balance has been restored.`,
+        error: `Bank rejected beneficiary account (${errMsg}). Your full ₦${withdrawAmount.toLocaleString("en-NG")} balance has been restored to your wallet.`,
       }, { status: 400 });
     }
 

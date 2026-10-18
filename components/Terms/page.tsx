@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
@@ -524,7 +522,7 @@ export default function TermsPage() {
           </ul>
           <p>
             <strong>12.4 Know Your Customer (KYC) Audits:</strong> Paayh and its settlement gateway partners reserve the
-            right to require satisfactory identity verification (such as BVN match, NIN, or government issued ID) prior
+            right to require satisfactory identity verification prior
             to approving withdrawals. Paayh reserves the unconditioned right to freeze balances, halt payouts, and
             report suspicious financial activity to the NFIU and law enforcement agencies without prior notice or
             liability.

@@ -35,10 +35,7 @@ import WithdrawalModal from "./WithdrawalModal";
 import SendMoneyModal from "./SendMoneyModal";
 import styles from "./page.module.css";
 
-const Feed = dynamic(() => import("@/components/Feed/page"), {
-  loading: () => <FeedSkeleton count={3} />,
-  ssr: false,
-});
+import Feed from "@/components/Feed/page";
 
 export type { UserProfile };
 
@@ -119,18 +116,11 @@ export default function DashboardClient({
 
   const refreshProfileQuietly = async () => {
     try {
-      const [pRes, mRes] = await Promise.all([fetch("/api/profile"), fetch("/api/monetize")]);
+      const pRes = await fetch("/api/profile");
       if (pRes.ok) {
         const data = await pRes.json();
-        let liveClicks = data.monetization_clicks ?? 0;
-        let isMonetized = data.monetized;
-        if (mRes.ok) {
-          const mData = await mRes.json();
-          if (mData && mData.success) {
-            liveClicks = Math.max(liveClicks, mData.clicksCount || 0);
-            if (mData.isMonetized) isMonetized = true;
-          }
-        }
+        const liveClicks = data.monetization_clicks ?? 0;
+        const isMonetized = data.monetized;
         if (data && !data.error && data.email) {
           setUser((prev) => ({
             ...data,
@@ -222,10 +212,12 @@ export default function DashboardClient({
     fetchNotifications();
 
     const initialQuietTimeout = setTimeout(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       refreshProfileQuietly();
     }, 3000);
 
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       fetchNotifications();
       refreshProfileQuietly();
     }, 20000);
@@ -642,6 +634,7 @@ export default function DashboardClient({
               initialProfile={user}
               initialAds={initialAds}
               initialProfiles={initialProfiles}
+              initialHighlights={initialHighlights}
               onEarnSuccess={handleEarnSuccess}
               onMutualSuccess={handleMutualSuccess}
             />

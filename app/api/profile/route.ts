@@ -6,6 +6,14 @@ import redisConnection, { isRedisReady } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
+function sanitizeProfileResponse(rawUser: Record<string, any> | null) {
+  if (!rawUser) return null;
+  const sanitized = { ...rawUser };
+  delete sanitized.passphrase;
+  delete sanitized.bvn_hash;
+  return sanitized;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const email = await getAuthenticatedEmail(req);
@@ -21,7 +29,6 @@ export async function GET(req: NextRequest) {
     if (user) {
       // Background 24h activity touch
       touchUserActivity(emailLower, user).catch(() => {});
-      console.log(`🚀 Profile cache hit in /api/profile for: ${emailLower}`);
 
       if (isRedisReady()) {
         try {
@@ -34,13 +41,11 @@ export async function GET(req: NextRequest) {
         } catch {}
       }
 
-      return NextResponse.json(user);
+      return NextResponse.json(sanitizeProfileResponse(user));
     }
 
-    console.log(`🔄 Profile cache miss in /api/profile for: ${email}. Fetching from Supabase...`);
-
-    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at`;
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, passphrase, mutual_count, balance, withdrawal, bvn_hash, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier`;
+    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier`;
 
     // Fetch user profile from Supabase with retries (resilience to flaky hotspot networks)
     let error = null;
@@ -89,7 +94,6 @@ export async function GET(req: NextRequest) {
 
     // Auto-provision if user does not exist in DB (secure signup flow)
     if (!user) {
-      console.log(`👤 User not found in database. Auto-provisioning profile for: ${email}`);
       const dummyPhone = `PLACEHOLDER_PHONE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const dummyPassphrase = `PLACEHOLDER_PASS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
@@ -123,6 +127,7 @@ export async function GET(req: NextRequest) {
 
     // Merge live Redis atomic clicks (sub-millisecond accuracy)
     if (user) {
+      user = sanitizeProfileResponse(user);
       try {
         const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
         if (liveVal) {

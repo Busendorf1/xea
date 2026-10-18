@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import {
@@ -9,26 +9,13 @@ import {
   recordAdminAuditTrail,
 } from "@/lib/security/adminGuard";
 
-// Helper to check if email is admin
-async function isAdmin(email: string): Promise<boolean> {
-  const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map((e) => e.trim().toLowerCase());
-  if (adminEmails.includes(email.toLowerCase())) return true;
-
-  const { data: user } = await supabaseAdmin
-    .from("users")
-    .select("role, is_admin")
-    .ilike("email", email)
-    .maybeSingle();
-
-  return user?.role === "admin" || user?.is_admin === true;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const adminEmail = await getAuthenticatedEmail(req);
-    if (!adminEmail || !(await isAdmin(adminEmail))) {
+    const admin = await verifyAdminUser(req);
+    if (!admin) {
       return NextResponse.json({ error: "Unauthorized: Administrator access required" }, { status: 403 });
     }
+    const adminEmail = admin.email;
 
     const body = await req.json();
     const { reference, reason } = body;

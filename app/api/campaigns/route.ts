@@ -19,15 +19,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const url = new URL(req.url);
-    let email = await getAuthenticatedEmail(req);
-
-    // Resilient fallback for mobile app
-    if (!email) {
-      const mobileEmail = req.headers.get("x-user-email") || url.searchParams.get("email");
-      if (mobileEmail && mobileEmail.includes("@")) {
-        email = mobileEmail.toLowerCase().trim();
-      }
-    }
+    const email = await getAuthenticatedEmail(req);
 
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -53,25 +45,63 @@ export async function GET(req: NextRequest) {
     // Only completed ads from the last 72 hours are relevant (older are omitted from UI)
     const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
 
-    const [adsQueue, adsActiveReal, adsCompleted, highlightsQueue, highlightsActive, ratingsData] = await Promise.all([
-      supabaseReadOnly.from("adds").select("*").ilike("user_email", emailLower),
-      supabaseReadOnly.from("addsactive").select("*").ilike("user_email", emailLower),
+    const [
+      adsQueue,
+      adsActiveReal,
+      adsCompleted,
+      highlightsQueue,
+      highlightsActive,
+      ratingsData,
+      advBlockRes,
+    ] = await Promise.all([
+      supabaseReadOnly.from("adds").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("addsactive").select("*").eq("user_email", emailLower),
       supabaseReadOnly
         .from("completed_ads")
         .select("*")
-        .ilike("user_email", emailLower)
+        .eq("user_email", emailLower)
         .gte("completed_at", seventyTwoHoursAgo)
         .order("completed_at", { ascending: false })
         .limit(50),
-      supabaseReadOnly.from("news").select("*").ilike("user_email", emailLower),
-      supabaseReadOnly.from("newsactive").select("*").ilike("user_email", emailLower),
-      supabaseReadOnly.from("completed_ads_ratings").select("ad_id").ilike("advertiser_email", emailLower),
+      supabaseReadOnly.from("news").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("newsactive").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("completed_ads_ratings").select("ad_id").eq("advertiser_email", emailLower),
+      supabaseReadOnly
+        .from("blocked_advertisers")
+        .select("id", { count: "exact", head: true })
+        .eq("advertiser_email", emailLower),
     ]);
 
     const combinedActive = [
       ...(adsActiveReal.data || []),
       ...(adsCompleted.data || []),
     ];
+
+    const adIds: string[] = [
+      ...(adsQueue.data || []).map((a: any) => a.id),
+      ...(adsActiveReal.data || []).map((a: any) => a.id),
+    ].filter(Boolean);
+
+    const reportsMap: Record<string, number> = {};
+    const dismissalsMap: Record<string, number> = {};
+    const advertiserBlockCount = advBlockRes.count || 0;
+
+    if (adIds.length > 0) {
+      const [reportsRes, blockedAdsRes] = await Promise.all([
+        supabaseReadOnly.from("ad_reports").select("ad_id").in("ad_id", adIds),
+        supabaseReadOnly.from("blocked_ads").select("ad_id").in("ad_id", adIds),
+      ]);
+      if (reportsRes.data) {
+        for (const r of reportsRes.data) {
+          if (r.ad_id) reportsMap[r.ad_id] = (reportsMap[r.ad_id] || 0) + 1;
+        }
+      }
+      if (blockedAdsRes.data) {
+        for (const b of blockedAdsRes.data) {
+          if (b.ad_id) dismissalsMap[b.ad_id] = (dismissalsMap[b.ad_id] || 0) + 1;
+        }
+      }
+    }
 
     const ratedAdIds = (ratingsData.data || []).map((r: { ad_id: string }) => r.ad_id);
 
@@ -81,6 +111,9 @@ export async function GET(req: NextRequest) {
       highlightsQueue: highlightsQueue.data || [],
       highlightsActive: highlightsActive.data || [],
       ratedAdIds,
+      reportsMap,
+      dismissalsMap,
+      advertiserBlockCount,
     };
 
     // 3. Cache in Redis with 30s TTL in the background

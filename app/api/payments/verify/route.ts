@@ -7,12 +7,13 @@ import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { captureApiException } from "@/lib/logger";
+import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 
 export async function GET(req: NextRequest) {
   let email: string | null = null;
   let reference: string | null = null;
   try {
-    email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    email = await getAuthenticatedEmail(req);
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -62,36 +63,9 @@ export async function GET(req: NextRequest) {
         payoutStatus = payoutData?.status || "processing";
 
         if (payoutStatus === "success") {
-          // Decrement user's pending withdrawal column
-          const { data: user } = await supabaseAdmin
-            .from("users")
-            .select("withdrawal")
-            .eq("email", email.toLowerCase().trim())
-            .maybeSingle();
-
-          if (user) {
-            const currentWithdrawal = parseFloat(user.withdrawal || 0);
-            const newWithdrawal = Math.max(0, currentWithdrawal - (payment.amount || 0));
-
-            await supabaseAdmin
-              .from("users")
-              .update({ withdrawal: newWithdrawal })
-              .eq("email", email.toLowerCase().trim());
-          }
-
-          // Mark payment as success in ledger
-          await supabaseAdmin
-            .from("payments")
-            .update({
-              status: "success",
-              metadata: {
-                ...(payment.metadata || {}),
-                gateway_status: "success",
-              },
-            })
-            .eq("reference", reference);
-
-          await invalidateCachedProfile(email);
+          await settleWithdrawalByReference(reference, "success", "Verified via Kora verifyPayout", {
+            gateway_status: "success",
+          });
 
           return NextResponse.json({
             success: true,
@@ -100,38 +74,10 @@ export async function GET(req: NextRequest) {
             amount: payment.amount,
           });
         } else if (payoutStatus === "failed" || payoutStatus === "reversed") {
-          // Auto-refund user's balance
-          const { data: user } = await supabaseAdmin
-            .from("users")
-            .select("balance, withdrawal")
-            .eq("email", email.toLowerCase().trim())
-            .maybeSingle();
-
-          if (user) {
-            const currentBalance = parseFloat(user.balance || 0);
-            const currentWithdrawal = parseFloat(user.withdrawal || 0);
-
-            await supabaseAdmin
-              .from("users")
-              .update({
-                balance: currentBalance + (payment.amount || 0),
-                withdrawal: Math.max(0, currentWithdrawal - (payment.amount || 0)),
-              })
-              .eq("email", email.toLowerCase().trim());
-          }
-
-          await supabaseAdmin
-            .from("payments")
-            .update({
-              status: "failed",
-              metadata: {
-                ...(payment.metadata || {}),
-                gateway_status: payoutStatus,
-              },
-            })
-            .eq("reference", reference);
-
-          await invalidateCachedProfile(email);
+          const outcome = payoutStatus === "reversed" ? "reversed" : "failed";
+          await settleWithdrawalByReference(reference, outcome, `Verified ${payoutStatus} via Kora verifyPayout`, {
+            gateway_status: payoutStatus,
+          });
 
           return NextResponse.json({
             success: false,
