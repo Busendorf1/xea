@@ -4,10 +4,17 @@
 -- match expected type text in column 29" by explicitly casting varchar columns to text.
 -- ==============================================================================
 
+-- 1. Sanitize any legacy PLACEHOLDER in public.users.dob column
+UPDATE public.users 
+SET dob = '1970-01-01' 
+WHERE dob IS NULL OR dob::TEXT = 'PLACEHOLDER' OR dob::TEXT = '';
+
+-- 2. Drop existing function signatures to avoid ambiguity
 DROP FUNCTION IF EXISTS public.get_user_feed(text, integer, integer);
 DROP FUNCTION IF EXISTS public.get_user_feed(text);
 DROP FUNCTION IF EXISTS public.get_user_feed(text, integer);
 
+-- 3. Create canonical get_user_feed RPC with safe date parsing and explicit casts
 CREATE OR REPLACE FUNCTION public.get_user_feed(
   p_user_email TEXT,
   p_limit INT DEFAULT 100,
@@ -74,8 +81,13 @@ BEGIN
 
   -- 1. Fetch complete viewer demographics & psychographics
   SELECT 
-    CASE WHEN u.dob IS NOT NULL AND u.dob != 'PLACEHOLDER' AND u.dob != '' 
-         THEN u.dob::DATE ELSE NULL END,
+    CASE 
+      WHEN u.dob IS NOT NULL 
+           AND u.dob::TEXT ~ '^\d{4}-\d{2}-\d{2}$' 
+           AND u.dob::TEXT != '1970-01-01'
+      THEN (u.dob::TEXT)::DATE 
+      ELSE NULL 
+    END,
     NULLIF(u.country, 'PLACEHOLDER'),
     NULLIF(u.state, 'PLACEHOLDER'),
     NULLIF(u.location, 'PLACEHOLDER'),

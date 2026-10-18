@@ -55,16 +55,18 @@ export async function GET(req: NextRequest) {
         let { data, error: dbErr } = await supabaseAdmin
           .from("users")
           .select(PROFILE_COLUMNS)
-          .eq("email", emailLower)
-          .maybeSingle();
+          .ilike("email", emailLower)
+          .order("has_updated_profile", { ascending: false, nullsFirst: false })
+          .limit(2);
 
         if (dbErr) {
           // Fallback to baseline columns if new columns are missing in DB
           const fallback = await supabaseAdmin
             .from("users")
             .select(BASELINE_COLUMNS)
-            .eq("email", emailLower)
-            .maybeSingle();
+            .ilike("email", emailLower)
+            .order("has_updated_profile", { ascending: false, nullsFirst: false })
+            .limit(2);
 
           data = fallback.data as any;
           dbErr = fallback.error;
@@ -73,8 +75,13 @@ export async function GET(req: NextRequest) {
         if (dbErr) {
           error = dbErr;
           console.warn(`⚠️ Supabase fetch attempt ${i + 1} failed:`, dbErr.message);
+        } else if (data && data.length > 0) {
+          const chosen = data.find((u: any) => u.country && u.country !== "PLACEHOLDER") || data[0];
+          user = chosen;
+          error = null;
+          break;
         } else {
-          user = data;
+          user = null;
           error = null;
           break;
         }
@@ -113,16 +120,16 @@ export async function GET(req: NextRequest) {
       }
 
       // Fetch the newly created profile
-      const { data: newUser, error: fetchError } = await supabaseAdmin
+      const { data: newUserRows, error: fetchError } = await supabaseAdmin
         .from("users")
         .select(PROFILE_COLUMNS)
-        .eq("email", emailLower)
-        .maybeSingle();
+        .ilike("email", emailLower)
+        .limit(1);
 
       if (fetchError) {
         return NextResponse.json({ error: fetchError.message }, { status: 500 });
       }
-      user = newUser;
+      user = newUserRows?.[0] || null;
     }
 
     // Merge live Redis atomic clicks (sub-millisecond accuracy)

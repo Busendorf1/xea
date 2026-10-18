@@ -18,15 +18,15 @@ export default function Step0Category({
   return (
     <div className={styles.modernSectionCard}>
       <div className={styles.modernSectionHeader}>
-        <span className={styles.modernSectionTitle}>Select Campaign Ad Category</span>
+        <span className={styles.modernSectionTitle}>Select Distribution Track (DaaS)</span>
         <span className={styles.modernSectionBadge}>
           {adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1)} ·{" "}
-          {formatCurrency(adRates[adType] || 0)}/attention
+          {formatCurrency(adRates[adType] || 0)}/node
         </span>
       </div>
       <div className={styles.modernSectionBody}>
         <p className={styles.categoryDescription}>
-          Choose the category that best matches your ad campaign.
+          Select your demographic distribution track to deploy directly into verified attention nodes.
         </p>
         <div className={`${styles.adTypeGrid} ${styles.adTypeGridSpaced}`}>
           {Object.keys(adRates).map((key) => {

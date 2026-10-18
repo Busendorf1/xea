@@ -34,8 +34,15 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
   try {
     profileResult = await getUserProfileForDashboard(session);
   } catch (err: any) {
-    console.error("❌ [LoggedInPage] Failed to fetch profile:", err?.message || err);
-    redirect("/user/profile-setup");
+    console.warn("⚠️ [LoggedInPage] Initial profile fetch error, retrying:", err?.message || err);
+    try {
+      await new Promise((r) => setTimeout(r, 600));
+      profileResult = await getUserProfileForDashboard(session);
+    } catch (retryErr: any) {
+      console.error("❌ [LoggedInPage] Persistent profile fetch failure:", retryErr?.message || retryErr);
+      // Never send established users into onboarding on transient network/database errors
+      redirect("/logged-in?view=feed&retry=1");
+    }
   }
 
   if (profileResult.redirectUrl) {

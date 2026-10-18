@@ -159,6 +159,39 @@ interface ProfileFormData {
     // If not logged in after auth finishes loading, redirect to home
     if (!authLoading && !authUser) {
       router.push("/");
+      return;
+    }
+
+    // Verify if user is already onboarded in the database to prevent duplicate onboarding
+    if (!authLoading && authUser) {
+      let isMounted = true;
+      fetch("/api/profile")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!isMounted) return;
+          const isAlreadyOnboarded =
+            data &&
+            !data.error &&
+            (Boolean(data.has_updated_profile) ||
+              (data.country &&
+                data.country !== "PLACEHOLDER" &&
+                data.state &&
+                data.state !== "PLACEHOLDER" &&
+                data.location &&
+                data.location !== "PLACEHOLDER"));
+
+          if (isAlreadyOnboarded) {
+            console.log("✅ User already onboarded in database. Bypassing profile setup.");
+            try {
+              localStorage.removeItem("paayh_draft_profile_setup_v1");
+            } catch {}
+            router.replace("/logged-in?view=feed");
+          }
+        })
+        .catch(() => {});
+      return () => {
+        isMounted = false;
+      };
     }
   }, [authUser, authLoading, router]);
 

@@ -134,44 +134,39 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
+        // Query users table with case-insensitive ilike and priority on established profiles (non-null/non-placeholder country)
         const res = await supabaseAdmin
           .from("users")
           .select(PROFILE_COLUMNS)
-          .eq("email", email)
-          .maybeSingle();
+          .ilike("email", email)
+          .order("has_updated_profile", { ascending: false, nullsFirst: false })
+          .limit(2);
 
         if (res.error) {
           const fallback = await supabaseAdmin
             .from("users")
             .select(BASELINE_COLUMNS)
             .ilike("email", email)
-            .maybeSingle();
+            .order("has_updated_profile", { ascending: false, nullsFirst: false })
+            .limit(2);
 
-          if (fallback.data) {
-            dbData = fallback.data as any;
+          if (fallback.data && fallback.data.length > 0) {
+            const chosen = fallback.data.find((u: any) => u.country && u.country !== "PLACEHOLDER") || fallback.data[0];
+            dbData = chosen as any;
             dbError = null;
             break;
           } else {
             dbError = fallback.error || res.error;
           }
-        } else if (res.data) {
-          dbData = res.data as any;
+        } else if (res.data && res.data.length > 0) {
+          const chosen = res.data.find((u: any) => u.country && u.country !== "PLACEHOLDER") || res.data[0];
+          dbData = chosen as any;
           dbError = null;
           break;
         } else {
-          // No data found with exact match, try case-insensitive fallback
-          const fallback = await supabaseAdmin
-            .from("users")
-            .select(BASELINE_COLUMNS)
-            .ilike("email", email)
-            .maybeSingle();
-
-          if (fallback.data) {
-            dbData = fallback.data as any;
-            dbError = null;
-            break;
-          }
           // User truly not in DB
+          dbData = null;
+          dbError = null;
           break;
         }
       } catch (err: any) {
@@ -318,7 +313,8 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
   }
 
   // 3. If user has not completed initial profile setup, redirect
-  if (user.country === "PLACEHOLDER" || user.state === "PLACEHOLDER" || user.location === "PLACEHOLDER") {
+  const hasPlaceholders = user.country === "PLACEHOLDER" || user.state === "PLACEHOLDER" || user.location === "PLACEHOLDER";
+  if (hasPlaceholders && !user.has_updated_profile) {
     return { redirectUrl: "/user/profile-setup" };
   }
 

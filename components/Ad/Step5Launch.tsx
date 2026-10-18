@@ -170,16 +170,16 @@ export default function Step5Launch({
         isOpen={showPaymentConfirmModal}
         onClose={() => setShowPaymentConfirmModal(false)}
         onConfirm={submitAd}
-        serviceTitle="Sponsored Ad Campaign"
+        serviceTitle="Distribution-as-a-Service (DaaS) Wave"
         amountFormatted={formatCurrency(calculateTotalCost())}
         paymentMethodText={paymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
         summaryItems={[
-          { label: "Target Attention", value: `${formSelections.impressions.toLocaleString()} views` },
+          { label: "Target Reach", value: `${formSelections.impressions.toLocaleString()} verified nodes` },
           {
-            label: "Duration",
+            label: "Wave Duration",
             value: `${formSelections.campaignDays} ${formSelections.campaignDays === 1 ? "day" : "days"}`,
           },
-          { label: "Ad Type", value: adType === "product_sales" ? "Product Sales" : "Standard Promo" },
+          { label: "Distribution Track", value: adType === "product_sales" ? "Product Sales" : "Demographic Direct" },
         ]}
         isSubmitting={isSubmitting}
       />
