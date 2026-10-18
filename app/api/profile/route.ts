@@ -64,7 +64,6 @@ export async function GET(req: NextRequest) {
             .from("users")
             .select(BASELINE_COLUMNS)
             .ilike("email", emailLower)
-            .order("has_updated_profile", { ascending: false, nullsFirst: false })
             .limit(2);
 
           data = fallback.data as any;

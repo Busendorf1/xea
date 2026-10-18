@@ -147,7 +147,6 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
             .from("users")
             .select(BASELINE_COLUMNS)
             .ilike("email", email)
-            .order("has_updated_profile", { ascending: false, nullsFirst: false })
             .limit(2);
 
           if (fallback.data && fallback.data.length > 0) {
