@@ -730,18 +730,18 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
           <h1 className={`${styles.summaryTitle} ${styles.pageHeading}`}>
             {editingId ? (
               <>
-                <Edit3 size={20} color="#818cf8" /> Edit Distribution Wave
+                <Edit3 size={20} color="#818cf8" /> Edit Campaign
               </>
             ) : (
               <>
-                <Rocket size={20} color="#1d9bf0" /> Launch Distribution Wave (DaaS)
+                <Rocket size={20} color="#1d9bf0" /> Create New Ad Campaign
               </>
             )}
           </h1>
           <p className={styles.pageSubtitle}>
             {editingId
-              ? "Update your target audience nodes, locations, and creative. Edits will be submitted for verification."
-              : "Deploy product distribution directly to verified human demographic nodes."}
+              ? "Update your target audience, locations, and creative. Edits will be submitted for verification."
+              : "Reach active audiences with hyper-targeted ad delivery."}
           </p>
 
           {editingId && (

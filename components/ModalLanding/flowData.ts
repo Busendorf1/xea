@@ -66,7 +66,7 @@ export const flowNodes: Record<string, FlowNode> = {
     choices: [
       {
         id: 'c_hw_promoter',
-        text: 'Deploy Product Distribution (DaaS)',
+        text: 'Promote My Business',
         nextNodeId: 'promoter_p1',
       },
       {
@@ -421,13 +421,13 @@ export const flowNodes: Record<string, FlowNode> = {
   // TRACK B: PROMOTER TRACK ("PROMOTE MY BUSINESS")
   // ==========================================
 
-  // P1. Why deploy distribution on Paayh?
+  // P1. Why should a business advertise on Paayh?
   promoter_p1: {
     id: 'promoter_p1',
     aiMessage:
-      'Paayh is a Distribution-as-a-Service (DaaS) infrastructure. Instead of paying platforms for blind impressions or skipped ads, Paayh connects your offer directly to verified human demographic nodes who give 16 seconds of undivided focus and possess real purchasing power.',
+      'Paayh has a community of listeners who deserves to get a share of the revenue their attention generates. Because they earn, they also have real money to patronize offers that resonate.',
     referralLink: {
-      label: 'Read Distribution Guidelines',
+      label: 'Read Advertiser Guidelines',
       url: '/advertiser-guidelines',
     },
     choices: [

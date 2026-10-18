@@ -527,9 +527,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       {/* Top Executive Header */}
       <div className={styles.headerBar}>
         <div className={styles.headerTitleGroup}>
-          <h2 className={styles.headerTitle}>Distribution Pipeline (DaaS)</h2>
+          <h2 className={styles.headerTitle}>Campaign Manager</h2>
           <p className={styles.headerSubtitle}>
-            Real-time demographic node delivery telemetry, engagement diagnostics, and distribution pipeline controls.
+            Real-time delivery telemetry, audience targeting specs, and priority bidding controls.
           </p>
         </div>
 
@@ -538,7 +538,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             type="button"
             onClick={() => fetchAds(true)}
             className={styles.refreshAdsBtn}
-            title="Force-fetch latest distribution campaigns and metrics from database"
+            title="Force-fetch latest ad campaigns and metrics from database"
           >
             <motion.span
               animate={{ rotate: loading ? 360 : 0 }}
@@ -559,7 +559,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             }}
           >
             <Plus size={14} />
-            <span>New Distribution Wave</span>
+            <span>New Campaign</span>
           </Link>
         </div>
       </div>
