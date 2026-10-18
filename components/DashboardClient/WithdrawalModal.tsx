@@ -314,44 +314,49 @@ export default function WithdrawalModal({
                 </div>
               )}
 
-              {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
-                <div
-                  style={{
-                    background: "var(--sidebar-bg)",
-                    border: "1px solid var(--card-border)",
-                    borderRadius: "12px",
-                    padding: "12px 14px",
-                    fontSize: "13px",
-                    color: "var(--text-muted)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    marginBottom: "12px",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Transfer Network Fee:</span>
-                    <span style={{ color: "var(--foreground)", fontWeight: 600 }}>₦35.00</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Disbursement Schedule:</span>
-                    <span style={{ color: "var(--foreground)" }}>Instant / Payout Window</span>
-                  </div>
+              {withdrawAmount && parseFloat(withdrawAmount) > 0 && (() => {
+                const amt = parseFloat(withdrawAmount) || 0;
+                const estFee = amt <= 5000 ? 10.75 : amt <= 50000 ? 26.88 : 53.75;
+                const netReceive = Math.max(0, amt - estFee);
+                return (
                   <div
                     style={{
+                      background: "var(--sidebar-bg)",
+                      border: "1px solid var(--card-border)",
+                      borderRadius: "12px",
+                      padding: "12px 14px",
+                      fontSize: "13px",
+                      color: "var(--text-muted)",
                       display: "flex",
-                      justifyContent: "space-between",
-                      borderTop: "1px solid var(--card-border)",
-                      paddingTop: "8px",
+                      flexDirection: "column",
+                      gap: "8px",
+                      marginBottom: "12px",
                     }}
                   >
-                    <span style={{ fontWeight: 600, color: "var(--foreground)" }}>You will receive:</span>
-                    <span style={{ fontWeight: 700, color: "#10b981" }}>
-                      {formatCurrency(Math.max(0, (parseFloat(withdrawAmount) || 0) - 35))}
-                    </span>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Gateway Transfer Fee:</span>
+                      <span style={{ color: "var(--foreground)", fontWeight: 600 }}>₦{estFee.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Disbursement Schedule:</span>
+                      <span style={{ color: "var(--foreground)" }}>Instant / Payout Window</span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        borderTop: "1px solid var(--card-border)",
+                        paddingTop: "8px",
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: "var(--foreground)" }}>You will receive:</span>
+                      <span style={{ fontWeight: 700, color: "#10b981" }}>
+                        {formatCurrency(netReceive)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {withdrawalError && <div className={styles.errorText}>{withdrawalError}</div>}
 

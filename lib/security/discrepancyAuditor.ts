@@ -15,12 +15,22 @@ export async function recordLiveTransferDelta(amountKobo: number): Promise<void>
     const multi = redisConnection.multi();
     multi.incrby(REDIS_DEBITS_KEY, amountKobo);
     multi.incrby(REDIS_CREDITS_KEY, amountKobo);
-    // Keep counters alive with 24-hour sliding window
-    multi.expire(REDIS_DEBITS_KEY, 86400);
-    multi.expire(REDIS_CREDITS_KEY, 86400);
+    // Keys are stored WITHOUT TTL to guarantee they are 100% exempt from eviction under volatile-lru
     await multi.exec();
   } catch (err: any) {
     console.warn("⚠️ DiscrepancyAuditor: Failed to record live delta:", err?.message || err);
+  }
+}
+
+/**
+ * Resets live audit delta counters after authoritative nightly database reconciliation.
+ */
+export async function resetLiveTransferDeltas(): Promise<void> {
+  if (!isRedisReady()) return;
+  try {
+    await redisConnection.del(REDIS_DEBITS_KEY, REDIS_CREDITS_KEY);
+  } catch (err: any) {
+    console.warn("⚠️ DiscrepancyAuditor: Failed to reset live deltas:", err?.message || err);
   }
 }
 

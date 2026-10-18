@@ -187,6 +187,24 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Error executing 60-day inactive balance forfeiture:", err.message || err);
     }
 
+    // 10. Prune persistent financial transfer idempotency keys older than 48 hours from Redis
+    try {
+      const redis = (await import("@/lib/redis")).default;
+      const fortyEightHoursAgoMs = Date.now() - 48 * 60 * 60 * 1000;
+      const expiredKeys = await redis.zrangebyscore("idempotency:transfer:zset", 0, fortyEightHoursAgoMs);
+      if (expiredKeys && expiredKeys.length > 0) {
+        const pipeline = redis.pipeline();
+        expiredKeys.forEach((keyId) => {
+          pipeline.del(`idempotency:transfer:${keyId}`);
+        });
+        pipeline.zremrangebyscore("idempotency:transfer:zset", 0, fortyEightHoursAgoMs);
+        await pipeline.exec();
+        console.log(`🧹 Cron: Purged ${expiredKeys.length} aged (>48h) transfer idempotency records from Redis.`);
+      }
+    } catch (err: any) {
+      console.warn("⚠️ Cron: Idempotency pruning warning:", err?.message || err);
+    }
+
     console.log("🧹 Cron: Database-cleanup task completed successfully.");
 
     return NextResponse.json({

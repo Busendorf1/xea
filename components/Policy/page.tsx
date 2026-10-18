@@ -40,13 +40,13 @@ export default function PolicyPage() {
               <strong>Profile &amp; Demographic Preferences:</strong> Voluntary user details including country, state, gender, date of birth / age bracket, and selected interest categories used solely to deliver relevant feed content.
             </li>
             <li className={styles.listItem}>
-              <strong>Precise GPS Location Coordinates:</strong> During profile setup and onboarding, we request device location permissions to auto detect your country, state, and city via browser GPS coordinates. These geographic fields are locked as read only to prevent manual fabrication, ensuring advertisers connect with authentic residents in designated local campaigns.
+              <strong>Precise GPS Location Coordinates &amp; Ongoing Recalibration:</strong> During profile setup and onboarding, we request device location permissions to auto detect your country, state, and city via browser GPS coordinates. Furthermore, during active authenticated sessions and upon login, the platform periodically reverifies geographic locality (via browser GPS if permitted, or network IP geolocation fallback) to recalibrate your location when traveling or relocating. These geographic fields are locked as read-only to prevent manual fabrication, ensuring advertisers connect with authentic listeners physically present in designated campaign zones.
             </li>
             <li className={styles.listItem}>
               <strong>Engagement &amp; Attention Metrics:</strong> Timestamps of verified ad interactions, verification challenge outcomes (swipe, hold, tap), dwell time, and ATW score progression.
             </li>
             <li className={styles.listItem}>
-              <strong>Settlement &amp; Payout Information:</strong> When requesting a payout, you submit your registered phone number, settlement bank name, and account number. These details are transmitted via encrypted TLS connections directly to our regulated payment infrastructure partner (Paystack) to process disbursements. Paayh does not permanently store bank account numbers on your user profile record.
+              <strong>Settlement &amp; Payout Information:</strong> When requesting a payout, you submit your registered phone number, settlement bank name, and account number. These details are transmitted via encrypted TLS connections directly to our regulated payment infrastructure partners (<strong>Paystack Payments Limited</strong> and <strong>Korapay Technologies Limited</strong>) to execute disbursements. Paayh does not permanently store raw banking numbers on your public user profile record.
             </li>
           </ol>
         </section>
@@ -55,11 +55,14 @@ export default function PolicyPage() {
         <section id="encryption">
           <h2 className={styles.heading}>III. Advanced Security &amp; Application Layer Encryption</h2>
           <p>
-            Paayh implements multi layered data security:
+            Paayh implements multi layered, military-grade data security:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Application Layer Field Encryption:</strong> Highly sensitive personal attributes (including settlement details and security credentials) are encrypted at the application layer prior to storage in database records. In the unlikely event of underlying infrastructure access, stored ciphertext remains mathematically unreadable.
+              <strong>Application Layer Field Encryption (AES-256-GCM):</strong> Highly sensitive personal attributes (including settlement details, bank identifiers, and security credentials) are encrypted at the application layer prior to storage using authenticated AES-256-GCM. In the unlikely event of underlying infrastructure access, stored ciphertext remains mathematically unreadable.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Cryptographic HMAC Blind Indexing:</strong> Searchable sensitive fields use keyed HMAC-SHA256 blind indexing, permitting verified query lookups without ever decrypting raw databases or exposing plaintext indexes.
             </li>
             <li className={styles.listItem}>
               <strong>Encrypted Network Transmission:</strong> All data in transit is protected using modern Transport Layer Security (TLS 1.3) protocols.
@@ -73,9 +76,9 @@ export default function PolicyPage() {
           <p>We process personal data strictly for legitimate operational purposes:</p>
           <ol className={styles.list}>
             <li className={styles.listItem}>To authenticate your account session and maintain account security.</li>
-            <li className={styles.listItem}>To deliver relevant sponsored content and calculate earned promotional incentive credits. For clarity, cash credits accrue strictly on paid commercial campaigns where the sponsor allocated an impression budget; reciprocal mutual posts, platform updates, brand jingles, special offers, and business daily highlights carry zero cash incentive.</li>
+            <li className={styles.listItem}>To deliver relevant, localized sponsored content and calculate earned promotional incentive credits. Geographic recalibration ensures you receive commercial offers, retail specials, and events physically accessible to you where you currently are, preventing wasted sponsor ad spend and location spoofing. For clarity, cash credits accrue strictly on paid commercial campaigns where the sponsor allocated an impression budget; reciprocal mutual posts, platform updates, brand jingles, special offers, and business daily highlights carry zero cash incentive.</li>
             <li className={styles.listItem}>To audit transactions for fraud prevention, sybil prevention, and anti money laundering (AML) compliance under Nigerian law.</li>
-            <li className={styles.listItem}>To disburse verified settlement payouts through licensed payment processors.</li>
+            <li className={styles.listItem}>To disburse verified settlement payouts through licensed payment processors (Paystack and Korapay) with pass-through regulated interbank transfer fee accounting.</li>
             <li className={styles.listItem}>We do <strong>NOT</strong> sell, rent, or trade your personal information to third party data brokers.</li>
           </ol>
         </section>

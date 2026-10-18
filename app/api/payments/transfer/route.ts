@@ -93,13 +93,16 @@ export async function POST(req: NextRequest) {
     const idempotencyRedisKey = `idempotency:transfer:${rawIdempotency}`;
 
     try {
-      const isDuplicate = await redisConnection.set(idempotencyRedisKey, "LOCKED", "EX", 86400, "NX");
-      if (!isDuplicate) {
+      // Store without TTL so the key is 100% EXEMPT from eviction under volatile-lru
+      const isNew = await redisConnection.set(idempotencyRedisKey, "LOCKED", "NX");
+      if (!isNew) {
         return NextResponse.json(
           { error: "Duplicate transfer request detected. This operation has already been submitted." },
           { status: 409 }
         );
       }
+      // Record in persistent sorted set for automated cron pruning (older than 48 hours)
+      await redisConnection.zadd("idempotency:transfer:zset", Date.now(), rawIdempotency).catch(() => {});
     } catch (redisErr) {
       console.warn("⚠️ Idempotency key Redis check warning:", redisErr);
     }
@@ -182,11 +185,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: balanceRes.error || "Balance check failed" }, { status: 400 });
     }
 
-    // 7. Execute Atomic Ledger Transfer (Supabase RPC)
+    // 7. Execute Atomic Ledger Transfer (Supabase RPC with Row Locks & Double-Entry)
     const reference = rawIdempotency.startsWith("trf_") ? rawIdempotency : `trf_${rawIdempotency}`;
-
-    let fallbackSucceeded = false;
-    let fallbackSenderBalance: number | undefined;
 
     const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc("process_ledger_transfer", {
       p_sender_email: cleanSender,
@@ -197,58 +197,33 @@ export async function POST(req: NextRequest) {
 
     if (rpcError) {
       console.error("❌ RPC process_ledger_transfer error:", rpcError);
-      // Execute legacy fallback if function signature differs in DB environment
-      const { data: fallbackResult, error: fallbackErr } = await supabaseAdmin.rpc("transfer_user_funds", {
-        p_sender_email: cleanSender,
-        p_recipient_email: cleanRecipient,
-        p_amount: amountNum,
+      captureApiException(rpcError, {
+        route: "/api/payments/transfer",
+        email: cleanSender,
+        reference,
+        extra: {
+          recipient: cleanRecipient,
+          amount: amountNum,
+        },
       });
-
-      if (fallbackErr || !fallbackResult?.success) {
-        return NextResponse.json(
-          { error: fallbackResult?.error || rpcError.message || "Transfer execution failed." },
-          { status: 500 }
-        );
-      }
-      fallbackSucceeded = true;
-      if (typeof fallbackResult.new_sender_balance === "number") {
-        fallbackSenderBalance = fallbackResult.new_sender_balance;
-      } else if (typeof fallbackResult.sender_balance === "number") {
-        fallbackSenderBalance = fallbackResult.sender_balance;
-      }
-    } else if (rpcResult && rpcResult.success === false) {
-      return NextResponse.json({ error: rpcResult.error || "Ledger entry creation failed" }, { status: 400 });
+      return NextResponse.json(
+        { error: rpcError.message || "Transfer execution failed. Please verify your balance and try again." },
+        { status: 500 }
+      );
     }
 
-    // 8. Synchronize users.balance ONLY if the older process_ledger_transfer (which only touched ledger_accounts) was used
-    let newBalance =
+    if (!rpcResult || rpcResult.success === false) {
+      return NextResponse.json(
+        { error: rpcResult?.error || "Ledger entry creation failed. Operation rejected." },
+        { status: 400 }
+      );
+    }
+
+    // Authoritative sender balance returned directly from atomic PostgreSQL RPC (with FOR UPDATE lock)
+    const newBalance =
       typeof rpcResult?.new_sender_balance === "number"
         ? rpcResult.new_sender_balance
-        : fallbackSenderBalance;
-
-    if (typeof newBalance !== "number" && !fallbackSucceeded) {
-      newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
-      await supabaseAdmin
-        .from("users")
-        .update({ balance: newBalance })
-        .eq("email", cleanSender);
-
-      const { data: recipientRow } = await supabaseAdmin
-        .from("users")
-        .select("balance")
-        .eq("email", cleanRecipient)
-        .maybeSingle();
-
-      if (recipientRow) {
-        const recipBal = parseFloat(recipientRow.balance || "0") || 0;
-        await supabaseAdmin
-          .from("users")
-          .update({ balance: recipBal + amountNum })
-          .eq("email", cleanRecipient);
-      }
-    } else if (typeof newBalance !== "number") {
-      newBalance = Math.max(0, balanceRes.currentBalance - amountNum);
-    }
+        : Math.max(0, balanceRes.currentBalance - amountNum);
 
     // 9. Update Redis Unique Recipients Rate Limit Set
     try {

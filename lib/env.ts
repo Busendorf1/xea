@@ -66,7 +66,24 @@ export const getEnv = () => {
       NODE_ENV: (process.env.NODE_ENV as "development" | "test" | "production") || "development",
     };
   }
-  return result.data;
+
+  const parsedData = result.data;
+
+  if (parsedData.NODE_ENV === "production") {
+    const isWeakSecret =
+      !parsedData.AUTH0_SECRET ||
+      parsedData.AUTH0_SECRET.length < 32 ||
+      parsedData.AUTH0_SECRET === "xea-default-auth0-secret-key-32ch" ||
+      parsedData.AUTH0_SECRET === "default-development-secret-key-32-chars";
+
+    if (isWeakSecret) {
+      console.error(
+        "🚨 CRITICAL SECURITY ERROR: AUTH0_SECRET is set to an insecure default placeholder or is under 32 characters in production. Generate a secure random 32+ char key!"
+      );
+    }
+  }
+
+  return parsedData;
 };
 
 export const env = getEnv();

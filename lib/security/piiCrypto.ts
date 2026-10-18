@@ -10,9 +10,22 @@ function getMasterEncryptionKey(): Buffer {
   const rawSecret =
     process.env.PII_ENCRYPTION_KEY ||
     process.env.EARN_TOKEN_SECRET ||
-    env.AUTH0_SECRET ||
     process.env.AUTH0_SECRET ||
-    "xea-default-auth0-secret-key-32ch";
+    env.AUTH0_SECRET;
+
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production" ||
+    process.env.RENDER === "true";
+
+  if (!rawSecret || rawSecret === "xea-default-auth0-secret-key-32ch") {
+    if (isProduction) {
+      throw new Error(
+        "🚨 CRITICAL SECURITY ERROR: PII_ENCRYPTION_KEY, EARN_TOKEN_SECRET, or AUTH0_SECRET must be configured in production. Default fallback keys are strictly rejected."
+      );
+    }
+    return crypto.createHash("sha256").update("xea-aes256gcm:xea-default-auth0-secret-key-32ch").digest();
+  }
 
   return crypto.createHash("sha256").update(`xea-aes256gcm:${rawSecret}`).digest();
 }

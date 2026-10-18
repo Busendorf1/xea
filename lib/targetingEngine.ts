@@ -64,12 +64,25 @@ export interface TargetingMatchResult {
  * Ensures SSR (getUserProfileForDashboard), /api/feed, and /api/earn always use the exact same key.
  */
 export function getEarnTokenSecret(): string {
-  return (
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production" ||
+    process.env.RENDER === "true";
+
+  const secret =
     process.env.EARN_TOKEN_SECRET ||
     env.AUTH0_SECRET ||
-    process.env.AUTH0_SECRET ||
-    (process.env.NODE_ENV === "production" ? "" : "xea-default-auth0-secret-key-32ch")
-  );
+    process.env.AUTH0_SECRET;
+
+  if (!secret || secret === "xea-default-auth0-secret-key-32ch") {
+    if (isProduction) {
+      console.error("🚨 CRITICAL: Insecure default or missing earn token secret in production environment!");
+      return "";
+    }
+    return "xea-default-auth0-secret-key-32ch";
+  }
+
+  return secret;
 }
 
 /**

@@ -58,12 +58,17 @@ export default function CookiesPage() {
               <strong>Security Tokens:</strong> Session cookies that authenticate API requests and prevent automated
               bot injection.
             </li>
+            <li className={styles.listItem}>
+              <strong>Real-Time Telemetry &amp; Server-Sent Events (SSE):</strong> Persistent, multiplexed HTTP streaming
+              connections (`/api/user/live-balance`) that securely broadcast wallet balance adjustments and notification updates
+              in real time without third-party tracking cookies.
+            </li>
           </ul>
 
-          <h3 className={styles.subheading}>B. Impression Tracking &amp; Verification Tokens</h3>
+          <h3 className={styles.subheading}>B. Impression Tracking, Verification &amp; Geographic Tokens</h3>
           <p>
             Because Paayh operates an attention-based digital ecosystem, we utilize lightweight, encrypted browser tokens
-            to accurately measure engagement:
+            to accurately measure engagement and calibrate localized delivery:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
@@ -73,6 +78,11 @@ export default function CookiesPage() {
             <li className={styles.listItem}>
               <strong>Challenge Verification State:</strong> Ephemeral tokens that record human verification interactions
               (such as swipe, hold, or tap) before unlocking monetization rewards.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Geo-Locality Caching Tokens (`paayh_location_calibrated`):</strong> Session-level browser tokens that
+              record when device GPS/IP location has been checked for the active session, preventing redundant background
+              re-queries on page transitions and conserving your mobile device battery and network bandwidth.
             </li>
           </ul>
 

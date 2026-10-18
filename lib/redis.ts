@@ -69,9 +69,62 @@ function createRawRedisClient(): Redis {
 
   client.on("connect", () => {
     console.log("⚡ Upstash Redis connected successfully");
+    enforceRedisMemoryPolicy(client).catch(() => {});
   });
 
   return client;
+}
+
+/**
+ * Verifies and configures Redis memory policy on boot/reconnect.
+ * Enforces 'volatile-lru' or 'noeviction' (never 'allkeys-lru') so persistent
+ * financial audit keys and idempotency locks are NEVER evicted under memory pressure.
+ */
+export async function enforceRedisMemoryPolicy(client: Redis): Promise<void> {
+  try {
+    const rawPolicy = await client.config("GET", "maxmemory-policy");
+    let currentPolicy = "";
+    if (Array.isArray(rawPolicy) && rawPolicy.length >= 2) {
+      currentPolicy = String(rawPolicy[1]).toLowerCase();
+    } else if (rawPolicy && typeof rawPolicy === "object") {
+      currentPolicy = String((rawPolicy as any)["maxmemory-policy"] || "").toLowerCase();
+    }
+
+    if (
+      currentPolicy === "allkeys-lru" ||
+      currentPolicy === "allkeys-random" ||
+      currentPolicy === "allkeys-lfu"
+    ) {
+      console.warn(
+        `⚠️ Redis maxmemory-policy is currently '${currentPolicy}'. In fintech applications, allkeys-* policies risk evicting financial locks! Attempting to harden to 'volatile-lru'...`
+      );
+      try {
+        await client.config("SET", "maxmemory-policy", "volatile-lru");
+        console.log("🛡️ Successfully hardened Redis maxmemory-policy to 'volatile-lru'. Persistent financial audit and idempotency keys are now exempt from eviction.");
+        return;
+      } catch (cfgSetErr: any) {
+        console.error(
+          `🚨 CRITICAL REDIS ARCHITECTURE ALERT: Redis server is using '${currentPolicy}', which evicts ALL keys! ` +
+          `CONFIG SET was restricted by provider: ${cfgSetErr?.message || cfgSetErr}. ` +
+          `Please configure maxmemory-policy to 'volatile-lru' or 'noeviction' in your Redis dashboard immediately!`
+        );
+      }
+    } else if (currentPolicy === "volatile-lru" || currentPolicy === "noeviction") {
+      console.log(`✅ Redis maxmemory-policy verified as '${currentPolicy}'. Persistent financial and audit keys are exempt from eviction.`);
+    }
+  } catch (err: any) {
+    const msg = String(err?.message || "");
+    if (
+      msg.includes("unknown command") ||
+      msg.includes("ERR unknown") ||
+      msg.includes("NOPERM") ||
+      msg.includes("disabled")
+    ) {
+      // Managed Redis providers (like Upstash) restrict CONFIG command by default
+      return;
+    }
+    console.warn("ℹ️ Redis memory policy inspection note:", err?.message || err);
+  }
 }
 
 const rawClient: Redis = globalForRedis.redisRaw ?? createRawRedisClient();

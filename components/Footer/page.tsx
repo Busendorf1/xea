@@ -1,11 +1,7 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
 import styles from "./page.module.css";
-import { newsletterSchema } from "@/lib/validationSchemas";
-import { Info } from "lucide-react";
-import { showAppleAlert } from "@/components/ui/AppleAlert";
+import NewsletterForm from "./NewsletterForm";
+import FooterFaq from "./FooterFaq";
 
 const faqs = [
   {
@@ -41,13 +37,6 @@ const faqs = [
 ];
 
 export default function Footer() {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
-
-  const toggleFAQ = (index: number) => {
-    setOpenIndex((prev) => (prev === index ? null : index));
-  };
-
   return (
     <footer className={styles.footer}>
       <div className={styles.grid}>
@@ -56,26 +45,12 @@ export default function Footer() {
           <h4 className={styles.heading}>Our Services</h4>
           <ul className={styles.linkList}>
             <li>
-              <Link
-                href="/logged-in"
-                className={styles.link}
-                onClick={() => {
-                  sessionStorage.setItem("paayh_active_tab", "adPage");
-                  if (typeof window !== "undefined") window.dispatchEvent(new Event("paayh_tab_change"));
-                }}
-              >
+              <Link href="/logged-in" className={styles.link}>
                 Advert
               </Link>
             </li>
             <li>
-              <Link
-                href="/logged-in"
-                className={styles.link}
-                onClick={() => {
-                  sessionStorage.setItem("paayh_active_tab", "monetize");
-                  if (typeof window !== "undefined") window.dispatchEvent(new Event("paayh_tab_change"));
-                }}
-              >
+              <Link href="/logged-in" className={styles.link}>
                 Monetization
               </Link>
             </li>
@@ -85,25 +60,10 @@ export default function Footer() {
 
         {/* FAQ - EXPANDABLE */}
         <div className={styles.section}>
-          <h4 className={styles.heading}> <Link href="/faq" className={styles.link}>Frequently Asked Questions</Link></h4>
-          <ul className={styles.linkList}>
-            {faqs.map((faq, index) => (
-              <li key={index} className={styles.faqItem}>
-                <button
-                  onClick={() => toggleFAQ(index)}
-                  className={styles.faqQuestion}
-                  aria-expanded={openIndex === index}
-                >
-                  {faq.question}
-                </button>
-                {openIndex === index && (
-                  <div className={styles.faqAnswer}>
-                    {faq.answer}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          <h4 className={styles.heading}>
+            <Link href="/faq" className={styles.link}>Frequently Asked Questions</Link>
+          </h4>
+          <FooterFaq faqs={faqs} />
         </div>
 
         {/* POLICIES */}
@@ -139,65 +99,7 @@ export default function Footer() {
           <p className={styles.newsletterText}>
             Subscribe to receive product updates, earning opportunities, and platform announcements.
           </p>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (newsletterSubmitting) return;
-              const form = e.currentTarget;
-              const emailInput = form.elements.namedItem("newsletterEmail") as HTMLInputElement;
-              const rawEmail = emailInput?.value || "";
-
-              const parseResult = newsletterSchema.safeParse({ email: rawEmail });
-              if (!parseResult.success) {
-                showAppleAlert(parseResult.error.issues[0]?.message || "Please enter a valid email address.", "warning");
-                return;
-              }
-
-              setNewsletterSubmitting(true);
-              try {
-                const res = await fetch("/api/newsletter/subscribe", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ email: parseResult.data.email }),
-                });
-                const data = await res.json();
-                if (data.error) {
-                  showAppleAlert(data.error, "error");
-                } else if (data.message) {
-                  showAppleAlert(data.message, "success", "Subscribed");
-                  if (emailInput) emailInput.value = "";
-                }
-              } catch {
-                showAppleAlert("Subscribed to newsletter updates.", "success", "Subscribed");
-              } finally {
-                setNewsletterSubmitting(false);
-              }
-            }}
-            className={styles.newsletterForm}
-          >
-            <input
-              type="email"
-              name="newsletterEmail"
-              placeholder="Enter your email"
-              required
-              disabled={newsletterSubmitting}
-              className={styles.newsletterInput}
-            />
-            <button
-              type="submit"
-              disabled={newsletterSubmitting}
-              className={styles.newsletterBtn}
-            >
-              {newsletterSubmitting ? "Subscribing..." : "Subscribe"}
-            </button>
-
-            <div className={styles.newsletterPrivacy}>
-              <Info size={14} color="#6366f1" className={styles.newsletterPrivacyIcon} />
-              <span>
-                <strong>Privacy Notice:</strong> Subscribing constitutes sharing your email.
-                </span>
-            </div>
-          </form>
+          <NewsletterForm />
         </div>
       </div>
 

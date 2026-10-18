@@ -47,11 +47,22 @@ export default function TermsPage() {
             and non transferable without Paayh&apos;s express prior written consent.
           </p>
           <p>
-            <strong>1.4 GPS Location Verification During Registration:</strong> To support authentic geographic audience
-            targeting for local businesses, Paayh requests browser device location permissions during profile setup.
-            Your coordinates auto detect your country, state, and city, locking these fields as read only so users cannot
-            manually type in arbitrary jurisdictions. This ensures verified location attribution for commercial campaigns.
+            <strong>1.4 Essential Location Processing, Travel Recalibration &amp; Mandatory Service Condition:</strong> Geographic
+            location processing (via device GPS or network IP geolocation) is an <strong>essential, non-negotiable core feature</strong> of
+            the Paayh ecosystem. We require location data to accurately deliver physically relevant community content, serve local neighborhood
+            and business needs, protect commercial advertisers from wasted or misattributed ad spend, and verify authentic audience focus.
+            To achieve this, Paayh requests device location permissions during profile setup and periodically reverifies locality (once daily)
+            during authenticated sessions. Your detected coordinates establish your country, state, and city, locking these geographic attributes
+            as read-only to eliminate manual fabrication. When you relocate or travel to another city, state, or country, the platform
+            automatically recalibrates your geographic profile, dynamically adapting your feed queue to deliver community updates, regional events,
+            and merchant offers local to your physical presence. Listeners agree not to employ virtual private networks (VPNs), proxies, or GPS
+            spoofing applications to misrepresent geographic location; doing so constitutes grounds for immediate account suspension and incentive forfeiture.
           </p>
+          <div className={`${styles.noticeBox} ${styles.noticeBoxMargin}`}>
+            <strong>MANDATORY LOCATION NOTICE:</strong> Because geographic localization is fundamental to our content delivery, community service,
+            and advertiser matching architecture, <strong>if you are not comfortable with or do not agree to the collection, processing, and
+            periodic recalibration of your geographic location, you should not access the Services and must discontinue using Paayh immediately.</strong>
+          </div>
         </section>
 
         {/* SECTION 2 */}
@@ -191,6 +202,22 @@ export default function TermsPage() {
               <strong>Flexible Balance Withdrawals:</strong> Users may withdraw any amount from ₦10,000 up to their full
               available balance (including withdrawing 100% of accumulated incentives down to ₦0.00). Requested amounts are
               deducted from the wallet balance, leaving any remainder preserved for future redemptions.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Regulatory Third-Party Gateway Transfer Fees &amp; Net Settlement:</strong> All payouts and withdrawals
+              are disbursed via licensed, regulated payment infrastructure partners (including Paystack Payments Limited and
+              Korapay Technologies Limited). Interbank electronic fund transfer charges imposed by payment processors under prevailing
+              Central Bank of Nigeria (CBN) and NIBSS electronic transfer fee regulations (plus statutory 7.5% Value Added Tax) are
+              deducted directly from the requested withdrawal amount at the point of disbursement. Current statutory transfer fee
+              tiers are: <strong>₦10.75</strong> for withdrawals up to ₦5,000; <strong>₦26.88</strong> for withdrawals between
+              ₦5,001 and ₦50,000; and <strong>₦53.75</strong> for withdrawals exceeding ₦50,000 (or equivalent processor contract
+              tariffs in foreign jurisdictions). The gross amount is debited from your dashboard balance, and the exact net remainder
+              is credited to your bank account with zero platform markup. Paayh retains zero portion of gateway transfer fees.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Dual-Gateway Settlement Resilience:</strong> To guarantee high availability and protect against gateway
+              downtime or network switch outages, Paayh operates automated multi-gateway failover routing across Paystack and Korapay.
+              Disbursements may dynamically route through the most stable available rail without altering your net disbursement entitlement.
             </li>
             <li className={styles.listItem}>
               <strong>Phone Verification &amp; Account Security:</strong> To prevent fraud and ensure authorized disbursements,

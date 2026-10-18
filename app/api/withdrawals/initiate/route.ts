@@ -167,8 +167,9 @@ export async function POST(req: NextRequest) {
     // Generate unique transaction reference
     const reference = `trsf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    // Payout Fee Breakdown: User is responsible for Kora/interbank transfer charges (₦35)
-    const WITHDRAWAL_TRANSFER_FEE = 35;
+    // Dynamic Gateway Payout Fee Breakdown: User is responsible for active gateway (Paystack/Kora) interbank charges
+    const activeGateway = PayoutProvider.getActiveGateway();
+    const WITHDRAWAL_TRANSFER_FEE = PayoutProvider.calculateTransferFee(withdrawAmount, activeGateway);
     const netDisbursementAmount = Math.max(0, withdrawAmount - WITHDRAWAL_TRANSFER_FEE);
 
     // Record processing withdrawal in payments ledger

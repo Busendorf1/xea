@@ -253,5 +253,47 @@ export class PayoutProvider {
       };
     }
   }
+
+  /**
+   * Dynamically calculates the exact interbank payout charge levied by the active gateway
+   * so the transaction cost is passed transparently to the user instead of a fixed ₦35 fee.
+   *
+   * Rate Tiers (CBN / NIBSS interbank regulatory schedule + 7.5% VAT):
+   * - Paystack:
+   *   <= ₦5,000        -> ₦10 + 7.5% VAT = ₦10.75
+   *   ₦5,001 - ₦50,000 -> ₦25 + 7.5% VAT = ₦26.88
+   *   > ₦50,000        -> ₦50 + 7.5% VAT = ₦53.75
+   * - Kora:
+   *   <= ₦5,000        -> ₦15.00
+   *   ₦5,001 - ₦50,000 -> ₦25.00
+   *   > ₦50,000        -> ₦35.00 (or custom configured KORA_TRANSFER_FEE)
+   */
+  static calculateTransferFee(amount: number, provider?: PayoutGateway): number {
+    const gateway = provider || this.getActiveGateway();
+    const parsedAmount = Math.max(0, Number(amount) || 0);
+
+    if (gateway === "paystack") {
+      if (parsedAmount <= 5000) {
+        return 10.75;
+      } else if (parsedAmount <= 50000) {
+        return 26.88;
+      } else {
+        return 53.75;
+      }
+    }
+
+    const envKoraFee = parseFloat(process.env.KORA_TRANSFER_FEE || "");
+    if (!isNaN(envKoraFee) && envKoraFee >= 0) {
+      return envKoraFee;
+    }
+
+    if (parsedAmount <= 5000) {
+      return 15;
+    } else if (parsedAmount <= 50000) {
+      return 25;
+    } else {
+      return 35;
+    }
+  }
 }
 

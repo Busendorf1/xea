@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useLocationRecalibration } from "@/hooks/useLocationRecalibration";
 import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
 import myAdsStyles from "../myads/page.module.css";
@@ -99,6 +100,14 @@ export default function LoggedInClientContainer({
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTab]));
+
+  // Seamless location recalibration on login / session start (GPS if granted, IP fallback if blocked)
+  useLocationRecalibration({
+    userCountry: user?.country,
+    userState: user?.state,
+    userLocation: user?.location,
+    enabled: !!(email || session?.user?.email),
+  });
 
   const checkAndSetTab = () => {
     if (typeof window === "undefined") return;

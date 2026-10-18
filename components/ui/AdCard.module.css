@@ -1919,14 +1919,14 @@ img.avatarImg {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
+  padding: 24px 16px;
   box-sizing: border-box;
   overflow: hidden;
 }
 
 @media (max-width: 768px) {
   .lightboxStage {
-    padding: 0;
+    padding: 20px 12px;
   }
 }
 
@@ -2151,13 +2151,40 @@ img.avatarImg {
 }
 
 .textReaderContent {
-  font-size: 1.03rem;
-  line-height: 1.72;
+  font-size: 1.05rem;
+  line-height: 1.82;
   color: var(--foreground, #f8fafc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
-  letter-spacing: 0.01em;
+  padding-top: 36px;
+  padding-bottom: 56px;
+  letter-spacing: 0.012em;
+}
+
+@media (max-width: 768px) {
+  .textReaderContent {
+    font-size: 1.02rem;
+    line-height: 1.76;
+    padding-top: 28px;
+    padding-bottom: 44px;
+  }
+}
+
+.lightboxBottomInner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.lightboxCaption {
+  font-size: 0.98rem;
+  line-height: 1.68;
+  color: #ffffff;
+  padding: 20px 0 28px 0;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .textReaderDialog .lightboxBottomBar {
