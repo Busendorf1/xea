@@ -229,9 +229,41 @@ function AdCard({
   const [isPreloadWarm, setIsPreloadWarm] = useState(false);
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isLightboxClosing, setIsLightboxClosing] = useState(false);
   const [showLightboxMenu, setShowLightboxMenu] = useState(false);
   const [isTextReaderOpen, setIsTextReaderOpen] = useState(false);
+  const [isTextReaderClosing, setIsTextReaderClosing] = useState(false);
   const [showReaderMenu, setShowReaderMenu] = useState(false);
+
+  const closeLightbox = useCallback(() => {
+    if (isLightboxClosing) return;
+    setIsLightboxClosing(true);
+    setTimeout(() => {
+      setLightboxIndex(null);
+      setIsLightboxClosing(false);
+      setShowLightboxMenu(false);
+    }, 220);
+  }, [isLightboxClosing]);
+
+  const openLightbox = useCallback((idx: number) => {
+    setIsLightboxClosing(false);
+    setLightboxIndex(idx);
+  }, []);
+
+  const closeTextReader = useCallback(() => {
+    if (isTextReaderClosing) return;
+    setIsTextReaderClosing(true);
+    setTimeout(() => {
+      setIsTextReaderOpen(false);
+      setIsTextReaderClosing(false);
+      setShowReaderMenu(false);
+    }, 220);
+  }, [isTextReaderClosing]);
+
+  const openTextReader = useCallback(() => {
+    setIsTextReaderClosing(false);
+    setIsTextReaderOpen(true);
+  }, []);
   const [interactionSecondsLeft, setInteractionSecondsLeft] = useState(16);
   const [interactionStage, setInteractionStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
   const lightboxTouchStartXRef = useRef<number | null>(null);
@@ -275,13 +307,21 @@ function AdCard({
   }, [ad.ad_type, formattedAdContent.length, isTextOnlyAd, isLongTextAd]);
 
   useEffect(() => {
+    if (lightboxIndex !== null || isTextReaderOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [lightboxIndex, isTextReaderOpen]);
+
+  useEffect(() => {
     if (lightboxIndex === null && !isTextReaderOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setLightboxIndex(null);
-        setShowLightboxMenu(false);
-        setIsTextReaderOpen(false);
-        setShowReaderMenu(false);
+        if (lightboxIndex !== null) closeLightbox();
+        if (isTextReaderOpen) closeTextReader();
       } else if (lightboxIndex !== null && e.key === "ArrowLeft" && mediaUrls.length > 1) {
         setLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
       } else if (lightboxIndex !== null && e.key === "ArrowRight" && mediaUrls.length > 1) {
@@ -290,7 +330,7 @@ function AdCard({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lightboxIndex, isTextReaderOpen, mediaUrls.length]);
+  }, [lightboxIndex, isTextReaderOpen, mediaUrls.length, closeLightbox, closeTextReader]);
 
   const handleDismiss = useCallback((adId: string) => {
     setLightboxIndex(null);
@@ -623,15 +663,18 @@ function AdCard({
         {/* Content Message (if NOT product sales) */}
         {ad.ad_type !== "product_sales" && (
           <p
-            className={`${styles.adText} ${canOpenTextReader ? styles.adTextClickable : ""}`}
+            className={`${styles.adText} ${canOpenTextReader || mediaUrls.length > 0 ? styles.adTextClickable : ""}`}
             onClick={(e) => {
               if (canOpenTextReader) {
                 e.stopPropagation();
-                setIsTextReaderOpen(true);
+                openTextReader();
                 handleCtaClick("read_more");
+              } else if (mediaUrls.length > 0) {
+                e.stopPropagation();
+                openLightbox(0);
               }
             }}
-            title={canOpenTextReader ? "Click to read full post" : undefined}
+            title={canOpenTextReader ? "Click to read full post" : mediaUrls.length > 0 ? "Click to view media" : undefined}
           >
             {formattedAdContent.length > 220 && !isExpanded
               ? `${formattedAdContent.slice(0, 220)}...`
@@ -642,7 +685,7 @@ function AdCard({
                 className={styles.inlineReadMoreBtn}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsTextReaderOpen(true);
+                  openTextReader();
                   handleCtaClick("read_more");
                 }}
               >
@@ -660,7 +703,7 @@ function AdCard({
           isPreloadWarm={isPreloadWarm}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
-          onMediaClick={(idx) => setLightboxIndex(idx)}
+          onMediaClick={(idx) => openLightbox(idx)}
         />
 
         {/* Action bar */}
@@ -943,17 +986,14 @@ function AdCard({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className={styles.lightboxOverlay}
+            className={`${styles.lightboxOverlay} ${isLightboxClosing ? styles.lightboxOverlayExiting : ""}`}
             role="dialog"
             aria-modal="true"
             aria-label="Media view"
-            onClick={() => {
-              setLightboxIndex(null);
-              setShowLightboxMenu(false);
-            }}
+            onClick={closeLightbox}
           >
             <div
-              className={styles.lightboxDialog}
+              className={`${styles.lightboxDialog} ${isLightboxClosing ? styles.lightboxDialogExiting : ""}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Top Bar: Back Arrow (Left) + Slide Counter (Center) + Report Ad Menu (Right) */}
@@ -961,10 +1001,7 @@ function AdCard({
                 <button
                   type="button"
                   className={styles.lightboxIconBtn}
-                  onClick={() => {
-                    setLightboxIndex(null);
-                    setShowLightboxMenu(false);
-                  }}
+                  onClick={closeLightbox}
                   aria-label="Back to feed"
                   title="Back"
                 >
@@ -1220,17 +1257,14 @@ function AdCard({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className={styles.lightboxOverlay}
+            className={`${styles.lightboxOverlay} ${isTextReaderClosing ? styles.lightboxOverlayExiting : ""}`}
             role="dialog"
             aria-modal="true"
             aria-label="Full post reader"
-            onClick={() => {
-              setIsTextReaderOpen(false);
-              setShowReaderMenu(false);
-            }}
+            onClick={closeTextReader}
           >
             <div
-              className={styles.textReaderDialog}
+              className={`${styles.textReaderDialog} ${isTextReaderClosing ? styles.textReaderDialogExiting : ""}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Top Bar: Back Arrow (Left) + Word Count / Read Time (Center) + Report Ad Menu (Right) */}
@@ -1238,10 +1272,7 @@ function AdCard({
                 <button
                   type="button"
                   className={styles.lightboxIconBtn}
-                  onClick={() => {
-                    setIsTextReaderOpen(false);
-                    setShowReaderMenu(false);
-                  }}
+                  onClick={closeTextReader}
                   aria-label="Back to feed"
                   title="Back"
                 >

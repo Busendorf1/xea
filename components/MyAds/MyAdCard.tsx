@@ -180,7 +180,7 @@ function MyAdCard({
   ratedAdIds,
   timeNow,
 }: MyAdCardProps) {
-  const rawMediaString = ad.ad_media || ad.ad_media_url || "";
+  const rawMediaString = ad.ad_media || ad.ad_media_url || (ad as any).image_url || (ad as any).media_url || "";
   const isVideoMedia = ad.ad_media_type === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(rawMediaString);
   const mediaType = isVideoMedia ? "video" : "image";
 

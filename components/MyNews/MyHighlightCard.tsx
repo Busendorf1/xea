@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/currency";
 import { HighlightItem, getHighlightScheduleInfo } from "./types";
+import MultimediaCarousel from "../MyAds/MultimediaCarousel";
 import styles from "../MyAds/page.module.css";
 
 interface MyHighlightCardProps {
@@ -88,22 +89,10 @@ function MyHighlightCard({
       <div className={styles.rowBody}>
         {/* Cover Image / Video Thumbnail Column */}
         <div className={styles.mediaCol}>
-          {isVideoMedia ? (
-            <video src={rawMediaUrl} controls className={styles.mediaVideo} />
-          ) : (
-            <img
-              src={
-                rawMediaUrl ||
-                "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60"
-              }
-              alt={item.title || "Highlight cover"}
-              className={styles.adImgElement}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60";
-              }}
-            />
-          )}
+          <MultimediaCarousel
+            rawMedia={rawMediaUrl || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60"}
+            adMediaType={isVideoMedia ? "video" : "image"}
+          />
         </div>
 
         {/* Main Content & Schedule Column */}

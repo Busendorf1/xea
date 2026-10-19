@@ -1821,7 +1821,13 @@ img.avatarImg {
   padding: 24px;
   box-sizing: border-box;
   overflow: hidden;
-  animation: fadeInDropdown 0.16s ease-out;
+  animation: lightboxFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, backdrop-filter;
+}
+
+.lightboxOverlayExiting {
+  animation: lightboxFadeOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
+  pointer-events: none;
 }
 
 .lightboxDialog {
@@ -1836,6 +1842,52 @@ img.avatarImg {
   justify-content: space-between;
   overflow: hidden;
   box-sizing: border-box;
+  animation: lightboxDialogZoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.lightboxDialogExiting {
+  animation: lightboxDialogZoomOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
+}
+
+@keyframes lightboxFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lightboxFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lightboxDialogZoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes lightboxDialogZoomOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
 }
 
 @media (max-width: 768px) {
@@ -1852,6 +1904,11 @@ img.avatarImg {
     border-radius: 0;
     border: none;
     background-color: #000000;
+    animation: lightboxMobileIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .lightboxDialogExiting {
+    animation: lightboxMobileOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
   }
 }
 
@@ -1938,6 +1995,19 @@ img.avatarImg {
   object-fit: contain;
   border-radius: 4px;
   user-select: none;
+  animation: mediaStageIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes mediaStageIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .lightboxMediaVideo {
@@ -2080,6 +2150,12 @@ img.avatarImg {
   overflow: hidden;
   box-sizing: border-box;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  animation: lightboxDialogZoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.textReaderDialogExiting {
+  animation: lightboxDialogZoomOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
 }
 
 @media (max-width: 768px) {
@@ -2090,6 +2166,11 @@ img.avatarImg {
     max-height: 100dvh;
     border-radius: 0;
     border: none;
+    animation: lightboxMobileIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .textReaderDialogExiting {
+    animation: lightboxMobileOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
   }
 }
 
