@@ -99,6 +99,14 @@ export default function SendMoneyModal({
         const finalBal =
           typeof data.new_balance === "number" ? data.new_balance : Math.max(0, (user.balance || 0) - amountNum);
         onUpdateBalance(finalBal);
+
+        // Invalidate client-side statement cache and notify any mounted statement views
+        try {
+          sessionStorage.removeItem("paayh_statement_cache");
+          window.dispatchEvent(new CustomEvent("paayh:payment_verified", { detail: { reference: data.reference } }));
+          window.dispatchEvent(new CustomEvent("paayh:transfer_completed", { detail: { reference: data.reference } }));
+        } catch {}
+
         onSuccess({
           amount: amountNum,
           recipientEmail: cleanEmail,

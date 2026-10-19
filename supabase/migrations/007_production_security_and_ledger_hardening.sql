@@ -448,6 +448,57 @@ BEGIN
     UPDATE public.users SET balance = v_new_sender_balance WHERE id = v_sender_user.id;
     UPDATE public.users SET balance = v_new_recipient_balance WHERE id = v_recipient_user.id;
 
+    -- Synchronize with public.payments ledger table for account statement
+    BEGIN
+        INSERT INTO public.payments (
+            user_email, reference, amount, status, type, description, metadata, created_at
+        ) VALUES (
+            v_sender_email,
+            COALESCE(p_idempotency_key, 'trf_' || gen_random_uuid()::text),
+            v_amount_naira,
+            'success',
+            'transfer_sent',
+            'Sent money to ' || v_recipient_email,
+            jsonb_build_object(
+                'recipient_email', v_recipient_email,
+                'recipientEmail', v_recipient_email,
+                'counterparty_email', v_recipient_email,
+                'amount', v_amount_naira,
+                'amount_kobo', p_amount_kobo,
+                'transfer_type', 'outbound',
+                'idempotency_key', p_idempotency_key
+            ),
+            NOW()
+        )
+        ON CONFLICT (reference) DO UPDATE
+        SET status = 'success';
+
+        INSERT INTO public.payments (
+            user_email, reference, amount, status, type, description, metadata, created_at
+        ) VALUES (
+            v_recipient_email,
+            COALESCE(p_idempotency_key, 'trf_' || gen_random_uuid()::text) || '_rcv',
+            v_amount_naira,
+            'success',
+            'transfer_received',
+            'Received money from ' || v_sender_email,
+            jsonb_build_object(
+                'sender_email', v_sender_email,
+                'senderEmail', v_sender_email,
+                'counterparty_email', v_sender_email,
+                'amount', v_amount_naira,
+                'amount_kobo', p_amount_kobo,
+                'transfer_type', 'inbound',
+                'idempotency_key', p_idempotency_key
+            ),
+            NOW()
+        )
+        ON CONFLICT (reference) DO UPDATE
+        SET status = 'success';
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+
     -- Best-effort sync with double-entry ledger tables if present
     BEGIN
         INSERT INTO public.ledger_accounts (user_id, user_email, balance_kobo)
@@ -466,7 +517,8 @@ BEGIN
             INSERT INTO public.ledger_entries (account_id, counterparty_account_id, entry_type, amount_kobo, reference)
             VALUES
                 (v_sender_acct, v_recipient_acct, 'DEBIT', p_amount_kobo, COALESCE(p_idempotency_key, gen_random_uuid()::text) || '_debit'),
-                (v_recipient_acct, v_sender_acct, 'CREDIT', p_amount_kobo, COALESCE(p_idempotency_key, gen_random_uuid()::text) || '_credit');
+                (v_recipient_acct, v_sender_acct, 'CREDIT', p_amount_kobo, COALESCE(p_idempotency_key, gen_random_uuid()::text) || '_credit')
+            ON CONFLICT (reference) DO NOTHING;
         END IF;
     EXCEPTION WHEN OTHERS THEN
         -- Do not abort user balance transfer if optional ledger_accounts schema differs
@@ -477,7 +529,8 @@ BEGIN
         'success', true,
         'new_sender_balance', v_new_sender_balance,
         'new_recipient_balance', v_new_recipient_balance,
-        'amount_naira', v_amount_naira
+        'amount_naira', v_amount_naira,
+        'reference', COALESCE(p_idempotency_key, 'trf_' || gen_random_uuid()::text)
     );
 END;
 $$;

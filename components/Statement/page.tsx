@@ -32,6 +32,8 @@ interface Transaction {
   created_at: string;
 }
 
+export type CategoryFilter = "all" | "pending_withdrawal" | "transfer_sent" | "transfer_received" | "withdrawn";
+
 function readStatementCache(): {
   profile: any | null;
   payments: Transaction[];
@@ -62,6 +64,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
   const [withdrawals, setWithdrawals] = useState<Transaction[]>(initialCache.withdrawals);
   const [loading, setLoading] = useState<boolean>(!initialCache.hasCachedLists);
   const [activeTab, setActiveTab] = useState<"payments" | "withdrawals">("payments");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -176,13 +179,17 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
   useEffect(() => {
     fetchData();
 
-    const handlePaymentVerified = () => {
+    const handleStatementRefresh = () => {
       fetchData(true);
     };
 
-    window.addEventListener("paayh:payment_verified", handlePaymentVerified);
+    window.addEventListener("paayh:payment_verified", handleStatementRefresh);
+    window.addEventListener("paayh:transfer_completed", handleStatementRefresh);
+    window.addEventListener("paayh:balance_updated", handleStatementRefresh);
     return () => {
-      window.removeEventListener("paayh:payment_verified", handlePaymentVerified);
+      window.removeEventListener("paayh:payment_verified", handleStatementRefresh);
+      window.removeEventListener("paayh:transfer_completed", handleStatementRefresh);
+      window.removeEventListener("paayh:balance_updated", handleStatementRefresh);
     };
   }, []);
 
@@ -335,8 +342,29 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
   const normalizedSearch = searchTerm.toLowerCase();
   const normalizedStatus = statusFilter.toLowerCase();
 
+  const handleCardClick = (cat: CategoryFilter) => {
+    if (categoryFilter === cat) {
+      setCategoryFilter("all");
+    } else {
+      setCategoryFilter(cat);
+      if (cat === "pending_withdrawal" || cat === "withdrawn") {
+        setActiveTab("withdrawals");
+      } else if (cat === "transfer_sent" || cat === "transfer_received") {
+        setActiveTab("payments");
+      }
+    }
+    setCurrentPage(1);
+  };
+
   const filteredPayments = useMemo(() => {
     return payments.filter((tx) => {
+      // Category filter sieve
+      if (categoryFilter === "transfer_sent" && tx.type !== "transfer_sent") {
+        return false;
+      }
+      if (categoryFilter === "transfer_received" && tx.type !== "transfer_received") {
+        return false;
+      }
       const matchesSearch =
         !normalizedSearch ||
         tx.reference.toLowerCase().includes(normalizedSearch) ||
@@ -346,10 +374,22 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
         normalizedStatus === "all" || tx.status.toLowerCase() === normalizedStatus;
       return matchesSearch && matchesStatus;
     });
-  }, [payments, normalizedSearch, normalizedStatus]);
+  }, [payments, normalizedSearch, normalizedStatus, categoryFilter]);
 
   const filteredWithdrawals = useMemo(() => {
     return withdrawals.filter((tx) => {
+      const s = (tx.status || "").toLowerCase();
+      // Category filter sieve
+      if (categoryFilter === "pending_withdrawal") {
+        if (s !== "pending" && s !== "processing" && s !== "queued") {
+          return false;
+        }
+      }
+      if (categoryFilter === "withdrawn") {
+        if (s !== "success") {
+          return false;
+        }
+      }
       const matchesSearch =
         !normalizedSearch ||
         tx.reference.toLowerCase().includes(normalizedSearch) ||
@@ -359,7 +399,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
         normalizedStatus === "all" || tx.status.toLowerCase() === normalizedStatus;
       return matchesSearch && matchesStatus;
     });
-  }, [withdrawals, normalizedSearch, normalizedStatus]);
+  }, [withdrawals, normalizedSearch, normalizedStatus, categoryFilter]);
 
   // Pagination calculation
   const currentList = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
@@ -414,7 +454,16 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
       ) : (
         <>
           <div className={styles.statsGrid}>
-            <div className={`${styles.statCard} ${styles.statBalance}`}>
+            <div
+              className={`${styles.statCard} ${styles.statBalance} ${categoryFilter === "all" ? styles.statCardActive : ""}`}
+              onClick={() => {
+                setCategoryFilter("all");
+                setCurrentPage(1);
+              }}
+              role="button"
+              tabIndex={0}
+              title="Click to view all transactions"
+            >
               <div className={styles.statIconWrap}>
                 <Wallet size={18} color="var(--primary)" />
               </div>
@@ -424,7 +473,13 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
             </div>
 
-            <div className={`${styles.statCard} ${styles.statWithdraw}`}>
+            <div
+              className={`${styles.statCard} ${styles.statWithdraw} ${categoryFilter === "pending_withdrawal" ? styles.statCardActive : ""}`}
+              onClick={() => handleCardClick("pending_withdrawal")}
+              role="button"
+              tabIndex={0}
+              title="Click to sieve statement by Pending Withdrawals"
+            >
               <div className={styles.statIconWrap}>
                 <Clock size={18} color="var(--primary)" />
               </div>
@@ -434,7 +489,13 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
             </div>
 
-            <div className={`${styles.statCard} ${styles.statSent}`}>
+            <div
+              className={`${styles.statCard} ${styles.statSent} ${categoryFilter === "transfer_sent" ? styles.statCardActive : ""}`}
+              onClick={() => handleCardClick("transfer_sent")}
+              role="button"
+              tabIndex={0}
+              title="Click to sieve statement by Sent Money"
+            >
               <div className={styles.statIconWrap}>
                 <ArrowUpRight size={18} color="#ef4444" />
               </div>
@@ -444,7 +505,13 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
             </div>
 
-            <div className={`${styles.statCard} ${styles.statReceived}`}>
+            <div
+              className={`${styles.statCard} ${styles.statReceived} ${categoryFilter === "transfer_received" ? styles.statCardActive : ""}`}
+              onClick={() => handleCardClick("transfer_received")}
+              role="button"
+              tabIndex={0}
+              title="Click to sieve statement by Received Money"
+            >
               <div className={styles.statIconWrap}>
                 <ArrowDownLeft size={18} color="var(--primary)" />
               </div>
@@ -454,7 +521,13 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
             </div>
 
-            <div className={`${styles.statCard} ${styles.statWithdrawn}`}>
+            <div
+              className={`${styles.statCard} ${styles.statWithdrawn} ${categoryFilter === "withdrawn" ? styles.statCardActive : ""}`}
+              onClick={() => handleCardClick("withdrawn")}
+              role="button"
+              tabIndex={0}
+              title="Click to sieve statement by Completed Withdrawals"
+            >
               <div className={styles.statIconWrap}>
                 <Building size={18} color="var(--primary)" />
               </div>
@@ -471,6 +544,9 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                 className={`${styles.tabBtn} ${activeTab === "payments" ? styles.activeTabBtn : ""}`}
                 onClick={() => {
                   setActiveTab("payments");
+                  if (categoryFilter === "pending_withdrawal" || categoryFilter === "withdrawn") {
+                    setCategoryFilter("all");
+                  }
                   setCurrentPage(1);
                 }}
               >
@@ -480,6 +556,9 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                 className={`${styles.tabBtn} ${activeTab === "withdrawals" ? styles.activeTabBtn : ""}`}
                 onClick={() => {
                   setActiveTab("withdrawals");
+                  if (categoryFilter === "transfer_sent" || categoryFilter === "transfer_received") {
+                    setCategoryFilter("all");
+                  }
                   setCurrentPage(1);
                 }}
               >

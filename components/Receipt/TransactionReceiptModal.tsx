@@ -178,8 +178,13 @@ export default function TransactionReceiptModal({
   const destinationBank = meta.bankName || meta.bank_name;
   const destinationAccount = meta.accountNumber || meta.account_number;
   const destinationName = meta.accountName || meta.account_name || meta.recipientName;
-  const recipientEmail = meta.recipientEmail || meta.recipient_email;
-  const payerEmail = transaction.user_email || currentUserEmail || "Account Holder";
+  const isTransferReceived = transaction.type === "transfer_received";
+  const recipientEmail = isTransferReceived
+    ? (transaction.user_email || currentUserEmail || meta.recipientEmail || meta.recipient_email)
+    : (meta.recipientEmail || meta.recipient_email || meta.counterparty_email);
+  const payerEmail = isTransferReceived
+    ? (meta.sender_email || meta.senderEmail || meta.counterparty_email || "Paayh User")
+    : (transaction.user_email || currentUserEmail || "Account Holder");
 
   // Payment purpose / narration
   const purpose = transaction.description || meta.purpose || getTypeLabel(transaction.type);

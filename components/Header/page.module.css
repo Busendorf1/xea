@@ -450,15 +450,15 @@
 @media screen and (max-width: 768px) {
   .notificationDropdown {
     position: fixed !important;
-    top: max(16px, env(safe-area-inset-top, 16px)) !important;
+    top: calc(env(safe-area-inset-top, 0px) + 78px) !important;
     left: 12px !important;
     right: 12px !important;
     width: auto !important;
-    max-width: min(420px, calc(100vw - 24px)) !important;
-    margin: 0 auto !important;
+    max-width: min(390px, calc(100vw - 24px)) !important;
+    margin: 0 0 0 auto !important;
     bottom: auto !important;
     height: auto !important;
-    max-height: min(85dvh, calc(100dvh - 32px)) !important;
+    max-height: min(75dvh, calc(100dvh - 96px)) !important;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
     border-radius: 16px !important;
     z-index: 99999 !important;

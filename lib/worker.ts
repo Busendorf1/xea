@@ -481,7 +481,8 @@ hlsWorker.on("failed", (job, err) => {
 export const paymentWorker = new Worker<PaymentJobData>(
   "payment-processing",
   async (job) => {
-    const { type, senderEmail, recipientEmail, amount, reference } = job.data;
+    const { type, senderEmail, recipientEmail, amount, reference, amountKobo } = job.data;
+    const finalAmountKobo = amountKobo ?? Math.round(amount * 100);
     console.log(`💳 Payment Worker: Processing ${type} job [${reference}] from ${senderEmail} to ${recipientEmail}...`);
 
     const transferRef = reference || job.id || `tx_${Date.now()}`;
@@ -528,7 +529,51 @@ export const paymentWorker = new Worker<PaymentJobData>(
         }
 
         const formattedAmount = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(amount);
+        const senderRef = transferRef;
+        const recipientRef = `${transferRef}_rcv`;
+
+        // 2. Synchronize transfer records with payments ledger table for account statements
         await Promise.all([
+          supabaseAdmin.from("payments").upsert(
+            {
+              user_email: senderEmail.toLowerCase().trim(),
+              reference: senderRef,
+              amount,
+              status: "success",
+              type: "transfer_sent",
+              description: `Sent money to ${recipientEmail}`,
+              metadata: {
+                recipient_email: recipientEmail,
+                recipientEmail,
+                counterparty_email: recipientEmail,
+                amount,
+                amount_kobo: finalAmountKobo,
+                transfer_type: "outbound",
+                idempotency_key: transferRef,
+              },
+            },
+            { onConflict: "reference" }
+          ),
+          supabaseAdmin.from("payments").upsert(
+            {
+              user_email: recipientEmail.toLowerCase().trim(),
+              reference: recipientRef,
+              amount,
+              status: "success",
+              type: "transfer_received",
+              description: `Received money from ${senderEmail}`,
+              metadata: {
+                sender_email: senderEmail,
+                senderEmail,
+                counterparty_email: senderEmail,
+                amount,
+                amount_kobo: finalAmountKobo,
+                transfer_type: "inbound",
+                idempotency_key: transferRef,
+              },
+            },
+            { onConflict: "reference" }
+          ),
           supabaseAdmin.from("notifications").insert({
             user_email: senderEmail,
             title: "Money Sent",

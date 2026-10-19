@@ -225,6 +225,76 @@ export async function POST(req: NextRequest) {
         ? rpcResult.new_sender_balance
         : Math.max(0, balanceRes.currentBalance - amountNum);
 
+    // 8. Synchronize with Payments Ledger for Statements (Sender Debit & Recipient Credit)
+    const senderRef = reference;
+    const recipientRef = `${reference}_rcv`;
+
+    try {
+      await Promise.all([
+        supabaseAdmin.from("payments").upsert(
+          {
+            user_email: cleanSender,
+            reference: senderRef,
+            amount: amountNum,
+            status: "success",
+            type: "transfer_sent",
+            description: `Sent money to ${cleanRecipient}`,
+            metadata: {
+              recipient_email: cleanRecipient,
+              recipientEmail: cleanRecipient,
+              counterparty_email: cleanRecipient,
+              amount: amountNum,
+              amount_kobo: amountKobo,
+              transfer_type: "outbound",
+              idempotency_key: reference,
+            },
+          },
+          { onConflict: "reference" }
+        ),
+        supabaseAdmin.from("payments").upsert(
+          {
+            user_email: cleanRecipient,
+            reference: recipientRef,
+            amount: amountNum,
+            status: "success",
+            type: "transfer_received",
+            description: `Received money from ${cleanSender}`,
+            metadata: {
+              sender_email: cleanSender,
+              senderEmail: cleanSender,
+              counterparty_email: cleanSender,
+              amount: amountNum,
+              amount_kobo: amountKobo,
+              transfer_type: "inbound",
+              idempotency_key: reference,
+            },
+          },
+          { onConflict: "reference" }
+        ),
+      ]);
+    } catch (paymentSyncErr) {
+      console.warn("⚠️ Warning synchronizing payments table for transfer:", paymentSyncErr);
+    }
+
+    // Direct in-app notifications for immediate delivery
+    try {
+      const formattedNaira = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(amountNum);
+      await Promise.all([
+        supabaseAdmin.from("notifications").insert({
+          user_email: cleanSender,
+          title: "Money Sent",
+          message: `You successfully sent ${formattedNaira} to ${cleanRecipient}`,
+        }),
+        supabaseAdmin.from("notifications").insert({
+          user_email: cleanRecipient,
+          title: "Money Received",
+          message: `You received ${formattedNaira} from ${cleanSender}`,
+        }),
+      ]);
+    } catch (notifErr) {
+      console.warn("⚠️ Warning creating transfer notifications:", notifErr);
+    }
+
     // 9. Update Redis Unique Recipients Rate Limit Set
     try {
       const recipientSetKey = `ratelimit:send_money_recipients:${cleanSender}`;

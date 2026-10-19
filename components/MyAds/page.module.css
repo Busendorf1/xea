@@ -943,6 +943,16 @@
     font-size: 0.67rem;
     border-radius: 6px;
   }
+
+  .sortIcon {
+    left: 12px;
+  }
+
+  .sortSelect {
+    height: 36px;
+    padding: 0 14px 0 38px !important;
+    font-size: 0.78rem;
+  }
 }
 
 .boosterGroup {
@@ -1985,22 +1995,27 @@
 
 .sortIcon {
   position: absolute;
-  left: 10px;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--text-muted);
   pointer-events: none;
+  z-index: 2;
+  flex-shrink: 0;
 }
 
 .sortSelect {
-  height: 34px;
-  padding: 0 12px 0 28px;
+  height: 36px;
+  padding: 0 14px 0 36px;
   border-radius: 8px;
   border: 1px solid var(--card-border);
   background: var(--sidebar-bg);
   color: var(--foreground);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
   outline: none;
+  transition: border-color 0.15s ease;
 }
 
 .sortSelect:focus {

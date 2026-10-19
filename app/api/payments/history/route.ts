@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         if (cached) {
           return NextResponse.json(JSON.parse(cached), {
             headers: {
-              "Cache-Control": "private, max-age=5, stale-while-revalidate=60",
+              "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
               "X-Cache": "HIT",
             },
           });
@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
       } catch (redisErr) {
         console.warn("⚠️ Redis read warning in payments history:", redisErr);
       }
+    } else {
+      await redisConnection.del(cacheKey).catch(() => {});
     }
 
     // 2. High-Scale Index-Accelerated Database Read (~8-12ms)
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest) {
       const { data: allTransactions, error } = await supabaseReadOnly
         .from("payments")
         .select("id, reference, amount, status, type, description, metadata, created_at")
-        .eq("user_email", emailLower)
+        .or(`user_email.eq.${emailLower},user_email.ilike.${emailLower}`)
         .order("created_at", { ascending: false })
         .limit(300);
 
@@ -57,12 +59,12 @@ export async function GET(req: NextRequest) {
 
       const payload = { payments, withdrawals, all: rows };
 
-      // Cache unified statement in Redis for instant re-reads
-      redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 604800).catch(() => {});
+      // Cache unified statement in Redis with a 60-second TTL for fresh real-time reporting
+      redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 60).catch(() => {});
 
       return NextResponse.json(payload, {
         headers: {
-          "Cache-Control": "private, max-age=5, stale-while-revalidate=60",
+          "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
           "X-Cache": "MISS",
         },
       });
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest) {
     let query = supabaseReadOnly
       .from("payments")
       .select("id, reference, amount, status, type, description, metadata, created_at")
-      .eq("user_email", emailLower);
+      .or(`user_email.eq.${emailLower},user_email.ilike.${emailLower}`);
 
     if (typeParam === "withdrawals") {
       query = query.eq("type", "withdrawal");
@@ -90,12 +92,12 @@ export async function GET(req: NextRequest) {
 
     const payload = payments || [];
 
-    // Cache payload in Redis for fast re-reads
-    redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 604800).catch(() => {});
+    // Cache payload in Redis with 60-second TTL
+    redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 60).catch(() => {});
 
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "private, max-age=5, stale-while-revalidate=60",
+        "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
         "X-Cache": "MISS",
       },
     });

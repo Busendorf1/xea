@@ -107,13 +107,22 @@
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
 }
 
 .statCard:hover {
   transform: translateY(-2px);
   border-color: var(--primary);
   box-shadow: none !important;
+}
+
+.statCardActive {
+  border-color: var(--primary) !important;
+  background: var(--sidebar-bg) !important;
+  box-shadow: 0 0 0 1px var(--primary) !important;
 }
 
 .statIconWrap {
