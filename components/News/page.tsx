@@ -5,6 +5,8 @@ import Link from "next/link";
 import supabase from "@/lib/utils/db";
 import styles from "../News/page.module.css";
 import LocationSelector from "../LocationSelector";
+import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
+import { showAppleAlert } from "@/components/ui/AppleAlert";
 import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag, Info, Award } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import RollingCounter from "@/components/ui/RollingCounter";
@@ -15,7 +17,7 @@ import { newsSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 import { clearUserCampaignsCache } from "@/lib/campaignsClient";
-import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
+import NoticeModal, { NoticeModalData } from "@/components/MyAds/NoticeModal";
 
 interface Session {
   user?: {
@@ -33,20 +35,7 @@ import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
 const steps = ["Media", "Title", "Content", "Targeting", "Preview"];
 
-const getCategoryIcon = (category: string) => {
-  const lower = category.toLowerCase();
-  if (lower.includes("tech") || lower.includes("crypto") || lower.includes("software") || lower.includes("ai")) return <Cpu size={15} />;
-  if (lower.includes("politic") || lower.includes("gov") || lower.includes("law")) return <Landmark size={15} />;
-  if (lower.includes("entertain") || lower.includes("music") || lower.includes("movie") || lower.includes("art")) return <Film size={15} />;
-  if (lower.includes("sport") || lower.includes("fitness")) return <Trophy size={15} />;
-  if (lower.includes("business") || lower.includes("finance") || lower.includes("invest") || lower.includes("real estate")) return <Briefcase size={15} />;
-  if (lower.includes("edu") || lower.includes("career") || lower.includes("study")) return <GraduationCap size={15} />;
-  if (lower.includes("life") || lower.includes("fashion") || lower.includes("beauty")) return <Sparkles size={15} />;
-  if (lower.includes("health") || lower.includes("med") || lower.includes("wellness")) return <Activity size={15} />;
-  if (lower.includes("science")) return <Atom size={15} />;
-  if (lower.includes("food") || lower.includes("travel")) return <Globe size={15} />;
-  return <Tag size={15} />;
-};
+const getCategoryIcon = (_category: string) => null;
 
 export default function News({ session }: NewsProps) {
   const isAdmin = useMemo(() => {
@@ -69,6 +58,12 @@ export default function News({ session }: NewsProps) {
   const [bidPrice, setBidPrice] = useState(1500);
   const [highestBid, setHighestBid] = useState<number>(1000);
   
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isDeliveringActive, setIsDeliveringActive] = useState<boolean>(false);
+  const [originalTotalCost, setOriginalTotalCost] = useState<number>(0);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [noticeModal, setNoticeModal] = useState<NoticeModalData | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
@@ -77,6 +72,63 @@ export default function News({ session }: NewsProps) {
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [stepError, setStepError] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+
+  const loadHighlightForEdit = async (targetId: string) => {
+    if (!targetId) return;
+    try {
+      setEditingId(targetId);
+      setStep(0);
+      const res = await fetch(`/api/highlights/details?id=${targetId}`);
+      const data = await res.json();
+      if (data.success && data.highlight) {
+        const hl = data.highlight;
+        setIsDeliveringActive(!!data.isDeliveringActive);
+        setOriginalTotalCost(Number(data.originalTotalCost || 0));
+        setTitle(hl.title || "");
+        setContent(hl.content || "");
+        setInterest(hl.interest || "");
+        if (hl.country) setCountry(hl.country);
+        if (hl.state) setState(hl.state);
+        if (hl.province) setProvince(hl.province);
+        if (hl.campaign_days) setCampaignDays(hl.campaign_days);
+        if (hl.is_bidded) {
+          setIsBiddingEnabled(true);
+          if (hl.bid_price) setBidPrice(Number(hl.bid_price));
+        }
+        if (hl.custom_sponsor_name) setCustomSponsorName(hl.custom_sponsor_name);
+        if (hl.custom_sponsor_handle) setCustomSponsorHandle(hl.custom_sponsor_handle);
+        setIsAiContent(!!hl.is_ai_content);
+        if (hl.image_url) {
+          setExistingImageUrl(hl.image_url);
+          setMediaPreview(hl.image_url);
+        }
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("paayh_edit_news_id");
+      }
+    } catch (err) {
+      console.error("Error loading highlight for edit:", err);
+    }
+  };
+
+  useEffect(() => {
+    const storedEditId = typeof window !== "undefined" ? sessionStorage.getItem("paayh_edit_news_id") : null;
+    if (storedEditId) {
+      loadHighlightForEdit(storedEditId);
+    }
+
+    const handleEditNewsEvent = (e: any) => {
+      const newsId = e.detail?.newsId;
+      if (newsId) {
+        loadHighlightForEdit(newsId);
+      }
+    };
+
+    window.addEventListener("paayh_edit_news", handleEditNewsEvent);
+    return () => {
+      window.removeEventListener("paayh_edit_news", handleEditNewsEvent);
+    };
+  }, []);
 
   const [adAccountRestriction, setAdAccountRestriction] = useState<{
     restricted: boolean;
@@ -139,7 +191,7 @@ export default function News({ session }: NewsProps) {
         if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
         if (parsed.customSponsorName) setCustomSponsorName(parsed.customSponsorName);
         if (parsed.customSponsorHandle) setCustomSponsorHandle(parsed.customSponsorHandle);
-        if (parsed.mediaPreview) setMediaPreview(parsed.mediaPreview);
+        if (parsed.mediaPreview && !parsed.mediaPreview.startsWith("blob:") && parsed.mediaPreview.startsWith("http")) { setMediaPreview(parsed.mediaPreview); } else { setMediaPreview(null); }
       }
     } catch {}
   }, []);
@@ -162,7 +214,7 @@ export default function News({ session }: NewsProps) {
           isAiContent,
           customSponsorName,
           customSponsorHandle,
-          mediaPreview: mediaPreview && !mediaPreview.startsWith("data:") ? mediaPreview : null,
+          mediaPreview: mediaPreview && !mediaPreview.startsWith("blob:") && !mediaPreview.startsWith("data:") ? mediaPreview : null,
         };
         localStorage.setItem("paayh_draft_news_v1", JSON.stringify(draft));
       } catch {}
@@ -267,25 +319,38 @@ export default function News({ session }: NewsProps) {
       bidPrice: isBiddingEnabled ? bidPrice : undefined,
     });
 
-    if (!mediaFile || !validationResult.success) {
-      const errorMsg = !mediaFile
+    const hasCoverImage = !!mediaFile || !!existingImageUrl;
+    if (!hasCoverImage || !validationResult.success) {
+      const errorMsg = !hasCoverImage
         ? "Please select a cover image for your highlight."
         : validationResult.error?.issues[0]?.message || "Please check your highlight form fields.";
       setStepError(errorMsg);
       return;
     }
 
-    if (!isAdmin && paymentMethod === "wallet" && balance < totalCost) {
-      setStepError(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
+    if (!agreedToPolicy) {
+      setStepError("Please confirm your agreement to Paayh's Promotion Policies and Non-Refundable Terms.");
       return;
     }
 
-    if (isAdmin || totalCost <= 0) {
-      handleSubmit();
+    const currentRate = isBiddingEnabled && bidPrice ? Number(bidPrice) : 1000;
+    const currentTotalCost = currentRate * campaignDays;
+
+    if (isDeliveringActive && currentTotalCost < originalTotalCost) {
+      setNoticeModal({
+        title: "Budget Reduction Notice",
+        message: `You are reducing your highlight budget from ${globalFormatCurrency(originalTotalCost, country)} to ${globalFormatCurrency(currentTotalCost, country)}. Because advertising payments are strictly non-refundable, reducing your budget will not result in a refund of previously paid funds. Your highlight will continue delivering under the updated settings until complete, after which it will be archived.`,
+        confirmText: "Proceed",
+        cancelText: "Not Now",
+        onConfirm: async () => {
+          setNoticeModal(null);
+          await handleSubmit();
+        },
+      });
       return;
     }
 
-    setShowPaymentConfirmModal(true);
+    handleSubmit();
   };
 
   const handleSubmit = async () => {
@@ -305,16 +370,12 @@ export default function News({ session }: NewsProps) {
       bidPrice: isBiddingEnabled ? bidPrice : undefined,
     });
 
-    if (!mediaFile || !validationResult.success) {
-      const errorMsg = !mediaFile
+    const hasCoverImage = !!mediaFile || !!existingImageUrl;
+    if (!hasCoverImage || !validationResult.success) {
+      const errorMsg = !hasCoverImage
         ? "Please select a cover image for your highlight."
         : validationResult.error?.issues[0]?.message || "Please check your highlight form fields.";
       setStepError(errorMsg);
-      return;
-    }
-
-    if (!isAdmin && paymentMethod === "wallet" && balance < totalCost) {
-      setStepError(`Insufficient wallet balance. Your balance is ${formatCurrency(balance)} but this highlight costs ${formatCurrency(totalCost)}.`);
       return;
     }
 
@@ -322,104 +383,107 @@ export default function News({ session }: NewsProps) {
     let uploadedFilename: string | null = null;
 
     try {
-      const filename = `${Date.now()}_${mediaFile!.name.replace(
-        /[^\w.-]/g,
-        "_"
-      )}`;
-      
-      // 1080p Standard Dimension Cap: Scale down high-resolution images
-      let optimizedFile: Blob | File = mediaFile!;
-      if (mediaFile instanceof File) {
-        try {
-          optimizedFile = await resizeImageToMax1080p(mediaFile);
-        } catch (optErr) {
-          console.warn("Highlight cover 1080p optimization notice:", optErr);
+      let finalImageUrl = existingImageUrl;
+
+      if (mediaFile) {
+        const filename = `${Date.now()}_${mediaFile.name.replace(/[^\w.-]/g, "_")}`;
+        let optimizedFile: Blob | File = mediaFile;
+        if (mediaFile instanceof File) {
+          try {
+            optimizedFile = await resizeImageToMax1080p(mediaFile);
+          } catch (optErr) {
+            console.warn("Highlight cover 1080p optimization notice:", optErr);
+          }
         }
+
+        let fileData: Blob | File = optimizedFile;
+        try {
+          const buffer = await optimizedFile.arrayBuffer();
+          fileData = new Blob([buffer], { type: mediaFile.type || "image/jpeg" });
+        } catch (e) {
+          console.warn("ArrayBuffer fallback for news image:", e);
+        }
+
+        const { error: uploadError } = await supabase.storage
+          .from("news")
+          .upload(filename, fileData, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: mediaFile.type || "image/jpeg",
+          });
+
+        if (uploadError) throw uploadError;
+        uploadedFilename = filename;
+
+        const { data: urlData } = supabase.storage
+          .from("news")
+          .getPublicUrl(filename);
+
+        finalImageUrl = urlData.publicUrl;
       }
 
-      // Force WebKit / iOS to resolve full iCloud asset download into memory buffer
-      let fileData: Blob | File = optimizedFile;
-      try {
-        const buffer = await optimizedFile.arrayBuffer();
-        fileData = new Blob([buffer], { type: mediaFile!.type || "image/jpeg" });
-      } catch (e) {
-        console.warn("ArrayBuffer fallback for news image:", e);
+      if (!finalImageUrl) {
+        throw new Error("Missing highlight cover image.");
       }
 
-      const { error: uploadError } = await supabase.storage
-        .from("news")
-        .upload(filename, fileData, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: mediaFile!.type || "image/jpeg",
-        });
-
-      if (uploadError) throw uploadError;
-      uploadedFilename = filename;
-
-      const { data: urlData } = supabase.storage
-        .from("news")
-        .getPublicUrl(filename);
-        
-      let paymentUrl = "/api/payments/initialize";
-      if (isAdmin || paymentMethod === "wallet") {
-        paymentUrl = "/api/payments/wallet-pay";
-      }
-
-      const paymentResponse = await fetch(paymentUrl, {
+      const submitResponse = await fetch("/api/highlights/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "highlight",
-          amount: totalCost,
-          metadata: {
-            type: "highlight",
-            user_email: session.user.email?.toLowerCase(),
+          editingId,
+          highlightData: {
             title: capitalizeFirst(title),
             content: content.trim(),
-            image_url: urlData.publicUrl,
+            image_url: finalImageUrl,
             interest,
             country,
             state: state || null,
             province: province || null,
-            campaign_days: campaignDays,
-            is_bidded: isBiddingEnabled,
-            bid_price: isBiddingEnabled ? bidPrice : null,
-            is_admin_post: false,
-            custom_sponsor_name: customSponsorName || null,
-            custom_sponsor_handle: customSponsorHandle || null,
-            is_ai_content: isAiContent,
-            isAiContent: isAiContent,
+            campaignDays,
+            isBidded: isBiddingEnabled,
+            bidPrice: isBiddingEnabled ? bidPrice : null,
+            customSponsorName: customSponsorName || null,
+            customSponsorHandle: customSponsorHandle || null,
+            isAiContent,
           },
-          callbackUrl: `${window.location.origin}/logged-in`
-        })
+        }),
       });
 
-      const paymentData = await paymentResponse.json();
-      if (!paymentResponse.ok || (!paymentData.success && !paymentData.status)) {
-        throw new Error(paymentData.error || "Failed to process payment");
+      const submitData = await submitResponse.json();
+      if (!submitResponse.ok || submitData.error) {
+        setIsSubmitting(false);
+        const errMsg = submitData.error || "Failed to submit highlight for review.";
+        if (submitData.limitReached) {
+          setStepError(""); // Avoid duplicate message at the bottom
+          showAppleAlert(errMsg, "warning");
+        } else {
+          setStepError(errMsg);
+        }
+        return;
       }
 
-      sessionStorage.setItem("paayh_active_tab", "statement");
+      sessionStorage.setItem("paayh_active_tab", "myads");
+      sessionStorage.setItem("paayh_publications_subtab", "highlights");
+      document.cookie = "paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax";
+      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "mynews" } }));
+      setStatusNotice(
+        isDeliveringActive
+          ? "Highlight updates submitted for moderation review! Your live highlight continues running."
+          : "Highlight submitted for moderation review! You will be notified once approved to publish."
+      );
+      setTimeout(() => {
+        window.location.href = "/logged-in?view=myads&tab=highlights";
+      }, 1200);
       clearUserCampaignsCache(session?.user?.email || "");
       try {
         localStorage.removeItem("paayh_draft_news_v1");
       } catch {}
-
-      const authUrl = paymentData.authorization_url || paymentData.data?.authorization_url;
-      if (isAdmin || paymentMethod === "wallet") {
-        setStatusNotice("Your Daily Highlight has been submitted for review. Redirecting to your statement...");
-        setTimeout(() => {
-          window.location.href = "/logged-in";
-        }, 800);
-      } else if (authUrl) {
-        setStatusNotice("Redirecting to secure checkout to complete payment for your Highlight...");
-        window.location.href = authUrl;
-      } else {
-        window.location.href = "/logged-in";
-      }
       
       setStep(0);
+      setEditingId(null);
+      setIsDeliveringActive(false);
+      setOriginalTotalCost(0);
+      setExistingImageUrl(null);
       setMediaFile(null);
       setMediaPreview(null);
       setTitle("");
@@ -482,7 +546,8 @@ export default function News({ session }: NewsProps) {
 
   const canNavigateToStep = (targetStep: number) => {
     if (targetStep <= step) return true;
-    if (!mediaFile) {
+    const hasCover = !!mediaFile || !!existingImageUrl;
+    if (!hasCover) {
       setStepError("Please select a cover image for your highlight.");
       return false;
     }
@@ -512,7 +577,25 @@ export default function News({ session }: NewsProps) {
             }}
           />
 
-          <h1>Post Daily Highlight</h1>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h1>{editingId ? "Edit Highlight" : "New Highlight"}</h1>
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    sessionStorage.removeItem("paayh_edit_news_id");
+                    sessionStorage.removeItem("paayh_edit_news");
+                  } catch (e) {}
+                  window.location.href = "/myAds";
+                }}
+                className={styles.secondaryNavBtn}
+                style={{ padding: "6px 14px", fontSize: "0.85rem" }}
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
 
           {stepError && (
             <div className={styles.errorAlert}>
@@ -541,23 +624,43 @@ export default function News({ session }: NewsProps) {
                   <label className={styles.fieldLabel}>Cover Image (Required)</label>
                   {mediaPreview ? (
                     <div className={styles.mediaPreviewContainer}>
-                      <img src={mediaPreview} alt="Cover Preview" className={styles.mediaPreviewImage} />
+                      <img
+                        src={mediaPreview}
+                        alt="Cover Preview"
+                        className={styles.mediaPreviewImage}
+                        onError={() => {
+                          setMediaPreview(null);
+                          setMediaFile(null);
+                          setExistingImageUrl(null);
+                        }}
+                      />
                       <div className={styles.removeBtnContainer}>
-                        <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className={styles.removeBtn}>Remove Image</button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMediaFile(null);
+                            setMediaPreview(null);
+                            setExistingImageUrl(null);
+                          }}
+                          className={styles.removeBtn}
+                        >
+                          Remove Image
+                        </button>
                       </div>
                     </div>
                   ) : (
                     <label className={styles.uploadZone}>
                       <input type="file" accept="image/*" onChange={handleMediaChange} hidden />
-                      <p className={styles.uploadTitle}>Click to select cover image file</p>
-                      <p className={styles.uploadSubtext}>Supports PNG, JPG, WEBP (Max 5MB)</p>
+                      <p className={styles.uploadTitle}>Upload cover image</p>
+                      <p className={styles.uploadSubtext}>PNG, JPG, or WEBP up to 5MB (1080p recommended)</p>
+                      <span className={styles.uploadBrowseBtn}>Choose File</span>
                     </label>
                   )}
                   <div className={styles.stepActionsEnd}>
                     <motion.button
                       whileTap={{ scale: 0.97 }}
                       whileHover={{ scale: 1.01 }}
-                      disabled={!mediaFile}
+                      disabled={!mediaFile && !existingImageUrl}
                       onClick={() => setStep(1)}
                       className={styles.primaryNavBtn}
                     >
@@ -632,7 +735,7 @@ export default function News({ session }: NewsProps) {
                   />
                   {content.trim().length > 0 && content.trim().length < 10 && (
                     <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px", display: "flex", alignItems: "center", gap: "5px" }}>
-                      <Info size={13} style={{ flexShrink: 0 }} /> Content must be at least 10 characters ({10 - content.trim().length} more needed)
+                      Minimum 10 characters ({10 - content.trim().length} needed)
                     </span>
                   )}
                   <div className={styles.stepActionsBetween}>
@@ -671,7 +774,7 @@ export default function News({ session }: NewsProps) {
                   <div className={`${styles.modernSectionCard} ${styles.adminSectionCard}`}>
                     <div className={`${styles.modernSectionHeader} ${styles.adminSectionHeader}`}>
                       <span className={`${styles.modernSectionTitle} ${styles.adminSectionTitle}`}>
-                        <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding
+                        Admin: Custom Branding
                       </span>
                       <span className={`${styles.modernSectionBadge} ${styles.adminSectionBadge}`}>
                         Publishing Active
@@ -712,7 +815,7 @@ export default function News({ session }: NewsProps) {
                   </div>
                   <div className={styles.modernSectionBody}>
                     <p className={styles.sectionDescription}>
-                      Choose the specific topic or interest sector for your sponsored news piece.
+                      Select category.
                     </p>
 
                     <div className={styles.selectWrapper}>
@@ -725,7 +828,7 @@ export default function News({ session }: NewsProps) {
                           icon: getCategoryIcon(cat),
                         }))}
                         placeholder="-- Search or select target category --"
-                        leadingIcon={<Tag size={16} />}
+                        
                       />
                     </div>
                   </div>
@@ -761,7 +864,7 @@ export default function News({ session }: NewsProps) {
                 <div className={styles.modernSectionCard}>
                   <div className={styles.modernSectionHeader}>
                     <span className={styles.modernSectionTitle}>
-                      <Calendar size={16} color="var(--primary)" /> Campaign Duration
+                      Campaign Duration
                     </span>
                     <span className={styles.modernSectionBadge}>
                       {campaignDays} {campaignDays === 1 ? "Day" : "Days"}
@@ -769,7 +872,7 @@ export default function News({ session }: NewsProps) {
                   </div>
                   <div className={styles.modernSectionBody}>
                     <p className={styles.sectionDescription}>
-                      Select how long your news article should remain live and actively highlighted (up to 5 days).
+                      Select campaign duration (up to 5 days).
                     </p>
                     <div className={styles.durationContainer}>
                       {[1, 2, 3, 4, 5].map((num) => (
@@ -803,7 +906,7 @@ export default function News({ session }: NewsProps) {
                           </span>
                         </div>
                         <p className={styles.spotlightSubtitle}>
-                          Contest for the #1 top position of the news highlights carousel
+                          Bid for top carousel position.
                         </p>
                       </div>
                     </div>
@@ -855,27 +958,12 @@ export default function News({ session }: NewsProps) {
                           return (
                             <div className={`${styles.spotlightRankCard} ${isLead ? styles.rankCardSpotlight : isMatched ? styles.rankCardMatched : styles.rankCardChallenger}`}>
                               <div className={styles.spotlightRankHeader}>
-                                {isLead ? (
-                                  <Award size={18} className={styles.goldCrownIcon} />
-                                ) : isMatched ? (
-                                  <TrendingUp size={18} className={styles.matchedSparkleIcon} />
-                                ) : (
-                                  <TrendingUp size={18} className={styles.challengerIcon} />
-                                )}
                                 <div className={styles.spotlightRankCol}>
                                   <span className={styles.spotlightRankTitle}>
-                                    {isLead
-                                      ? "#1 Spotlight Winner (Top Carousel)"
-                                      : isMatched
-                                      ? "Matched Top Bid (Shared Rotation)"
-                                      : "Challenger Position (Standard Rotation)"}
+                                    {isLead ? "#1 Spotlight" : isMatched ? "Matched Top Bid" : "Challenger"}
                                   </span>
                                   <p className={styles.spotlightRankDesc}>
-                                    {isLead
-                                      ? "Your highlight holds top spotlight at the beginning of the news carousel."
-                                      : isMatched
-                                      ? "Rotating at the top position alongside the current highest bidder."
-                                      : `Increase bid above ${formatCurrency(highestBid)}/day to secure #1 Spotlight position.`}
+                                    {isLead ? "Top carousel placement." : isMatched ? "Shared top rotation." : `Increase bid above ${formatCurrency(highestBid)}/day for top placement.`}
                                   </p>
                                 </div>
                               </div>
@@ -970,7 +1058,18 @@ export default function News({ session }: NewsProps) {
                 className={styles.formGroup}
               >
                 <div className={styles.previewCard}>
-                  {mediaPreview && <img src={mediaPreview} alt="Preview" className={styles.previewImage} />}
+                  {mediaPreview ? (
+                    <img
+                      src={mediaPreview}
+                      alt="Preview"
+                      className={styles.previewImage}
+                      onError={() => setMediaPreview(null)}
+                    />
+                  ) : (
+                    <div className={styles.previewImageFallback}>
+                      <span>{interest ? `${interest} Highlight` : "Cover Image Preview"}</span>
+                    </div>
+                  )}
                   <div className={styles.previewContent}>
                     <span className={styles.previewBadge}>{interest}</span>
                     <h3 className={styles.previewTitle}>{capitalizeFirst(title)}</h3>
@@ -985,26 +1084,20 @@ export default function News({ session }: NewsProps) {
                 {isAdmin ? (
                   <div className={styles.adminPrivilegeBox}>
                     <h4 className={styles.adminPrivilegeHeading}>
-                      <Crown size={18} color="var(--primary)" /> Admin Privilege: 100% Free Highlight Publishing (₦0.00 Total)
+                      Admin: Free Publishing
                     </h4>
                     <p className={styles.adminPrivilegeSubtext}>
                       No payment gateway or wallet balance deduction required.
                     </p>
                   </div>
                 ) : (
-                  <div className={styles.paymentBox}>
-                    <h4 className={styles.paymentBoxHeading}>Select Payment Method</h4>
-                    <div className={styles.paymentMethodOptions}>
-                      <label className={styles.paymentOptionLabel}>
-                        <input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Debit Card / Bank Transfer
-                      </label>
-                      <label className={styles.paymentOptionLabel}>
-                        <input type="radio" name="pay" checked={paymentMethod === "wallet"} onChange={() => setPaymentMethod("wallet")} /> Pay from Wallet Balance ({formatCurrency(balance)})
-                      </label>
-                    </div>
-                    <div className={styles.paymentTotalCost}>
-                      Total Payment: {formatCurrency(totalCost)}
-                    </div>
+                  <div style={{ margin: "1.25rem 0 1rem", textAlign: "left" }}>
+                    <h4 style={{ margin: "0 0 0.35rem", fontSize: "0.95rem", fontWeight: 600, color: "var(--foreground)" }}>
+                      Review First • Pay on Approval
+                    </h4>
+                    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                      No payment now. Once approved, click Publish &amp; Pay on My Ads to launch.
+                    </p>
                   </div>
                 )}
 
@@ -1015,7 +1108,7 @@ export default function News({ session }: NewsProps) {
                       AI-generated content
                     </span>
                     <span className={styles.aiDisclosureDesc}>
-                      Turn this on if your highlight contains media or text generated or altered using AI tools.
+                      Enable if content is AI-generated.
                     </span>
                   </div>
                   <label className={styles.aiSwitch}>
@@ -1031,39 +1124,35 @@ export default function News({ session }: NewsProps) {
                   </label>
                 </div>
 
-                <div className={styles.termsPolicyBox}>
-                  <input
-                    type="checkbox"
-                    id="newsTermsPolicyCheckbox"
-                    checked={agreedToPolicy}
-                    onChange={(e) => setAgreedToPolicy(e.target.checked)}
-                    className={styles.termsCheckbox}
-                  />
-                  <label htmlFor="newsTermsPolicyCheckbox" className={styles.termsLabel}>
-                    I have reviewed my highlight details and agree to Paayh&apos;s{" "}
-                    <Link href="/terms" target="_blank" className={styles.termsLink}>
-                      Terms of Service
-                    </Link>,{" "}
-                    <Link href="/advertiser-guidelines" target="_blank" className={styles.termsLink}>
-                      Advertising Guidelines
-                    </Link>, and{" "}
-                    <Link href="/privacy" target="_blank" className={styles.termsLink}>
-                      Privacy Policy
-                    </Link>.
-                  </label>
-                </div>
+                <TermsAgreementCheckbox
+                  id="newsTermsPolicyCheckbox"
+                  checked={agreedToPolicy}
+                  onChange={setAgreedToPolicy}
+                  instruction="Please read and review the highlight terms and policies below, and tick the box if you accept:"
+                  terms={[
+                    { label: "Terms of Service", href: "/terms" },
+                    { label: "Advertising Guidelines", href: "/advertiser-guidelines" },
+                    { label: "Non-Refundable Policy", href: "/terms" },
+                    { label: "Privacy Policy", href: "/privacy" },
+                  ]}
+                  checkboxLabel="I have read, reviewed, and accept the Highlight Promotion Policies and Non-Refundable Terms."
+                  required
+                />
 
                 <div className={styles.stepActionsBetween}>
                   <button onClick={() => setStep(3)} className={styles.secondaryNavBtn}>Back</button>
                   <button disabled={isSubmitting || !agreedToPolicy} onClick={handleInitiateSubmit} className={styles.primaryNavBtn}>
                     {isSubmitting ? (
-                      "Processing Submission..."
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span className="btnSpinner" aria-hidden="true" />
+                        <span>Submitting for Review...</span>
+                      </span>
                     ) : isAdmin ? (
                       <>
-                        <Rocket size={16} /> Publish (Admin)
+                        Publish (Admin)
                       </>
                     ) : (
-                      "Submit"
+                      "Submit Highlight for Review"
                     )}
                   </button>
                 </div>
@@ -1072,21 +1161,7 @@ export default function News({ session }: NewsProps) {
           </AnimatePresence>
         </div>
       </div>
-
-      <PaymentConfirmationModal
-        isOpen={showPaymentConfirmModal}
-        onClose={() => setShowPaymentConfirmModal(false)}
-        onConfirm={handleSubmit}
-        serviceTitle="Spotlight Daily Highlight"
-        amountFormatted={formatCurrency(totalCost)}
-        paymentMethodText={paymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
-        summaryItems={[
-          { label: "Campaign Duration", value: `${campaignDays} ${campaignDays === 1 ? "day" : "days"}` },
-          { label: "Target Area", value: country ? `${country}${state ? `, ${state}` : ""}` : "All Audiences" },
-          { label: "Category", value: interest },
-        ]}
-        isSubmitting={isSubmitting}
-      />
+      <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />
     </div>
   );
 }

@@ -218,7 +218,7 @@ export default function Step2Budget({
               placeholder="e.g. 5"
             />
             <p className={styles.hintText}>
-              Daily Attention Cap: ~
+              Daily pace: ~
               {Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()}{" "}
               attentions/day
             </p>
@@ -245,12 +245,11 @@ export default function Step2Budget({
               placeholder="e.g. 3"
             />
             <p className={styles.hintText}>
-              A viewer can see this ad up to {formSelections.userFrequencyCap} time
-              {formSelections.userFrequencyCap > 1 ? "s" : ""} before it stops showing for them.
+              Max {formSelections.userFrequencyCap} view
+              {formSelections.userFrequencyCap > 1 ? "s" : ""} per user.
             </p>
             <p className={styles.hintTextItalic}>
-              Tip: Ads shown 3 - 7 or more times are more likely to be remembered and increases likelihood
-              of taking action than ads shown only once.
+              Recommended: 3–7 views per user for optimal retention.
             </p>
           </div>
         </div>

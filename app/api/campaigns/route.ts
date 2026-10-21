@@ -3,6 +3,8 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedUserCampaigns, setCachedUserCampaigns } from "@/lib/utils/cache";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
+import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
+import { triggerSelfHealingJobsIfDue } from "@/lib/services/cronOrchestrator";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,10 @@ export async function GET(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
+
+    // Self-healing JIT background cleanup of expired approved campaigns (>3 days)
+    cleanupExpiredApprovedCampaigns().catch(() => {});
+    triggerSelfHealingJobsIfDue().catch(() => {});
     const forceRefresh = url.searchParams.get("refresh") === "true";
 
     // 1. Check Redis Cache for ultra-fast 1-2ms response at 100M+ traffic
@@ -54,22 +60,22 @@ export async function GET(req: NextRequest) {
       ratingsData,
       advBlockRes,
     ] = await Promise.all([
-      supabaseReadOnly.from("adds").select("*").eq("user_email", emailLower),
-      supabaseReadOnly.from("addsactive").select("*").eq("user_email", emailLower),
+      supabaseReadOnly.from("adds").select("*").ilike("user_email", emailLower).is("completed_at", null),
+      supabaseReadOnly.from("addsactive").select("*").ilike("user_email", emailLower),
       supabaseReadOnly
         .from("completed_ads")
         .select("*")
-        .eq("user_email", emailLower)
+        .ilike("user_email", emailLower)
         .gte("completed_at", seventyTwoHoursAgo)
         .order("completed_at", { ascending: false })
         .limit(50),
-      supabaseReadOnly.from("news").select("*").eq("user_email", emailLower),
-      supabaseReadOnly.from("newsactive").select("*").eq("user_email", emailLower),
-      supabaseReadOnly.from("completed_ads_ratings").select("ad_id").eq("advertiser_email", emailLower),
+      supabaseReadOnly.from("news").select("*").ilike("user_email", emailLower),
+      supabaseReadOnly.from("newsactive").select("*").ilike("user_email", emailLower),
+      supabaseReadOnly.from("completed_ads_ratings").select("ad_id").ilike("advertiser_email", emailLower),
       supabaseReadOnly
         .from("blocked_advertisers")
         .select("id", { count: "exact", head: true })
-        .eq("advertiser_email", emailLower),
+        .ilike("advertiser_email", emailLower),
     ]);
 
     const combinedActive = [
@@ -105,11 +111,27 @@ export async function GET(req: NextRequest) {
 
     const ratedAdIds = (ratingsData.data || []).map((r: { ad_id: string }) => r.ad_id);
 
+    const sanitizeItem = (item: any) => {
+      if (!item) return item;
+      const stmt = item.admin_statement;
+      if (typeof stmt === "string") {
+        const trimmed = stmt.trim();
+        if (/^status:\s*pending_review$/i.test(trimmed) || trimmed === "pending_review" || trimmed === "STATUS:pending_review") {
+          return { ...item, admin_statement: "Status: Pending review" };
+        }
+        if (trimmed.startsWith("STATUS:")) {
+          const rest = trimmed.replace(/^STATUS:\s*/i, "").trim();
+          return { ...item, admin_statement: rest === "pending_review" ? "Status: Pending review" : `Status: ${rest}` };
+        }
+      }
+      return item;
+    };
+
     const result = {
-      adsQueue: adsQueue.data || [],
-      adsActive: combinedActive,
-      highlightsQueue: highlightsQueue.data || [],
-      highlightsActive: highlightsActive.data || [],
+      adsQueue: (adsQueue.data || []).map(sanitizeItem),
+      adsActive: combinedActive.map(sanitizeItem),
+      highlightsQueue: (highlightsQueue.data || []).map(sanitizeItem),
+      highlightsActive: (highlightsActive.data || []).map(sanitizeItem),
       ratedAdIds,
       reportsMap,
       dismissalsMap,

@@ -8,7 +8,9 @@ import { HighlightItem, Session, getHighlightScheduleInfo } from "./types";
 import { fetchUserCampaignsShared, clearUserCampaignsCache, readUserCampaignsSyncCache } from "@/lib/campaignsClient";
 import HighlightKpiSummary from "./HighlightKpiSummary";
 import MyHighlightCard from "./MyHighlightCard";
-import NoticeModal from "../MyAds/NoticeModal";
+import HighlightBoosterModal from "./HighlightBoosterModal";
+import PublishHighlightPaymentModal from "./PublishHighlightPaymentModal";
+import NoticeModal, { NoticeModalData } from "../MyAds/NoticeModal";
 import styles from "../MyAds/page.module.css";
 
 type MyNewsProps = {
@@ -30,7 +32,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   const [loading, setLoading] = useState<boolean>(() => !initialCached);
   const [error, setError] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  const [noticeModal, setNoticeModal] = useState<{ title: string; message: string } | null>(null);
+  const [noticeModal, setNoticeModal] = useState<NoticeModalData | null>(null);
   const [timeNow, setTimeNow] = useState(Date.now());
 
   // Command Toolbar State (shadcn/ui Tabs + Search + Sort)
@@ -40,6 +42,9 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
   // Expandable Specs Drawer State
   const [expandedSpecsMap, setExpandedSpecsMap] = useState<Record<string, boolean>>({});
+  const [publishingHighlight, setPublishingHighlight] = useState<HighlightItem | null>(null);
+  const [boosterHighlight, setBoosterHighlight] = useState<HighlightItem | null>(null);
+  const [userWalletBalance, setUserWalletBalance] = useState<number>(0);
 
   const toggleSpecsDrawer = (id: string) => {
     setExpandedSpecsMap((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -79,9 +84,99 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
     }
   };
 
+  const verifyBoostPayment = async (reference: string, gatewayReference?: string) => {
+    if (!reference) return;
+    setNoticeModal({
+      title: "Verifying Highlight Boost",
+      message: "Confirming your boost payment with payment gateway...",
+    });
+
+    try {
+      const url = new URL("/api/payments/verify", window.location.origin);
+      url.searchParams.set("reference", reference);
+      if (gatewayReference) {
+        url.searchParams.set("gateway_reference", gatewayReference);
+      }
+
+      const res = await fetch(url.toString());
+      const data = await res.json();
+      if (data.success || data.status === "success") {
+        setNoticeModal({
+          title: "Highlight Boosted & Live!",
+          message:
+            "Your highlight boost was successful! Schedule duration and priority delivery have been updated and are actively delivering.",
+        });
+        clearUserCampaignsCache(session?.user?.email || "");
+        fetchNews(true);
+        try {
+          sessionStorage.removeItem("paayh_statement_cache");
+          window.dispatchEvent(new CustomEvent("paayh:balance_updated"));
+        } catch {}
+      } else {
+        setNoticeModal({
+          title: "Boost Verification Notice",
+          message:
+            data.message ||
+            "Payment has not yet settled or was not completed. If debited, your highlight will update shortly once confirmed.",
+        });
+      }
+    } catch (err: any) {
+      setNoticeModal({
+        title: "Boost Verification Notice",
+        message: err.message || "Unable to verify payment at this time.",
+      });
+    }
+  };
+
   useEffect(() => {
     if (session?.user?.email) fetchNews();
   }, [session]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkPendingBoost = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const boostRef = urlParams.get("boost_ref") || sessionStorage.getItem("paayh_boost_ref");
+      const gatewayRef =
+        urlParams.get("reference") || urlParams.get("trxref") || sessionStorage.getItem("paayh_boost_gateway_ref");
+      const isHighlight =
+        urlParams.get("type") === "highlight" ||
+        urlParams.get("tab") === "highlights" ||
+        sessionStorage.getItem("paayh_boost_type") === "highlight";
+
+      if (boostRef && boostRef.startsWith("BOOST-") && isHighlight) {
+        sessionStorage.removeItem("paayh_boost_ref");
+        sessionStorage.removeItem("paayh_boost_gateway_ref");
+        sessionStorage.removeItem("paayh_boost_type");
+        verifyBoostPayment(boostRef, gatewayRef || undefined);
+      }
+    };
+
+    checkPendingBoost();
+
+    const handleCustomBoostEvent = (e: any) => {
+      const boostRef = e.detail?.reference || sessionStorage.getItem("paayh_boost_ref");
+      const isHighlight =
+        e.detail?.isHighlight ||
+        e.detail?.type === "highlight" ||
+        sessionStorage.getItem("paayh_boost_type") === "highlight";
+      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const gatewayRef = urlParams?.get("reference") || urlParams?.get("trxref") || e.detail?.gatewayReference;
+
+      if (boostRef && boostRef.startsWith("BOOST-") && isHighlight) {
+        sessionStorage.removeItem("paayh_boost_ref");
+        sessionStorage.removeItem("paayh_boost_gateway_ref");
+        sessionStorage.removeItem("paayh_boost_type");
+        verifyBoostPayment(boostRef, gatewayRef || undefined);
+      }
+    };
+
+    window.addEventListener("paayh_boost_ref", handleCustomBoostEvent);
+    return () => {
+      window.removeEventListener("paayh_boost_ref", handleCustomBoostEvent);
+    };
+  }, [session?.user?.email]);
 
   const handleTogglePause = async (item: HighlightItem) => {
     if (item.admin_statement && item.is_paused) {
@@ -128,6 +223,41 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
     } finally {
       setActionLoadingId(null);
     }
+  };
+
+    const handleDeleteHighlight = (id: string) => {
+    const isDraftInReview = reviewNews.some((h) => h.id === id);
+
+    setNoticeModal({
+      title: isDraftInReview ? "Delete Highlight Draft" : "Delete Highlight",
+      message: isDraftInReview
+        ? "Are you sure you want to delete this highlight? It will be removed permanently from your review queue."
+        : "Are you sure you want to remove this highlight?",
+      confirmText: "Delete",
+      cancelText: "Not Now",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/highlights/delete?id=${id}`, { method: "DELETE" });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || "Failed to delete highlight");
+          }
+          setReviewNews((prev) => prev.filter((h) => h.id !== id));
+          setActiveNews((prev) => prev.filter((h) => h.id !== id));
+          clearUserCampaignsCache(session?.user?.email || "");
+          setNoticeModal({
+            title: "Highlight Deleted",
+            message: "Your highlight has been removed.",
+          });
+        } catch (e: any) {
+          setNoticeModal({
+            title: "Notice",
+            message: e.message || "Failed to delete highlight.",
+          });
+        }
+      },
+    });
   };
 
   const handleEditHighlight = (id: string) => {
@@ -262,6 +392,8 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
       .filter((item) => {
         if (!matchesQuery(item)) return false;
         if (activeTab === "paused") return !!item.is_paused;
+        if (activeTab === "approved") return !!(item.admin_statement && item.admin_statement.startsWith("APPROVED:"));
+        if (activeTab === "pending") return !(item.admin_statement && item.admin_statement.startsWith("APPROVED:"));
         return true;
       })
       .sort(sortFn);
@@ -325,18 +457,34 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   };
 
   const showPendingSection =
-    activeTab === "all" || activeTab === "pending" || (activeTab === "paused" && filteredReview.length > 0);
+    activeTab === "all" ||
+    activeTab === "pending" ||
+    (activeTab === "approved" && filteredReview.length > 0) ||
+    (activeTab === "paused" && filteredReview.length > 0);
   const showApprovedSection = activeTab !== "pending";
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const data = await res.json();
+          setUserWalletBalance(Number(data.balance || 0));
+        }
+      } catch {}
+    };
+    if (session?.user?.email) {
+      fetchBalance();
+    }
+  }, [session?.user?.email]);
 
   return (
     <div className={styles.feedContainer}>
       {/* Top Executive Header */}
       <div className={styles.headerBar}>
         <div className={styles.headerTitleGroup}>
-          <h2 className={styles.headerTitle}>Highlight Campaign Manager</h2>
-          <p className={styles.headerSubtitle}>
-            Manage your active, pending review, and approved Daily Business Highlights &amp; Spotlight bids.
-          </p>
+          <h2 className={styles.headerTitle}>Highlights</h2>
+          <p className={styles.headerSubtitle}>Status, schedule, and spotlight placement.</p>
         </div>
 
         <div className={styles.headerActionsGroup}>
@@ -418,7 +566,10 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
             className={`${styles.tabTrigger} ${activeTab === "approved" ? styles.tabTriggerActive : ""}`}
             onClick={() => setActiveTab("approved")}
           >
-            Approved <span className={styles.tabCount}>{activeNews.length}</span>
+            Approved{" "}
+            <span className={styles.tabCount}>
+              {activeNews.length + reviewNews.filter((h) => h.admin_statement?.startsWith("APPROVED:")).length}
+            </span>
           </button>
           <button
             type="button"
@@ -472,16 +623,25 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
       {!loading && showPendingSection && (filteredReview.length > 0 || activeTab === "pending") && (
         <section className={styles.sectionBlock}>
           <div className={styles.sectionHeaderRow}>
-            <h3 className={styles.subheading}>Pending Highlights (Moderation &amp; Review Queue)</h3>
-            <span className={styles.sectionCountBadge}>{filteredReview.length} pending</span>
+            <h3 className={styles.subheading}>
+              {activeTab === "approved" ? "Approved Highlights (Ready to Publish)" : "In Review"}
+            </h3>
+            <span className={styles.sectionCountBadge}>
+              {filteredReview.length} {activeTab === "approved" ? "approved" : "pending"}
+            </span>
           </div>
 
           {filteredReview.length === 0 ? (
             <div className={styles.emptyStateCard}>
-              <Sparkles size={22} className={styles.emptyStateIcon} />
-              <p className={styles.emptyStateTitle}>No highlights waiting in review</p>
+              <p className={styles.emptyStateTitle}>
+                {activeTab === "approved"
+                  ? "No approved highlights awaiting payment"
+                  : "No highlights in review"}
+              </p>
               <p className={styles.emptyStateSub}>
-                All submitted Daily Highlights have been reviewed and processed.
+                {activeTab === "approved"
+                  ? "Approved highlights ready to pay and launch appear here."
+                  : "Submitted highlights appear here for approval."}
               </p>
             </div>
           ) : (
@@ -502,6 +662,9 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
                       onTogglePause={handleTogglePause}
                       onEdit={handleEditHighlight}
                       onExportCsv={exportHighlightCsv}
+                      onDelete={handleDeleteHighlight}
+                      onPublish={(h) => setPublishingHighlight(h)}
+                      onOpenBooster={(h) => setBoosterHighlight(h)}
                       actionLoading={actionLoadingId === item.id}
                       timeNow={timeNow}
                     />
@@ -554,7 +717,6 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
 
           {filteredActive.length === 0 ? (
             <div className={styles.emptyStateCard}>
-              <Compass size={24} className={styles.emptyStateIcon} />
               <p className={styles.emptyStateTitle}>
                 {searchQuery
                   ? "No highlights match your search filter"
@@ -564,9 +726,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
                   ? "No active highlights currently running in the carousel"
                   : "No approved highlights yet"}
               </p>
-              <p className={styles.emptyStateSub}>
-                Publish a Daily Business Highlight to feature your brand at the top of the news carousel.
-              </p>
+              <p className={styles.emptyStateSub}>Publish a highlight to feature your announcement at the top of the feed.</p>
               <div className={styles.postButtonContainer}>
                 <Link
                   href="/logged-in"
@@ -599,6 +759,9 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
                       onTogglePause={handleTogglePause}
                       onEdit={handleEditHighlight}
                       onExportCsv={exportHighlightCsv}
+                      onDelete={handleDeleteHighlight}
+                      onPublish={(h) => setPublishingHighlight(h)}
+                      onOpenBooster={(h) => setBoosterHighlight(h)}
                       actionLoading={actionLoadingId === item.id}
                       timeNow={timeNow}
                     />
@@ -634,6 +797,39 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
           )}
         </section>
       )}
+
+      {/* Highlight Booster Modal */}
+      <HighlightBoosterModal
+        item={boosterHighlight}
+        onClose={() => setBoosterHighlight(null)}
+        onSuccess={(msg) => {
+          setBoosterHighlight(null);
+          setNoticeModal({
+            title: "Highlight Boosted & Live!",
+            message: msg || "Your highlight has been boosted successfully! Schedule duration and priority delivery have been updated and are actively delivering.",
+          });
+          clearUserCampaignsCache(session?.user?.email || "");
+          fetchNews(true);
+        }}
+        onShowNotice={(title, message) => setNoticeModal({ title, message })}
+      />
+
+      {/* Publish Highlight Payment Modal */}
+      <PublishHighlightPaymentModal
+        isOpen={!!publishingHighlight}
+        onClose={() => setPublishingHighlight(null)}
+        item={publishingHighlight}
+        userBalance={userWalletBalance}
+        onSuccess={(_publishedHl) => {
+          setPublishingHighlight(null);
+          setNoticeModal({
+            title: "Highlight Published & Live!",
+            message: "Your highlight has been paid and is now active in the flash feed.",
+          });
+          clearUserCampaignsCache(session?.user?.email || "");
+          fetchNews(true);
+        }}
+      />
 
       {/* Contained Notice Modal */}
       <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />

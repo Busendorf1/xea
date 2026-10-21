@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       const { data: allTransactions, error } = await supabaseReadOnly
         .from("payments")
         .select("id, reference, amount, status, type, description, metadata, created_at")
-        .or(`user_email.eq.${emailLower},user_email.ilike.${emailLower}`)
+        .ilike("user_email", emailLower)
         .order("created_at", { ascending: false })
         .limit(300);
 
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     let query = supabaseReadOnly
       .from("payments")
       .select("id, reference, amount, status, type, description, metadata, created_at")
-      .or(`user_email.eq.${emailLower},user_email.ilike.${emailLower}`);
+      .ilike("user_email", emailLower);
 
     if (typeParam === "withdrawals") {
       query = query.eq("type", "withdrawal");

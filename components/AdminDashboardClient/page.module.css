@@ -2619,3 +2619,121 @@
 .adminCls_182 {
   font-family: monospace;
 }
+
+/* Campaign Status Badges & Schedules */
+.badgeApprovedPending {
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badgeLiveDelivering {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badgePaused {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badgeCompleted {
+  background-color: rgba(107, 114, 128, 0.15);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.35);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badgeRejected {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btnApprovedDisabled {
+  padding: 0.45rem 1.15rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background-color: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  cursor: not-allowed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0.85;
+}
+
+.btnWarning {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.btnWarning:hover {
+  background-color: rgba(245, 158, 11, 0.22);
+}
+
+.scheduleBox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  padding: 0.65rem 0.85rem;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+}
+
+.scheduleItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
+
+.scheduleItem strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+

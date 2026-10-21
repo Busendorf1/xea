@@ -34,6 +34,7 @@ import Step2Budget from "./Step2Budget";
 import Step3Creative from "./Step3Creative";
 import Step4Summary from "./Step4Summary";
 import Step5Launch from "./Step5Launch";
+import NoticeModal, { NoticeModalData } from "@/components/MyAds/NoticeModal";
 
 export type { Session, MultiStepAdFormProps };
 
@@ -44,9 +45,31 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const searchParams = useSearchParams();
   const editAdId = searchParams ? searchParams.get("id") : null;
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isDeliveringActive, setIsDeliveringActive] = useState<boolean>(false);
+  const [originalTotalCost, setOriginalTotalCost] = useState<number>(0);
+  const [noticeModal, setNoticeModal] = useState<NoticeModalData | null>(null);
 
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingLimitReached, setPendingLimitReached] = useState(false);
+
+  useEffect(() => {
+    if (editingId) return;
+    fetch("/api/campaigns")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.reviewAds && Array.isArray(data.reviewAds)) {
+          const pendingCount = data.reviewAds.filter((ad: any) => {
+            if (ad.admin_statement?.startsWith("REJECTED:")) return false;
+            return true;
+          }).length;
+          if (pendingCount >= 2) {
+            setPendingLimitReached(true);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [editingId]);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [isAiContent, setIsAiContent] = useState(false);
@@ -169,6 +192,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       const data = await res.json();
       if (data.success && data.ad) {
         const ad = data.ad;
+        setIsDeliveringActive(!!data.isDeliveringActive);
+        setOriginalTotalCost(Number(data.originalTotalCost || ad.total_cost || 0));
         if (ad.ad_type) setAdType(ad.ad_type);
         setFormSelections((prev) => ({
           ...prev,
@@ -486,7 +511,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     return true;
   };
 
-  const handleInitiateSubmit = () => {
+    const handleInitiateSubmit = () => {
     if (isSubmitting) return;
     setStepError("");
     if (!session || !session.user?.email) {
@@ -494,21 +519,27 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       return;
     }
 
-    const totalCost = calculateTotalCost();
-
-    if (!isAdmin && paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
-      setStepError(
-        `Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`
-      );
+    if (!agreedToPolicy) {
+      setStepError("Please confirm your agreement to Paayh's Advertising Guidelines and Terms of Service.");
       return;
     }
 
-    if (isAdmin || totalCost <= 0) {
-      submitAd();
+    const currentTotalCost = calculateTotalCost();
+    if (isDeliveringActive && currentTotalCost < originalTotalCost) {
+      setNoticeModal({
+        title: "Budget Reduction Notice",
+        message: `You are reducing your campaign budget from ${formatCurrency(originalTotalCost)} to ${formatCurrency(currentTotalCost)}. Because advertising payments are strictly non-refundable, reducing your budget will not result in a refund of previously paid funds. Your campaign will continue delivering under the updated settings until complete, after which it will be archived.`,
+        confirmText: "Proceed",
+        cancelText: "Not Now",
+        onConfirm: async () => {
+          setNoticeModal(null);
+          await submitAd();
+        },
+      });
       return;
     }
 
-    setShowPaymentConfirmModal(true);
+    submitAd();
   };
 
   const submitAd = async () => {
@@ -576,94 +607,97 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         mediaUrlString = uploadedUrls.filter(Boolean).join(",");
       }
 
-      let paymentUrl = "/api/payments/initialize";
-      if (isAdmin || paymentMethod === "wallet") {
-        paymentUrl = "/api/payments/wallet-pay";
-      }
-
-      const paymentResponse = await fetch(paymentUrl, {
+      const submitResponse = await fetch("/api/campaigns/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "ad",
-          amount: totalCost,
-          metadata: {
-            type: "ad",
-            user_email: session.user.email?.toLowerCase(),
-            adData: {
-              id: adId,
-              adType,
-              industry: formSelections.industry,
-              interest: formSelections.interest,
-              lifestyle: formSelections.lifestyle,
-              behavior: formSelections.behavior,
-              personality: formSelections.personality,
-              ageRange: formSelections.ageRange,
-              targetingAll: formSelections.targetingAll ?? false,
-              impressions: formSelections.impressions,
-              campaignDays: formSelections.campaignDays,
-              userFrequencyCap: formSelections.userFrequencyCap,
-              country: formSelections.country || null,
-              state: formSelections.state || null,
-              province: formSelections.province || null,
-              gender: formSelections.gender || null,
-              employmentStatus: Array.isArray(formSelections.employmentStatus)
-                ? formSelections.employmentStatus.join(", ")
-                : formSelections.employmentStatus || null,
-              adMediaType: formSelections.adMediaType,
-              adMedia: mediaUrlString,
-              ad_media: mediaUrlString,
-              adContent: formSelections.adContent,
-              adActionButtons: formSelections.adActionButtons,
-              actionPhone: formSelections.actionDetails.phone || null,
-              actionWhatsapp: formSelections.actionDetails.whatsapp || null,
-              actionWebsite: formSelections.actionDetails.website || null,
-              actionEmail: formSelections.actionDetails.email || null,
-              actionIos: formSelections.actionDetails.ios || null,
-              actionAndroid: formSelections.actionDetails.android || null,
-              actionWatchNow: formSelections.actionDetails.watch_now || null,
-              displayMutualButton: formSelections.displayMutualButton ?? true,
-              costPerImpression,
-              totalCost,
-              isBidded: isBiddingEnabled,
-              bidPrice: isBiddingEnabled ? bidPrice : null,
-              isAdminPost: isAdmin,
-              customSponsorName: formSelections.customSponsorName || null,
-              customSponsorHandle: formSelections.customSponsorHandle || null,
-              productName: adType === "product_sales" ? formSelections.productName : null,
-              productPrice: adType === "product_sales" ? parseFloat(formSelections.productPrice) : null,
-              productCtaType: formSelections.productCtaLink ? formSelections.productCtaType : null,
-              productCtaLink: formSelections.productCtaLink || null,
-              isAiContent: isAiContent,
-              is_ai_content: isAiContent,
-            },
+          editingId,
+          adData: {
+            id: adId,
+            adType,
+            industry: formSelections.industry,
+            interest: formSelections.interest,
+            lifestyle: formSelections.lifestyle,
+            behavior: formSelections.behavior,
+            personality: formSelections.personality,
+            ageRange: formSelections.ageRange,
+            targetingAll: formSelections.targetingAll ?? false,
+            impressions: formSelections.impressions,
+            campaignDays: formSelections.campaignDays,
+            userFrequencyCap: formSelections.userFrequencyCap,
+            country: formSelections.country || null,
+            state: formSelections.state || null,
+            province: formSelections.province || null,
+            gender: formSelections.gender || null,
+            employmentStatus: Array.isArray(formSelections.employmentStatus)
+              ? formSelections.employmentStatus.join(", ")
+              : formSelections.employmentStatus || null,
+            adMediaType: formSelections.adMediaType,
+            adMedia: mediaUrlString,
+            ad_media: mediaUrlString,
+            adContent: formSelections.adContent,
+            adActionButtons: formSelections.adActionButtons,
+            actionPhone: formSelections.actionDetails.phone || null,
+            actionWhatsapp: formSelections.actionDetails.whatsapp || null,
+            actionWebsite: formSelections.actionDetails.website || null,
+            actionEmail: formSelections.actionDetails.email || null,
+            actionIos: formSelections.actionDetails.ios || null,
+            actionAndroid: formSelections.actionDetails.android || null,
+            actionWatchNow: formSelections.actionDetails.watch_now || null,
+            displayMutualButton: formSelections.displayMutualButton ?? true,
+            costPerImpression,
+            totalCost,
+            isBidded: isBiddingEnabled,
+            bidPrice: isBiddingEnabled ? bidPrice : null,
+            isAdminPost: isAdmin,
+            customSponsorName: formSelections.customSponsorName || null,
+            customSponsorHandle: formSelections.customSponsorHandle || null,
+            productName: adType === "product_sales" ? formSelections.productName : null,
+            productPrice: adType === "product_sales" ? parseFloat(formSelections.productPrice) : null,
+            productCtaType: formSelections.productCtaLink ? formSelections.productCtaType : null,
+            productCtaLink: formSelections.productCtaLink || null,
+            isAiContent: isAiContent,
+            is_ai_content: isAiContent,
           },
-          callbackUrl: `${window.location.origin}/logged-in`,
         }),
       });
 
-      const paymentData = await paymentResponse.json();
-      if (!paymentResponse.ok || (!paymentData.success && !paymentData.status)) {
-        throw new Error(paymentData.error || "Failed to process payment");
+      const submitData = await submitResponse.json();
+      if (!submitResponse.ok || submitData.error) {
+        setIsSubmitting(false);
+        const errMsg = submitData.error || "Failed to submit campaign for review.";
+        if (submitData.limitReached) {
+          setPendingLimitReached(true);
+          setStepError("");
+        } else {
+          setStepError(errMsg);
+        }
+        showAppleAlert(errMsg, "warning");
+        return;
       }
 
-      sessionStorage.setItem("paayh_active_tab", "statement");
       clearUserCampaignsCache(session?.user?.email || "");
       try {
         localStorage.removeItem("paayh_draft_ad_v1");
       } catch {}
 
-      const authUrl = paymentData.authorization_url || paymentData.data?.authorization_url;
-      if (isAdmin || paymentMethod === "wallet") {
-        window.location.href = "/logged-in";
-      } else if (authUrl) {
-        window.location.href = authUrl;
-      } else {
-        window.location.href = "/logged-in";
-      }
+      sessionStorage.setItem("paayh_active_tab", "myads");
+      document.cookie = "paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax";
+      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "myads" } }));
+
+      showAppleAlert(
+        editingId
+          ? "Campaign updated and re-submitted for moderation review!"
+          : "Campaign submitted for review! You will be notified once approved to publish it from My Ads.",
+        "success"
+      );
+
+      setTimeout(() => {
+        window.location.href = "/logged-in?view=myads";
+      }, 1200);
       setIsSubmitting(false);
     } catch (err: any) {
-      console.error("❌ Submit error details:", err);
+      console.error("Submit error details:", err);
       showAppleAlert(err?.message || "An unexpected error occurred during submission. Please try again.", "error");
       setIsSubmitting(false);
     }
@@ -728,20 +762,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
           />
 
           <h1 className={`${styles.summaryTitle} ${styles.pageHeading}`}>
-            {editingId ? (
-              <>
-                <Edit3 size={20} color="#818cf8" /> Edit Campaign
-              </>
-            ) : (
-              <>
-                <Rocket size={20} color="#1d9bf0" /> Create New Ad Campaign
-              </>
-            )}
+            {editingId ? "Edit Campaign" : "New Campaign"}
           </h1>
           <p className={styles.pageSubtitle}>
-            {editingId
-              ? "Update your target audience, locations, and creative. Edits will be submitted for verification."
-              : "Reach active audiences with hyper-targeted ad delivery."}
+            {editingId ? "Update targeting, creative, or duration." : "Target verified audiences across the feed."}
           </p>
 
           {editingId && (
@@ -750,6 +774,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 type="button"
                 onClick={() => {
                   setEditingId(null);
+                  setIsDeliveringActive(false);
+                  setOriginalTotalCost(0);
                   setStep(0);
                   setFormSelections({
                     industry: [],
@@ -796,6 +822,50 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               >
                 Switch to Create New Campaign
               </button>
+            </div>
+          )}
+
+          {pendingLimitReached && !editingId && (
+            <div
+              style={{
+                background: "var(--card-bg)",
+                border: "1px solid var(--card-border)",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                marginBottom: "16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
+                <div>
+                  <strong style={{ color: "var(--foreground)", fontSize: "0.88rem" }}>
+                    Pending Campaign Limit Reached (2/2)
+                  </strong>
+                  <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                    You have 2 campaigns awaiting review or publication. Publish or delete an existing campaign in My Ads to submit a new one.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="/logged-in?view=myads"
+                style={{
+                  padding: "6px 14px",
+                  background: "#1d9bf0",
+                  color: "#ffffff",
+                  borderRadius: "8px",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Go to My Ads &rarr;
+              </a>
             </div>
           )}
 
@@ -882,7 +952,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
                 Back
               </button>
             )}
-            {stepError && (
+            {stepError && !stepError.includes("limit of 2") && (
               <span className={styles.stepValidationError}>
                 <AlertCircle size={14} color="#ef4444" /> {stepError}
               </span>
@@ -902,6 +972,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
           </div>
         </div>
       </div>
+      <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />
     </main>
   );
 }

@@ -117,9 +117,9 @@ export default function AdminBrandSubscribersTab({ renderPagination }: AdminBran
   return (
     <>
       <div>
-        <h1 className={styles.sectionTitle}>Brand Registrations and Premium Subscribers</h1>
+        <h1 className={styles.sectionTitle}>Brand Subscribers</h1>
         <p className={styles.sectionSubtitle}>
-          Review business domain applications, authorize 30% ad subsidy approvals, and monitor activation payment records.
+          Business domain applications and subsidy verifications.
         </p>
       </div>
 

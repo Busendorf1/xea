@@ -3,6 +3,8 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Rocket,
+  Trash2,
   Video,
   Image as ImageIcon,
   Clock,
@@ -34,6 +36,9 @@ interface MyHighlightCardProps {
   onEdit: (id: string) => void;
   onExportCsv: (item: HighlightItem) => void;
   actionLoading: boolean;
+  onOpenBooster?: (item: HighlightItem) => void;
+  onPublish?: (item: HighlightItem) => void;
+  onDelete?: (id: string) => void;
   timeNow: number;
 }
 
@@ -51,6 +56,21 @@ function formatTimestamp(timestamp: string | null | undefined): string {
   });
 }
 
+function getAdminCustomNote(stmt: string | null | undefined): string | null {
+  if (!stmt) return null;
+  const trimmed = stmt.trim();
+  if (
+    trimmed.startsWith("APPROVED:") ||
+    trimmed.startsWith("REJECTED:") ||
+    trimmed.startsWith("STATUS:") ||
+    trimmed.startsWith("Status: Pending review") ||
+    trimmed === "pending_review"
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
 function MyHighlightCard({
   item,
   status,
@@ -60,6 +80,9 @@ function MyHighlightCard({
   onEdit,
   onExportCsv,
   actionLoading,
+  onOpenBooster,
+  onPublish,
+  onDelete,
   timeNow,
 }: MyHighlightCardProps) {
   const rawMediaUrl = item.image_url || "";
@@ -75,6 +98,33 @@ function MyHighlightCard({
 
   const isExpired = status === "active" && scheduleInfo.isExpired;
   const isDeliveringLive = status === "active" && !item.is_paused && !isExpired;
+
+  // Moderation & Approval State
+  const isApproved = !!(item.admin_statement && item.admin_statement.startsWith("APPROVED:"));
+  const isRejected = !!(item.admin_statement && item.admin_statement.startsWith("REJECTED:"));
+  const rejectionFeedback = isRejected ? item.admin_statement?.replace("REJECTED:", "").trim() : null;
+  const adminCustomNote = getAdminCustomNote(item.admin_statement);
+
+  let approvedCountdownText: string | null = null;
+  let isApprovedExpired = false;
+
+  if (isApproved && item.admin_statement) {
+    const approvedTimestamp = item.admin_statement.replace("APPROVED:", "").trim();
+    const approvedDate = new Date(approvedTimestamp);
+    if (!isNaN(approvedDate.getTime())) {
+      const expiresAt = approvedDate.getTime() + 72 * 60 * 60 * 1000;
+      const diffMs = expiresAt - timeNow;
+      if (diffMs <= 0) {
+        isApprovedExpired = true;
+        approvedCountdownText = "Expired";
+      } else {
+        const d = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        const h = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+        const m = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
+        approvedCountdownText = `${d > 0 ? `${d}d ` : ""}${h}h ${m}m remaining`;
+      }
+    }
+  }
 
   return (
     <motion.div
@@ -100,24 +150,35 @@ function MyHighlightCard({
           {/* Top Badges Strip */}
           <div className={styles.tagsRow}>
             <span className={`${styles.tagPill} ${styles.tagPillMediaType}`}>
-              {isVideoMedia ? (
-                <>
-                  <Video size={12} /> Video Highlight
-                </>
-              ) : (
-                <>
-                  <ImageIcon size={12} /> Daily Highlight
-                </>
-              )}
+              {isVideoMedia ? "Video Highlight" : "Daily Highlight"}
             </span>
 
-            {status === "review" ? (
-              <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
-                <Clock size={12} /> Pending Approval
+            {/* The single status badge */}
+            {status === "active" ? (
+              item.is_paused ? (
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
+                  Paused
+                </span>
+              ) : isExpired ? (
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
+                  Ended
+                </span>
+              ) : (
+                <span className={`${styles.tagPill} ${styles.tagPillActive}`}>
+                  <span className={styles.liveDot} /> Live
+                </span>
+              )
+            ) : isApproved ? (
+              <span className={`${styles.tagPill} ${styles.tagPillApproved}`}>
+                Approved{approvedCountdownText ? ` • ${approvedCountdownText}` : ""}
+              </span>
+            ) : isRejected ? (
+              <span className={`${styles.tagPill} ${styles.tagPillRejected}`}>
+                Rejected
               </span>
             ) : (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <CheckCircle2 size={12} color="#10b981" /> Approved
+              <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
+                Pending review
               </span>
             )}
 
@@ -126,7 +187,7 @@ function MyHighlightCard({
                 className={`${styles.tagPill} ${styles.tagPillBidded}`}
                 title="Priority Spotlight Auction: Contests for the #1 top carousel slot."
               >
-                <Zap size={12} /> Spotlight Bid • {formatCurrency(dailyRate, item.country)}/day
+                Spotlight Bid • {formatCurrency(dailyRate, item.country)}/day
               </span>
             )}
 
@@ -153,12 +214,25 @@ function MyHighlightCard({
             {item.content}
           </p>
 
-          {item.admin_statement && (
-            <div className={styles.adminNotice}>
-              <strong className={styles.adminNoticeTitle}>
-                <Info size={14} color="var(--primary)" /> Admin Notice:
-              </strong>
-              {item.admin_statement}
+          {/* Single Rejection Reason Banner */}
+          {isRejected && rejectionFeedback && (
+            <div className={styles.statusReasonBanner}>
+              <AlertTriangle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <div>
+                <strong style={{ color: "var(--foreground)" }}>Reason: </strong>
+                <span style={{ color: "var(--text-muted)" }}>{rejectionFeedback}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Single Admin Custom Note Banner (if any manual note was given) */}
+          {adminCustomNote && (
+            <div className={styles.statusReasonBanner}>
+              <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <div>
+                <strong style={{ color: "var(--foreground)" }}>Admin Note: </strong>
+                <span style={{ color: "var(--text-muted)" }}>{adminCustomNote}</span>
+              </div>
             </div>
           )}
 
@@ -190,19 +264,13 @@ function MyHighlightCard({
           <div className={styles.deliveryProgressWrapper}>
             <div className={styles.deliveryProgressRow}>
               <span className={styles.deliveryLabel}>
-                {status === "review" ? (
-                  <>
-                    Moderation Status • <strong>Pending Review</strong>
-                  </>
-                ) : (
-                  <>
-                    Spotlight Window • <strong>{scheduleInfo.elapsedPercent}% elapsed</strong>
-                  </>
-                )}
+                {status === "review"
+                  ? `Campaign Window • ${scheduleInfo.scheduledDays}d Schedule`
+                  : `Spotlight Window • ${scheduleInfo.elapsedPercent}% elapsed`}
               </span>
               <span className={styles.deliveryCountText}>
                 {status === "review"
-                  ? `${scheduleInfo.scheduledDays}d window starts on approval`
+                  ? `${scheduleInfo.scheduledDays}d window starts on live publish`
                   : `${scheduleInfo.remainingText} (${scheduleInfo.totalHours}h total)`}
               </span>
             </div>
@@ -210,7 +278,7 @@ function MyHighlightCard({
               <motion.div
                 className={styles.deliveryProgressFill}
                 initial={{ width: 0 }}
-                animate={{ width: status === "review" ? "8%" : `${scheduleInfo.elapsedPercent}%` }}
+                animate={{ width: status === "review" ? "100%" : `${scheduleInfo.elapsedPercent}%` }}
                 transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
               />
             </div>
@@ -220,32 +288,12 @@ function MyHighlightCard({
         {/* Key Metrics 2x2 Bento Panel */}
         <div className={styles.metricsCol}>
           <div className={styles.metricCell}>
-            <span className={styles.metricTitle}>Approval Status</span>
-            {status === "active" ? (
-              <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
-                <CheckCircle2 size={13} color="#10b981" /> Approved
-              </span>
-            ) : (
-              <span className={styles.metricVal} style={{ color: "var(--badge-gold, #f59e0b)" }}>
-                <Clock size={13} /> Pending
-              </span>
-            )}
+            <span className={styles.metricTitle}>Audience Category</span>
+            <span className={styles.metricVal}>{item.interest || "General"}</span>
           </div>
           <div className={styles.metricCell}>
-            <span className={styles.metricTitle}>Delivery State</span>
-            <span className={styles.metricVal}>
-              {status === "review" ? (
-                "In Queue"
-              ) : item.is_paused ? (
-                "Paused"
-              ) : isExpired ? (
-                "Ended"
-              ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: "#10b981" }}>
-                  <span className={styles.liveDot} /> Active
-                </span>
-              )}
-            </span>
+            <span className={styles.metricTitle}>Viewer Retention</span>
+            <span className={styles.metricVal}>{isBidded ? "25–30m Hold" : "10m Hold"}</span>
           </div>
           <div className={styles.metricCell}>
             <span className={styles.metricTitle}>Daily Rate</span>
@@ -255,16 +303,8 @@ function MyHighlightCard({
             </span>
           </div>
           <div className={styles.metricCell}>
-            <span className={styles.metricTitle}>Safety Status</span>
-            {item.admin_statement ? (
-              <span className={`${styles.metricVal} ${styles.metricValRed}`}>
-                <AlertTriangle size={13} color="#ef4444" /> Notice
-              </span>
-            ) : (
-              <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
-                <CheckCircle2 size={13} color="#10b981" /> Clean
-              </span>
-            )}
+            <span className={styles.metricTitle}>Duration</span>
+            <span className={styles.metricVal}>{scheduleInfo.scheduledDays} Day(s)</span>
           </div>
         </div>
       </div>
@@ -272,22 +312,10 @@ function MyHighlightCard({
       {/* Action Row Footer */}
       <div className={styles.rowFooter}>
         <div className={`${styles.footerLeftGroup} ${styles.footerLeftGroupInner}`}>
-          {status === "review" ? (
-            <span className={styles.badgeReview}>Pending Review</span>
-          ) : item.is_paused ? (
-            <span className={styles.badgePaused}>Paused</span>
-          ) : isExpired ? (
-            <span className={styles.badgeCompleted}>Completed • Window Ended</span>
-          ) : (
-            <span className={styles.badgeActive}>
-              <span className={styles.liveDot} /> Approved • Active
-            </span>
-          )}
-
           <span className={styles.postedTime}>
             {status === "review"
               ? `Submitted ${formatTimestamp(item.created_at)}`
-              : `Approved & Posted ${formatTimestamp(item.created_at)}`}
+              : `Posted ${formatTimestamp(item.created_at)}`}
           </span>
         </div>
 
@@ -304,23 +332,98 @@ function MyHighlightCard({
             )}
           </button>
 
-          {!isExpired && (
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() => onTogglePause(item)}
-              className={item.is_paused ? styles.resumeBtn : styles.pauseBtn}
-            >
-              {item.is_paused ? (
-                <>
-                  <Play size={12} /> Resume
-                </>
-              ) : (
-                <>
-                  <Pause size={12} /> Pause
-                </>
+          
+          {status === "review" && (
+            <>
+              {isApproved && !isApprovedExpired && (
+                <button
+                  type="button"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    backgroundColor: "#10b981",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "0.42rem 0.95rem",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+                  }}
+                  onClick={() => onPublish && onPublish(item)}
+                  title={item.is_admin_post || Number((item as any).total_cost || 0) <= 0 ? "Publish highlight live" : "Make payment and publish highlight live"}
+                >
+                  {item.is_admin_post || Number((item as any).total_cost || 0) <= 0 ? "Publish" : "Publish & Pay"}
+                </button>
               )}
-            </button>
+
+              {isRejected && (
+                <a
+                  href="/logged-in"
+                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onEdit(item.id);
+                  }}
+                >
+                  Adjust
+                </a>
+              )}
+
+              {!isApproved && !isRejected && (
+                <a
+                  href="/logged-in"
+                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onEdit(item.id);
+                  }}
+                >
+                  Edit
+                </a>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onDelete?.(item.id)}
+                className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
+                title="Delete highlight draft"
+              >
+                Delete
+              </button>
+            </>
+          )}
+
+          {status === "active" && !isExpired && (
+            <>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => onTogglePause(item)}
+                className={item.is_paused ? styles.resumeBtn : styles.pauseBtn}
+              >
+                {item.is_paused ? (
+                  <>
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    Pause
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading || !!item.is_paused}
+                onClick={() => onOpenBooster?.(item)}
+                className={styles.boostBtn}
+                title={item.is_paused ? "Resume highlight to boost" : "Boost highlight priority bid and duration"}
+              >
+                Boost
+              </button>
+            </>
           )}
 
           <a
@@ -340,7 +443,7 @@ function MyHighlightCard({
             className={styles.shareAdBtn}
             title="Download Highlight CSV Report"
           >
-            <FileText size={12} /> CSV
+            CSV
           </button>
         </div>
       </div>

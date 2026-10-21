@@ -26,7 +26,7 @@ export default function Step0Category({
       </div>
       <div className={styles.modernSectionBody}>
         <p className={styles.categoryDescription}>
-          Choose the category that best matches your ad campaign.
+          Select ad category.
         </p>
         <div className={`${styles.adTypeGrid} ${styles.adTypeGridSpaced}`}>
           {Object.keys(adRates).map((key) => {

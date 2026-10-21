@@ -72,10 +72,9 @@ export default function AdminDirectPostTab({
       {/* Direct Ad Form */}
       <form onSubmit={handlePostAdDirect} className={`${styles.form} ${styles.adminCls_55}`}>
         <h2 className={styles.adminCls_56}>
-          <PlusCircle size={20} className={styles.textPrimary} />
-          <span>Directly Post approved Ad</span>
+          <span>Create Approved Campaign</span>
         </h2>
-        <p className={styles.adminCls_57}>Upload file and set parameters. Posted ads bypass the review queues.</p>
+        <p className={styles.adminCls_57}>Publish approved campaigns directly to the feed.</p>
 
         <div className={styles.formGroup}>
           <label className={styles.formLabel}>Publisher Email</label>
@@ -344,10 +343,9 @@ export default function AdminDirectPostTab({
       {/* Direct Highlight Form */}
       <form onSubmit={handlePostHighlightDirect} className={`${styles.form} ${styles.adminCls_61}`}>
         <h2 className={styles.adminCls_56}>
-          <PlusCircle size={20} className={styles.textPrimary} />
-          <span>Directly Post approved Highlight</span>
+          <span>Create Approved Highlight</span>
         </h2>
-        <p className={styles.adminCls_57}>Upload cover image and post highlight directly to live feeds.</p>
+        <p className={styles.adminCls_57}>Publish approved highlights directly to the feed.</p>
 
         <div className={styles.formGroup}>
           <label className={styles.formLabel}>Publisher Email</label>

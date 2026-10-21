@@ -1513,3 +1513,33 @@
   font-feature-settings: "tnum";
 }
 
+
+.previewImageFallback {
+  width: 100%;
+  height: 180px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, var(--sidebar-bg) 0%, var(--card-bg) 100%);
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.uploadBrowseBtn {
+  margin-top: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 600;
+}

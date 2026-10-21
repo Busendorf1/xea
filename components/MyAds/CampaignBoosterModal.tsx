@@ -64,6 +64,18 @@ export default function CampaignBoosterModal({
   };
 
   const getBoostUnavailableReason = (ad: Ad, reports: number): string | null => {
+    if (
+      ad.payment_status === "unpaid" ||
+      ad.status === "pending_review" ||
+      ad.status === "approved_pending_publish" ||
+      (ad.admin_statement && (
+        ad.admin_statement.startsWith("STATUS:") ||
+        ad.admin_statement.startsWith("APPROVED:") ||
+        ad.admin_statement.startsWith("REJECTED:")
+      ))
+    ) {
+      return "Boosting is only available after your campaign has been approved, paid for, and published live to the feed.";
+    }
     if (reports > 0) {
       return "This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete.";
     }

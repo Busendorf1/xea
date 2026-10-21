@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Zap, Crown, Award, ChevronRight, TrendingUp, Sparkles, CheckCircle2 } from "lucide-react";
+import { Zap, Crown, ChevronRight, Sparkles, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import styles from "./AttentionMarketTicker.module.css";
 import RollingCounter from "@/components/ui/RollingCounter";
@@ -147,7 +147,7 @@ function AttentionMarketTicker({
               </span>
             </div>
             <p className={styles.headerSubtitle}>
-              Outbid competitor campaigns to secure the #1 position at the top of the user feed
+              Bid for priority feed placement.
             </p>
           </div>
         </div>
@@ -197,23 +197,11 @@ function AttentionMarketTicker({
             {/* Projected Rank Card */}
             <div className={`${styles.rankCard} ${styles[`rankCard_${rankStatus}`]}`}>
               <div className={styles.rankHeader}>
-                <div className={styles.rankIconWrap}>
-                  {rankStatus === "spotlight" ? (
-                    <Award size={18} className={styles.goldCrown} />
-                  ) : rankStatus === "matched" ? (
-                    <TrendingUp size={18} className={styles.matchedSparkle} />
-                  ) : (
-                    <TrendingUp size={18} className={styles.challengerIcon} />
-                  )}
-                </div>
+                
                 <div className={styles.rankTextColumn}>
                   <div className={styles.rankPillRow}>
                     <span className={styles.rankTitle}>
-                      {rankStatus === "spotlight"
-                        ? "#1 Spotlight Winner (Lead Position)"
-                        : rankStatus === "matched"
-                        ? "Matched Top Bid (Shared Spotlight)"
-                        : "Challenger Position (Standard Feed Priority)"}
+                      {rankStatus === "spotlight" ? "#1 Spotlight" : rankStatus === "matched" ? "Matched Top Bid" : "Challenger"}
                     </span>
                   </div>
                   <p className={styles.rankDescription}>

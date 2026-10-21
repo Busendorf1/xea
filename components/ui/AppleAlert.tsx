@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Check, X, AlertTriangle, Info, AlertOctagon } from "lucide-react";
+import { CheckCircle2, AlertTriangle, AlertOctagon, Info, X } from "lucide-react";
 import styles from "./AppleAlert.module.css";
 
 export type AppleAlertType = "success" | "error" | "warning" | "info";
@@ -15,7 +15,8 @@ export interface AppleAlertItem {
 }
 
 /**
- * Dispatch an Apple-style motion animated alert anywhere in the client
+ * Dispatch a branded pop-up feedback modal anywhere across the client.
+ * Stays open until user clicks "Got it" or dismisses it.
  */
 export function showAppleAlert(
   message: string,
@@ -23,21 +24,21 @@ export function showAppleAlert(
   title?: string
 ) {
   if (typeof window !== "undefined") {
-    // Mobile tactile haptic feedback (Google & Android best practice)
+    // Mobile tactile haptic feedback
     try {
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         if (type === "success") {
-          navigator.vibrate([15, 30, 25]); // Crisp double tap for success
+          navigator.vibrate([15, 30, 25]);
         } else if (type === "error") {
-          navigator.vibrate([40, 40, 40]); // Warning buzz for error
+          navigator.vibrate([40, 40, 40]);
         } else if (type === "warning") {
           navigator.vibrate([25, 20]);
         } else {
-          navigator.vibrate(15); // Light subtle tap for info
+          navigator.vibrate(15);
         }
       }
     } catch (_) {
-      // Ignore vibration errors on unsupported platforms
+      // Ignore vibration errors
     }
 
     window.dispatchEvent(
@@ -49,23 +50,47 @@ export function showAppleAlert(
 }
 
 /**
- * Dynamic Island & Apple-designed Glassmorphic Toast HUD Component
+ * Alias for showAppleAlert
+ */
+export const showFeedbackModal = showAppleAlert;
+
+/**
+ * Branded Pop-up Feedback Modal Component
+ * Styled identically to the Boost Notice Modal with "Got it" confirmation.
  */
 export default function AppleAlertHUD() {
   const [currentAlert, setCurrentAlert] = useState<AppleAlertItem | null>(null);
   const exitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const dismissTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const dismiss = useCallback(() => {
     setCurrentAlert((prev) => (prev ? { ...prev, isExiting: true } : null));
     if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
     exitTimeoutRef.current = setTimeout(() => {
       setCurrentAlert(null);
-    }, 280);
+    }, 220);
   }, []);
 
+  // Lock body scroll and listen for Escape key
   useEffect(() => {
-    // Intercept native browser alert calls globally
+    if (!currentAlert) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Enter") {
+        dismiss();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [currentAlert, dismiss]);
+
+  // Intercept native browser alert calls globally
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const originalAlert = window.alert;
       window.alert = (msg: any) => {
@@ -124,7 +149,6 @@ export default function AppleAlertHUD() {
       if (!customEvt.detail?.message) return;
 
       if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
-      if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
 
       const newItem: AppleAlertItem = {
         id: `${Date.now()}_${Math.random()}`,
@@ -135,11 +159,6 @@ export default function AppleAlertHUD() {
       };
 
       setCurrentAlert(newItem);
-
-      // Auto dismiss after 3.6s
-      dismissTimeoutRef.current = setTimeout(() => {
-        dismiss();
-      }, 3600);
     };
 
     const handleLegacyToast = (e: Event) => {
@@ -156,9 +175,8 @@ export default function AppleAlertHUD() {
       window.removeEventListener("paayh:apple-alert", handleAlertEvent);
       window.removeEventListener("xea:toast", handleLegacyToast);
       if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
-      if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
     };
-  }, [dismiss]);
+  }, []);
 
   if (!currentAlert) return null;
 
@@ -166,26 +184,26 @@ export default function AppleAlertHUD() {
     switch (currentAlert.type) {
       case "success":
         return (
-          <div className={`${styles.iconBadge} ${styles.iconSuccess}`}>
-            <Check size={16} strokeWidth={2.5} />
+          <div className={styles.iconWrapper}>
+            <CheckCircle2 size={24} color="#10b981" />
           </div>
         );
       case "error":
         return (
-          <div className={`${styles.iconBadge} ${styles.iconError}`}>
-            <AlertOctagon size={16} strokeWidth={2.5} />
+          <div className={styles.iconWrapper}>
+            <AlertOctagon size={24} color="#ef4444" />
           </div>
         );
       case "warning":
         return (
-          <div className={`${styles.iconBadge} ${styles.iconWarning}`}>
-            <AlertTriangle size={15} strokeWidth={2.5} />
+          <div className={styles.iconWrapper}>
+            <AlertTriangle size={24} color="#f59e0b" />
           </div>
         );
       default:
         return (
-          <div className={`${styles.iconBadge} ${styles.iconInfo}`}>
-            <Info size={16} strokeWidth={2.5} />
+          <div className={styles.iconWrapper}>
+            <Info size={24} color="#1d9bf0" />
           </div>
         );
     }
@@ -205,34 +223,69 @@ export default function AppleAlertHUD() {
     }
   };
 
+  const getBtnClass = () => {
+    switch (currentAlert.type) {
+      case "success":
+        return `${styles.gotItBtn} ${styles.gotItBtnSuccess}`;
+      case "warning":
+        return `${styles.gotItBtn} ${styles.gotItBtnWarning}`;
+      case "error":
+        return `${styles.gotItBtn} ${styles.gotItBtnError}`;
+      default:
+        return styles.gotItBtn;
+    }
+  };
+
   return (
     <div
-      role="alert"
-      aria-live="assertive"
-      className={`${styles.appleAlertContainer} ${
-        currentAlert.isExiting ? styles.exiting : styles.entering
-      }`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="feedback-modal-title"
+      className={styles.feedbackOverlay}
       onClick={dismiss}
     >
-      <div className={styles.contentRow}>
-        {renderIcon()}
-        <div className={styles.textContainer}>
-          <span className={styles.alertTitle}>{getTitle()}</span>
-          <span className={styles.alertMessage}>{currentAlert.message}</span>
+      <div
+        className={`${styles.modalDialog} ${
+          currentAlert.isExiting ? styles.exiting : styles.entering
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header with Branded Icon, Title and Close Button */}
+        <div className={styles.modalHeader}>
+          <div className={styles.modalHeaderLeft}>
+            {renderIcon()}
+            <h3 id="feedback-modal-title" className={styles.modalTitle}>
+              {getTitle()}
+            </h3>
+          </div>
+          <button
+            type="button"
+            className={styles.modalCloseBtn}
+            onClick={dismiss}
+            aria-label="Close dialog"
+            title="Close"
+          >
+            <X size={20} />
+          </button>
         </div>
-        <button
-          type="button"
-          className={styles.closeButton}
-          onClick={(e) => {
-            e.stopPropagation();
-            dismiss();
-          }}
-          aria-label="Dismiss alert"
-        >
-          <X size={14} strokeWidth={2.2} />
-        </button>
+
+        {/* Body Message */}
+        <div className={styles.modalBody}>
+          <p className={styles.modalBodyPara}>{currentAlert.message}</p>
+        </div>
+
+        {/* Footer with Branded "Got it" Button */}
+        <div className={styles.modalFooter}>
+          <button
+            type="button"
+            autoFocus
+            className={getBtnClass()}
+            onClick={dismiss}
+          >
+            Got it
+          </button>
+        </div>
       </div>
-      <div className={`${styles.progressBar} ${styles[`progress_${currentAlert.type}`]}`} />
     </div>
   );
 }

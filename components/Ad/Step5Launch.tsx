@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Crown, Rocket } from "lucide-react";
@@ -73,34 +74,23 @@ export default function Step5Launch({
         productCtaLink={formSelections.productCtaLink}
       />
 
-      {isAdmin ? (
+            {isAdmin ? (
         <div className={styles.adminFreeBanner}>
           <p className={styles.adminFreeHeading}>
-            <Crown size={18} color="var(--primary)" /> Admin Privilege: 100% Free Campaign Publishing (₦0.00 Total)
+            Admin: Free Publishing
           </p>
           <p className={styles.adminFreeSubtext}>
             No payment gateway or wallet balance deduction required.
           </p>
         </div>
       ) : (
-        <div className={styles.paymentSection}>
-          <div className={styles.paymentTitle}>Payment Method</div>
-          <div className={styles.paymentOptions}>
-            <div
-              className={`${styles.paymentOptionCard} ${paymentMethod === "card" ? styles.paymentOptionCardActive : ""}`}
-              onClick={() => setPaymentMethod("card")}
-            >
-              <div className={styles.paymentOptionName}>Card / Bank</div>
-              <div className={styles.paymentOptionSub}>Debit Card, USSD, Bank Transfer</div>
-            </div>
-            <div
-              className={`${styles.paymentOptionCard} ${paymentMethod === "wallet" ? styles.paymentOptionCardActive : ""}`}
-              onClick={() => setPaymentMethod("wallet")}
-            >
-              <div className={styles.paymentOptionName}>Wallet Balance</div>
-              <div className={styles.paymentOptionSub}>Available: {formatCurrency(userProfile?.balance ?? 0)}</div>
-            </div>
-          </div>
+        <div style={{ margin: "1.25rem 0 1rem", textAlign: "left" }}>
+          <h4 style={{ margin: "0 0 0.35rem", fontSize: "0.95rem", fontWeight: 600, color: "var(--foreground)" }}>
+            Pay on Approval
+          </h4>
+          <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+            Once approved, click Publish &amp; Pay on My Ads to launch.
+          </p>
         </div>
       )}
 
@@ -125,30 +115,20 @@ export default function Step5Launch({
         </label>
       </div>
 
-      <div className={styles.termsPolicyBox}>
-        <input
-          type="checkbox"
-          id="adTermsPolicyCheckbox"
-          checked={agreedToPolicy}
-          onChange={(e) => setAgreedToPolicy(e.target.checked)}
-          className={styles.termsCheckbox}
-        />
-        <label htmlFor="adTermsPolicyCheckbox" className={styles.termsLabel}>
-          I have reviewed my ad details and agree to Paayh&apos;s{" "}
-          <Link href="/terms" target="_blank" className={styles.termsLink}>
-            Terms of Service
-          </Link>
-          ,{" "}
-          <Link href="/advertiser-guidelines" target="_blank" className={styles.termsLink}>
-            Advertising Guidelines
-          </Link>
-          , and{" "}
-          <Link href="/privacy" target="_blank" className={styles.termsLink}>
-            Privacy Policy
-          </Link>
-          .
-        </label>
-      </div>
+      <TermsAgreementCheckbox
+        id="adTermsPolicyCheckbox"
+        checked={agreedToPolicy}
+        onChange={setAgreedToPolicy}
+        instruction="Please read and review the advertising terms and policies below, and tick the box if you accept:"
+        terms={[
+          { label: "Terms of Service", href: "/terms" },
+          { label: "Advertising Guidelines", href: "/advertiser-guidelines" },
+          { label: "Non-Refundable Policy", href: "/terms" },
+          { label: "Privacy Policy", href: "/privacy" },
+        ]}
+        checkboxLabel="I have read, reviewed, and accept the Advertising Policies and Non-Refundable Terms, and confirm my ad content adheres to community guidelines."
+        required
+      />
 
       <button
         className={`${styles.submitButton} ${styles.submitButtonContent}`}
@@ -156,13 +136,18 @@ export default function Step5Launch({
         disabled={isSubmitting || !agreedToPolicy}
       >
         {isSubmitting ? (
-          "Processing..."
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span className="btnSpinner" aria-hidden="true" />
+            <span>Submitting for Review...</span>
+          </span>
         ) : isAdmin ? (
           <>
-            <Rocket size={16} /> Publish (Admin)
+            Publish (Admin)
           </>
         ) : (
-          "Submit"
+          <>
+            Submit for Review
+          </>
         )}
       </button>
 

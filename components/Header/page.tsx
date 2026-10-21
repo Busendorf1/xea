@@ -7,10 +7,12 @@ import styles from "../Header/page.module.css";
 import { useTheme } from "../ThemeProvider";
 import { Sun, Moon, Bell, ArrowUpRight, ArrowDownLeft, Wallet, ShieldAlert, CheckCircle2, Trash2 } from "lucide-react";
 import SidebarMenu from "@/components/SidebarToggle/page";
+import SignInModal from "@/components/ui/SignInModal";
 
 export default function Header() {
   const [menuActive, setMenuActive] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [isSignInOpen, setIsSignInOpen] = useState(false);
   const { user, isLoading } = useUser();
   const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -434,9 +436,9 @@ export default function Header() {
                       Sign Out
                     </a>
                   ) : (
-                    <a href="/auth/login" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
+                    <button type="button" className={styles.dropdownItem} onClick={() => { setMenuActive(false); setIsSignInOpen(true); }}>
                       Sign In
-                    </a>
+                    </button>
                   )}
                   <Link href="/help" className={styles.dropdownItem} onClick={() => setMenuActive(false)}>
                     Help Center
@@ -466,13 +468,14 @@ export default function Header() {
                 Sign Out
               </a>
             ) : (
-              <a href="/auth/login" className={styles.ctaBtn}>
+              <button type="button" className={styles.ctaBtn} onClick={() => setIsSignInOpen(true)}>
                 Sign In
-              </a>
+              </button>
             )}
           </nav>
         )}
       </div>
+      <SignInModal isOpen={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
     </header>
   );
 }

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     // Closed-loop non-refundable payment policy:
     // Depositing money into wallet is strictly prohibited. Only direct payments for ads & highlights are allowed here.
-    if (!["ad", "highlight"].includes(type)) {
+    if (!["ad", "highlight", "publish_ad", "publish_highlight"].includes(type)) {
       return NextResponse.json(
         { error: "Depositing money to wallet is not allowed. Only non-refundable payments for ads and highlights are permitted." },
         { status: 400 }
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const { isAdminEmail } = await import("@/lib/authHelper");
     const isAdmin = isAdminEmail(email);
-    if (isAdmin && (type === "ad" || type === "highlight")) {
+    if (isAdmin) {
       const redirectUrl = `${callbackUrl || "/logged-in"}?admin_free=true`;
       const ref = `ADMIN_FREE_${Date.now()}`;
       return NextResponse.json({
@@ -132,6 +132,57 @@ export async function POST(req: NextRequest) {
           await redisConnection.set(editLimitKey, "1", "EX", 86400).catch(() => {});
         }
       }
+    } else if (type === "publish_ad") {
+      const adId = metadata?.adId;
+      if (!adId) {
+        return NextResponse.json({ error: "Missing adId parameter" }, { status: 400 });
+      }
+      const { data: adRow, error: adErr } = await supabaseAdmin
+        .from("adds")
+        .select("total_cost, admin_statement, user_email")
+        .eq("id", adId)
+        .maybeSingle();
+
+      if (adErr || !adRow) {
+        return NextResponse.json({ error: "Campaign not found in review queue" }, { status: 404 });
+      }
+
+      const costVal = Number(adRow.total_cost || 0);
+      const clientAmount = parseFloat(amount);
+      if (Math.abs(clientAmount - costVal) > 1) {
+        return NextResponse.json({ error: "Cost validation mismatch." }, { status: 400 });
+      }
+      verifiedAmount = costVal;
+    } else if (type === "publish_highlight") {
+      const highlightId = metadata?.highlightId;
+      if (!highlightId) {
+        return NextResponse.json({ error: "Missing highlightId parameter" }, { status: 400 });
+      }
+      const { data: hlRow, error: hlErr } = await supabaseAdmin
+        .from("news")
+        .select("campaign_days, bid_price, is_bidded, admin_statement, user_email")
+        .eq("id", highlightId)
+        .maybeSingle();
+
+      if (hlErr || !hlRow) {
+        return NextResponse.json({ error: "Highlight not found in review queue" }, { status: 404 });
+      }
+
+      const days = hlRow.campaign_days || 1;
+      const rate = hlRow.is_bidded && hlRow.bid_price ? Number(hlRow.bid_price) : 1000;
+      const expectedHlCost = days * rate;
+      const clientAmount = parseFloat(amount);
+      if (Math.abs(clientAmount - expectedHlCost) > 1) {
+        return NextResponse.json({ error: "Cost validation mismatch." }, { status: 400 });
+      }
+      verifiedAmount = expectedHlCost;
+    }
+
+    if (verifiedAmount <= 0) {
+      return NextResponse.json(
+        { error: "Campaign requires no payment or has a zero balance." },
+        { status: 400 }
+      );
     }
 
     const paymentMetadata = {

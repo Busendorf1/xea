@@ -9,6 +9,7 @@ import AppleSpinner from "@/components/ui/AppleSpinner";
 import { CheckCircle2, AlertCircle, Info, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import CustomSelect from "@/components/ui/CustomSelect";
+import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import FormStepProgress from "@/components/ui/FormStepProgress";
 import FairAttentionModal from "@/components/ui/FairAttentionModal";
 
@@ -118,6 +119,8 @@ export default function Update({ email }: Props) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [nextAvailableMs, setNextAvailableMs] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [goodwillAgreed, setGoodwillAgreed] = useState<boolean>(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
   const router = useRouter();
 
   const toggleDropdown = (key: keyof typeof openDropdowns) => {
@@ -265,6 +268,12 @@ export default function Update({ email }: Props) {
   };
 
   const handleUpdate = async () => {
+    if (!goodwillAgreed) {
+      const msg = "Please read and review the terms and policies, and tick the box to accept before saving your profile.";
+      setTermsError(msg);
+      setStatus(msg);
+      return;
+    }
     if (!dbProfile) return;
 
     // Location is required, must be detected via GPS toggle
@@ -890,6 +899,29 @@ export default function Update({ email }: Props) {
         </div>
       )}
 
+      {currentStep === steps.length - 1 && (
+        <TermsAgreementCheckbox
+          id="profile-update-terms"
+          checked={goodwillAgreed}
+          onChange={(checked) => {
+            setGoodwillAgreed(checked);
+            if (checked) {
+              setTermsError(null);
+              setStatus(null);
+            }
+          }}
+          instruction="Please read and review the terms and policies below, and tick the box if you accept:"
+          terms={[
+            { label: "Terms of Service", href: "/terms" },
+            { label: "Privacy Policy", href: "/privacy" },
+            { label: "Good Will & Community Guidelines", href: "/terms" },
+          ]}
+          checkboxLabel="I confirm that I have read, reviewed, and accept the Terms of Service & Privacy Policy, and pledge to participate in good will."
+          errorMessage={termsError}
+          required
+        />
+      )}
+
       {/* Step Navigation Controls */}
       <div className={styles.stepNavigationRow}>
         {currentStep > 0 && (
@@ -928,7 +960,12 @@ export default function Update({ email }: Props) {
             onClick={handleUpdate}
             disabled={loading || isFormDisabled}
           >
-            {loading ? "Saving Profile..." : isFormDisabled ? `Locked (Cooldown)` : "Save Profile"}
+            {loading ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span className="btnSpinner" aria-hidden="true" />
+                <span>Saving Profile...</span>
+              </span>
+            ) : isFormDisabled ? `Locked (Cooldown)` : "Save Profile"}
           </motion.button>
         )}
       </div>

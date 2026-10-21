@@ -38,13 +38,19 @@ export type Ad = {
   is_paused?: boolean;
   cost_per_impression?: number;
   total_cost?: number;
+  status?: string | null;
+  payment_status?: string | null;
+  approved_at?: string | null;
   daily_budget?: number;
+  is_admin_post?: boolean | null;
   industry?: string[] | string | null;
   interest?: string[] | string | null;
   lifestyle?: string[] | string | null;
   behavior?: string[] | string | null;
   personality?: string[] | string | null;
   ad_type?: string;
+  user_email?: string | null;
+  email?: string | null;
   is_ai_content?: boolean | null;
 };
 

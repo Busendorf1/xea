@@ -60,7 +60,7 @@ export default function CookiesPage() {
             </li>
             <li className={styles.listItem}>
               <strong>Real-Time Telemetry &amp; Server-Sent Events (SSE):</strong> Persistent, multiplexed HTTP streaming
-              connections (`/api/user/live-balance`) that securely broadcast wallet balance adjustments and notification updates
+              connections that securely broadcast wallet balance adjustments and notification updates
               in real time without third-party tracking cookies.
             </li>
           </ul>

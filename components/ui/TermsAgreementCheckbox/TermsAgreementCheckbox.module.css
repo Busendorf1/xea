@@ -1,0 +1,167 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin: 12px 0;
+  text-align: left;
+}
+
+.containerCard {
+  background: var(--card-bg, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-inner, 12px);
+  padding: 14px 16px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+:global([data-theme="white"]) .containerCard {
+  background: #ffffff;
+  border-color: var(--card-border, #e6e5e1);
+}
+
+.containerCard:hover {
+  border-color: rgba(29, 155, 240, 0.4);
+}
+
+.containerCardError {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.04) !important;
+}
+
+.instructionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.instructionIcon {
+  color: #1d9bf0;
+  flex-shrink: 0;
+}
+
+.instructionText {
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--foreground, #e2e8f0);
+  line-height: 1.4;
+  margin: 0;
+}
+
+:global([data-theme="white"]) .instructionText {
+  color: #0f172a;
+}
+
+.termsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding-left: 24px;
+  margin: 0;
+  list-style: none;
+}
+
+.termItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.termBullet {
+  color: #1d9bf0;
+  font-size: 0.85rem;
+}
+
+.termLink {
+  color: #1d9bf0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, opacity 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.termLink:hover {
+  color: #60a5fa;
+  opacity: 0.9;
+}
+
+:global([data-theme="white"]) .termLink {
+  color: #0284c7;
+}
+
+/* Checkbox Row: Exactly same line with comfortable gap */
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  cursor: pointer;
+  user-select: none;
+  margin-top: 2px;
+}
+
+.checkboxInput {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.customBox {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--card-border, rgba(255, 255, 255, 0.35));
+  background: var(--input-bg, rgba(255, 255, 255, 0.06));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+:global([data-theme="white"]) .customBox {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.checkboxRow:hover .customBox {
+  border-color: #1d9bf0;
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.customBoxChecked {
+  background: #1d9bf0 !important;
+  border-color: #1d9bf0 !important;
+}
+
+.customBoxError {
+  border-color: #ef4444 !important;
+}
+
+.checkboxLabelText {
+  font-size: 0.84rem;
+  color: var(--foreground, #cbd5e1);
+  line-height: 1.4;
+  flex: 1;
+  padding-left: 2px;
+}
+
+:global([data-theme="white"]) .checkboxLabelText {
+  color: #334155;
+}
+
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ef4444;
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-top: 2px;
+  padding-left: 28px;
+}

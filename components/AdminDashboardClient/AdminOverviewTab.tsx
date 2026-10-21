@@ -50,8 +50,8 @@ export default function AdminOverviewTab({
   return (
     <>
       <div>
-        <h1 className={styles.sectionTitle}>System Performance</h1>
-        <p className={styles.sectionSubtitle}>Real-time telemetry and database operational metrics.</p>
+        <h1 className={styles.sectionTitle}>System Overview</h1>
+        <p className={styles.sectionSubtitle}>Operational metrics and system telemetry.</p>
       </div>
 
       {loading ? (

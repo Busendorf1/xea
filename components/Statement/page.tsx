@@ -79,7 +79,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
       const needsProfileFetch = isRefresh || (!profile && !initialProfile);
 
       const [profileRes, unifiedRes] = await Promise.all([
-        needsProfileFetch ? fetch("/api/profile").catch(() => null) : Promise.resolve(null),
+        fetch("/api/profile").catch(() => null),
         fetch(`/api/payments/history?type=all${refreshQuery}`),
       ]);
 
@@ -298,7 +298,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
         </span>
       );
     }
-    if (t === "ad") {
+    if (t === "ad" || t === "publish_ad") {
       return (
         <span className={`${styles.typeBadge} ${styles.typeAd}`}>
           <TrendingUp size={13} />
@@ -306,7 +306,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
         </span>
       );
     }
-    if (t === "highlight") {
+    if (t === "highlight" || t === "publish_highlight") {
       return (
         <span className={`${styles.typeBadge} ${styles.typeHighlight}`}>
           <CreditCard size={13} />
@@ -632,6 +632,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                           <tr key={tx.id} className={styles.row}>
                             <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
                             <td className={styles.tdRef}>
+                              <div className={styles.refContainer}>
                               <span className={styles.refCode}>{tx.reference}</span>
                               <button
                                 onClick={() => handleCopy(tx.reference)}
@@ -644,6 +645,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                                   <Copy size={12} />
                                 )}
                               </button>
+                            </div>
                             </td>
                             <td className={styles.td}>{getTypeBadge(tx.type)}</td>
                             <td className={styles.tdDesc}>{tx.description}</td>
@@ -742,6 +744,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                       <tr key={tx.id} className={styles.row}>
                         <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
                         <td className={styles.tdRef}>
+                              <div className={styles.refContainer}>
                           <span className={styles.refCode}>{tx.reference}</span>
                           <button
                             onClick={() => handleCopy(tx.reference)}
@@ -754,7 +757,8 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                               <Copy size={12} />
                             )}
                           </button>
-                        </td>
+                        </div>
+                            </td>
                         <td className={styles.tdDesc}>{tx.description}</td>
                         <td className={`${styles.tdAmount} ${styles.amountDebit}`}>
                           - {formatAmount(tx.amount)}

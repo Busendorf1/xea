@@ -152,9 +152,9 @@ BEGIN
       a.created_at,
       a.completed_at,
       a.impression_count,
-      a.impression AS cost_per_impression,
+      a.cost_per_impression,
       CASE WHEN b.id IS NOT NULL THEN true ELSE false END AS is_bidded,
-      COALESCE(b.bid_price, a.impression) AS bid_price,
+      COALESCE(b.bid_price, a.cost_per_impression) AS bid_price,
       
       -- Rollover computation: past campaign duration but impressions remain unfulfilled
       (

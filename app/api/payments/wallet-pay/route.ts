@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const { type, amount, metadata } = body;
 
     // Closed-loop non-refundable policy: Only Ad & Highlight campaigns allowed (no wallet deposits)
-    const validTypes = ["ad", "highlight"];
+    const validTypes = ["ad", "highlight", "publish_ad", "publish_highlight"];
     if (!validTypes.includes(type)) {
       return NextResponse.json(
         { error: "Invalid payment type. Only non-refundable payments for ads and highlights are allowed." },
@@ -179,6 +179,172 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Perform business logic (with automatic balance rollback if DB write fails)
+    // Handle publish_ad
+    if (type === "publish_ad") {
+      const adId = metadata?.adId || body.adId;
+      if (!adId) {
+        return NextResponse.json({ error: "Missing adId parameter" }, { status: 400 });
+      }
+
+      const { data: adToPublish, error: fetchErr } = await supabaseAdmin
+        .from("adds")
+        .select("*")
+        .eq("id", adId)
+        .ilike("user_email", emailLower)
+        .maybeSingle();
+
+      if (fetchErr || !adToPublish) {
+        return NextResponse.json({ error: "Campaign not found in review queue" }, { status: 404 });
+      }
+
+      if (!adToPublish.admin_statement || !adToPublish.admin_statement.startsWith("APPROVED:")) {
+        return NextResponse.json({ error: "Campaign has not been approved for publishing by admin." }, { status: 400 });
+      }
+
+      const approvedTimestamp = adToPublish.admin_statement.replace("APPROVED:", "").trim();
+      const approvedDate = new Date(approvedTimestamp);
+      if (!isNaN(approvedDate.getTime()) && approvedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "This approved campaign has expired (exceeded 3 days)." }, { status: 400 });
+      }
+
+      // Strip review/approval queue specific fields that don't exist on addsactive
+      const {
+        status: _status,
+        approved_at: _appAt,
+        payment_status: _payStatus,
+        ...cleanAd
+      } = adToPublish;
+
+      const activeAd = {
+        ...cleanAd,
+        admin_statement: null,
+        is_paused: false,
+        created_at: new Date().toISOString(),
+      };
+
+      const { data: insertedRows, error: insertErr } = await supabaseAdmin
+        .from("addsactive")
+        .insert([activeAd])
+        .select("*");
+
+      if (insertErr) {
+        console.error("❌ Error activating ad in addsactive:", insertErr);
+        if (!isAdmin) {
+          await refundWalletDeductionAtomic(emailLower, amountNum, "publish_ad_insert_failed", reference);
+        }
+        return NextResponse.json({ error: "Failed to publish ad. Balance has been restored." }, { status: 500 });
+      }
+
+      await supabaseAdmin.from("adds").delete().eq("id", adId);
+
+      const publishedAd = insertedRows?.[0] || activeAd;
+      const { dispatchFeedDropWebhook } = await import("@/lib/webhookDispatcher");
+      dispatchFeedDropWebhook(publishedAd).catch(() => {});
+
+      await supabaseAdmin.from("notifications").insert([
+        {
+          user_email: emailLower,
+          title: "Campaign Published & Live!",
+          message: "Your approved campaign has been paid and is now live in the active feed!",
+        },
+      ]);
+
+      const { invalidateCachedUserCampaigns, invalidateCachedProfile } = await import("@/lib/utils/cache");
+      await Promise.all([
+        invalidateCachedUserCampaigns(emailLower),
+        invalidateCachedProfile(emailLower),
+      ]);
+
+      return NextResponse.json({
+        success: true,
+        message: "Campaign published and live in feed!",
+        ad: publishedAd,
+      });
+    }
+
+    if (type === "publish_highlight") {
+      const highlightId = metadata?.highlightId || body.highlightId;
+      if (!highlightId) {
+        return NextResponse.json({ error: "Missing highlightId parameter" }, { status: 400 });
+      }
+
+      const { data: hlToPublish, error: fetchErr } = await supabaseAdmin
+        .from("news")
+        .select("*")
+        .eq("id", highlightId)
+        .ilike("user_email", emailLower)
+        .maybeSingle();
+
+      if (fetchErr || !hlToPublish) {
+        return NextResponse.json({ error: "Highlight not found in review queue" }, { status: 404 });
+      }
+
+      // Check 3-day approval expiry if applicable
+      if (hlToPublish.admin_statement && hlToPublish.admin_statement.startsWith("APPROVED:")) {
+        const approvedTimestamp = hlToPublish.admin_statement.replace("APPROVED:", "").trim();
+        const approvedDate = new Date(approvedTimestamp);
+        if (!isNaN(approvedDate.getTime()) && approvedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+          return NextResponse.json({ error: "This approved highlight has expired (exceeded 3 days)." }, { status: 400 });
+        }
+      }
+
+      // Strip review/approval queue specific fields that don't exist on newsactive
+      const {
+        status: _status,
+        approved_at: _appAt,
+        payment_status: _payStatus,
+        is_admin_post: _adminPost,
+        custom_sponsor_name: _csName,
+        custom_sponsor_handle: _csHandle,
+        custom_sponsor_logo: _csLogo,
+        ...cleanHl
+      } = hlToPublish;
+
+      const activeHl = {
+        ...cleanHl,
+        admin_statement: null,
+        is_paused: false,
+        created_at: new Date().toISOString(),
+      };
+
+      const { data: insertedHlRows, error: insertErr } = await supabaseAdmin
+        .from("newsactive")
+        .insert([activeHl])
+        .select("*");
+
+      if (insertErr) {
+        console.error("❌ Error activating highlight in newsactive:", insertErr);
+        if (!isAdmin) {
+          await refundWalletDeductionAtomic(emailLower, amountNum, "publish_highlight_insert_failed", reference);
+        }
+        return NextResponse.json({ error: "Failed to publish highlight. Balance has been restored." }, { status: 500 });
+      }
+
+      await supabaseAdmin.from("news").delete().eq("id", highlightId);
+
+      const publishedHl = insertedHlRows?.[0] || activeHl;
+
+      await supabaseAdmin.from("notifications").insert([
+        {
+          user_email: emailLower,
+          title: "Highlight Published & Live!",
+          message: "Your approved highlight is now live in the active feed!",
+        },
+      ]);
+
+      const { invalidateCachedUserCampaigns, invalidateCachedProfile } = await import("@/lib/utils/cache");
+      await Promise.all([
+        invalidateCachedUserCampaigns(emailLower),
+        invalidateCachedProfile(emailLower),
+      ]);
+
+      return NextResponse.json({
+        success: true,
+        message: "Highlight published and live in feed!",
+        highlight: activeHl,
+      });
+    }
+
     if (type === "highlight") {
       const {
         title,

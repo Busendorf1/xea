@@ -7,10 +7,12 @@ import styles from "../HeaderJoin/page.module.css";
 import { useTheme } from "../ThemeProvider";
 import { Sun, Moon } from "lucide-react";
 import SidebarMenu from "../SidebarToggle/page";
+import SignInModal from "@/components/ui/SignInModal";
 
 export default function HeaderJoin() {
   const [menuActive, setMenuActive] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [isSignInOpen, setIsSignInOpen] = useState(false);
   const { user, isLoading } = useUser();
   const { theme, setTheme } = useTheme();
   const [showHeader, setShowHeader] = useState(true);
@@ -136,7 +138,12 @@ export default function HeaderJoin() {
         <>
           <div className={styles.mobileActions}>
             {renderThemeSwitcher()}
-            {!isLoading && user && <SidebarMenu />}
+            {!isLoading && !user && (
+            <div className={styles.create}>
+              <button type="button" onClick={() => setIsSignInOpen(true)} style={{ background: "none", border: "none", color: "inherit", font: "inherit", cursor: "pointer", padding: 0 }}>Sign In</button>
+            </div>
+          )}
+          {!isLoading && user && <SidebarMenu />}
             <div className={styles.menu}>
               <div
                 className={styles.hamburger}
@@ -174,6 +181,11 @@ export default function HeaderJoin() {
             <div className={styles.create}>
               <Link href={"/../faq"} onClick={() => setMenuActive(false)}>Faq</Link>
             </div>
+            {!isLoading && !user && (
+              <div className={styles.create}>
+                <button type="button" onClick={() => { setMenuActive(false); setIsSignInOpen(true); }} style={{ background: "none", border: "none", color: "inherit", font: "inherit", cursor: "pointer", padding: 0 }}>Sign In</button>
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -202,6 +214,7 @@ export default function HeaderJoin() {
           {renderThemeSwitcher()}
         </div>
       )}
+      <SignInModal isOpen={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
     </header>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,87 +10,97 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const emailLower = email.toLowerCase().trim();
     const body = await request.json();
-    console.log("📥 Cancel Ad Request parsed body:", body);
-
     const adIdInput = body.adId || body.id;
     if (!adIdInput) {
       return NextResponse.json({ error: "Missing adId" }, { status: 400 });
     }
 
-    // Clean UUID string if it has surrounding quotes or whitespace
     const adId = String(adIdInput).replace(/^["']|["']$/g, "").trim();
-    console.log(`🔍 Cleaned adId for cancel lookup: "${adId}"`);
 
-    // 1. Try finding in 'adds' master table
-    const { data: initialAd, error: fetchError } = await supabaseAdmin
+    // 1. Check in 'adds' master queue (review / draft / pending publish)
+    const { data: draftAd } = await supabaseAdmin
       .from("adds")
-      .select("user_email, completed_at")
+      .select("*")
       .eq("id", adId)
       .maybeSingle();
 
-    let ad = initialAd;
-
-    if (fetchError) {
-      console.error("❌ Error fetching from adds table:", fetchError.message);
-    }
-
-    // 2. Fallback to 'addsactive' table
-    if (!ad) {
-      const { data: activeAd, error: activeFetchError } = await supabaseAdmin
-        .from("addsactive")
-        .select("user_email, completed_at")
-        .eq("id", adId)
-        .maybeSingle();
-
-      if (activeFetchError) {
-        console.error("❌ Error fetching from addsactive table:", activeFetchError.message);
+    if (draftAd) {
+      if (draftAd.user_email?.toLowerCase() !== emailLower) {
+        return NextResponse.json({ error: "Forbidden: You do not own this campaign" }, { status: 403 });
       }
-      ad = activeAd;
+
+      // Purge storage media if any
+      if (draftAd.ad_media) {
+        await purgeStorageMedia(draftAd.ad_media, "adds").catch(() => {});
+      }
+
+      // Permanently remove the draft from adds
+      const { error: deleteErr } = await supabaseAdmin
+        .from("adds")
+        .delete()
+        .eq("id", adId);
+
+      if (deleteErr) {
+        console.error("Error deleting campaign from adds:", deleteErr);
+        return NextResponse.json({ error: "Failed to delete campaign" }, { status: 500 });
+      }
+
+      const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
+      await invalidateCachedUserCampaigns(emailLower);
+
+      return NextResponse.json({ success: true, message: "Campaign draft deleted successfully." });
     }
 
-    if (!ad) {
-      console.error(`❌ Ad campaign ${adId} not found in adds or addsactive. User email: ${email}`);
-      return NextResponse.json({ error: "Ad campaign not found" }, { status: 404 });
-    }
-
-    if (ad.user_email.toLowerCase() !== email.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden: You do not own this campaign" }, { status: 403 });
-    }
-
-    if (ad.completed_at) {
-      return NextResponse.json({ error: "Campaign is already completed" }, { status: 400 });
-    }
-
-    const nowTimestamp = new Date().toISOString();
-
-    // 2. Mark completed in 'adds'
-    const { error: updateAddsError } = await supabaseAdmin
-      .from("adds")
-      .update({ completed_at: nowTimestamp })
-      .eq("id", adId);
-
-    if (updateAddsError) {
-      console.error("❌ Error completing campaign in adds table:", updateAddsError.message);
-      return NextResponse.json({ error: "Failed to cancel campaign" }, { status: 500 });
-    }
-
-    // 3. Mark completed in 'addsactive'
-    const { error: updateAddsActiveError } = await supabaseAdmin
+    // 2. Check in 'addsactive' table (live running campaign)
+    const { data: activeAd } = await supabaseAdmin
       .from("addsactive")
-      .update({ completed_at: nowTimestamp })
-      .eq("id", adId);
+      .select("*")
+      .eq("id", adId)
+      .maybeSingle();
 
-    if (updateAddsActiveError) {
-      console.error("❌ Error completing campaign in addsactive table:", updateAddsActiveError.message);
+    if (activeAd) {
+      if (activeAd.user_email?.toLowerCase() !== emailLower) {
+        return NextResponse.json({ error: "Forbidden: You do not own this campaign" }, { status: 403 });
+      }
+
+      const nowTimestamp = new Date().toISOString();
+
+      // Archive to completed_ads
+      try {
+        await supabaseAdmin.from("completed_ads").insert([{
+          ...activeAd,
+          completed_at: nowTimestamp,
+        }]);
+      } catch {}
+
+      // Delete from active delivery
+      await supabaseAdmin.from("addsactive").delete().eq("id", adId);
+
+      const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
+      await invalidateCachedUserCampaigns(emailLower);
+
+      return NextResponse.json({ success: true, message: "Campaign stopped successfully." });
     }
 
-    const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
-    await invalidateCachedUserCampaigns(email);
+    // 3. Check in 'completed_ads' table
+    const { data: completedAd } = await supabaseAdmin
+      .from("completed_ads")
+      .select("id, user_email")
+      .eq("id", adId)
+      .maybeSingle();
 
-    return NextResponse.json({ success: true, message: "Campaign cancelled successfully. No refunds were issued." });
+    if (completedAd) {
+      if (completedAd.user_email?.toLowerCase() === emailLower) {
+        await supabaseAdmin.from("completed_ads").delete().eq("id", adId);
+        return NextResponse.json({ success: true, message: "Campaign removed." });
+      }
+    }
+
+    return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   } catch (err: any) {
-    console.error("❌ Unexpected error in POST /api/campaigns/cancel:", err);
+    console.error("Unexpected error in POST /api/campaigns/cancel:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

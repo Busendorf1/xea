@@ -349,10 +349,13 @@
 }
 
 .tdRef {
-  display: flex;
+  white-space: nowrap;
+}
+
+.refContainer {
+  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  white-space: nowrap;
 }
 
 .refCode {

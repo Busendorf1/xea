@@ -14,7 +14,10 @@ export type HighlightItem = {
   bid_price?: number | null;
   campaign_days?: number | null;
   is_ai_content?: boolean | null;
+  is_admin_post?: boolean | null;
   impression_count?: number | null;
+  user_email?: string | null;
+  email?: string | null;
 };
 
 export interface Session {

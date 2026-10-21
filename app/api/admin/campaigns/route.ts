@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminUser } from "@/lib/authHelper";
+import { isAdminEmail } from "@/lib/adminHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady, scanDeletePattern } from "@/lib/redis";
 import { invalidateCachedUserCampaigns } from "@/lib/utils/cache";
@@ -266,7 +267,7 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
     const adminEmail = admin.email.toLowerCase();
 
-    // 1. APPROVE AD CAMPAIGN
+        // 1. APPROVE AD CAMPAIGN
     if (action === "approve_ad") {
       if (!id) return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
 
@@ -281,51 +282,148 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Ad not found in pending review queue" }, { status: 404 });
       }
 
-      // Clean pending ad and avoid non-existent approved_at column
-      const { approved_at: _, ...cleanPendingAd } = pendingAd;
-      const activeAd = {
-        ...cleanPendingAd,
-        is_paused: false,
-        created_at: now,
-      };
+      // Block duplicate approval if already approved
+      if (pendingAd.admin_statement?.startsWith("APPROVED:") || pendingAd.status === "approved") {
+        return NextResponse.json({
+          success: true,
+          message: "Ad campaign has already been approved and is awaiting payment.",
+        });
+      }
 
-      // Insert into active ads
-      const { data: insertedRows, error: insertErr } = await supabaseAdmin
+      // If admin post, publish directly (100% free)
+      if (pendingAd.is_admin_post || isAdminEmail(pendingAd.user_email) || Number(pendingAd.total_cost || 0) <= 0) {
+        const { approved_at: _, ...cleanPendingAd } = pendingAd;
+        const activeAd = {
+          ...cleanPendingAd,
+          is_paused: false,
+          created_at: now,
+        };
+
+        const { data: insertedRows, error: insertErr } = await supabaseAdmin
+          .from("addsactive")
+          .insert([activeAd])
+          .select("*");
+        if (insertErr) throw insertErr;
+
+        await supabaseAdmin.from("adds").delete().eq("id", id);
+
+        const publishedAd = insertedRows?.[0] || activeAd;
+        dispatchFeedDropWebhook(publishedAd).catch(() => {});
+
+        await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
+        return NextResponse.json({ success: true, message: "Admin ad approved and published to active feed!" });
+      }
+
+      // Check if this ad exists in addsactive (an active delivering campaign edit)
+      const { data: activeAd } = await supabaseAdmin
         .from("addsactive")
-        .insert([activeAd])
-        .select("*");
-      if (insertErr) throw insertErr;
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
 
-      // Delete from pending queue
-      await supabaseAdmin.from("adds").delete().eq("id", id);
+      const isDeliveringActive = !!activeAd;
+      const isBudgetIncreased = pendingAd.payment_status === "unpaid" && Number(pendingAd.total_cost || 0) > Number(activeAd?.total_cost || 0);
 
-      const publishedAd = insertedRows?.[0] || activeAd;
-      dispatchFeedDropWebhook(publishedAd).catch(() => {});
+      // If active delivering ad and user didn't increase budget: DO NOT REQUIRE PAYMENT!
+      if (isDeliveringActive && !isBudgetIncreased) {
+        const {
+          status: _s,
+          approved_at: _a,
+          payment_status: _p,
+          impression_count: _ic,
+          seen_users: _su,
+          created_at: _ca,
+          id: _id,
+          ...updatedFields
+        } = pendingAd;
+
+        const { error: updateActiveErr } = await supabaseAdmin
+          .from("addsactive")
+          .update(updatedFields)
+          .eq("id", id);
+
+        if (updateActiveErr) throw updateActiveErr;
+
+        // Clean up review draft from adds
+        await supabaseAdmin.from("adds").delete().eq("id", id);
+
+        // Notify advertiser
+        await supabaseAdmin.from("notifications").insert([
+          {
+            user_email: pendingAd.user_email,
+            title: "Campaign Edit Approved & Live!",
+            message: "Your campaign updates have been reviewed, approved, and applied directly to your live delivering ad with no additional payment required.",
+          },
+        ]);
+
+        await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
+        return NextResponse.json({
+          success: true,
+          message: "Active ad edit approved! Applied directly to live campaign without requiring payment.",
+        });
+      }
+
+      // Advertiser Campaign: Approve and allow publisher to pay to publish within 3 days
+      const approvedStatement = `APPROVED:${now}`;
+      await supabaseAdmin
+        .from("adds")
+        .update({
+          admin_statement: approvedStatement,
+          is_paused: false,
+        })
+        .eq("id", id);
+
+      // Create notification for advertiser
+      await supabaseAdmin.from("notifications").insert([
+        {
+          user_email: pendingAd.user_email,
+          title: "Campaign Approved - Ready to Publish!",
+          message: "Your campaign has been approved by admin! You can now review and publish it from My Ads. Approved campaigns expire after 3 days if not published.",
+        },
+      ]);
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
-      return NextResponse.json({ success: true, message: "Ad approved and published to active feed!" });
+      return NextResponse.json({
+        success: true,
+        message: "Ad campaign approved! Advertiser has 3 days to publish and pay.",
+      });
     }
 
-    // 2. REJECT AD CAMPAIGN (Non-refundable closed-loop payment policy enforced)
+    // 2. REJECT AD CAMPAIGN (With Admin Feedback for Advertiser to Adjust)
     if (action === "reject_ad") {
       if (!id) return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
 
-      const { data: adToDelete } = await supabaseAdmin
+      const { data: adToReject } = await supabaseAdmin
         .from("adds")
         .select("user_email, total_cost, ad_media, ad_media_url")
         .eq("id", id)
         .maybeSingle();
 
-      if (adToDelete) {
-        const mediaUrls = adToDelete.ad_media || adToDelete.ad_media_url;
-        if (mediaUrls) {
-          await purgeStorageMedia(mediaUrls, "ad-media");
-        }
+      if (!adToReject) {
+        return NextResponse.json({ error: "Ad not found" }, { status: 404 });
       }
 
-      await supabaseAdmin.from("adds").delete().eq("id", id);
-      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, adToDelete?.user_email);
-      return NextResponse.json({ success: true, message: "Ad campaign rejected." });
+      const feedbackReason = payload?.statement || payload?.reason || "Did not meet advertising guidelines.";
+      const rejectStatement = `REJECTED:${feedbackReason}`;
+
+      await supabaseAdmin
+        .from("adds")
+        .update({
+          admin_statement: rejectStatement,
+          is_paused: true,
+        })
+        .eq("id", id);
+
+      await supabaseAdmin.from("notifications").insert([
+        {
+          user_email: adToReject.user_email,
+          title: "Ad Revision Requested",
+          message: `Admin feedback: "${feedbackReason}". Please visit My Ads to edit and re-submit your campaign.`,
+        },
+      ]);
+
+      await invalidateAdminCampaignCache(adminEmail, action, id, feedbackReason, payload, adToReject.user_email);
+      return NextResponse.json({ success: true, message: "Feedback dropped. Advertiser can now review and adjust the campaign." });
     }
 
     // 3. PAUSE / RESUME AD CAMPAIGN
@@ -379,21 +477,35 @@ export async function POST(req: NextRequest) {
 
       // Purge uploaded media from ad-media bucket
       const [{ data: activeAd }, { data: pendingAd }] = await Promise.all([
-        supabaseAdmin.from("addsactive").select("ad_media, ad_media_url").eq("id", id).maybeSingle(),
-        supabaseAdmin.from("adds").select("ad_media, ad_media_url").eq("id", id).maybeSingle(),
+        supabaseAdmin.from("addsactive").select("ad_media, ad_media_url, user_email").eq("id", id).maybeSingle(),
+        supabaseAdmin.from("adds").select("ad_media, ad_media_url, user_email").eq("id", id).maybeSingle(),
       ]);
 
+      const targetEmail = activeAd?.user_email || pendingAd?.user_email;
       const mediaUrls = activeAd?.ad_media || activeAd?.ad_media_url || pendingAd?.ad_media || pendingAd?.ad_media_url;
       if (mediaUrls) {
-        await purgeStorageMedia(mediaUrls, "ad-media");
+        await purgeStorageMedia(mediaUrls, "ad-media").catch(() => {});
       }
 
-      await Promise.all([
+      // Clean up related tracking/report records safely
+      await Promise.allSettled([
+        supabaseAdmin.from("bidded_ads").delete().eq("ad_id", id),
+        supabaseAdmin.from("ad_reports").delete().eq("ad_id", id),
+        supabaseAdmin.from("blocked_ads").delete().eq("ad_id", id),
+        supabaseAdmin.from("completed_ads").delete().eq("id", id),
+      ]);
+
+      const [delActive, delPending] = await Promise.all([
         supabaseAdmin.from("addsactive").delete().eq("id", id),
         supabaseAdmin.from("adds").delete().eq("id", id),
       ]);
 
-      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
+      if (delActive.error && delPending.error) {
+        console.error("❌ Error deleting ad:", delActive.error, delPending.error);
+        return NextResponse.json({ error: delActive.error.message || delPending.error.message }, { status: 500 });
+      }
+
+      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, targetEmail);
       return NextResponse.json({ success: true, message: "Ad campaign deleted permanently." });
     }
 
@@ -425,37 +537,150 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Highlight not found in pending review queue" }, { status: 404 });
       }
 
-      const activeHighlight = {
-        ...pendingHighlight,
-        is_paused: false,
-        created_at: now,
-      };
+      // Block duplicate approval if already approved
+      if (pendingHighlight.admin_statement?.startsWith("APPROVED:") || pendingHighlight.status === "approved") {
+        return NextResponse.json({
+          success: true,
+          message: "Highlight has already been approved and is awaiting payment.",
+        });
+      }
 
-      const { error: insertHlErr } = await supabaseAdmin.from("newsactive").insert([activeHighlight]);
-      if (insertHlErr) throw insertHlErr;
+      if (pendingHighlight.is_admin_post || isAdminEmail(pendingHighlight.user_email)) {
+        const {
+          status: _status,
+          approved_at: _appAt,
+          payment_status: _payStatus,
+          is_admin_post: _adminPost,
+          custom_sponsor_name: _csName,
+          custom_sponsor_handle: _csHandle,
+          custom_sponsor_logo: _csLogo,
+          ...cleanHl
+        } = pendingHighlight;
 
-      await supabaseAdmin.from("news").delete().eq("id", id);
+        const activeHighlight = {
+          ...cleanHl,
+          is_paused: false,
+          created_at: now,
+        };
+
+        const { error: insertHlErr } = await supabaseAdmin.from("newsactive").insert([activeHighlight]);
+        if (insertHlErr) throw insertHlErr;
+
+        await supabaseAdmin.from("news").delete().eq("id", id);
+        await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
+        return NextResponse.json({ success: true, message: "Admin highlight approved and published to active feed!" });
+      }
+
+      // Check if this highlight exists in newsactive (an active delivering highlight edit)
+      const { data: activeHl } = await supabaseAdmin
+        .from("newsactive")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      const isDeliveringActive = !!activeHl;
+      const origDays = activeHl?.campaign_days || 1;
+      const origRate = activeHl?.is_bidded && activeHl?.bid_price ? Number(activeHl.bid_price) : 1000;
+      const origCost = origDays * origRate;
+      const newDays = pendingHighlight.campaign_days || 1;
+      const newRate = pendingHighlight.is_bidded && pendingHighlight.bid_price ? Number(pendingHighlight.bid_price) : 1000;
+      const newCost = newDays * newRate;
+      const isBudgetIncreased = pendingHighlight.payment_status === "unpaid" && newCost > origCost;
+
+      // If active delivering highlight and user didn't increase budget: DO NOT REQUIRE PAYMENT!
+      if (isDeliveringActive && !isBudgetIncreased) {
+        const {
+          status: _s,
+          approved_at: _a,
+          payment_status: _p,
+          is_admin_post: _ap,
+          created_at: _ca,
+          id: _id,
+          ...updatedHlFields
+        } = pendingHighlight;
+
+        const { error: updateActiveErr } = await supabaseAdmin
+          .from("newsactive")
+          .update(updatedHlFields)
+          .eq("id", id);
+
+        if (updateActiveErr) throw updateActiveErr;
+
+        // Clean up review draft from news
+        await supabaseAdmin.from("news").delete().eq("id", id);
+
+        // Notify advertiser
+        await supabaseAdmin.from("notifications").insert([
+          {
+            user_email: pendingHighlight.user_email,
+            title: "Highlight Edit Approved & Live!",
+            message: "Your highlight updates have been approved and applied directly to your active highlight with no additional payment required.",
+          },
+        ]);
+
+        await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
+        return NextResponse.json({
+          success: true,
+          message: "Active highlight edit approved! Applied directly to live feed without requiring payment.",
+        });
+      }
+
+      const approvedStatement = `APPROVED:${now}`;
+      await supabaseAdmin
+        .from("news")
+        .update({
+          admin_statement: approvedStatement,
+          is_paused: false,
+        })
+        .eq("id", id);
+
+      await supabaseAdmin.from("notifications").insert([
+        {
+          user_email: pendingHighlight.user_email,
+          title: "Highlight Approved!",
+          message: "Your highlight has been approved by admin! You can now publish it from My Highlights.",
+        },
+      ]);
+
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
-      return NextResponse.json({ success: true, message: "Highlight approved and published to active feed!" });
+      return NextResponse.json({ success: true, message: "Highlight approved! Advertiser has 3 days to publish and pay." });
     }
 
     // 8. REJECT HIGHLIGHT
     if (action === "reject_highlight") {
       if (!id) return NextResponse.json({ error: "Highlight ID is required" }, { status: 400 });
 
-      const { data: hlToDelete } = await supabaseAdmin
+      const { data: hlToReject } = await supabaseAdmin
         .from("news")
         .select("user_email, image_url")
         .eq("id", id)
         .maybeSingle();
 
-      if (hlToDelete?.image_url) {
-        await purgeStorageMedia(hlToDelete.image_url, "news");
+      if (!hlToReject) {
+        return NextResponse.json({ error: "Highlight not found" }, { status: 404 });
       }
 
-      await supabaseAdmin.from("news").delete().eq("id", id);
-      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, hlToDelete?.user_email);
-      return NextResponse.json({ success: true, message: "Highlight rejected and deleted." });
+      const feedbackReason = payload?.statement || payload?.reason || "Did not meet highlight guidelines.";
+      const rejectStatement = `REJECTED:${feedbackReason}`;
+
+      await supabaseAdmin
+        .from("news")
+        .update({
+          admin_statement: rejectStatement,
+          is_paused: true,
+        })
+        .eq("id", id);
+
+      await supabaseAdmin.from("notifications").insert([
+        {
+          user_email: hlToReject.user_email,
+          title: "Highlight Revision Requested",
+          message: `Admin feedback: "${feedbackReason}". Please visit My Highlights to adjust.`,
+        },
+      ]);
+
+      await invalidateAdminCampaignCache(adminEmail, action, id, feedbackReason, payload, hlToReject.user_email);
+      return NextResponse.json({ success: true, message: "Feedback dropped. User can now review and adjust the highlight." });
     }
 
     // 9. PAUSE / RESUME HIGHLIGHT
@@ -474,21 +699,28 @@ export async function POST(req: NextRequest) {
       if (!id) return NextResponse.json({ error: "Highlight ID is required" }, { status: 400 });
 
       const [{ data: activeHl }, { data: pendingHl }] = await Promise.all([
-        supabaseAdmin.from("newsactive").select("image_url").eq("id", id).maybeSingle(),
-        supabaseAdmin.from("news").select("image_url").eq("id", id).maybeSingle(),
+        supabaseAdmin.from("newsactive").select("image_url, user_email").eq("id", id).maybeSingle(),
+        supabaseAdmin.from("news").select("image_url, user_email").eq("id", id).maybeSingle(),
       ]);
 
+      const targetEmail = activeHl?.user_email || pendingHl?.user_email;
       const imgUrl = activeHl?.image_url || pendingHl?.image_url;
       if (imgUrl) {
-        await purgeStorageMedia(imgUrl, "news");
+        await purgeStorageMedia(imgUrl, "news").catch(() => {});
       }
 
-      await Promise.all([
+      const [delActive, delPending] = await Promise.all([
         supabaseAdmin.from("newsactive").delete().eq("id", id),
         supabaseAdmin.from("news").delete().eq("id", id),
       ]);
 
-      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
+      if (delActive.error && delPending.error) {
+        console.error("❌ Error deleting highlight:", delActive.error, delPending.error);
+        return NextResponse.json({ error: delActive.error.message || delPending.error.message }, { status: 500 });
+      }
+
+      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, targetEmail);
+      return NextResponse.json({ success: true, message: "Highlight deleted permanently." });
     }
 
     // 10b. SAVE HIGHLIGHT EDIT
@@ -533,10 +765,20 @@ export async function POST(req: NextRequest) {
     if (action === "direct_post_highlight") {
       if (!payload) return NextResponse.json({ error: "Payload is required" }, { status: 400 });
 
+      const {
+        status: _status,
+        approved_at: _appAt,
+        payment_status: _payStatus,
+        is_admin_post: _adminPost,
+        custom_sponsor_name: _csName,
+        custom_sponsor_handle: _csHandle,
+        custom_sponsor_logo: _csLogo,
+        ...cleanPayload
+      } = payload;
+
       const highlightRecord = {
-        ...payload,
+        ...cleanPayload,
         is_paused: false,
-        is_admin_post: true,
         created_at: now,
       };
 

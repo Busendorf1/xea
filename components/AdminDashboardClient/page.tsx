@@ -1055,7 +1055,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Approval failed");
 
-      alert("Ad campaign approved and published!");
+      // Optimistically update local state so badge and button update immediately
+      setPendingAds((prev) =>
+        prev.map((a) =>
+          a.id === ad.id ? { ...a, admin_statement: `APPROVED:${new Date().toISOString()}` } : a
+        )
+      );
+
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
@@ -1067,21 +1073,26 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handleRejectAd = async (ad: any) => {
     if (campaignActionLoading) return;
-    if (!confirm("Are you sure you want to permanently reject this Ad campaign?")) {
-      return;
-    }
+    const feedback = prompt("Enter a reason or feedback for rejecting this Ad (the advertiser will see this to adjust their campaign):");
+    if (feedback === null) return;
 
     setCampaignActionLoading(`reject-ad-${ad.id}`);
     try {
       const res = await fetch("/api/admin/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reject_ad", id: ad.id, payload: { refund: true } }),
+        body: JSON.stringify({ action: "reject_ad", id: ad.id, payload: { statement: feedback, reason: feedback } }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Rejection failed");
 
-      alert("Ad campaign rejected and deleted permanently.");
+      // Optimistically update local state so badge and statement reflect immediately
+      setPendingAds((prev) =>
+        prev.map((a) =>
+          a.id === ad.id ? { ...a, admin_statement: `REJECTED:${feedback}` } : a
+        )
+      );
+
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
@@ -1197,7 +1208,12 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Deletion failed");
 
-      alert("Ad campaign deleted successfully!");
+      // Optimistically remove from state immediately
+      setPendingAds((prev) => prev.filter((a) => a.id !== ad.id));
+      setActiveAds((prev) => prev.filter((a) => a.id !== ad.id));
+      setPendingAdsCount((c) => Math.max(0, c - 1));
+      setActiveAdsCount((c) => Math.max(0, c - 1));
+
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
@@ -1223,7 +1239,13 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Approval failed");
 
-      alert("Highlight approved and published successfully!");
+      // Optimistically update local state so badge and button update immediately
+      setPendingHighlights((prev) =>
+        prev.map((h) =>
+          h.id === highlight.id ? { ...h, admin_statement: `APPROVED:${new Date().toISOString()}` } : h
+        )
+      );
+
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
@@ -1235,25 +1257,30 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   const handleRejectHighlight = async (highlight: any) => {
     if (campaignActionLoading) return;
-    if (!confirm("Are you sure you want to permanently delete this highlight?")) {
-      return;
-    }
+    const feedback = prompt("Enter a reason or feedback for rejecting this Highlight (visible to the user to adjust):");
+    if (feedback === null) return;
 
     setCampaignActionLoading(`reject-hl-${highlight.id}`);
     try {
       const res = await fetch("/api/admin/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reject_highlight", id: highlight.id }),
+        body: JSON.stringify({ action: "reject_highlight", id: highlight.id, payload: { statement: feedback, reason: feedback } }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Rejection failed");
 
-      alert("Highlight deleted permanently.");
+      // Optimistically update local state so badge and statement reflect immediately
+      setPendingHighlights((prev) =>
+        prev.map((h) =>
+          h.id === highlight.id ? { ...h, admin_statement: `REJECTED:${feedback}` } : h
+        )
+      );
+
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error deleting highlight: ${e.message}`);
+      alert(`Error rejecting highlight: ${e.message}`);
     } finally {
       setCampaignActionLoading(null);
     }
@@ -1332,7 +1359,12 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete highlight");
 
-      alert("Highlight deleted successfully!");
+      // Optimistically remove from state immediately
+      setPendingHighlights((prev) => prev.filter((h) => h.id !== highlight.id));
+      setActiveHighlights((prev) => prev.filter((h) => h.id !== highlight.id));
+      setPendingHighlightsCount((c) => Math.max(0, c - 1));
+      setActiveHighlightsCount((c) => Math.max(0, c - 1));
+
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
@@ -1674,11 +1706,70 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   // RENDER HORIZONTAL INFORMATION-RICH ADMIN AD CARD
   // ----------------------------------------------------
 
+  const formatCampaignSchedule = (createdAt: string | null | undefined, days: number = 1, isHighlight = false) => {
+    const safeDays = Math.max(1, Number(days) || 1);
+    const scheduledText = isHighlight
+      ? (safeDays === 1 ? "24 hours" : `${safeDays} days`)
+      : (safeDays === 1 ? "1 day" : `${safeDays} days`);
+
+    if (!createdAt) {
+      return {
+        scheduledText,
+        remainingText: "Active",
+        isEnded: false,
+      };
+    }
+
+    const createdTime = new Date(createdAt).getTime();
+    if (isNaN(createdTime)) {
+      return {
+        scheduledText,
+        remainingText: "Active",
+        isEnded: false,
+      };
+    }
+
+    const durationMs = safeDays * 24 * 60 * 60 * 1000;
+    const elapsedMs = Math.max(0, Date.now() - createdTime);
+    const remainingMs = durationMs - elapsedMs;
+
+    if (remainingMs <= 0) {
+      return {
+        scheduledText,
+        remainingText: "Schedule ended",
+        isEnded: true,
+      };
+    }
+
+    const remDays = Math.floor(remainingMs / (24 * 60 * 60 * 1000));
+    const remHours = Math.floor((remainingMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+    const remMins = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+
+    let remainingText = "";
+    if (remDays > 0) {
+      remainingText = `${remDays}d ${remHours}h remaining`;
+    } else if (remHours > 0) {
+      remainingText = `${remHours}h ${remMins}m remaining`;
+    } else {
+      remainingText = `${Math.max(1, remMins)}m remaining`;
+    }
+
+    return {
+      scheduledText,
+      remainingText,
+      isEnded: false,
+    };
+  };
+
   const renderAdminAdCard = (ad: any, isQueue = false) => {
     const seenCount = ad.impression_count ?? 0;
     const targetImpressions = ad.impressions ?? 1000;
     const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
     const isCompleted = !!ad.completed_at || seenCount >= targetImpressions;
+
+    const isApproved = (ad.admin_statement || "").toUpperCase().startsWith("APPROVED:") || ad.status === "approved";
+    const isRejected = (ad.admin_statement || "").toUpperCase().startsWith("REJECTED:");
+    const scheduleInfo = formatCampaignSchedule(ad.created_at, ad.campaign_days, false);
 
     const mediaUrls = ad.ad_media ? ad.ad_media.split(",").map((u: string) => u.trim()).filter(Boolean) : [];
     const hasMedia = mediaUrls.length > 0;
@@ -1719,20 +1810,30 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
             {/* Status Tag Pill */}
             {isQueue ? (
-              <span className={styles.adminCls_9}>
-                <Clock size={13} /> Pending Review
-              </span>
+              isApproved ? (
+                <span className={styles.badgeApprovedPending}>
+                  <Clock size={13} /> Approved • Pending Payment
+                </span>
+              ) : isRejected ? (
+                <span className={styles.badgeRejected}>
+                  <AlertCircle size={13} /> Rejected
+                </span>
+              ) : (
+                <span className={styles.adminCls_9}>
+                  <Clock size={13} /> Status: Pending review
+                </span>
+              )
             ) : isCompleted ? (
-              <span className={styles.adminCls_10}>
-                Completed
+              <span className={styles.badgeCompleted}>
+                Approved • Paid • Completed
               </span>
             ) : ad.is_paused ? (
-              <span className={styles.adminCls_11}>
-                Paused
+              <span className={styles.badgePaused}>
+                Approved • Paid • Paused
               </span>
             ) : (
-              <span className={styles.adminCls_12}>
-                Live
+              <span className={styles.badgeLiveDelivering}>
+                Approved • Paid &amp; Live • Delivering
               </span>
             )}
 
@@ -1770,6 +1871,26 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <span>Created: {ad.created_at ? new Date(ad.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}</span>
           </div>
 
+          {/* Active Schedule & Remaining Info Box */}
+          {!isQueue && (
+            <div className={styles.scheduleBox}>
+              <div className={styles.scheduleItem}>
+                <span>Scheduled for:</span>
+                <strong>{scheduleInfo.scheduledText}</strong>
+              </div>
+              <div className={styles.scheduleItem}>
+                <span>Remaining:</span>
+                <strong style={{ color: scheduleInfo.isEnded ? "var(--text-muted)" : "#10b981" }}>
+                  {scheduleInfo.remainingText}
+                </strong>
+              </div>
+              <div className={styles.scheduleItem}>
+                <span>Views:</span>
+                <strong>{seenCount} / {targetImpressions} ({deliveryPercent}%)</strong>
+              </div>
+            </div>
+          )}
+
           {/* Delivery Progress Bar */}
           <div className={styles.adminCls_19}>
             <div className={styles.adminCls_20}>
@@ -1798,23 +1919,45 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           <div className={styles.adminCls_24}>
             {isQueue ? (
               <>
-                <button
-                  onClick={() => handleApproveAd(ad)}
-                  disabled={!!campaignActionLoading}
-                  className={styles.btnSubmit}
-                  style={{ padding: "0.45rem 1.25rem", fontSize: "0.82rem", opacity: campaignActionLoading ? 0.7 : 1 }}
-                >
-                  {campaignActionLoading === `approve-ad-${ad.id}` ? "Approving..." : "Approve Campaign"}
-                </button>
+                {isApproved ? (
+                  <button
+                    disabled
+                    className={styles.btnApprovedDisabled}
+                    title="Ad is already approved and waiting for advertiser payment"
+                  >
+                    <CheckCircle size={14} />
+                    <span>Approved • Pending Payment</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleApproveAd(ad)}
+                    disabled={!!campaignActionLoading}
+                    className={styles.btnSubmit}
+                    style={{ padding: "0.45rem 1.25rem", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "6px", opacity: campaignActionLoading ? 0.7 : 1 }}
+                  >
+                    {campaignActionLoading === `approve-ad-${ad.id}` && <span className="btnSpinner" />}
+                    <span>{campaignActionLoading === `approve-ad-${ad.id}` ? "Approving..." : "Approve Campaign"}</span>
+                  </button>
+                )}
                 <button
                   onClick={() => handleRejectAd(ad)}
                   disabled={!!campaignActionLoading}
+                  className={`${styles.btnAction} ${styles.btnWarning}`}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 1rem", fontSize: "0.82rem", opacity: campaignActionLoading ? 0.7 : 1 }}
+                  title="Reject ad with feedback reason for advertiser to adjust"
+                >
+                  {campaignActionLoading === `reject-ad-${ad.id}` && <span className="btnSpinner" />}
+                  <span>{campaignActionLoading === `reject-ad-${ad.id}` ? "Rejecting..." : "Reject"}</span>
+                </button>
+                <button
+                  onClick={() => handleDeleteAd(ad)}
+                  disabled={!!campaignActionLoading}
                   className={`${styles.btnAction} ${styles.btnDanger}`}
                   style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 1rem", fontSize: "0.82rem", opacity: campaignActionLoading ? 0.7 : 1 }}
-                  title="Permanently reject campaign and refund balance"
+                  title="Permanently delete ad"
                 >
                   <Trash2 size={14} />
-                  <span>{campaignActionLoading === `reject-ad-${ad.id}` ? "Rejecting..." : "Reject / Delete"}</span>
+                  <span>{campaignActionLoading === `delete-ad-${ad.id}` ? "Deleting..." : "Delete"}</span>
                 </button>
               </>
             ) : (
@@ -1865,6 +2008,10 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   };
 
   const renderAdminHighlightCard = (highlight: any, isQueue = false) => {
+    const isApproved = (highlight.admin_statement || "").toUpperCase().startsWith("APPROVED:") || highlight.status === "approved";
+    const isRejected = (highlight.admin_statement || "").toUpperCase().startsWith("REJECTED:");
+    const scheduleInfo = formatCampaignSchedule(highlight.created_at, highlight.campaign_days || 1, true);
+
     return (
       <div key={highlight.id} className={styles.card} style={{ opacity: highlight.is_paused ? 0.75 : 1 }}>
         <div className={styles.mediaBox}>
@@ -1878,11 +2025,31 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           <span className={styles.badgeCategory}>{highlight.interest}</span>
           
           {isQueue ? (
-            <span className={`${styles.badgeStatus} ${styles.adminCls_26}`} >In Review</span>
+            isApproved ? (
+              <span className={`${styles.badgeStatus} ${styles.badgeApprovedPending}`} style={{ top: "0.85rem", right: "0.85rem" }}>
+                Approved • Pending Payment
+              </span>
+            ) : isRejected ? (
+              <span className={`${styles.badgeStatus} ${styles.badgeRejected}`} style={{ top: "0.85rem", right: "0.85rem" }}>
+                Rejected
+              </span>
+            ) : (
+              <span className={`${styles.badgeStatus} ${styles.adminCls_26}`} style={{ top: "0.85rem", right: "0.85rem" }}>
+                Status: Pending review
+              </span>
+            )
           ) : highlight.is_paused ? (
-            <span className={`${styles.badgeStatus} ${styles.adminCls_27}`} >Paused</span>
+            <span className={`${styles.badgeStatus} ${styles.badgePaused}`} style={{ top: "0.85rem", right: "0.85rem" }}>
+              Approved • Paid • Paused
+            </span>
+          ) : scheduleInfo.isEnded ? (
+            <span className={`${styles.badgeStatus} ${styles.badgeCompleted}`} style={{ top: "0.85rem", right: "0.85rem" }}>
+              Approved • Paid • Completed
+            </span>
           ) : (
-            <span className={`${styles.badgeStatus} ${styles.adminCls_28}`} >Live</span>
+            <span className={`${styles.badgeStatus} ${styles.badgeLiveDelivering}`} style={{ top: "0.85rem", right: "0.85rem" }}>
+              Approved • Paid &amp; Live • Delivering
+            </span>
           )}
         </div>
 
@@ -1897,10 +2064,26 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
           </div>
           <p className={`${styles.cardText} ${styles.adminCls_31}`} >{highlight.content}</p>
 
+          {/* Active Schedule & Remaining Info Box */}
+          {!isQueue && (
+            <div className={styles.scheduleBox}>
+              <div className={styles.scheduleItem}>
+                <span>Scheduled:</span>
+                <strong>{scheduleInfo.scheduledText}</strong>
+              </div>
+              <div className={styles.scheduleItem}>
+                <span>Remaining:</span>
+                <strong style={{ color: scheduleInfo.isEnded ? "var(--text-muted)" : "#10b981" }}>
+                  {scheduleInfo.remainingText}
+                </strong>
+              </div>
+            </div>
+          )}
+
           {/* Admin Statement */}
           {highlight.admin_statement && (
             <div className={styles.adminCls_32}>
-              <strong>Important Notice:</strong> {highlight.admin_statement}
+              <strong>Notice:</strong> {highlight.admin_statement}
             </div>
           )}
 
@@ -1922,21 +2105,46 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         <div className={styles.cardFooterActions}>
           {isQueue ? (
             <>
-              <button
-                onClick={() => handleApproveHighlight(highlight)}
-                disabled={!!campaignActionLoading}
-                className={styles.btnSubmit}
-                style={{ flex: 1, padding: "0.5rem", opacity: campaignActionLoading ? 0.7 : 1 }}
-              >
-                {campaignActionLoading === `approve-hl-${highlight.id}` ? "Approving..." : "Approve Highlight"}
-              </button>
+              {isApproved ? (
+                <button
+                  disabled
+                  className={styles.btnApprovedDisabled}
+                  style={{ flex: 1 }}
+                  title="Highlight is already approved and waiting for advertiser payment"
+                >
+                  <CheckCircle size={14} />
+                  <span>Approved • Pending Payment</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleApproveHighlight(highlight)}
+                  disabled={!!campaignActionLoading}
+                  className={styles.btnSubmit}
+                  style={{ flex: 1, padding: "0.5rem", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px", opacity: campaignActionLoading ? 0.7 : 1 }}
+                >
+                  {campaignActionLoading === `approve-hl-${highlight.id}` && <span className="btnSpinner" />}
+                  <span>{campaignActionLoading === `approve-hl-${highlight.id}` ? "Approving..." : "Approve Highlight"}</span>
+                </button>
+              )}
               <button
                 onClick={() => handleRejectHighlight(highlight)}
                 disabled={!!campaignActionLoading}
-                className={`${styles.btnAction} ${styles.btnDanger}`}
-                style={{ padding: "0.5rem 1rem", opacity: campaignActionLoading ? 0.7 : 1 }}
+                className={`${styles.btnAction} ${styles.btnWarning}`}
+                style={{ padding: "0.5rem 0.9rem", display: "inline-flex", alignItems: "center", gap: "4px", opacity: campaignActionLoading ? 0.7 : 1 }}
+                title="Reject highlight with feedback reason for advertiser to adjust"
               >
-                {campaignActionLoading === `reject-hl-${highlight.id}` ? "Rejecting..." : "Reject / Delete"}
+                {campaignActionLoading === `reject-hl-${highlight.id}` && <span className="btnSpinner" />}
+                <span>{campaignActionLoading === `reject-hl-${highlight.id}` ? "Rejecting..." : "Reject"}</span>
+              </button>
+              <button
+                onClick={() => handleDeleteHighlight(highlight)}
+                disabled={!!campaignActionLoading}
+                className={`${styles.btnAction} ${styles.btnDanger}`}
+                style={{ padding: "0.5rem 0.9rem", display: "inline-flex", alignItems: "center", gap: "4px", opacity: campaignActionLoading ? 0.7 : 1 }}
+                title="Permanently delete highlight"
+              >
+                <Trash2 size={14} />
+                <span>{campaignActionLoading === `delete-hl-${highlight.id}` ? "Deleting..." : "Delete"}</span>
               </button>
             </>
           ) : (
@@ -2150,7 +2358,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <>
               <div>
                 <h1 className={styles.sectionTitle}>User Registry</h1>
-                <p className={styles.sectionSubtitle}>View user profiles, adjust wallet balances, toggle monetization, and manage suspensions.</p>
+                <p className={styles.sectionSubtitle}>User profiles, balances, monetization, and access controls.</p>
               </div>
 
               <div className={styles.searchBar}>
@@ -2310,7 +2518,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <>
               <div>
                 <h1 className={styles.sectionTitle}>Advert Approvals Queue ({pendingAdsCount})</h1>
-                <p className={styles.sectionSubtitle}>Verify and activate submitted ad campaigns. Rejected campaigns are permanently deleted.</p>
+                <p className={styles.sectionSubtitle}>Verify submitted ad campaigns. Approved campaigns await advertiser payment before launch. Rejections provide feedback for advertiser revision.</p>
               </div>
 
               {loading ? (
@@ -2336,7 +2544,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
             <>
               <div>
                 <h1 className={styles.sectionTitle}>Highlights Approvals Queue ({pendingHighlightsCount})</h1>
-                <p className={styles.sectionSubtitle}>Approve business highlights for 24-hour flash feeds. Rejected highlights are permanently deleted.</p>
+                <p className={styles.sectionSubtitle}>Review submitted business highlights. Approved highlights await advertiser payment before launch. Rejections provide feedback for user revision.</p>
               </div>
 
               {loading ? (
@@ -2714,7 +2922,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               <div>
                 <h1 className={styles.sectionTitle}>Payouts & Queue Manager</h1>
                 <p className={styles.sectionSubtitle}>
-                  Real-time float monitoring, manual batch payout execution, and single or bulk payout retry engine.
+                  Float monitoring, batch execution, and retry controls.
                 </p>
               </div>
               <AdminPayoutsTab />
@@ -2727,7 +2935,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               <div>
                 <h1 className={styles.sectionTitle}>Platform Master Statement</h1>
                 <p className={styles.sectionSubtitle}>
-                  Unified platform transaction ledger with indexed multi-criteria filtering, aggregated financial flows, and instant CSV export.
+                  Platform transactions, ledger records, and statement export.
                 </p>
               </div>
               <AdminMasterStatementTab />

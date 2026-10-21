@@ -315,6 +315,31 @@
   color: var(--success);
 }
 
+.boostBtn {
+  background-color: var(--primary);
+  border: 1px solid var(--primary);
+  color: var(--background);
+  padding: 0 13px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.boostBtn:hover {
+  background-color: var(--primary-hover);
+  opacity: 0.95;
+}
+
+.boostBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .adminStatementBox {
   padding: 0.5rem 0.75rem;
   background-color: var(--sidebar-bg);

@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Video, Image as ImageIcon, Megaphone, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import FullscreenVideoPlayer from "./FullscreenVideoPlayer";
 import styles from "./page.module.css";
 
 interface MultimediaCarouselProps {
@@ -299,13 +300,10 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(activeUrl);
                   if (isVid) {
                     return (
-                      <video
+                      <FullscreenVideoPlayer
                         key={`myads-fs-${activeUrl}`}
                         src={activeUrl}
-                        controls
-                        autoPlay
-                        playsInline
-                        className={styles.lightboxMediaVideo}
+                        autoPlay={true}
                       />
                     );
                   }

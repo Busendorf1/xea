@@ -36,9 +36,9 @@ export default function AdminQueuesTab({
     <>
       <div className={styles.adminCls_96}>
         <div>
-          <h1 className={styles.sectionTitle}>Failed Queues and Dead Letter Queue (DLQ)</h1>
+          <h1 className={styles.sectionTitle}>Dead Letter Queue</h1>
           <p className={styles.sectionSubtitle}>
-            Inspect background queue jobs that failed maximum retries. Manually trigger retries or clear stale queue entries.
+            Failed background jobs and retry management.
           </p>
         </div>
         <div className={styles.adminCls_97}>

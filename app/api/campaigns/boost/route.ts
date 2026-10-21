@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
 
-    // 1. Fetch current campaign details from adds or addsactive
+    // 1. Fetch current campaign details from adds, addsactive, news, or newsactive
     let { data: ad } = await supabaseAdmin
       .from("adds")
       .select("*")
@@ -59,6 +59,29 @@ export async function POST(req: NextRequest) {
         .eq("id", adId)
         .maybeSingle();
       ad = activeAd;
+    }
+
+    let isHighlight = false;
+    if (!ad) {
+      const { data: activeHl } = await supabaseAdmin
+        .from("newsactive")
+        .select("*")
+        .eq("id", adId)
+        .maybeSingle();
+      if (activeHl) {
+        ad = activeHl;
+        isHighlight = true;
+      } else {
+        const { data: reviewHl } = await supabaseAdmin
+          .from("news")
+          .select("*")
+          .eq("id", adId)
+          .maybeSingle();
+        if (reviewHl) {
+          ad = reviewHl;
+          isHighlight = true;
+        }
+      }
     }
 
     if (!ad) {
@@ -97,44 +120,75 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const currentCost = Math.max(15, Number(ad.cost_per_impression || 25));
+    const currentCost = isHighlight
+      ? (ad.is_bidded && ad.bid_price ? Number(ad.bid_price) : 1000)
+      : Math.max(15, Number(ad.cost_per_impression || 25));
+
     const effectiveCost = newCostPerImpression && Number(newCostPerImpression) > currentCost
       ? Number(newCostPerImpression)
       : currentCost;
 
-    // Calculate total cost based ONLY on additional Attention (Impressions) * Bid Price
-    const totalCost = Number((addImpressionsNum * effectiveCost).toFixed(2));
+    // Calculate total cost
+    const totalCost = isHighlight
+      ? Number((
+          (addDaysNum > 0 ? addDaysNum * effectiveCost : 0) +
+          (newCostPerImpression && Number(newCostPerImpression) > currentCost
+            ? (Number(newCostPerImpression) - currentCost) * Number(ad.campaign_days || 1)
+            : 0)
+        ).toFixed(2))
+      : Number((addImpressionsNum * effectiveCost).toFixed(2));
 
     // Build targeting & specs update object
     const updatePayload: Record<string, any> = {
-      cost_per_impression: effectiveCost,
-      completed_at: null, // Clear completed flag if topped up!
       is_paused: false,
     };
 
-    if (addImpressionsNum > 0) {
-      updatePayload.impressions = Number(ad.impressions || 1000) + addImpressionsNum;
+    if (isHighlight) {
+      if (addDaysNum > 0) {
+        updatePayload.campaign_days = Number(ad.campaign_days || 1) + addDaysNum;
+      }
+      if (effectiveCost > 1000) {
+        updatePayload.bid_price = effectiveCost;
+        updatePayload.is_bidded = true;
+      }
+      if (country !== undefined) updatePayload.country = country;
+      if (state !== undefined) updatePayload.state = state;
+      if (province !== undefined) updatePayload.province = province;
+      if (interest) updatePayload.interest = Array.isArray(interest) ? interest[0] : interest;
+    } else {
+      updatePayload.cost_per_impression = effectiveCost;
+      updatePayload.completed_at = null; // Clear completed flag if topped up!
+      if (addImpressionsNum > 0) {
+        updatePayload.impressions = Number(ad.impressions || 1000) + addImpressionsNum;
+      }
+      if (addDaysNum > 0) {
+        updatePayload.campaign_days = Number(ad.campaign_days || 1) + addDaysNum;
+      }
+      if (userFrequencyCap !== undefined && Number(userFrequencyCap) > 0) {
+        updatePayload.user_frequency_cap = Number(userFrequencyCap);
+      }
+      if (gender) updatePayload.gender = gender;
+      if (country !== undefined) updatePayload.country = country;
+      if (state !== undefined) updatePayload.state = state;
+      if (province !== undefined) updatePayload.province = province;
+      if (industry) updatePayload.industry = Array.isArray(industry) ? industry : [industry];
+      if (interest) updatePayload.interest = Array.isArray(interest) ? interest : [interest];
     }
-    if (addDaysNum > 0) {
-      updatePayload.campaign_days = Number(ad.campaign_days || 1) + addDaysNum;
-    }
-    if (userFrequencyCap !== undefined && Number(userFrequencyCap) > 0) {
-      updatePayload.user_frequency_cap = Number(userFrequencyCap);
-    }
-    if (gender) updatePayload.gender = gender;
-    if (country !== undefined) updatePayload.country = country;
-    if (state !== undefined) updatePayload.state = state;
-    if (province !== undefined) updatePayload.province = province;
-    if (industry) updatePayload.industry = Array.isArray(industry) ? industry : [industry];
-    if (interest) updatePayload.interest = Array.isArray(interest) ? interest : [interest];
 
     // Handle Payment Method
     if (totalCost === 0) {
       // Free targeting/specs update without adding cost!
-      await Promise.all([
-        supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
-        supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
-      ]);
+      if (isHighlight) {
+        await Promise.all([
+          supabaseAdmin.from("news").update(updatePayload).eq("id", adId),
+          supabaseAdmin.from("newsactive").update(updatePayload).eq("id", adId),
+        ]);
+      } else {
+        await Promise.all([
+          supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
+          supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
+        ]);
+      }
       await invalidateCachedUserCampaigns(emailLower).catch(() => {});
       return NextResponse.json({
         success: true,
@@ -175,11 +229,14 @@ export async function POST(req: NextRequest) {
         reference,
         amount: totalCost,
         status: "success",
-        type: "boost_campaign",
-        description: `Non-refundable Boost priority top-up for Ad #${adId.substring(0, 8)}`,
+        type: isHighlight ? "boost_highlight" : "boost_campaign",
+        description: isHighlight
+          ? `Non-refundable Boost priority top-up for Highlight #${adId.substring(0, 8)}`
+          : `Non-refundable Boost priority top-up for Ad #${adId.substring(0, 8)}`,
         metadata: {
           ad_id: adId,
-          type: "boost_campaign",
+          type: isHighlight ? "boost_highlight" : "boost_campaign",
+          is_highlight: isHighlight,
           additional_impressions: addImpressionsNum,
           additional_days: addDaysNum,
           cost_per_impression: effectiveCost,
@@ -189,12 +246,19 @@ export async function POST(req: NextRequest) {
       });
 
       // Update both review and active tables
-      await Promise.all([
-        supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
-        supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
-      ]);
+      if (isHighlight) {
+        await Promise.all([
+          supabaseAdmin.from("news").update(updatePayload).eq("id", adId),
+          supabaseAdmin.from("newsactive").update(updatePayload).eq("id", adId),
+        ]);
+      } else {
+        await Promise.all([
+          supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
+          supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
+        ]);
+      }
 
-      if (effectiveCost > 25) {
+      if (!isHighlight && effectiveCost > 25) {
         try {
           const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
           await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId);
@@ -218,8 +282,10 @@ export async function POST(req: NextRequest) {
       // Insert notification
       await supabaseAdmin.from("notifications").insert({
         user_email: emailLower,
-        title: "Campaign Priority Boosted",
-        message: `Your campaign has been successfully boosted with priority bid ₦${effectiveCost} and ${addImpressionsNum} additional impressions.`,
+        title: isHighlight ? "Highlight Priority Boosted" : "Campaign Priority Boosted",
+        message: isHighlight
+          ? `Your highlight has been successfully boosted with priority daily bid ₦${effectiveCost.toLocaleString()} and ${addDaysNum} additional days.`
+          : `Your campaign has been successfully boosted with priority bid ₦${effectiveCost.toLocaleString()} and ${addImpressionsNum} additional impressions.`,
       });
 
       return NextResponse.json({
@@ -227,7 +293,9 @@ export async function POST(req: NextRequest) {
         paymentMethod: "wallet",
         totalCost,
         newBalance,
-        message: `Campaign topped up successfully! ₦${totalCost.toLocaleString()} deducted from wallet balance.`
+        message: isHighlight
+          ? `Highlight boosted successfully! Schedule duration and priority delivery have been updated and are actively delivering.`
+          : `Campaign topped up successfully! ₦${totalCost.toLocaleString()} deducted from wallet balance.`
       });
 
     } else if (paymentMethod === "card") {
@@ -239,7 +307,7 @@ export async function POST(req: NextRequest) {
       const isMobile = !!req.headers.get("x-user-email") && !req.headers.get("origin")?.includes("http");
       const callbackUrl = isMobile 
         ? "xea-auth://payment-callback"
-        : `${origin}/logged-in?boost_ref=${reference}`;
+        : `${origin}/logged-in?boost_ref=${reference}${isHighlight ? "&type=highlight&tab=highlights" : ""}`;
 
       // Insert pending payment record so verify endpoint and webhooks recognize it
       await supabaseAdmin.from("payments").insert({
@@ -247,12 +315,15 @@ export async function POST(req: NextRequest) {
         reference,
         amount: totalCost,
         status: "pending",
-        type: "boost_campaign",
-        description: `Card payment boost top-up for Ad #${adId.substring(0, 8)}`,
+        type: isHighlight ? "boost_highlight" : "boost_campaign",
+        description: isHighlight
+          ? `Card payment boost top-up for Highlight #${adId.substring(0, 8)}`
+          : `Card payment boost top-up for Ad #${adId.substring(0, 8)}`,
         metadata: {
           user_email: emailLower,
           ad_id: adId,
-          type: "boost_campaign",
+          type: isHighlight ? "boost_highlight" : "boost_campaign",
+          is_highlight: isHighlight,
           additional_impressions: additionalImpressions,
           additional_days: additionalDays,
           cost_per_impression: effectiveCost,
@@ -275,13 +346,16 @@ export async function POST(req: NextRequest) {
           metadata: {
             user_email: emailLower,
             ad_id: adId,
-            type: "boost_campaign",
+            type: isHighlight ? "boost_highlight" : "boost_campaign",
+            is_highlight: isHighlight,
             additional_impressions: additionalImpressions,
             additional_days: additionalDays,
             cost_per_impression: effectiveCost,
             boost_reference: reference,
           },
-          narration: `Paayh Boost for Ad #${adId.substring(0, 8)}`,
+          narration: isHighlight
+            ? `Paayh Boost for Highlight #${adId.substring(0, 8)}`
+            : `Paayh Boost for Ad #${adId.substring(0, 8)}`,
         });
 
         // If gateway generated a different reference (e.g. kora_pay_*), update payment record so either reference can be resolved
@@ -330,6 +404,10 @@ export async function POST(req: NextRequest) {
       const mockUrl = new URL(callbackUrl);
       mockUrl.searchParams.set("reference", reference);
       mockUrl.searchParams.set("trxref", reference);
+      if (isHighlight) {
+        mockUrl.searchParams.set("type", "highlight");
+        mockUrl.searchParams.set("tab", "highlights");
+      }
 
       return NextResponse.json({
         success: true,

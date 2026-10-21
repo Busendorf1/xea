@@ -3,6 +3,8 @@
 import React from "react";
 import { motion } from "framer-motion";
 import {
+  Rocket,
+  Trash2,
   Video,
   Image as ImageIcon,
   Megaphone,
@@ -50,6 +52,7 @@ interface MyAdCardProps {
   onCancel: (adId: string) => void;
   onExportCsv: (ad: Ad) => void;
   onShowNotice: (title: string, message: string, adId?: string) => void;
+  onPublish?: (ad: Ad) => void;
   ratedAdIds: Set<string>;
   timeNow: number;
 }
@@ -149,16 +152,44 @@ function getDeletionCountdown(completedAt: string, timeNow: number): string | nu
 }
 
 function getBoostUnavailableReason(ad: Ad, reportsCount: number): string | null {
+  // If approved and pending publish, or unpaid, boost is strictly unavailable until paid and live in feed
+  if (
+    ad.payment_status === "unpaid" ||
+    ad.status === "pending_review" ||
+    ad.status === "approved_pending_publish" ||
+    (ad.admin_statement && (
+      ad.admin_statement.startsWith("STATUS:") ||
+      ad.admin_statement.startsWith("APPROVED:") ||
+      ad.admin_statement.startsWith("REJECTED:")
+    ))
+  ) {
+    return "Boosting is only available after your campaign has been approved, paid for, and published live to the feed.";
+  }
   if (reportsCount > 0) {
     return "This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete.";
   }
   if (ad.admin_statement && ad.admin_statement.trim() !== "") {
-    return `This campaign was paused by an administrator. Reason: "${ad.admin_statement}". Please resolve the notice or wait for admin review.`;
+    return `This campaign was paused by an administrator. Reason: "${getAdminCustomNote(ad.admin_statement) || ad.admin_statement}". Please resolve the notice or wait for admin review.`;
   }
   if (ad.is_paused) {
     return "This campaign is currently paused. Please resume the campaign first to boost it.";
   }
   return null;
+}
+
+function getAdminCustomNote(stmt: string | null | undefined): string | null {
+  if (!stmt) return null;
+  const trimmed = stmt.trim();
+  if (
+    trimmed.startsWith("APPROVED:") ||
+    trimmed.startsWith("REJECTED:") ||
+    trimmed.startsWith("STATUS:") ||
+    trimmed.startsWith("Status: Pending review") ||
+    trimmed === "pending_review"
+  ) {
+    return null;
+  }
+  return trimmed;
 }
 
 function MyAdCard({
@@ -177,6 +208,7 @@ function MyAdCard({
   onCancel,
   onExportCsv,
   onShowNotice,
+  onPublish,
   ratedAdIds,
   timeNow,
 }: MyAdCardProps) {
@@ -189,6 +221,34 @@ function MyAdCard({
   ) as string[];
 
   const daysInfo = getCampaignDaysInfo(ad, timeNow);
+
+  // Moderation & Approval State
+  const isApproved = !!(ad.admin_statement && ad.admin_statement.startsWith("APPROVED:"));
+  const isRejected = !!(ad.admin_statement && ad.admin_statement.startsWith("REJECTED:"));
+  const rejectionFeedback = isRejected ? ad.admin_statement?.replace("REJECTED:", "").trim() : null;
+  const adminCustomNote = getAdminCustomNote(ad.admin_statement);
+
+  // 3-Day Countdown calculation for approved campaigns
+  let approvedCountdownText: string | null = null;
+  let isApprovedExpired = false;
+
+  if (isApproved && ad.admin_statement) {
+    const approvedTimestamp = ad.admin_statement.replace("APPROVED:", "").trim();
+    const approvedDate = new Date(approvedTimestamp);
+    if (!isNaN(approvedDate.getTime())) {
+      const expiresAt = approvedDate.getTime() + 72 * 60 * 60 * 1000;
+      const diffMs = expiresAt - timeNow;
+      if (diffMs <= 0) {
+        isApprovedExpired = true;
+        approvedCountdownText = "Expired";
+      } else {
+        const d = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        const h = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+        const m = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
+        approvedCountdownText = `${d > 0 ? `${d}d ` : ""}${h}h ${m}m remaining`;
+      }
+    }
+  }
   const seenCount = ad.impression_count ?? 0;
 
   // Calculate click tracking counters
@@ -260,27 +320,50 @@ function MyAdCard({
               {hasValidMedia ? (
                 mediaType === "video" ? (
                   <>
-                    <Video size={12} /> Video
+                    Video
                   </>
                 ) : (
                   <>
-                    <ImageIcon size={12} /> Image
+                    Image
                   </>
                 )
               ) : (
                 <>
-                  <Megaphone size={12} /> Text Post
+                  Text
                 </>
               )}
             </span>
 
-            {status === "review" ? (
-              <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
-                <Clock size={12} /> Pending Review
+            {/* The single status badge */}
+            {status === "active" ? (
+              ad.is_paused ? (
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
+                  Paused
+                </span>
+              ) : isCompleted ? (
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
+                  Completed
+                </span>
+              ) : daysInfo.isRollover ? (
+                <span className={`${styles.tagPill} ${styles.tagPillApproved}`}>
+                  Rollover (+{daysInfo.rolloverDays}d)
+                </span>
+              ) : (
+                <span className={`${styles.tagPill} ${styles.tagPillActive}`}>
+                  <span className={styles.liveDot} /> Live
+                </span>
+              )
+            ) : isApproved ? (
+              <span className={`${styles.tagPill} ${styles.tagPillApproved}`}>
+                Approved{approvedCountdownText ? ` • ${approvedCountdownText}` : ""}
+              </span>
+            ) : isRejected ? (
+              <span className={`${styles.tagPill} ${styles.tagPillRejected}`}>
+                Rejected
               </span>
             ) : (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <CheckCircle2 size={12} color="#10b981" /> Approved
+              <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
+                Pending review
               </span>
             )}
 
@@ -289,14 +372,14 @@ function MyAdCard({
                 className={`${styles.tagPill} ${styles.tagPillBidded}`}
                 title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds."
               >
-                <Zap size={12} /> {ad.is_bidded ? "Bidded Priority" : "Boosted"} •{" "}
+                {ad.is_bidded ? "Priority" : "Boosted"} •{" "}
                 {formatCurrency(ad.cost_per_impression, ad.country)}/view
               </span>
             )}
 
             {ad.display_mutual_button && (
               <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                <CheckCircle2 size={12} color="var(--primary)" /> Mutual+
+                Mutual+
               </span>
             )}
 
@@ -310,22 +393,34 @@ function MyAdCard({
           {/* Ad Copy Preview */}
           <p className={styles.adDescription}>{ad.ad_content}</p>
 
-          {ad.admin_statement && (
-            <div className={styles.adminNotice}>
-              <strong className={styles.adminNoticeTitle}>
-                <Info size={14} color="var(--primary)" /> Admin Notice:
-              </strong>
-              {ad.admin_statement}
+          {/* Single Rejection Reason Banner */}
+          {isRejected && rejectionFeedback && (
+            <div className={styles.statusReasonBanner}>
+              <AlertTriangle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <div>
+                <strong style={{ color: "var(--foreground)" }}>Reason: </strong>
+                <span style={{ color: "var(--text-muted)" }}>{rejectionFeedback}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Single Admin Custom Note Banner (if any manual note was given) */}
+          {adminCustomNote && (
+            <div className={styles.statusReasonBanner}>
+              <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <div>
+                <strong style={{ color: "var(--foreground)" }}>Admin Note: </strong>
+                <span style={{ color: "var(--text-muted)" }}>{adminCustomNote}</span>
+              </div>
             </div>
           )}
 
           {/* Compact Targeting Summary Strip */}
           <div className={styles.targetTagsRow}>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              <Globe size={12} /> {geoText}
+              {geoText}
             </span>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              <Users size={12} />{" "}
               {ad.gender
                 ? ad.gender.toLowerCase() === "both"
                   ? "All Genders"
@@ -339,8 +434,7 @@ function MyAdCard({
               className={`${styles.tagPill} ${styles.tagPillInteractive}`}
               title="Click to inspect full audience targeting matrix"
             >
-              <Target size={12} />{" "}
-              {totalCategoriesCount > 0 ? `${totalCategoriesCount} Audience Segments` : "Broad Delivery"}
+              {totalCategoriesCount > 0 ? `${totalCategoriesCount} Segments` : "Broad Delivery"}
             </button>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
               {ad.user_frequency_cap || 1}× / Viewer / Day
@@ -372,20 +466,20 @@ function MyAdCard({
           {/* CTA Conversion Breakdown Pills */}
           <div className={styles.ctaClickRow}>
             <span className={styles.ctaClickItem}>
-              <Phone size={12} /> Phone <strong>{phoneClicks}</strong>
+              Phone: <strong>{phoneClicks}</strong>
             </span>
             <span className={styles.ctaClickItem}>
-              <MessageSquare size={12} /> WhatsApp <strong>{whatsappClicks}</strong>
+              WhatsApp: <strong>{whatsappClicks}</strong>
             </span>
             <span className={styles.ctaClickItem}>
-              <Globe size={12} /> Website <strong>{websiteClicks}</strong>
+              Website: <strong>{websiteClicks}</strong>
             </span>
             <span className={styles.ctaClickItem}>
-              <Mail size={12} /> Email <strong>{emailClicks}</strong>
+              Email: <strong>{emailClicks}</strong>
             </span>
             {productCtaClicks > 0 && (
               <span className={styles.ctaClickItem}>
-                <ShoppingCart size={12} /> Product <strong>{productCtaClicks}</strong>
+                Product: <strong>{productCtaClicks}</strong>
               </span>
             )}
           </div>
@@ -411,11 +505,11 @@ function MyAdCard({
             <span className={styles.metricTitle}>Safety Status</span>
             {reportsCount === 0 && advertiserBlockCount === 0 ? (
               <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
-                <CheckCircle2 size={13} color="#10b981" /> Clean
+                Clean
               </span>
             ) : (
               <span className={`${styles.metricVal} ${styles.metricValRed}`}>
-                <AlertTriangle size={13} color="#ef4444" /> {reportsCount} Flags
+                {reportsCount} Flags
               </span>
             )}
           </div>
@@ -425,28 +519,9 @@ function MyAdCard({
       {/* Action Row Footer - Aligned Single Horizontal Bar */}
       <div className={styles.rowFooter}>
         <div className={`${styles.footerLeftGroup} ${styles.footerLeftGroupInner}`}>
-          {ad.is_paused ? (
-            <span className={styles.badgePaused}>Paused</span>
-          ) : isCompleted ? (
-            <span className={styles.badgeCompleted} title="100% of paid impressions have been delivered">
-              Completed {deletionCountdown ? `• Archiving in ${deletionCountdown}` : "• 100% Delivered"}
-            </span>
-          ) : daysInfo.isRollover ? (
-            <span
-              className={styles.badgeRollover}
-              title="Campaign schedule passed but impressions remain unfulfilled. Actively delivering in Rollover mode."
-            >
-              Rollover (+{daysInfo.rolloverDays}d)
-            </span>
-          ) : (
-            <span className={status === "active" ? styles.badgeActive : styles.badgeReview}>
-              {status === "active" ? (
-                <>
-                  <span className={styles.liveDot} /> Active
-                </>
-              ) : (
-                "In Review"
-              )}
+          {isCompleted && deletionCountdown && (
+            <span className={styles.badgeCompleted}>
+              Archiving in {deletionCountdown}
             </span>
           )}
 
@@ -497,14 +572,81 @@ function MyAdCard({
           <button type="button" className={styles.toggleSpecsBtn} onClick={onToggleSpecs}>
             {isSpecsOpen ? (
               <span className={styles.specsBtnInner}>
-                <ChevronUp size={13} /> Hide Specs
+                Hide Specs
               </span>
             ) : (
               <span className={styles.specsBtnInner}>
-                <SlidersHorizontal size={13} /> Specs & Budget
+                Specs
               </span>
             )}
           </button>
+
+          
+          {status === "review" && (
+            <>
+              {isApproved && !isApprovedExpired && (
+                <button
+                  type="button"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    backgroundColor: "#10b981",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "0.42rem 0.95rem",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+                    transition: "transform 0.15s ease",
+                  }}
+                  onClick={() => onPublish && onPublish(ad)}
+                  title={Number(ad.total_cost || 0) <= 0 || ad.is_admin_post ? "Publish ad live to feed" : "Make payment and publish ad live to feed"}
+                >
+                  {Number(ad.total_cost || 0) <= 0 || ad.is_admin_post ? "Publish" : "Publish & Pay"}
+                </button>
+              )}
+
+              {isRejected && (
+                <a
+                  href="/logged-in"
+                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onEdit(ad.id);
+                  }}
+                  title="Edit ad according to admin feedback"
+                >
+                  Adjust
+                </a>
+              )}
+
+              {!isApproved && !isRejected && (
+                <a
+                  href="/logged-in"
+                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onEdit(ad.id);
+                  }}
+                  title="Edit ad copy or targeting"
+                >
+                  Edit
+                </a>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onCancel(ad.id)}
+                className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
+                title="Delete campaign draft"
+              >
+                Delete
+              </button>
+            </>
+          )}
 
           {status === "active" && !isCompleted && (
             <>
@@ -515,11 +657,11 @@ function MyAdCard({
               >
                 {ad.is_paused ? (
                   <>
-                    <Play size={12} /> Resume
+                    Resume
                   </>
                 ) : (
                   <>
-                    <Pause size={12} /> Pause
+                    Pause
                   </>
                 )}
               </button>
@@ -548,12 +690,12 @@ function MyAdCard({
                 }
                 return (
                   <button type="button" onClick={() => onOpenBooster(ad)} className={styles.boostBtn}>
-                    <Zap size={12} /> Boost
+                    Boost
                   </button>
                 );
               })()}
               <button type="button" onClick={() => onShare(ad.id)} className={styles.shareAdBtn} title="Copy campaign share link">
-                <Share2 size={12} /> Share
+                Share
               </button>
               <a
                 href="/logged-in"
@@ -571,7 +713,7 @@ function MyAdCard({
                 className={styles.shareAdBtn}
                 title="Download CSV Performance Report"
               >
-                <FileText size={12} /> CSV
+                CSV
               </button>
               <button
                 type="button"
@@ -579,7 +721,7 @@ function MyAdCard({
                 className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
                 title="Stop and cancel campaign"
               >
-                <XCircle size={12} /> Cancel
+                Cancel
               </button>
             </>
           )}

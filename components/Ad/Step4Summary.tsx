@@ -42,7 +42,7 @@ export default function Step4Summary({
       <div className={styles.summaryHeader}>
         <h2 className={styles.summaryTitle}>Campaign summary</h2>
         <p className={styles.summarySubtitle}>
-          Review your campaign configuration, targeting choices, and cost estimate before proceeding to the ad preview.
+          Verify parameters before preview.
         </p>
       </div>
 

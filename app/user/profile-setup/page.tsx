@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import FormStepProgress from "@/components/ui/FormStepProgress";
 import FairAttentionModal from "@/components/ui/FairAttentionModal";
 import CustomSelect from "@/components/ui/CustomSelect";
+import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 
 
 import {
@@ -32,6 +33,8 @@ export default function ProfileSetup() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [goodwillAgreed, setGoodwillAgreed] = useState<boolean>(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
 
 interface ProfileFormData {
   username: string;
@@ -262,6 +265,13 @@ interface ProfileFormData {
     // On Step 2 (Final submission):
     if (!validateStep1()) {
       setStep(1);
+      return;
+    }
+
+    if (!goodwillAgreed) {
+      const msg = "Please read and review the terms and policies, and tick the box to accept before completing setup.";
+      setErrorMessage(msg);
+      setTermsError(msg);
       return;
     }
 
@@ -635,6 +645,27 @@ interface ProfileFormData {
                     />
                   </div>
                 </div>
+
+                <TermsAgreementCheckbox
+                  id="profile-setup-terms"
+                  checked={goodwillAgreed}
+                  onChange={(checked) => {
+                    setGoodwillAgreed(checked);
+                    if (checked) {
+                      setTermsError(null);
+                      setErrorMessage(null);
+                    }
+                  }}
+                  instruction="Please read and review the terms and policies below, and tick the box if you accept:"
+                  terms={[
+                    { label: "Terms of Service", href: "/terms" },
+                    { label: "Privacy Policy", href: "/privacy" },
+                    { label: "Good Will & Community Guidelines", href: "/terms" },
+                  ]}
+                  checkboxLabel="I have read, reviewed, and accept the Terms of Service & Privacy Policy, and pledge to participate in good will and fair attention exchange."
+                  errorMessage={termsError}
+                  required
+                />
 
                 <div className={styles.buttonGroup}>
                   <motion.button

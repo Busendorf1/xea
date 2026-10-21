@@ -24,11 +24,10 @@ export default function Step1Targeting({
   return (
     <>
       <p className={styles.targetingNote}>
-        Showing targeting options for{" "}
         <strong>
-          {adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1)}
+          {adType === "product_sales" ? "Product Sales" :  adType.charAt(0).toUpperCase() + adType.slice(1)}
         </strong>{" "}
-        ads. Switch category in Step 0 to see different options.
+        ads. Switch category in Step 1 to see different options.
       </p>
 
       {activeCategories.map((cat) => {
@@ -73,7 +72,7 @@ export default function Step1Targeting({
       })}
       {activeCategories.length === 0 && (
         <p className={styles.targetingNote}>
-          No granular targeting available for Individual ads — your ad will reach a broad general audience.
+          Individual ads reach broad audiences without granular filters.
         </p>
       )}
     </>

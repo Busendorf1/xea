@@ -9,8 +9,9 @@ import { fetchUserCampaignsShared, clearUserCampaignsCache, readUserCampaignsSyn
 import CampaignKpiSummary from "./CampaignKpiSummary";
 import MyAdCard, { getCampaignDaysInfo } from "./MyAdCard";
 import CampaignBoosterModal from "./CampaignBoosterModal";
+import PublishAdPaymentModal from "./PublishAdPaymentModal";
 import AudienceRatingModal from "./AudienceRatingModal";
-import NoticeModal from "./NoticeModal";
+import NoticeModal, { NoticeModalData } from "./NoticeModal";
 import styles from "./page.module.css";
 
 type MyAdsProps = {
@@ -48,7 +49,9 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
 
   // Modals
   const [boosterAd, setBoosterAd] = useState<Ad | null>(null);
-  const [noticeModal, setNoticeModal] = useState<{ title: string; message: string; adId?: string } | null>(null);
+  const [publishingAd, setPublishingAd] = useState<Ad | null>(null);
+  const [userWalletBalance, setUserWalletBalance] = useState<number>(0);
+  const [noticeModal, setNoticeModal] = useState<NoticeModalData | null>(null);
   const [ratingAdId, setRatingAdId] = useState<string | null>(null);
   const [ratedAdIds, setRatedAdIds] = useState<Set<string>>(() => {
     const initialSet = new Set<string>(Array.isArray(initialCached?.ratedAdIds) ? initialCached.ratedAdIds : []);
@@ -180,6 +183,12 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       const gatewayRef =
         urlParams.get("reference") || urlParams.get("trxref") || sessionStorage.getItem("paayh_boost_gateway_ref");
 
+      const isHighlight =
+        urlParams.get("type") === "highlight" ||
+        urlParams.get("tab") === "highlights" ||
+        sessionStorage.getItem("paayh_boost_type") === "highlight";
+      if (isHighlight) return;
+
       if (boostRef && boostRef.startsWith("BOOST-")) {
         sessionStorage.removeItem("paayh_boost_ref");
         sessionStorage.removeItem("paayh_boost_gateway_ref");
@@ -190,6 +199,12 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     checkPendingBoost();
 
     const handleCustomBoostEvent = (e: any) => {
+      const isHighlight =
+        e.detail?.isHighlight ||
+        e.detail?.type === "highlight" ||
+        sessionStorage.getItem("paayh_boost_type") === "highlight";
+      if (isHighlight) return;
+
       const boostRef = e.detail?.reference || sessionStorage.getItem("paayh_boost_ref");
       const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const gatewayRef = urlParams?.get("reference") || urlParams?.get("trxref") || e.detail?.gatewayReference;
@@ -278,36 +293,48 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     }
   };
 
-  const handleCancelAd = async (adId: string) => {
-    const confirmCancel = window.confirm(
-      "Are you sure you want to stop this campaign immediately? Delivery will cease immediately."
-    );
-    if (!confirmCancel) return;
+    const handleCancelAd = (adId: string) => {
+    const isDraftInReview = reviewAds.some((a) => a.id === adId);
 
-    try {
-      const response = await fetch("/api/campaigns/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adId }),
-      });
+    setNoticeModal({
+      title: isDraftInReview ? "Delete Campaign Draft" : "Stop Campaign",
+      message: isDraftInReview
+        ? "Are you sure you want to delete this campaign? It will be removed permanently from your review queue."
+        : "Are you sure you want to stop this live campaign? Delivery will cease immediately.",
+      confirmText: isDraftInReview ? "Delete" : "Stop Campaign",
+      cancelText: "Not Now",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const response = await fetch("/api/campaigns/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ adId }),
+          });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Failed to cancel campaign");
-      }
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || "Failed to process cancellation");
+          }
 
-      setNoticeModal({
-        title: "Campaign Cancelled",
-        message: "Campaign successfully cancelled. Delivery has ceased immediately.",
-      });
-      clearUserCampaignsCache(session?.user?.email || "");
-      fetchAds(true);
-    } catch (e: any) {
-      setNoticeModal({
-        title: "Cancel Notice",
-        message: e.message || "An error occurred while cancelling your campaign.",
-      });
-    }
+          setNoticeModal({
+            title: isDraftInReview ? "Campaign Deleted" : "Campaign Stopped",
+            message: isDraftInReview
+              ? "Your campaign draft has been removed."
+              : "Delivery has ceased immediately.",
+          });
+          setReviewAds((prev) => prev.filter((a) => a.id !== adId));
+          setActiveAds((prev) => prev.filter((a) => a.id !== adId));
+          clearUserCampaignsCache(session?.user?.email || "");
+          fetchAds(true);
+        } catch (e: any) {
+          setNoticeModal({
+            title: "Notice",
+            message: e.message || "An error occurred while deleting your campaign.",
+          });
+        }
+      },
+    });
   };
 
   const exportCampaignCsv = (ad: Ad) => {
@@ -411,7 +438,14 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     };
 
-    const filteredReview = reviewAds.filter(matchesQuery).sort(sortFn);
+    const filteredReview = reviewAds
+      .filter((ad) => {
+        if (!matchesQuery(ad)) return false;
+        if (activeTab === "approved") return !!(ad.admin_statement && ad.admin_statement.startsWith("APPROVED:"));
+        if (activeTab === "review") return !(ad.admin_statement && ad.admin_statement.startsWith("APPROVED:"));
+        return true;
+      })
+      .sort(sortFn);
     const filteredActive = activeAds
       .filter((ad) => {
         if (!matchesQuery(ad)) return false;
@@ -519,18 +553,34 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     [activeAds]
   );
 
-  const showReviewSection = activeTab === "all" || activeTab === "review";
+  const showReviewSection =
+    activeTab === "all" ||
+    activeTab === "review" ||
+    (activeTab === "approved" && filteredReview.length > 0);
   const showActiveSection = activeTab !== "review";
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const data = await res.json();
+          setUserWalletBalance(Number(data.balance || 0));
+        }
+      } catch {}
+    };
+    if (session?.user?.email) {
+      fetchBalance();
+    }
+  }, [session?.user?.email]);
 
   return (
     <div className={styles.feedContainer}>
       {/* Top Executive Header */}
       <div className={styles.headerBar}>
         <div className={styles.headerTitleGroup}>
-          <h2 className={styles.headerTitle}>Campaign Manager</h2>
-          <p className={styles.headerSubtitle}>
-            Real-time delivery telemetry, audience targeting specs, and priority bidding controls.
-          </p>
+          <h2 className={styles.headerTitle}>Campaigns</h2>
+          <p className={styles.headerSubtitle}>Delivery metrics, targeting specs, and bidding controls.</p>
         </div>
 
         <div className={styles.headerActionsGroup}>
@@ -612,7 +662,10 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
             className={`${styles.tabTrigger} ${activeTab === "approved" ? styles.tabTriggerActive : ""}`}
             onClick={() => setActiveTab("approved")}
           >
-            Approved <span className={styles.tabCount}>{activeAds.length}</span>
+            Approved{" "}
+            <span className={styles.tabCount}>
+              {activeAds.length + reviewAds.filter((a) => a.admin_statement?.startsWith("APPROVED:")).length}
+            </span>
           </button>
           <button
             type="button"
@@ -674,15 +727,22 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       {!loading && showReviewSection && (filteredReview.length > 0 || activeTab === "review") && (
         <section className={styles.sectionBlock}>
           <div className={styles.sectionHeaderRow}>
-            <h3 className={styles.subheading}>Moderation & Review Queue</h3>
-            <span className={styles.sectionCountBadge}>{filteredReview.length} pending</span>
+            <h3 className={styles.subheading}>
+              {activeTab === "approved" ? "Approved Campaigns (Ready to Publish)" : "In Review"}
+            </h3>
+            <span className={styles.sectionCountBadge}>
+              {filteredReview.length} {activeTab === "approved" ? "approved" : "pending"}
+            </span>
           </div>
 
           {filteredReview.length === 0 ? (
             <div className={styles.emptyStateCard}>
-              <Sparkles size={22} className={styles.emptyStateIcon} />
-              <p className={styles.emptyStateTitle}>No campaigns waiting in review</p>
-              <p className={styles.emptyStateSub}>All submitted ads have been processed.</p>
+              <p className={styles.emptyStateTitle}>
+                {activeTab === "approved" ? "No approved campaigns awaiting payment" : "No campaigns in review"}
+              </p>
+              <p className={styles.emptyStateSub}>
+                {activeTab === "approved" ? "Approved campaigns ready to pay and launch appear here." : "Submitted campaigns appear here for approval."}
+              </p>
             </div>
           ) : (
             <>
@@ -705,6 +765,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                       onShare={handleShare}
                       onEdit={handleEditAd}
                       onCancel={handleCancelAd}
+                      onPublish={(a) => setPublishingAd(a)}
                       onExportCsv={exportCampaignCsv}
                       onShowNotice={(title, message, adId) => setNoticeModal({ title, message, adId })}
                       ratedAdIds={ratedAdIds}
@@ -747,18 +808,13 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         <section className={styles.sectionBlock}>
           <div className={styles.sectionHeaderRow}>
             <h3 className={styles.subheading}>
-              {activeTab === "paused"
-                ? "Paused Campaigns"
-                : activeTab === "completed"
-                ? "Completed Campaigns"
-                : "Active & Approved Campaigns"}
+              {activeTab === "paused" ? "Paused" : activeTab === "completed" ? "Completed" : "Active Campaigns"}
             </h3>
             <span className={styles.sectionCountBadge}>{filteredActive.length} campaigns</span>
           </div>
 
           {filteredActive.length === 0 ? (
             <div className={styles.emptyStateCard}>
-              <Megaphone size={24} className={styles.emptyStateIcon} />
               <p className={styles.emptyStateTitle}>
                 {searchQuery
                   ? "No campaigns match your search filter"
@@ -768,9 +824,7 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
                   ? "No completed campaigns in the 48h archive window"
                   : "No active campaigns running right now"}
               </p>
-              <p className={styles.emptyStateSub}>
-                Launch a targeted campaign to reach verified audiences across the feed.
-              </p>
+              <p className={styles.emptyStateSub}>Create a campaign to reach audiences across the feed.</p>
               <div className={styles.postButtonContainer}>
                 <Link
                   href="/logged-in"
@@ -842,6 +896,23 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           )}
         </section>
       )}
+
+      {/* Publish Ad Payment Modal */}
+      <PublishAdPaymentModal
+        isOpen={!!publishingAd}
+        onClose={() => setPublishingAd(null)}
+        ad={publishingAd}
+        userBalance={userWalletBalance}
+        onSuccess={(_publishedAd) => {
+          setPublishingAd(null);
+          setNoticeModal({
+            title: "Campaign Published & Live!",
+            message: "Your campaign has been paid and is now actively delivering in the feed.",
+          });
+          clearUserCampaignsCache(session?.user?.email || "");
+          fetchAds(true);
+        }}
+      />
 
       {/* Top-Up Booster Modal */}
       <CampaignBoosterModal

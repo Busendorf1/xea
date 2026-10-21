@@ -341,9 +341,9 @@ export default function AdminReconciliationTab({ renderPagination }: AdminReconc
   return (
     <>
       <div>
-        <h1 className={styles.sectionTitle}>Financial Reconciliation and Security Audits</h1>
+        <h1 className={styles.sectionTitle}>Financial Reconciliation</h1>
         <p className={styles.sectionSubtitle}>
-          Real-time double-entry ledger audits, nightly variance detection, and emergency P2P transfer circuit breaker controls.
+          Double-entry ledger audits and variance tracking.
         </p>
       </div>
 

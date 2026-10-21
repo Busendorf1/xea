@@ -643,14 +643,13 @@ export default function Step3Creative({
                 <div className={styles.modernSectionBody}>
                   {hasPrimaryCta && (
                     <p className={styles.actionSubHint}>
-                      Reduced to max {maxButtons} buttons to ensure clean mobile card spacing alongside &quot;
-                      {formSelections.productCtaType || "Comment"}&quot;.
+                      Max {maxButtons} action buttons for mobile layout.
                     </p>
                   )}
 
                   <div className={styles.actionMeterRow}>
                     <span className={styles.actionMeterText}>
-                      <Zap size={15} color="var(--primary)" /> Interactive Feed CTAs
+                      Interactive Feed CTAs
                     </span>
                     <span className={styles.actionMeterBadge}>
                       {formSelections.adActionButtons.length} of {maxButtons} Selected

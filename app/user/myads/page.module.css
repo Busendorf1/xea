@@ -22,6 +22,64 @@
   text-align: left;
 }
 
+.switchContainer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.switchBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+.switchBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  font-family: inherit;
+  user-select: none;
+}
+
+.switchBtn:hover {
+  color: var(--foreground);
+}
+
+.switchBtnActive {
+  background: var(--card-bg);
+  color: var(--foreground);
+  border-color: var(--card-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+@media (max-width: 640px) {
+  .switchBar {
+    width: 100%;
+    display: flex;
+  }
+  .switchBtn {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 0.82rem;
+  }
+}
+
 .section {
   margin-bottom: 1.75rem;
   background: transparent;

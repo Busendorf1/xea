@@ -1286,6 +1286,50 @@
   gap: 4px;
 }
 
+.tagPillApproved {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tagPillRejected {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tagPillActive {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusReasonBanner {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--input-bg, var(--card-bg));
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--foreground);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .tagPillBidded {
   background-color: var(--primary-glow);
   color: var(--primary);
@@ -2391,4 +2435,48 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* Notice Modal Action Buttons */
+.modalActionBtns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.modalCancelBtn {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 0.5rem 1.15rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modalCancelBtn:hover {
+  background: var(--input-bg, rgba(255, 255, 255, 0.05));
+  border-color: var(--text-muted);
+}
+
+.modalDeleteBtn {
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.modalDeleteBtn:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
 }

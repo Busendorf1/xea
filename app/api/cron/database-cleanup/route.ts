@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
+import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
 
 export async function GET(req: NextRequest) {
   return handleCron(req);
@@ -22,6 +23,15 @@ async function handleCron(req: NextRequest) {
     }
 
     console.log("🧹 Cron: Starting database-cleanup task...");
+
+    // Purge approved campaigns not published after 3 days
+    try {
+      console.log("🧹 Cron: Purging expired approved campaigns older than 3 days...");
+      const cleanupApprovedRes = await cleanupExpiredApprovedCampaigns(true);
+      console.log("✅ Cron: Expired approved campaigns purge result:", cleanupApprovedRes);
+    } catch (cleanupErr: any) {
+      console.error("❌ Cron: Error purging expired approved campaigns:", cleanupErr?.message || cleanupErr);
+    }
 
     // 2. Archive expired active platform campaigns (moving them from addsactive -> completed_ads)
     try {

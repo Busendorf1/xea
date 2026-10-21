@@ -280,3 +280,24 @@ video::-webkit-media-controls {
   max-width: 0 !important;
   max-height: 0 !important;
 }
+
+
+/* Branded Circular Motion Button Spinner (matches Google / Apple sign-in buttons) */
+.btnSpinner,
+.buttonSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btnSpin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+@keyframes btnSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

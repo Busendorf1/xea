@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
     const emailLower = email.toLowerCase().trim();
 
     // Query adds (pending/review queue) or addsactive (active)
+    let isDeliveringActive = false;
     let { data: ad } = await supabaseAdmin
       .from("adds")
       .select("*")
@@ -32,6 +33,15 @@ export async function GET(req: NextRequest) {
         .eq("id", id)
         .maybeSingle();
       ad = activeAd;
+      if (activeAd) isDeliveringActive = true;
+    } else {
+      // If it exists in adds, check if it also exists in addsactive (an edit of an active ad)
+      const { data: activeAd } = await supabaseAdmin
+        .from("addsactive")
+        .select("id, total_cost")
+        .eq("id", id)
+        .maybeSingle();
+      if (activeAd) isDeliveringActive = true;
     }
 
     if (!ad) {
@@ -42,7 +52,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Access denied. You do not own this campaign." }, { status: 403 });
     }
 
-    return NextResponse.json({ success: true, ad });
+    const originalTotalCost = Number(ad.total_cost || (ad as any).cost || 0);
+
+    return NextResponse.json({
+      success: true,
+      ad,
+      isDeliveringActive,
+      originalTotalCost,
+    });
 
   } catch (err: any) {
     console.error("❌ Error in GET /api/campaigns/details:", err);

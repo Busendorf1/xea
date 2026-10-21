@@ -100,6 +100,16 @@ export default function LoggedInClientContainer({
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTab]));
+  const [publicationSubTab, setPublicationSubTab] = useState<"ads" | "highlights">("ads");
+  const [visitedSubTabs, setVisitedSubTabs] = useState<Set<string>>(() => new Set(["ads"]));
+
+  const handleSwitchSubTab = (tab: "ads" | "highlights") => {
+    setPublicationSubTab(tab);
+    setVisitedSubTabs((prev) => new Set([...prev, tab]));
+    sessionStorage.setItem("paayh_publications_subtab", tab);
+    const targetUrl = tab === "highlights" ? "/logged-in?view=myads&tab=highlights" : "/logged-in?view=myads";
+    window.history.replaceState(null, "", targetUrl);
+  };
 
   // Seamless location recalibration on login / session start (GPS if granted, IP fallback if blocked)
   useLocationRecalibration({
@@ -134,16 +144,32 @@ export default function LoggedInClientContainer({
 
     const boostRef = urlParams.get("boost_ref") || urlParams.get("reference") || urlParams.get("trxref");
     const gatewayRef = urlParams.get("reference") || urlParams.get("trxref");
+    const isHighlightBoost =
+      urlParams.get("type") === "highlight" ||
+      urlParams.get("tab") === "highlights" ||
+      (typeof window !== "undefined" && sessionStorage.getItem("paayh_boost_type") === "highlight");
+
     if (boostRef && boostRef.startsWith("BOOST-")) {
       sessionStorage.setItem("paayh_boost_ref", boostRef);
       if (gatewayRef && gatewayRef !== boostRef) {
         sessionStorage.setItem("paayh_boost_gateway_ref", gatewayRef);
       }
+      if (isHighlightBoost) {
+        sessionStorage.setItem("paayh_boost_type", "highlight");
+        sessionStorage.setItem("paayh_publications_subtab", "highlights");
+        setPublicationSubTab("highlights");
+        setVisitedSubTabs((prev) => new Set([...prev, "highlights"]));
+      }
       finalTab = "myads";
       setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent("paayh_boost_ref", {
-            detail: { reference: boostRef, gatewayReference: gatewayRef },
+            detail: {
+              reference: boostRef,
+              gatewayReference: gatewayRef,
+              isHighlight: isHighlightBoost,
+              type: isHighlightBoost ? "highlight" : "ad",
+            },
           })
         );
       }, 100);
@@ -184,20 +210,37 @@ export default function LoggedInClientContainer({
       }
     }
 
-    if (viewParam && VALID_TABS.includes(viewParam)) {
-      finalTab = viewParam;
+    if (viewParam && (VALID_TABS.includes(viewParam) || (viewParam as string) === "mynews")) {
+      finalTab = (viewParam as string) === "mynews" ? "myads" : viewParam;
     } else if (!boostRef && !(urlParams.get("reference") || urlParams.get("trxref"))) {
       // 2. Check for cookie set by server redirects
       const tabCookie = cookiesList.find((c) => c.trim().startsWith("paayh_active_tab="));
       if (tabCookie) {
         const cookieTab = tabCookie.trim().split("=")[1] as TabKey;
-        if (VALID_TABS.includes(cookieTab)) finalTab = cookieTab;
+        if (VALID_TABS.includes(cookieTab) || (cookieTab as string) === "mynews") {
+          finalTab = (cookieTab as string) === "mynews" ? "myads" : cookieTab;
+        }
       } else {
         // 3. Check sessionStorage
         const storedTab = sessionStorage.getItem("paayh_active_tab") as TabKey;
-        if (storedTab && VALID_TABS.includes(storedTab)) {
-          finalTab = storedTab;
+        if (storedTab && (VALID_TABS.includes(storedTab) || (storedTab as string) === "mynews")) {
+          finalTab = (storedTab as string) === "mynews" ? "myads" : storedTab;
         }
+      }
+    }
+
+    const subParam = urlParams.get("tab") || urlParams.get("sub");
+    if ((viewParam as string) === "mynews" || subParam === "highlights") {
+      setPublicationSubTab("highlights");
+      setVisitedSubTabs((prev) => new Set([...prev, "highlights"]));
+    } else if (subParam === "ads" || subParam === "adverts") {
+      setPublicationSubTab("ads");
+      setVisitedSubTabs((prev) => new Set([...prev, "ads"]));
+    } else {
+      const storedSub = sessionStorage.getItem("paayh_publications_subtab");
+      if (storedSub === "highlights" || storedSub === "ads") {
+        setPublicationSubTab(storedSub as "ads" | "highlights");
+        setVisitedSubTabs((prev) => new Set([...prev, storedSub]));
       }
     }
 
@@ -208,7 +251,13 @@ export default function LoggedInClientContainer({
     setActiveTab(finalTab);
     sessionStorage.setItem("paayh_active_tab", finalTab);
 
-    const targetUrl = finalTab === "feed" ? "/logged-in" : `/logged-in?view=${finalTab}`;
+    const isHighlights = (viewParam as string) === "mynews" || subParam === "highlights" || (typeof window !== "undefined" && sessionStorage.getItem("paayh_boost_type") === "highlight");
+    const targetUrl =
+      finalTab === "feed"
+        ? "/logged-in"
+        : finalTab === "myads" && isHighlights
+        ? "/logged-in?view=myads&tab=highlights"
+        : `/logged-in?view=${finalTab}`;
     if (window.location.pathname + window.location.search !== targetUrl) {
       window.history.replaceState(null, "", targetUrl);
     }
@@ -217,12 +266,27 @@ export default function LoggedInClientContainer({
   useEffect(() => {
     checkAndSetTab();
 
-    const handleTabChangeEvent = () => {
-      const stored = (sessionStorage.getItem("paayh_active_tab") as TabKey) || "feed";
-      if (stored && VALID_TABS.includes(stored)) {
-        setActiveTab(stored);
-        document.cookie = `paayh_active_tab=${stored}; path=/; max-age=604800; SameSite=Lax`;
-        const targetUrl = stored === "feed" ? "/logged-in" : `/logged-in?view=${stored}`;
+    const handleTabChangeEvent = (event?: any) => {
+      const detailTab = event?.detail?.tab;
+      const stored = (sessionStorage.getItem("paayh_active_tab") as string) || "feed";
+      const targetTab = detailTab || stored;
+
+      if (targetTab === "mynews") {
+        setActiveTab("myads");
+        setPublicationSubTab("highlights");
+        setVisitedSubTabs((prev) => new Set([...prev, "highlights"]));
+        sessionStorage.setItem("paayh_active_tab", "myads");
+        sessionStorage.setItem("paayh_publications_subtab", "highlights");
+        document.cookie = `paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax`;
+        const targetUrl = "/logged-in?view=myads&tab=highlights";
+        window.history.replaceState(null, "", targetUrl);
+        return;
+      }
+
+      if (targetTab && VALID_TABS.includes(targetTab as TabKey)) {
+        setActiveTab(targetTab as TabKey);
+        document.cookie = `paayh_active_tab=${targetTab}; path=/; max-age=604800; SameSite=Lax`;
+        const targetUrl = targetTab === "feed" ? "/logged-in" : `/logged-in?view=${targetTab}`;
         window.history.replaceState(null, "", targetUrl);
       }
     };
@@ -354,14 +418,50 @@ export default function LoggedInClientContainer({
         {activeTab === "myads" && (
           <div className={myAdsStyles.pageContainer}>
             <h1 className={myAdsStyles.pageTitle}>Publications</h1>
-            <section className={myAdsStyles.section}>
-              <h2 className={myAdsStyles.sectionTitle}>Highlights</h2>
-              <MyNews session={session} />
-            </section>
-            <section className={myAdsStyles.section}>
-              <h2 className={myAdsStyles.sectionTitle}>Adverts</h2>
-              <MyAds session={session} />
-            </section>
+
+            {/* Switch between seeing Highlights and Adverts */}
+            <div className={myAdsStyles.switchContainer} role="tablist" aria-label="Publications View">
+              <div className={myAdsStyles.switchBar}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={publicationSubTab === "ads"}
+                  className={`${myAdsStyles.switchBtn} ${
+                    publicationSubTab === "ads" ? myAdsStyles.switchBtnActive : ""
+                  }`}
+                  onClick={() => handleSwitchSubTab("ads")}
+                >
+                  <span>Adverts</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={publicationSubTab === "highlights"}
+                  className={`${myAdsStyles.switchBtn} ${
+                    publicationSubTab === "highlights" ? myAdsStyles.switchBtnActive : ""
+                  }`}
+                  onClick={() => handleSwitchSubTab("highlights")}
+                >
+                  <span>Highlights</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: publicationSubTab === "ads" ? "block" : "none" }}>
+              {visitedSubTabs.has("ads") && (
+                <section className={myAdsStyles.section}>
+                  <MyAds session={session} />
+                </section>
+              )}
+            </div>
+
+            <div style={{ display: publicationSubTab === "highlights" ? "block" : "none" }}>
+              {visitedSubTabs.has("highlights") && (
+                <section className={myAdsStyles.section}>
+                  <MyNews session={session} />
+                </section>
+              )}
+            </div>
           </div>
         )}
 

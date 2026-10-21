@@ -1,5 +1,6 @@
 // lib/payment/processPayment.ts
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import redisConnection from "@/lib/redis";
 
 async function sendIdempotentNotification(userEmail: string, title: string, message: string) {
   try {
@@ -54,6 +55,108 @@ export async function processSuccessfulPayment(
   }
 
   console.log(`🚀 Processing successful payment for ${user_email}, type: ${type}, reference: ${reference}`);
+
+    // 2.A: Publish Approved Ad (Post-Review Direct-to-Feed)
+  if (type === "publish_ad") {
+    const adId = (mergedMetadata.adId || mergedMetadata.id) as string;
+    if (!adId) throw new Error("Missing adId in publish_ad payment metadata");
+
+    const { data: adToPublish, error: fetchErr } = await supabaseAdmin
+      .from("adds")
+      .select("*")
+      .eq("id", adId)
+      .maybeSingle();
+
+    if (fetchErr || !adToPublish) {
+      throw new Error("Ad not found in review queue for publishing");
+    }
+
+    // Strip review/approval queue specific fields that don't exist on addsactive
+    const {
+      status: _status,
+      approved_at: _appAt,
+      payment_status: _payStatus,
+      ...cleanAd
+    } = adToPublish;
+
+    const activeAd = {
+      ...cleanAd,
+      admin_statement: null,
+      is_paused: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const { data: insertedRows, error: insertErr } = await supabaseAdmin
+      .from("addsactive")
+      .insert([activeAd])
+      .select("*");
+
+    if (insertErr) throw insertErr;
+
+    await supabaseAdmin.from("adds").delete().eq("id", adId);
+
+    const publishedAd = insertedRows?.[0] || activeAd;
+    const { dispatchFeedDropWebhook } = await import("@/lib/webhookDispatcher");
+    dispatchFeedDropWebhook(publishedAd).catch(() => {});
+
+    await sendIdempotentNotification(
+      user_email,
+      "Campaign Published & Live!",
+      "Your approved campaign has been paid and is now live in the active feed!"
+    );
+  }
+
+  // 2.B: Publish Approved Highlight (Post-Review Direct-to-Feed)
+  if (type === "publish_highlight") {
+    const highlightId = (mergedMetadata.highlightId || mergedMetadata.id) as string;
+    if (!highlightId) throw new Error("Missing highlightId in publish_highlight payment metadata");
+
+    const { data: hlToPublish, error: fetchErr } = await supabaseAdmin
+      .from("news")
+      .select("*")
+      .eq("id", highlightId)
+      .maybeSingle();
+
+    if (fetchErr || !hlToPublish) {
+      throw new Error("Highlight not found in review queue for publishing");
+    }
+
+    // Strip review/approval queue specific fields that don't exist on newsactive
+    const {
+      status: _status,
+      approved_at: _appAt,
+      payment_status: _payStatus,
+      is_admin_post: _adminPost,
+      custom_sponsor_name: _csName,
+      custom_sponsor_handle: _csHandle,
+      custom_sponsor_logo: _csLogo,
+      ...cleanHl
+    } = hlToPublish;
+
+    const activeHl = {
+      ...cleanHl,
+      admin_statement: null,
+      is_paused: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const { error: insertErr } = await supabaseAdmin
+      .from("newsactive")
+      .insert([activeHl]);
+
+    if (insertErr) {
+      console.error("❌ Error activating highlight in newsactive via gateway:", insertErr);
+      throw insertErr;
+    }
+
+    await supabaseAdmin.from("news").delete().eq("id", highlightId);
+
+    await sendIdempotentNotification(
+      user_email,
+      "Highlight Published & Live!",
+      "Your approved highlight is now live in the active feed!"
+    );
+  }
 
   // 2. Perform business action based on type (Closed-loop non-refundable payments only: Ad, Highlight, Boost, Brand Subscription)
   if (type === "highlight") {
@@ -142,7 +245,7 @@ export async function processSuccessfulPayment(
       editingId ? "Highlight Updated 🚀" : "Highlight Submitted 🚀",
       `Your highlight "${title}" has been ${editingId ? "updated" : "submitted for review"}. It will be published after admin approval!`
     );
-  } else if (type === "boost_campaign" || type === "boost") {
+  } else if (type === "boost_campaign" || type === "boost" || type === "boost_highlight") {
     const {
       ad_id,
       additional_impressions = 0,
@@ -208,20 +311,53 @@ export async function processSuccessfulPayment(
               bid_price: effectiveCost,
               is_active: true,
             });
-            const redisConnection = (await import("@/lib/redis")).default;
             await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, ad_id).catch(() => {});
             await redisConnection.del("attention:market_rates").catch(() => {});
           } catch (bidErr) {
-            console.warn("⚠️ bidded_ads update notice in boost:", bidErr);
+            console.warn("⚠️ bidded_ads update notice in processPayment boost:", bidErr);
           }
         }
+      } else {
+        // Check highlight tables
+        let { data: hl } = await supabaseAdmin.from("newsactive").select("*").eq("id", ad_id).maybeSingle();
+        if (!hl) {
+          const { data: qHl } = await supabaseAdmin.from("news").select("*").eq("id", ad_id).maybeSingle();
+          hl = qHl;
+        }
 
-        await sendIdempotentNotification(
-          user_email,
-          "Campaign Priority Boosted ⚡",
-          `Your campaign has been successfully boosted with priority bid ₦${effectiveCost}.`
-        );
+        if (hl) {
+          const currentRate = hl.is_bidded && hl.bid_price ? Number(hl.bid_price) : 1000;
+          const effectiveRate = cost_per_impression && Number(cost_per_impression) > currentRate
+            ? Number(cost_per_impression)
+            : currentRate;
+
+          const hlUpdate: Record<string, any> = {
+            is_paused: false,
+          };
+          if (Number(additional_days) > 0) {
+            hlUpdate.campaign_days = Number(hl.campaign_days || 1) + Number(additional_days);
+          }
+          if (effectiveRate > 1000) {
+            hlUpdate.bid_price = effectiveRate;
+            hlUpdate.is_bidded = true;
+          }
+          if (country !== undefined) hlUpdate.country = country;
+          if (state !== undefined) hlUpdate.state = state;
+          if (province !== undefined) hlUpdate.province = province;
+          if (interest) hlUpdate.interest = Array.isArray(interest) ? interest[0] : interest;
+
+          await Promise.all([
+            supabaseAdmin.from("news").update(hlUpdate).eq("id", ad_id),
+            supabaseAdmin.from("newsactive").update(hlUpdate).eq("id", ad_id),
+          ]);
+        }
       }
+
+      await sendIdempotentNotification(
+        user_email,
+        "Campaign Priority Boosted ⚡",
+        `Your campaign has been successfully boosted with priority bid ₦${cost_per_impression || 25}.`
+      );
     }
   } else if (type === "ad") {
     const adData = mergedMetadata.adData as Record<string, unknown> | undefined;
