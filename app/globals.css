@@ -152,7 +152,25 @@
 
 /* Fluid Responsive Typography & Screen Scaling (Scale 7) */
 html {
-  font-size: clamp(15px, 0.25vw + 14px, 16.2px);
+  font-size: clamp(16px, 0.2vw + 15.5px, 16.5px);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Prevent Mobile Browser Auto-Zoom on Inputs, Selects & Textareas */
+@media screen and (max-width: 768px) {
+  html,
+  body {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem) !important;
+  }
 }
 
 @media screen and (min-width: 1440px) {

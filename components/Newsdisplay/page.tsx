@@ -234,7 +234,7 @@ export default function AdDisplay({
           {/\.(mp4|webm|mov|m3u8)/i.test(ad.image_url || "") ? (
             <video
               src={ad.image_url}
-              controls
+              autoPlay loop muted controls={false}
               playsInline
               preload="metadata"
               className={`${styles.adImage} ${styles.adVideo}`}

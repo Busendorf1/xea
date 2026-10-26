@@ -378,7 +378,7 @@ export async function POST(req: NextRequest) {
         {
           user_email: pendingAd.user_email,
           title: "Campaign Approved - Ready to Publish!",
-          message: "Your campaign has been approved by admin! You can now review and publish it from My Ads. Approved campaigns expire after 3 days if not published.",
+          message: "Your campaign has been approved! You can now review and publish it from My Ads. Approved campaigns expire after 3 days if not published.",
         },
       ]);
 
@@ -638,7 +638,7 @@ export async function POST(req: NextRequest) {
         {
           user_email: pendingHighlight.user_email,
           title: "Highlight Approved!",
-          message: "Your highlight has been approved by admin! You can now publish it from My Highlights.",
+          message: "Your highlight has been approved! You can now publish it from My Highlights.",
         },
       ]);
 

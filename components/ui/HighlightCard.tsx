@@ -11,6 +11,8 @@ interface HighlightCardProps {
 
 const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestamp }) => {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [swipeOffsetY, setSwipeOffsetY] = useState(0);
+  const touchStartYRef = React.useRef<number | null>(null);
 
   useEffect(() => {
     if (ad.is_highlight && ad.id) {
@@ -186,8 +188,42 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
 
               <div
                 className={styles.lightboxStage}
+                style={{
+                  transform:
+                    swipeOffsetY !== 0
+                      ? `translate3d(0, ${swipeOffsetY}px, 0) scale(${Math.max(0.86, 1 - Math.abs(swipeOffsetY) / 900)})`
+                      : undefined,
+                  opacity: swipeOffsetY !== 0 ? Math.max(0.35, 1 - Math.abs(swipeOffsetY) / 380) : 1,
+                  transition: swipeOffsetY === 0 ? "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease" : "none",
+                }}
                 onClick={(e) => {
-                  if (e.target === e.currentTarget) setIsLightboxOpen(false);
+                  if (e.target === e.currentTarget) {
+                    setSwipeOffsetY(0);
+                    setIsLightboxOpen(false);
+                  }
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length === 1) {
+                    touchStartYRef.current = e.touches[0].clientY;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  if (touchStartYRef.current !== null && e.touches.length === 1) {
+                    const dy = e.touches[0].clientY - touchStartYRef.current;
+                    if (Math.abs(dy) > 10) setSwipeOffsetY(dy);
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (touchStartYRef.current !== null && e.changedTouches.length > 0) {
+                    const dy = e.changedTouches[0].clientY - touchStartYRef.current;
+                    touchStartYRef.current = null;
+                    if (Math.abs(dy) > 65) {
+                      setSwipeOffsetY(0);
+                      setIsLightboxOpen(false);
+                      return;
+                    }
+                    setSwipeOffsetY(0);
+                  }
                 }}
               >
                 <img

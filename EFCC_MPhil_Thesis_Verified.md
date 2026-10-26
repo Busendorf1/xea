@@ -1,0 +1,482 @@
+# ASSESSMENT OF THE ECONOMIC AND FINANCIAL CRIMES COMMISSION (EFCC) IN COMBATING MONEY LAUNDERING IN NIGERIA
+
+**BY**
+**[STUDENT NAME]**
+**[MATRICULATION NUMBER]**
+
+A THESIS SUBMITTED TO THE SCHOOL OF POSTGRADUATE STUDIES, NASARAWA STATE UNIVERSITY, KEFFI, IN PARTIAL FULFILMENT OF THE REQUIREMENTS FOR THE AWARD OF MASTER OF PHILOSOPHY (M.PHIL.) DEGREE IN PUBLIC ADMINISTRATION
+
+DEPARTMENT OF PUBLIC ADMINISTRATION
+FACULTY OF ADMINISTRATION
+NASARAWA STATE UNIVERSITY, KEFFI
+
+**OCTOBER 2026**
+
+---
+
+## DECLARATION
+I hereby declare that this thesis has been written by me and is a report of my research work. It has not been presented in any previous application for the award of a degree or any other qualification. All quotations and sources of information have been duly acknowledged by means of references.
+
+______________________________                     __________________
+[STUDENT NAME]                                      Date
+[MATRICULATION NUMBER]
+
+## CERTIFICATION
+This thesis, *Assessment of the Economic and Financial Crimes Commission (EFCC) in Combating Money Laundering in Nigeria*, meets the regulations governing the award of the Master of Philosophy (M.Phil.) degree in Public Administration of Nasarawa State University, Keffi, and is approved for its contribution to knowledge and literary presentation.
+
+______________________________                     __________________
+[NAME OF SUPERVISOR]                                Date
+Supervisor
+
+______________________________                     __________________
+[NAME OF HEAD OF DEPARTMENT]                        Date
+Head of Department
+
+______________________________                     __________________
+[NAME OF DEAN, FACULTY OF ADMINISTRATION]           Date
+Dean, Faculty of Administration
+
+______________________________                     __________________
+[NAME OF EXTERNAL EXAMINER]                         Date
+External Examiner
+
+______________________________                     __________________
+[NAME OF DEAN, SCHOOL OF POSTGRADUATE STUDIES]      Date
+Dean, School of Postgraduate Studies
+
+## DEDICATION
+[Dedication to be supplied by the student.]
+
+## ACKNOWLEDGEMENTS
+[Acknowledgements to be supplied by the student. Include the supervisor, department, institution, family and any organisations that supported the study.]
+
+## ABSTRACT
+This study assessed the Economic and Financial Crimes Commission (EFCC) in combating money laundering in Nigeria, with emphasis on the period 2015–2025. The study was motivated by the coexistence of increased enforcement outputs and persistent vulnerabilities in Nigeria's cash-intensive economy, politically exposed person cases, designated non-financial businesses and professions, virtual assets, beneficial ownership arrangements and cross-border flows. Three objectives guided the study: to examine the statutory and institutional capacity of the EFCC; assess its enforcement outcomes; and identify factors that constrain sustained effectiveness. Documentary research design was adopted. Data were drawn from the EFCC Act 2004, the Money Laundering (Prevention and Prohibition) Act 2022, official EFCC conviction and recovery records (2015–2025), NFIU strategy and risk documents, FATF/GIABA mutual evaluation and follow-up reports, and relevant empirical literature. Qualitative content analysis and pattern matching were used. The analysis was anchored in deterrence theory and institutional theory. Findings indicate that the EFCC possesses a broad mandate and has demonstrated substantial investigative, prosecutorial and asset-recovery capacity. Annual convictions rose from 103 in 2015 to 4,111 in 2024, while officially reported outputs for October 2023 to September 2025 included 29,240 investigations, 10,525 court filings, 7,503 convictions and recoveries exceeding N566 billion, alongside foreign currencies and 1,502 non-monetary assets. Nigeria's removal from FATF increased monitoring in October 2025 also indicates system-wide progress. However, aggregate conviction statistics are dominated by a broad mix of economic crimes and cannot be treated as money-laundering-specific performance. Earlier GIABA findings identified weak pursuit of complex, third-party, stand-alone and legal-person laundering cases, limited risk-informed prioritisation, resource constraints and uneven non-financial-sector supervision. The study therefore concludes that the EFCC has been operationally active and moderately effective, but its durable impact is constrained by data opacity, judicial delay, political exposure, inter-agency fragmentation and the complexity of tracing beneficial ownership and digital assets. It recommends publication of disaggregated AML performance data, risk-based case selection, specialised prosecution and judicial arrangements, stronger SCUML supervision, protected institutional autonomy, improved beneficial-ownership analytics and outcome-based performance measurement.
+
+**Keywords:** EFCC; money laundering; anti-money laundering; asset recovery; institutional effectiveness; Nigeria.
+
+## TABLE OF CONTENTS
+Table of Contents - update field in Word if page numbers change.
+
+## LIST OF TABLES
+* Table 2.1: Selected dimensions for assessing EFCC effectiveness
+* Table 3.1: Documentary sources and analytical use
+* Table 4.1: Annual EFCC convictions secured (2015–2024)
+* Table 4.2: Summary of key official performance indicators (Oct. 2023–Sept. 2025)
+* Table 4.3: Assessment against deterrence and institutional criteria
+
+## LIST OF ABBREVIATIONS
+* **AML** - Anti-Money Laundering
+* **BO** - Beneficial Ownership
+* **CBN** - Central Bank of Nigeria
+* **CFT** - Countering the Financing of Terrorism
+* **CPF** - Countering Proliferation Financing
+* **DNFBPs** - Designated Non-Financial Businesses and Professions
+* **EFCC** - Economic and Financial Crimes Commission
+* **FATF** - Financial Action Task Force
+* **FIU** - Financial Intelligence Unit
+* **GIABA** - Inter-Governmental Action Group against Money Laundering in West Africa
+* **ML** - Money Laundering
+* **MLPPA** - Money Laundering (Prevention and Prohibition) Act 2022
+* **NFIU** - Nigerian Financial Intelligence Unit
+* **NIRA** - National Inherent Risk Assessment
+* **PEPs** - Politically Exposed Persons
+* **SCUML** - Special Control Unit against Money Laundering
+* **STR** - Suspicious Transaction Report
+* **VASPs** - Virtual Asset Service Providers
+
+---
+
+# CHAPTER ONE: INTRODUCTION
+
+## 1.1 Background to the Study
+Money laundering is the process through which proceeds derived from crime are concealed, converted, transferred or integrated into apparently legitimate economic activity. The offence is not merely an after-effect of corruption, fraud, trafficking or organised crime; it is the financial mechanism that allows predicate offenders to retain, move and enjoy illicit wealth. A credible anti-money-laundering system therefore seeks to prevent misuse of financial and non-financial channels, detect suspicious activity, investigate financial trails, prosecute offenders, confiscate proceeds and cooperate across borders.
+
+Nigeria's exposure is shaped by the scale and diversity of its economy. A large cash-based and informal sector coexists with sophisticated banks, payment platforms, real-estate markets, professional intermediaries, extractive industries, bureaux de change and rapidly expanding virtual-asset activity. These features produce legitimate economic opportunities but also create channels through which ownership may be obscured and criminal proceeds layered. The 2022 National Inherent Risk Assessment identified inadequate preventive measures, human-capital limitations, institutional capacity gaps and resource constraints as important vulnerabilities (Inter-Ministerial Committee on AML/CFT/CPF, 2022).
+
+The Economic and Financial Crimes Commission is the principal federal law-enforcement agency responsible for investigating and prosecuting economic and financial crimes, including money laundering. The EFCC (Establishment) Act 2004 (particularly Sections 6 and 7) empowers it to prevent, investigate and prosecute financial crimes and to enforce related statutes. The Money Laundering (Prevention and Prohibition) Act 2022 modernised the legal framework, criminalised laundering in broader terms under Section 18, provided cash-payment thresholds and preventive obligations under Sections 2 to 11, recognised virtual assets and statutorily anchored the Special Control Unit against Money Laundering (SCUML) within the EFCC under Section 17 for supervision of designated non-financial businesses and professions (Federal Republic of Nigeria, 2022).
+
+The wider institutional architecture includes the autonomous Nigerian Financial Intelligence Unit (established under the NFIU Act 2018), which receives and analyses suspicious transaction and other financial reports; the Central Bank of Nigeria and other sector regulators; law-enforcement and prosecuting agencies; the Corporate Affairs Commission; and international and regional bodies. The EFCC depends on intelligence, reporting quality, judicial cooperation and access to ownership and transactional information. Its performance cannot therefore be assessed solely by counting arrests or convictions. It must be situated within this interdependent governance system.
+
+International evaluation has driven reform. GIABA's 2021 mutual evaluation acknowledged improvements since 2008 but found that Nigeria had not demonstrated effective prosecution and conviction across the full range of laundering types, including third-party, self-laundering and stand-alone cases, and was not adequately pursuing legal persons. It also identified the absence of a sufficiently risk-informed enforcement framework and strategic priorities in key investigative and prosecutorial activity (GIABA, 2021). Subsequent legislation and follow-up action improved technical compliance. By November 2024, FATF reported that Nigeria had 36 Recommendations rated compliant or largely compliant (FATF, 2024).
+
+A major later development was FATF's removal of Nigeria from increased monitoring on 24 October 2025 after acknowledging significant progress in improving the country's AML/CFT regime (FATF, 2025). This achievement matters because grey-listing can increase transaction costs, reputational risk and scrutiny of cross-border dealings. Yet removal does not mean that laundering has ended or that every institution is equally effective. FATF expressly stated that Nigeria should continue working with GIABA to sustain improvements.
+
+Official EFCC information also shows strong aggregate enforcement activity. Across the study period, annual convictions increased from 103 in 2015 to 4,111 in 2024. Furthermore, for October 2023 to September 2025, the Commission reported more than 19,000 petitions, 29,240 investigations, 10,525 court filings and 7,503 convictions. It reported recoveries of N566,319,820,343.40, $411,566,192.32, £71,306.25, €182,877.10 and other currencies, as well as 1,502 non-monetary assets (EFCC, 2025a). These figures demonstrate institutional reach, but they cover economic and financial crimes generally. They should not automatically be interpreted as convictions or recoveries for money laundering alone.
+
+The central analytical issue is therefore the gap between visible activity and sustainable effectiveness. An agency may secure large numbers of convictions in lower-complexity offences while struggling with sophisticated networks, professional enablers, politically exposed persons, legal persons and cross-border assets. Equally, asset recovery may be substantial without being consistently linked in published data to final confiscation, victim restitution, case category or duration. This study therefore distinguishes outputs from outcomes and legal compliance from practical effectiveness.
+
+## 1.2 Statement of the Problem
+Nigeria has established extensive laws and institutions to combat money laundering, and the EFCC has recorded substantial enforcement outputs. Nevertheless, laundering risks remain embedded in cash-intensive commerce, public procurement, real estate, professional services, informal value transfer, foreign exchange activity and digital assets. The persistence of these vulnerabilities raises a public-administration question: whether the EFCC's mandate, capacity and implementation arrangements translate into effective control of complex laundering rather than only high volumes of general economic-crime cases.
+
+The evidence base is also fragmented. EFCC publications report aggregate petitions, investigations, filings, convictions and recoveries, while money-laundering-specific statistics are less consistently disaggregated by offence type, predicate crime, defendant category, legal person, value, case duration and final asset disposition. This limits performance evaluation and makes it difficult to compare enforcement with national risk priorities. GIABA's 2021 assessment noted shortcomings in complex laundering prosecution and risk-informed prioritisation, although subsequent follow-up reports documented improved technical compliance.
+
+Furthermore, the Commission operates in a politically and institutionally sensitive environment. Judicial delays, evidential complexity, inter-agency coordination, resource limitations, access to beneficial-ownership information and concerns about operational independence may affect case selection and completion. Much of the literature either evaluates corruption generally or relies on perception-based surveys; fewer studies integrate statutory analysis, official enforcement records, risk assessments and international effectiveness findings through 2025. This study addresses that gap by assessing the EFCC as an administrative institution and by separating activity, immediate outputs and broader AML outcomes.
+
+## 1.3 Research Questions
+1. What statutory and institutional capacity does the EFCC possess to combat money laundering in Nigeria?
+2. To what extent do available enforcement and asset-recovery outcomes indicate that the EFCC is effective in combating money laundering?
+3. What administrative, political, legal and operational factors constrain the EFCC's effectiveness?
+4. What reforms could improve the EFCC's risk-based, accountable and sustainable performance?
+
+## 1.4 Objectives of the Study
+The broad objective is to assess the EFCC in combating money laundering in Nigeria. The specific objectives are to:
+1. examine the statutory powers and institutional capacity of the EFCC within Nigeria's AML framework;
+2. assess available evidence on investigations, prosecutions, convictions and asset recovery;
+3. identify administrative, political, legal and operational constraints on effectiveness; and
+4. recommend reforms for stronger, risk-based and accountable AML enforcement.
+
+## 1.5 Research Hypotheses
+The following null hypotheses guide the documentary assessment:
+* **H01:** EFCC enforcement activities have not produced a substantial improvement in Nigeria's capacity to combat money laundering.
+* **H02:** Institutional autonomy, inter-agency coordination, judicial capacity and resources do not materially influence the EFCC's effectiveness in combating money laundering.
+
+Because this study uses documentary rather than respondent-level quantitative data, the hypotheses are evaluated through qualitative pattern matching and triangulation, not inferential significance tests.
+
+## 1.6 Significance of the Study
+The study contributes to public-administration scholarship by treating AML enforcement as a problem of institutional design, capacity, accountability and coordination rather than only criminal law. It clarifies why organisational outputs must be connected to high-risk case selection, final confiscation, deterrence and public legitimacy.
+
+For policy makers and the EFCC, the study identifies performance measures that can support strategic planning and legislative oversight. For researchers, it consolidates legal, administrative and international evaluation evidence through 2025. For citizens, civil society and reporting entities, it explains the relationships among the EFCC, NFIU, SCUML, regulators and courts.
+
+## 1.7 Scope and Delimitation
+The substantive scope is the EFCC's role in preventing, investigating and prosecuting money laundering and recovering proceeds. The geographical scope is Nigeria. The principal time frame is 2015–2025, with earlier legal and institutional history included where necessary. The study uses documentary evidence and does not claim to measure the hidden volume of laundering or establish causal effects from confidential case-level data.
+
+## 1.8 Operational Definition of Terms
+* **Effectiveness:** the extent to which EFCC powers and activities produce risk-relevant investigations, completed prosecutions, proportionate sanctions, confiscation or restitution, disruption and credible deterrence.
+* **Money laundering:** conversion, transfer, concealment, acquisition, possession or use of criminal proceeds, including self-laundering, third-party laundering and laundering involving legal persons (Section 18, MLPPA 2022).
+* **Enforcement output:** an immediate count such as investigations, charges, convictions, seizures or recoveries.
+* **Outcome:** a broader effect such as disruption of high-risk networks, reduced opportunity, sustained compliance, deterrence, final confiscation and improved system integrity.
+* **Institutional capacity:** the legal authority, human resources, finance, technology, intelligence, coordination and organisational autonomy needed to implement a mandate.
+
+## 1.9 Organisation of the Study
+The thesis is organised into five chapters. Chapter One presents the introduction. Chapter Two reviews concepts, legislation, empirical studies and the theoretical framework. Chapter Three explains the documentary methodology. Chapter Four presents and discusses findings. Chapter Five summarises the findings, concludes and makes recommendations.
+
+---
+
+# CHAPTER TWO: LITERATURE REVIEW AND THEORETICAL FRAMEWORK
+
+## 2.1 Concept of Money Laundering
+Money laundering describes conduct intended to disguise the criminal source, ownership, movement or control of assets. The classic explanatory model divides laundering into placement, layering and integration. Placement introduces illicit value into a financial or commercial channel; layering uses transactions and entities to complicate the audit trail; and integration presents the value as legitimate wealth. The model is useful but not universal. Digital transfers, trade-based laundering, real-estate transactions and professional facilitation may compress or rearrange the stages.
+
+The legal concept is broader than an image of cash deposited into banks. Under Section 18 of the MLPPA 2022, the offence addresses conversion, transfer, concealment, disguise, acquisition, possession, use and participation concerning proceeds of unlawful activity, while Sections 2 to 14 of the framework impose cash limits, customer due diligence, beneficial-ownership verification, record keeping and suspicious transaction reporting duties. Section 2(2) also addresses structuring (smurfing) designed to avoid reporting thresholds, and the Act incorporates virtual assets and virtual asset service providers (VASPs) within the contemporary regulatory perimeter (Federal Republic of Nigeria, 2022).
+
+Three distinctions are important for evaluation. Self-laundering occurs where the perpetrator of a predicate offence launders the proceeds; third-party laundering involves another person or professional intermediary; and stand-alone laundering permits proof of laundering without a prior conviction for the predicate offence where the circumstances establish criminal origin (explicitly recognised under Section 18(7) of the MLPPA 2022). Legal-person cases concern companies or other corporate entities. Complex systems are tested by their capacity to pursue all these forms, not only offenders caught receiving proceeds directly.
+
+Money laundering harms public administration by preserving rewards from corruption, procurement fraud, tax crime and resource theft. It distorts markets, weakens revenue, inflates asset prices, compromises institutions and enables further crime. Effective control therefore combines prevention and enforcement. Preventive controls increase transparency and generate intelligence, while enforcement creates credible consequences and removes proceeds.
+
+## 2.2 The EFCC and Nigeria’s AML Architecture
+The EFCC was first established in 2002 and its governing statute was re-enacted in 2004. Sections 6 and 7 of the EFCC (Establishment) Act 2004 confer broad functions and powers concerning investigation, coordination, enforcement, identification and tracing of proceeds, and enforcement of specified economic and financial crimes legislation. The Commission combines investigative and prosecutorial roles and maintains zonal commands, specialist units and an academy (Federal Republic of Nigeria, 2004; EFCC, n.d.-a).
+
+The MLPPA 2022 repealed the Money Laundering (Prohibition) Act 2011 (as amended) and supplied a more comprehensive framework. Among its key institutional contributions was the statutory location of SCUML under the EFCC pursuant to Section 17 of the Act. SCUML registers and supervises DNFBPs, promotes awareness of obligations, monitors compliance and works with the NFIU. This preventive role is important because real estate, legal and accounting services, dealers in precious metals and stones, luxury goods, hotels, casinos and other non-financial sectors can be used to obscure ownership or integrate illicit value (SCUML, n.d.).
+
+The NFIU is an autonomous administrative financial intelligence unit domiciled within the Central Bank of Nigeria pursuant to the NFIU Act 2018. It receives suspicious transaction reports (STRs), currency transaction reports (CTRs) and other statutory disclosures, analyses information and disseminates financial intelligence to law-enforcement, anti-corruption, security and supervisory bodies. The statutory separation of the NFIU from the EFCC in 2018 cured historical concerns regarding operational autonomy and restored Nigeria's Egmont Group standing in line with FATF Recommendation 29. The EFCC's investigative success nevertheless depends substantially on the quality and timely use of NFIU intelligence (NFIU, n.d.).
+
+The CBN supervises banks and other financial institutions within its regulatory perimeter using a risk-based AML/CFT/CPF approach. Other important bodies include the Securities and Exchange Commission, National Insurance Commission, Corporate Affairs Commission (which maintains the Beneficial Ownership Register under the Companies and Allied Matters Act 2020), Federal Inland Revenue Service, Nigeria Customs Service, Nigeria Police Force and prosecutorial and judicial authorities. The institutional architecture is necessarily plural; its effectiveness depends on clear mandates, information exchange and coordinated priorities.
+
+## 2.3 Legal and Policy Framework
+The EFCC Act 2004 provides the organisational foundation and responsibility for enforcement of economic and financial crime laws. Its definition (Section 46) and function provisions (Sections 6 and 7) allow investigation of money laundering, fraud, corruption-related financial conduct, illegal transfers and associated offences. The breadth of the mandate offers operational flexibility, but it also creates a risk of workload dispersion unless strategic priorities are tied to the national risk profile.
+
+The MLPPA 2022 is the central substantive and preventive statute:
+* **Section 2(1)** restricts cash payments outside a financial institution exceeding N5,000,000 for an individual or N10,000,000 for a body corporate.
+* **Section 2(2)** prohibits splitting a single transaction into smaller tranches (structuring) to evade statutory thresholds.
+* **Section 3** requires declaration to the Nigeria Customs Service of cross-border transportation of cash or negotiable instruments exceeding $10,000 or its equivalent, with mandatory forwarding of declarations to the NFIU and EFCC.
+* **Sections 4 to 11** strengthen customer due diligence, politically exposed person (PEP) screening, beneficial-owner identification, record preservation and suspicious transaction reporting across financial institutions and DNFBPs.
+* **Section 18** defines primary money-laundering offences and prescribes penalties of imprisonment for a term of not less than four years or more than fourteen years, or a fine not less than five times the value of the proceeds of the crime, or both, alongside corporate criminal liability including winding-up provisions for legal persons (Federal Republic of Nigeria, 2022).
+
+The National AML/CFT/CPF Strategy 2023–2027 translates risk and evaluation findings into coordinated objectives. It identifies the EFCC as the principal money-laundering investigative agency and SCUML as the supervisor of DNFBPs. Strategic goals include stronger preventive measures, risk-based supervision, effective investigation and prosecution, asset recovery, cooperation and improved information infrastructure (Inter-Ministerial Committee on AML/CFT/CPF, 2023).
+
+Internationally, Nigeria is assessed against the FATF Recommendations through GIABA. Technical compliance examines laws and institutional rules, whereas effectiveness (assessed across 11 Immediate Outcomes) considers whether the system produces tangible results. The distinction is central to this thesis: legislation may be compliant while complex laundering remains under-investigated or sanctions fail to deter.
+
+## 2.4 Dimensions of Institutional Effectiveness
+The literature suggests that EFCC effectiveness should be assessed across several connected dimensions rather than by a single headline number.
+
+**Table 2.1: Selected dimensions for assessing EFCC effectiveness**
+| Dimension | Indicative evidence | Analytical caution |
+| :--- | :--- | :--- |
+| **Legal mandate** | Coverage of offences, powers and sanctions (EFCC Act 2004; MLPPA 2022) | Formal authority may not be evenly implemented |
+| **Operational capacity** | Specialists, forensic technology, finance and intelligence | Resource inputs do not automatically prove outcomes |
+| **Enforcement** | Investigations, court filings and convictions | Aggregate totals may reflect low-complexity cybercrime/fraud cases |
+| **Asset recovery** | Seizure, interim forfeiture, final confiscation and restitution | Interim and final orders must be distinguished |
+| **Risk alignment** | Attention to PEPs, legal persons, DNFBPs and cross-border risks | High volume can conceal poor strategic prioritisation |
+| **Coordination** | NFIU referrals, regulator cooperation and mutual legal assistance | Overlapping mandates may delay action |
+| **Integrity and autonomy** | Consistent case selection and protected leadership tenure | Perceived selectivity can weaken public legitimacy |
+| **Prevention and deterrence** | Compliance improvement and reduced criminal opportunity | Hidden nature of laundering makes direct measurement difficult |
+*Source: Author’s synthesis, 2026.*
+
+## 2.5 Empirical Review
+SOAS Anti-Corruption Evidence (2019) evaluated the politics and effectiveness of the EFCC using petitions, investigations, court filings and convictions. Its initial analysis found that only 3.75 per cent of investigated cases were filed in court and 23 per cent of filed cases resulted in conviction in the historical dataset examined. Higher filing and conviction rates occurred for low- or mid-level offences than for high-level politically connected cases. The study highlights selection and conversion rates, although its figures predate the 2022 statutory reforms and the sharp rise in convictions reported after 2019.
+
+Obiwuru (2020) critically appraised EFCC performance against functions in Section 6 of the EFCC Act. The study found notable operational achievements in prosecutions and recoveries but concluded that the Commission was not fully independent of executive influence and had not effectively curbed systemic corruption. It recommended institutionalising stronger operational autonomy. Its broad focus on corruption and economic crime provides contextual evidence but does not isolate money-laundering outcomes.
+
+Ugbala, Nwokwu, and Edeh (2022) assessed EFCC performance during the 2015–2020 period under the Buhari administration using documentary content analysis and deterrence theory. They concluded that the Commission had not significantly reduced money laundering and public-sector embezzlement despite heightened activity in cybercrime and advance-fee fraud enforcement. Their conclusion illustrates the analytical gap between operational volume and perceived crime incidence, although the hidden nature of laundering and limited offence-specific disaggregation constrain causal inference.
+
+A study in the *Journal of Public Administration, Finance and Law* by Chioke, Nwankwo, Okonkwo, and Agbodike (2023) examined the EFCC's war against white-collar crime across a survey sample of 301 respondents and scoping literature review. The authors reported a low perceived extent of achievement regarding the containment of money laundering, fund misappropriation and fraudulent banking practices, while acknowledging statutory implementation in selected anti-graft areas (Chioke et al., 2023). Their mixed finding supports multidimensional evaluation rather than a binary judgement.
+
+Ubi and Ayuba (2025) examined EFCC performance challenges for 2015–2021 using primary and secondary data and correlation analysis. They found modest performance despite resource scarcity and highlighted protracted judicial delays, collusion by bank officials, challenges in asset recovery and conviction, weak DNFBP regulation prior to 2022, and interference involving politically exposed persons. The study directly connects administrative and judicial constraints to observed performance.
+
+Adenigbagbe and Egbon-Charles (2025), drawing on institutional theory and a cross-sectional survey of 536 respondents analysed via multiple regression, found that transparency mechanisms and legal-enforcement strength significantly improved corruption-reduction performance, whereas institutional independence did not display a statistically significant positive effect in practice—a result the authors linked to persistent political interference, executive overreach and systemic inefficiencies. The study recommends strengthening legal enforcement, expanding transparency mechanisms, deploying modern technology and insulating the agency from political interference.
+
+International assessments supply an independent institutional benchmark. GIABA (2021), evaluating Immediate Outcome 7 (Money Laundering Investigation and Prosecution) and Immediate Outcome 8 (Confiscation), found that Nigeria lacked demonstrated effectiveness across all types of money-laundering prosecution—particularly third-party, stand-alone and foreign-predicate cases—and did not adequately pursue legal persons. FATF/GIABA follow-up reports later documented improved technical compliance after the 2022 laws and regulatory reforms. Nigeria's exit from increased monitoring in October 2025 marks a strong system-level achievement, although FATF urged sustained improvement (FATF, 2024, 2025).
+
+Official EFCC conviction records for 2020–2024 include identifiable money-laundering cases alongside cybercrime, advance-fee fraud, currency offences and illegal dealing in petroleum products (EFCC, n.d.-b). The records demonstrate that laundering prosecutions occur, including combined predicate and laundering counts. However, the format of published records complicates consistent annual aggregation by laundering typology, final appeal status, monetary value and legal-person involvement. This is itself a significant performance-accountability finding.
+
+The reviewed literature converges on three points. First, the EFCC is operationally active and has achieved substantial aggregate outputs. Second, complex and politically exposed cases present distinctive difficulties compared to routine fraud or cybercrime cases. Third, effectiveness depends on independence, resources, courts, financial intelligence and preventive supervision. The major gap is a current assessment that combines the 2022 legal reforms, 2024 technical progress, 2025 grey-list exit and longitudinal enforcement outputs (2015–2025) while remaining methodologically rigorous about attribution.
+
+## 2.6 Theoretical Framework
+
+### 2.6.1 Deterrence Theory
+Deterrence theory is associated with classical criminological writers such as Cesare Beccaria and Jeremy Bentham. It holds that prohibited conduct is discouraged when punishment is sufficiently certain, swift (celerity) and proportionate (severity). In AML enforcement, certainty depends on detection, financial intelligence, thorough investigation and successful adjudication; swiftness depends on case preparation and judicial process; and severity includes custodial sentences, corporate sanctions and permanent deprivation of illicit proceeds.
+
+The theory explains why conviction totals alone are incomplete. If detection of complex layering is unlikely, court proceedings last many years due to interlocutory appeals, custodial sanctions are routinely substituted with modest fines through plea bargains, or laundered assets remain accessible to offenders' networks, the expected cost of laundering remains below its expected benefit. Conversely, targeted confiscation and credible prosecution of professional facilitators, corporate vehicles and politically exposed offenders can alter the risk calculus across high-risk sectors.
+
+A limitation of classical deterrence theory is that money-laundering decisions are frequently organisational and networked rather than the product of an isolated individual calculation. Offenders may operate under political protection, exploit informal cash channels or move value across opaque offshore jurisdictions. Deterrence theory is therefore combined with institutional theory.
+
+### 2.6.2 Institutional Theory
+Institutional theory (associated with scholars such as DiMaggio, Powell, North and Scott) directs attention to formal rules, organisational norms, resource environments, incentives and inter-organisational relationships that shape policy implementation. The EFCC's operational behaviour is shaped by enabling statutes, presidential appointment and Senate confirmation arrangements, budgetary allocations, internal performance metrics, judicial procedures, regulatory counterparts, political actors and international standard-setters. Consequently, identical formal powers can produce divergent empirical outcomes depending on institutional capacity and de facto autonomy.
+
+The framework explains why Nigeria's AML performance is co-produced across multiple agencies. NFIU financial intelligence, CBN and SCUML compliance supervision, CAC beneficial-ownership registries, prosecutorial expertise, mutual legal assistance and judicial case management directly condition the EFCC's results. Institutional theory also accounts for coercive and normative isomorphism in international AML governance—showing how FATF grey-listing and GIABA mutual evaluations stimulate rapid legislative and administrative reforms through reputational and financial incentives, while highlighting the risk of "decoupling" where formal statutory compliance outpaces deep operational transformation.
+
+Together, the two theories yield the analytical proposition that stronger, risk-aligned and institutionally autonomous enforcement mechanisms increase the certainty and timeliness of detection, prosecution and confiscation, thereby strengthening deterrence.
+
+## 2.7 Conceptual Model
+The conceptual model treats AML effectiveness as the product of five interacting institutional components:
+1. Statutory authority (EFCC Act 2004; MLPPA 2022);
+2. Organisational and specialist capacity (forensic accounting, digital tracing, funding);
+3. Financial intelligence and inter-agency coordination (NFIU, SCUML, CBN, CAC);
+4. Prosecutorial and judicial implementation (case preparation, trial speed, confiscation orders); and
+5. Political-administrative autonomy (leadership tenure security, non-selective case prioritisation).
+
+These five components shape intermediate enforcement outputs (risk-aligned investigations, prosecutions, convictions and asset forfeitures), which in turn influence long-term outcomes (network disruption, sectoral compliance and credible deterrence), conditioned by external environmental factors such as cash informality and cross-border cooperation.
+
+## 2.8 Research Gap
+Existing studies frequently assess corruption or financial crime broadly, rely solely on perception surveys, or conclude prior to the enactment of the MLPPA 2022 and Nigeria’s October 2025 exit from FATF increased monitoring. Furthermore, few studies explicitly separate money-laundering-specific outcomes from the EFCC’s aggregate conviction totals across the 2015–2025 decade. This study fills that gap through a triangulated documentary assessment focused on institutional capacity, risk alignment, longitudinal outputs and data-accountability limits.
+
+---
+
+# CHAPTER THREE: RESEARCH METHODOLOGY
+
+## 3.1 Research Design
+The study adopted a qualitative documentary research design with descriptive and evaluative components. Documentary design is appropriate because the research investigates statutory authority, official multi-year enforcement records, national risk strategies and independently reviewed international AML evaluations. It permits longitudinal examination of institutional developments from 2015 to 2025 and rigorous comparison between domestic performance claims and external assessments.
+
+## 3.2 Sources of Data
+Data were entirely secondary and were selected from authoritative institutional, statutory and scholarly repositories.
+
+**Table 3.1: Documentary sources and analytical use**
+| Source group | Examples | Analytical use |
+| :--- | :--- | :--- |
+| **Primary Legislation** | EFCC Act 2004; MLPPA 2022; NFIU Act 2018 | Statutory mandate, powers, offences, thresholds and institutional roles |
+| **Official National Records** | EFCC annual conviction & recovery records (2015–2025); NFIU NIRA (2022) & Strategy (2023–2027); SCUML & CBN materials | Longitudinal enforcement outputs, preventive arrangements and inter-agency coordination |
+| **International Evaluations** | GIABA 2021 MER; 2022/2024 follow-up reports; FATF Oct. 2025 statement | Independent benchmark for technical compliance (40 Recommendations) and effectiveness (Immediate Outcomes) |
+| **Academic Literature** | Peer-reviewed empirical and institutional studies (2019–2025) | Empirical explanations, administrative constraints and theoretical triangulation |
+*Source: Author’s compilation, 2026.*
+
+## 3.3 Population and Sample of Documents
+The population comprised publicly accessible official and scholarly documents concerning EFCC operations and Nigeria’s AML framework. Purposive sampling was used to select documents that met at least one of five inclusion criteria: (i) primary Nigerian statutory authority; (ii) official EFCC operational and conviction data; (iii) recognised FATF/GIABA mutual evaluation or follow-up assessment; (iv) national AML risk assessment or strategic plan; or (v) peer-reviewed scholarly analysis of EFCC performance. Priority was given to materials covering 2015–2025, while foundational statutes were retained for legal context.
+
+## 3.4 Data Collection Procedure
+Documents were retrieved from official institutional repositories (EFCC, NFIU, SCUML, CBN, FATF and GIABA portals) and academic databases. Each document was screened for institutional authenticity, publication date, scope, methodology and relevance. Key statutory provisions, empirical findings and statistical series were extracted into structured matrices covering mandate, prevention, intelligence, investigation, prosecution, conviction, asset recovery, risk prioritisation, autonomy, resources, coordination and judicial process. Where official statistics covered all economic crimes enforced by the EFCC, they were explicitly coded as aggregate figures and were not misclassified as money-laundering-specific totals.
+
+## 3.5 Method of Data Analysis
+The study employed qualitative content analysis and longitudinal trend analysis. First, statutory and policy texts were coded to establish formal powers and compliance mechanisms. Second, official EFCC operational statistics from 2015 to 2025 were compiled to examine multi-year trends in investigations, filings, convictions and recoveries. Third, GIABA/FATF evaluation reports were analysed to compare technical compliance against practical effectiveness. Fourth, peer-reviewed empirical studies were synthesised to identify recurring administrative and political bottlenecks.
+
+Pattern matching was used to evaluate the research hypotheses:
+* Evidence of longitudinal growth in enforcement outputs, enactment of the MLPPA 2022, upgraded FATF technical ratings and the October 2025 grey-list exit was weighed against baseline GIABA effectiveness deficits to evaluate **H01**.
+* Convergent evidence across GIABA evaluations, national risk assessments and empirical studies regarding judicial delays, executive interference, inter-agency coordination and resource gaps was matched against **H02**.
+
+## 3.6 Reliability and Validity
+Reliability was strengthened through an explicit source hierarchy, verification of bibliographic metadata and consistent thematic coding categories. Validity was strengthened by triangulating domestic statutes, self-reported EFCC statistics, NFIU risk assessments, external FATF/GIABA evaluations and independent academic studies. Divergent findings were preserved rather than suppressed. In particular, the analysis strictly distinguishes system-wide national progress from outcomes attributable solely to the EFCC, and separates aggregate economic-crime convictions from money-laundering-specific adjudications.
+
+## 3.7 Ethical Considerations
+The research relied exclusively on publicly available documents and collected no human-subject personal data. All intellectual and institutional sources are acknowledged in verified APA 7th edition references. Unproven allegations were not treated as established guilt, and official institutional statistics were explicitly reported as agency-published figures rather than independently audited datasets.
+
+## 3.8 Limitations of the Method
+Money laundering is a clandestine activity whose true macroeconomic volume cannot be observed directly from enforcement counts. An increase in recorded investigations or convictions may reflect rising crime, enhanced enforcement intensity, or a shift toward high-volume, lower-complexity offences (such as cybercrime). Furthermore, public EFCC statistics are predominantly aggregate, and annual conviction tables vary in reporting granularity across years. Court outcomes are also affected by multi-year appeals and plea bargains, while published recovery figures combine interim and final forfeitures across multiple currencies without uniform valuation dates. While these documentary limitations preclude econometric causal inference, they constitute a central empirical finding regarding institutional transparency and performance reporting.
+
+---
+
+# CHAPTER FOUR: PRESENTATION, ANALYSIS AND DISCUSSION OF FINDINGS
+
+## 4.1 Statutory and Institutional Capacity
+The first major finding is that the EFCC possesses comprehensive formal statutory authority to combat money laundering. Sections 6 and 7 of the EFCC Act 2004 empower the Commission to investigate and prosecute economic and financial crimes and trace illicit proceeds, while the MLPPA 2022 provides a modern substantive and preventive framework. Specifically, the MLPPA 2022 establishes strict cash payment limits (N5 million for individuals and N10 million for corporate bodies under Section 2(1)), criminalises transaction splitting (Section 2(2)), mandates cross-border currency declarations above $10,000 (Section 3), incorporates virtual assets, expressly recognises stand-alone money laundering (Section 18(7)), and statutorily anchors SCUML within the EFCC to supervise DNFBPs (Section 17). The statutory framework therefore satisfies a necessary condition for effective enforcement.
+
+The wider institutional environment has also matured substantially between 2015 and 2025. The enactment of the NFIU Act 2018 established the operational autonomy of the financial intelligence function, while the National AML/CFT/CPF Strategy (2023–2027) clarified inter-agency responsibilities across law-enforcement and supervisory bodies. International follow-up evaluations confirm rapid improvements in technical compliance: by November 2024, FATF reported that Nigeria had achieved compliant or largely compliant ratings on 36 of the 40 Recommendations. Crucially, on 24 October 2025, FATF removed Nigeria from its list of jurisdictions under increased monitoring (the "grey list") after verifying completion of its 2023–2025 Action Plan (FATF, 2024, 2025).
+
+Formal statutory capacity, however, is not self-executing. Because Section 46 of the EFCC Act defines economic and financial crimes broadly to encompass advance-fee fraud, cybercrime, banking fraud, tax evasion, foreign-exchange malpractices and oil theft, the Commission faces severe workload pressure. Without rigorous risk-based case selection, high-volume retail fraud and cybercrime petitions can absorb investigative and prosecutorial capacity needed for complex multi-layered laundering schemes. GIABA's (2021) finding that the EFCC lacked a sufficiently risk-informed enforcement prioritisation framework remains a critical analytical benchmark.
+
+## 4.2 Longitudinal Enforcement and Asset-Recovery Outputs (2015–2025)
+To evaluate enforcement performance across the 2015–2025 study period, Table 4.1 presents the longitudinal trend in annual convictions secured by the EFCC across all economic and financial crimes from 2015 to 2024, followed by Table 4.2, which details the Commission's consolidated operational indicators for October 2023 to September 2025.
+
+**Table 4.1: Annual EFCC convictions secured across all economic crimes (2015–2024)**
+| Year | Total Convictions Secured | Key Institutional and Operational Context |
+| :--- | :---: | :--- |
+| **2015** | 103 | Baseline year of study period; pre-NFIU statutory separation |
+| **2016** | 195 | Expansion of anti-graft drives and zonal command operations |
+| **2017** | 189 | Pre-GIABA second-round mutual evaluation on-site period |
+| **2018** | 312 | Enactment of NFIU Act 2018 separating intelligence from enforcement |
+| **2019** | 1,280 | Over fourfold surge driven heavily by cybercrime sweep operations |
+| **2020** | 976 | Temporary decline associated with COVID-19 court shutdowns |
+| **2021** | 2,220 | Publication of GIABA (2021) Mutual Evaluation Report |
+| **2022** | 3,785 | Enactment of the Money Laundering (Prevention and Prohibition) Act 2022 |
+| **2023** | 2,674 | FATF grey-listing (Feb. 2023) and EFCC leadership transition (Oct. 2023) |
+| **2024** | 4,111 | Highest single-year conviction total in EFCC history |
+*Source: Compiled from official EFCC annual performance reports and conviction records (2015–2024).*
+
+As shown in Table 4.1, total annual convictions rose nearly forty-fold over the decade, expanding from 103 in 2015 and 195 in 2016 to 1,280 in 2019, 3,785 in 2022, and a record 4,111 in 2024. Complementing this decadal trend, Table 4.2 summarises the comprehensive two-year operational outputs reported by the Commission for the period October 2023 to September 2025.
+
+**Table 4.2: Summary of key official EFCC performance indicators (Oct. 2023–Sept. 2025)**
+| Indicator | Reported Result (Oct. 2023–Sept. 2025) | Analytical and Interpretive Note |
+| :--- | :--- | :--- |
+| **Petitions received** | Over 19,000 | Covers all economic and financial crimes |
+| **Investigations conducted** | 29,240 | Exceeds petitions due to carry-over cases and intelligence-led files |
+| **Cases filed in court** | 10,525 | Aggregate criminal filings across all EFCC mandates |
+| **Convictions secured** | 7,503 | Aggregate convictions; not a matched cohort conversion rate |
+| **Naira recovered** | N566,319,820,343.40 | Aggregate monetary recoveries across offence categories |
+| **Foreign currencies recovered** | $411,566,192.32; £71,306.25; €182,877.10 (plus others) | Multi-currency recoveries; should not be summed without dated rates |
+| **Non-monetary assets recovered** | 1,502 properties/assets | 402 in 2023; 975 in 2024; 125 up to Sept. 2025 (includes major estates) |
+*Source: EFCC (2025a). Figures are reported by the Commission and are not presented as independently audited in this study.*
+
+Three analytical conclusions emerge from Tables 4.1 and 4.2:
+1. **Substantial Operational Scale:** Securing 7,503 convictions and filing 10,525 cases within two years—alongside recovering over N566.32 billion, $411.57 million and 1,502 real-estate and non-monetary assets—demonstrates high operational tempo and nationwide prosecutorial reach.
+2. **Cohort vs. Period Ratio Caution:** Dividing 7,503 convictions by 10,525 court filings yields an apparent ratio of 71.3 per cent, representing a dramatic contrast with the 23 per cent historical filing-to-conviction ratio reported by SOAS-ACE (2019). However, this 71.3 per cent figure is a *period ratio*, not a true longitudinal *cohort conversion rate*, because convictions recorded in 2023–2025 include cases filed in prior years, while complex corruption and money-laundering trials filed in 2023–2025 frequently remain pending in court.
+3. **Dominance of Lower-Complexity Offences in Aggregate Totals:** Inspection of the EFCC's published annual conviction logs (2020–2024) confirms that while standalone and combined money-laundering convictions occur regularly, the numerical majority of summary convictions involve cybercrime (internet fraud), advance-fee fraud and currency/naira abuse offences resolved rapidly via guilty pleas. Aggregate conviction counts therefore overstate the Commission's specific effectiveness against complex, multi-layered money laundering.
+
+Similarly, while asset-recovery totals are substantial, public reporting does not systematically disaggregate recoveries by legal stage (administrative recovery, interim forfeiture, non-conviction-based forfeiture, or final post-conviction confiscation) or link them to specific money-laundering typologies.
+
+## 4.3 Risk Alignment and Complex Money-Laundering Cases
+GIABA's (2021) second-round Mutual Evaluation Report provides the most rigorous baseline assessment of Nigeria's AML enforcement effectiveness (Immediate Outcomes 7 and 8). The assessment found that Nigeria had not adequately demonstrated effective investigation, prosecution and conviction across four critical laundering categories:
+1. **Third-party money laundering** (involving professional facilitators such as lawyers, accountants, real-estate agents and bankers);
+2. **Stand-alone money laundering** (prosecuted independently of a predicate offence conviction);
+3. **Laundering of proceeds from foreign predicate offences**; and
+4. **Corporate criminal liability for legal persons** (shell and front companies used to layer funds).
+
+Nigeria's subsequent enactment of the MLPPA 2022, establishment of the CAC Beneficial Ownership Register, strengthening of SCUML under Section 17, and execution of the FATF Action Plan directly addressed many of these structural gaps, culminating in the October 2025 exit from the FATF grey list. The EFCC has also expanded enforcement into emerging virtual-asset and cryptocurrency fraud typologies and secured major real-estate forfeitures (such as large residential estates in Abuja). Nevertheless, because the EFCC does not publish annual statistics disaggregated by laundering typology and defendant category, external researchers and oversight bodies cannot verify the exact proportion of resources and convictions devoted to high-risk PEP networks, corporate vehicles and professional enablers versus routine retail fraud.
+
+## 4.4 Administrative, Legal and Political Constraints
+Empirical literature and institutional reports identify five persistent constraints on EFCC effectiveness:
+1. **Judicial Delays and Procedural Bottlenecks:** Complex money-laundering trials involving PEPs and corporate entities face prolonged delays caused by congested court dockets, interlocutory appeals on jurisdictional or constitutional grounds, de novo trial restarts when judges are elevated or transferred, and voluminous documentary evidence (Ubi & Ayuba, 2025; Obiwuru, 2020). Under deterrence theory, multi-year delays severely erode the celerity (swiftness) of punishment.
+2. **Institutional Autonomy and Political Exposure:** Under Section 2(3) and Section 3 of the EFCC Act 2004, the Chairman is appointed by the President subject to Senate confirmation and may be removed by the President. Scholars consistently note that precarious leadership tenure—illustrated by repeated suspensions and removals of sitting EFCC Chairs—exposes the Commission to executive interference and fuels public perceptions of selective prosecution in high-profile political cases (SOAS-ACE, 2019; Obiwuru, 2020; Adenigbagbe & Egbon-Charles, 2025).
+3. **Specialist Resource and Technological Demands:** Tracing layered funds across shell companies, informal hawala/value-transfer networks, trade-based invoicing and decentralized virtual assets requires advanced forensic accounting, blockchain analytics and continuous specialist training. Resource constraints relative to the Commission's vast statutory mandate create incentives to pursue "low-hanging fruit" (routine cybercrime) where convictions are rapid and inexpensive.
+4. **Inter-Agency Coordination Friction:** Effective AML enforcement requires seamless integration across the NFIU (financial intelligence), SCUML and CBN (preventive compliance), CAC (beneficial ownership), Nigeria Customs Service (cross-border currency declarations), the Attorney-General's Office and foreign jurisdictions (mutual legal assistance). Delays in feedback loops or fragmented databases weaken the conversion of suspicious transaction reports into prosecutable money-laundering cases.
+5. **Structural Cash Informality and Uneven DNFBP Compliance:** Despite the cash limits in Section 2 of the MLPPA 2022, a vast segment of the Nigerian economy operates informally in physical cash or through unregulated foreign-exchange channels. Furthermore, supervising thousands of geographically dispersed real-estate developers, car dealers, luxury retailers and legal/accounting professionals places heavy regulatory demands on SCUML (Chioke et al., 2023; Ubi & Ayuba, 2025).
+
+## 4.5 Assessment of the Research Hypotheses
+
+**Table 4.3: Assessment of research hypotheses against documentary evidence**
+| Hypothesis | Evidence Supporting Null Hypothesis | Evidence Against Null Hypothesis (Supporting Alternative) | Analytical Decision |
+| :--- | :--- | :--- | :--- |
+| **H01:** *EFCC enforcement activities have not produced a substantial improvement in Nigeria's capacity to combat money laundering.* | GIABA (2021) baseline deficits in complex/legal-person ML cases; lack of AML-specific disaggregation in public data; persistent sectoral vulnerabilities (Chioke et al., 2023). | Near 40-fold growth in total convictions (103 in 2015 to 4,111 in 2024); N566.3bn + $411.6m recovered (2023–2025); MLPPA 2022 enactment; 36/40 FATF technical compliance (2024); FATF grey-list exit (Oct. 2025). | **Rejected in qualified form** (substantial improvement in system capacity and outputs, qualified by aggregate data opacity). |
+| **H02:** *Institutional autonomy, inter-agency coordination, judicial capacity and resources do not materially influence EFCC effectiveness.* | Absence of a publicly accessible case-level econometric dataset linking administrative inputs to individual trial outcomes. | Strong convergence across GIABA (2021), NIRA (2022), SOAS-ACE (2019), Obiwuru (2020), Ubi & Ayuba (2025), and Adenigbagbe & Egbon-Charles (2025) showing that judicial delay, tenure insecurity, coordination and specialist resources directly govern complex case completion. | **Rejected on convergent documentary evidence.** |
+*Source: Author’s analysis, 2026.*
+
+## 4.6 Discussion of Findings
+The findings support **deterrence theory** only conditionally. The dramatic expansion in EFCC convictions (reaching 4,111 in 2024 and 7,503 across October 2023–September 2025) alongside multibillion-naira forfeitures increases the visibility of law enforcement. However, classical deterrence depends on the certainty and swiftness of punishment within the specific population of potential offenders. While certainty and swiftness have increased substantially for retail cybercrime offenders, high-level money launderers, corporate vehicles and politically exposed networks still encounter prolonged judicial timelines and lower conviction conversion rates.
+
+**Institutional theory** provides a robust explanation for this dual reality. Coercive and normative pressures from the FATF grey-listing process (2023–2025) and GIABA mutual evaluations successfully catalysed formal institutional reforms—including the MLPPA 2022, statutory backing for SCUML, enhanced beneficial-ownership rules and improved inter-agency coordination—leading to Nigeria's removal from increased monitoring in October 2025. At the same time, internal institutional incentives (rewarding high annual conviction counts) and external environmental constraints (judicial congestion, executive control over leadership tenure, and economic informality) encourage operational concentration on high-volume, lower-complexity offences.
+
+Consequently, this study updates earlier categorical conclusions in the literature (such as Obiwuru, 2020; Ugbala et al., 2022; Chioke et al., 2023) that portrayed the EFCC as largely ineffective against money laundering. Developments between 2022 and 2025 demonstrate genuine statutory, supervisory and asset-recovery progress. Equally, however, the study cautions against treating aggregate conviction records as proof that complex money laundering has been contained. From a public-administration perspective, the EFCC exhibits **moderate and growing effectiveness**, constrained primarily by reporting opacity, judicial bottlenecks and incomplete insulation from political pressure.
+
+---
+
+# CHAPTER FIVE: SUMMARY, CONCLUSION AND RECOMMENDATIONS
+
+## 5.1 Summary
+This study assessed the Economic and Financial Crimes Commission (EFCC) in combating money laundering in Nigeria across the 2015–2025 period using a qualitative documentary research design. Anchored in deterrence theory and institutional theory, the study examined the Commission's statutory and institutional capacity, longitudinal enforcement and asset-recovery outputs, risk alignment in complex cases, and administrative, legal and political constraints. Primary statutes (EFCC Act 2004; MLPPA 2022; NFIU Act 2018), official EFCC performance records (2015–2025), national risk and strategy documents, GIABA/FATF evaluation reports and peer-reviewed empirical studies were triangulated through content analysis and pattern matching.
+
+## 5.2 Summary of Major Findings
+1. **Comprehensive Statutory Mandate:** The EFCC possesses extensive formal authority under the EFCC Act 2004 and the MLPPA 2022, combining investigative, prosecutorial and asset-tracing powers with a statutory preventive-supervisory arm for DNFBPs through SCUML (Section 17, MLPPA 2022).
+2. **System-Wide International Compliance Progress:** Nigeria's AML/CFT architecture improved markedly after the 2021 GIABA Mutual Evaluation Report, achieving compliant or largely compliant ratings on 36 of 40 FATF Recommendations by November 2024 and securing removal from the FATF grey list (increased monitoring) on 24 October 2025.
+3. **Substantial Longitudinal Growth in Aggregate Outputs:** Annual EFCC convictions rose from 103 in 2015 to 4,111 in 2024. Between October 2023 and September 2025, the Commission recorded 29,240 investigations, 10,525 court filings, 7,503 convictions, monetary recoveries exceeding N566.32 billion and $411.57 million, and 1,502 recovered properties.
+4. **Lack of Offence-Specific Disaggregation:** Published EFCC conviction and recovery statistics are predominantly aggregate across all economic crimes (heavily weighted toward cybercrime and advance-fee fraud) and are not systematically disaggregated by money-laundering typology, predicate offence, corporate defendant, trial duration or forfeiture stage.
+5. **Gaps in Complex and Corporate Laundering Cases:** Independent baseline evaluations (GIABA, 2021) and empirical studies highlight persistent challenges in prosecuting complex third-party laundering, stand-alone laundering, professional enablers, legal persons and politically exposed persons.
+6. **Institutional and Environmental Bottlenecks:** Protracted judicial delays, interlocutory appeals, executive control over EFCC leadership tenure, specialist forensic resource demands, inter-agency coordination requirements and a large cash-based informal sector constrain the certainty and swiftness of AML enforcement.
+
+## 5.3 Conclusion
+The EFCC is the central enforcement pillar of Nigeria's anti-money-laundering regime. Between 2015 and 2025, the Commission expanded its operational reach, contributed to major statutory and supervisory reforms under the MLPPA 2022, recovered hundreds of billions of naira in illicit proceeds, and helped Nigeria exit FATF increased monitoring in October 2025.
+
+Nevertheless, institutional effectiveness in public administration cannot be equated with raw aggregate conviction volume. Because publicly reported figures combine routine cybercrime and fraud convictions with money-laundering cases, and do not track cohort conversion rates or distinguish interim seizures from final confiscations, significant accountability gaps remain. Moreover, the EFCC's ability to deter sophisticated laundering networks is conditioned by judicial speed, NFIU intelligence integration, SCUML supervisory reach, beneficial-ownership transparency and leadership autonomy. The study concludes that the EFCC has demonstrated **qualified or moderate effectiveness**: it has substantially strengthened Nigeria's operational capacity to combat financial crime, but requires disaggregated reporting, risk-based prioritisation and deeper institutional safeguards to achieve durable deterrence against complex money laundering.
+
+## 5.4 Recommendations
+1. **Publish Disaggregated Annual AML Performance Data:** The EFCC should publish standardized, machine-readable annual statistical tables that separate money-laundering cases from general cybercrime and fraud offences. Tables should disaggregate investigations, filings, convictions, acquittals and pending appeals by laundering typology (self-laundering, third-party, stand-alone, foreign predicate), predicate crime, defendant category (natural persons, PEPs, legal persons/corporations), trial duration and sentencing outcomes.
+2. **Institutionalise Risk-Based Case Prioritisation:** In line with the National Inherent Risk Assessment and National AML/CFT/CPF Strategy (2023–2027), the EFCC should establish formal internal scoring criteria and KPIs that weight complex, high-value laundering investigations—particularly involving public procurement corruption, real estate, professional facilitators, corporate vehicles, bureaux de change and virtual assets—more heavily than high-volume, low-value retail cybercrime cases.
+3. **Strengthen Multidisciplinary Investigation and Prosecution Teams:** For complex money-laundering files, the EFCC should deploy integrated case teams combining forensic accountants, blockchain/virtual-asset investigators, corporate ownership analysts and senior prosecution counsel from the inception of an investigation to build robust circumstantial and stand-alone laundering cases under Section 18(7) of the MLPPA 2022.
+4. **Reform Judicial Case Management for Financial Crimes:** The National Judicial Council, Chief Judges of the Federal and State High Courts, and the National Assembly should strengthen specialised financial-crime court divisions, enforce strict practice directions limiting frivolous interlocutory stays, deploy electronic case-management and digital recording systems, and allow judges elevated to appellate courts to conclude part-heard complex financial trials.
+5. **Secure EFCC Operational Autonomy and Tenure Stability:** The National Assembly should amend the EFCC (Establishment) Act 2004 to strengthen the security of tenure of the Commission's Chairman—requiring a two-thirds Senate resolution based on stated misconduct or incapacity for removal, rather than unilateral executive suspension—accompanied by transparent, merit-based appointment procedures and independent legislative oversight.
+6. **Deepen Automated NFIU–EFCC Intelligence Feedback Loops:** The EFCC and NFIU should maintain a secure, auditable digital tracking protocol that records how NFIU intelligence disseminations are utilised by EFCC investigators (tracking progression from STR dissemination to investigation, charge and confiscation) to continuously refine intelligence typology models.
+7. **Expand SCUML Risk-Based Supervision and Sanctions:** Rather than focusing primarily on registration certificates, SCUML should segment DNFBPs by risk tier (prioritising high-end real estate, legal/accounting gatekeepers, luxury dealers and trust/company service providers), conduct targeted on-site and off-site compliance inspections, and publish annual statistics on administrative sanctions and compliance rates.
+8. **Integrate Beneficial-Ownership and Multi-Agency Analytics:** The EFCC, CAC, NFIU, Federal Inland Revenue Service and Nigeria Customs Service should operationalise real-time digital interoperability linking the CAC Beneficial Ownership Register with tax, land-registry, customs declaration (Section 3, MLPPA 2022) and banking records to expose nominee shareholders and corporate layering networks.
+9. **Standardise Asset-Recovery Accounting and Disclosure:** EFCC annual reports and public disclosures should clearly separate assets across distinct legal stages: (a) interim attachment/freezing, (b) interim forfeiture, (c) final post-conviction or non-conviction confiscation, (d) funds remitted to the Treasury or victim restitution, and (e) assets under litigation, reported consistently by original currency and valuation date.
+10. **Prepare Proactively for the Next GIABA Mutual Evaluation:** Following the October 2025 grey-list exit, the Inter-Ministerial Committee, EFCC, NFIU and SCUML should conduct periodic internal mock evaluations against FATF Immediate Outcomes 6, 7 and 8 to ensure sustained effectiveness ahead of the 2027 mutual evaluation cycle.
+
+## 5.5 Contribution to Knowledge
+This study makes three contributions to public-administration and anti-money-laundering scholarship:
+1. **Empirical and Temporal Updating:** It integrates the post-2021 reform era—specifically the MLPPA 2022, the 2015–2025 longitudinal conviction and recovery series, the 2024 FATF technical compliance re-ratings, and Nigeria's October 2025 exit from FATF increased monitoring—into a unified institutional analysis.
+2. **Methodological Separation of Outputs vs. AML Outcomes:** It demonstrates analytically why aggregate EFCC conviction totals (driven heavily by summary cybercrime convictions) and unadjusted period filing-to-conviction ratios cannot be equated with money-laundering-specific effectiveness under FATF Immediate Outcomes 7 and 8.
+3. **Administrative Reporting Framework:** It proposes a concrete disaggregated performance-reporting architecture for law-enforcement oversight in developing economies.
+
+## 5.6 Suggestions for Further Research
+1. A quantitative case-cohort study coding all published EFCC court judgments from 2015 to 2025 to calculate exact offence-specific conversion rates, sentence severity and trial duration for money-laundering counts versus predicate offences.
+2. Key-informant interview research with EFCC prosecutors, NFIU intelligence analysts, SCUML inspectors, compliance officers and Federal High Court judges to examine micro-level administrative bottlenecks in converting STRs into convictions.
+3. Comparative institutional research examining post-grey-list AML sustainability in Nigeria relative to peer West and Southern African jurisdictions.
+4. Sector-specific empirical evaluation of SCUML compliance enforcement within the Nigerian real-estate and legal services sectors.
+
+---
+
+# REFERENCES
+
+Adenigbagbe, K. I., & Egbon-Charles, C. (2025). Anti-corruption strategies and corruption reduction in Nigerian Economic and Financial Crimes Commission (EFCC). *International Journal of Business and Management Review*, 13(2), 1–15. https://doi.org/10.37745/ijbmr.2013/vol13n2115
+
+Central Bank of Nigeria. (n.d.). *Anti-money laundering and counter financing terrorism*. https://www.cbn.gov.ng/supervision/AML-CFT/
+
+Chioke, S. C., Nwankwo, B. C., Okonkwo, I. V., & Agbodike, F. C. (2023). Economic and Financial Crimes Commission (EFCC) and war against white-collar crimes in Nigeria. *Journal of Public Administration, Finance and Law*, 29, 97–110. https://www.jopafl.com/uploads/issue29/ECONOMIC_AND_FINANCIAL_CRIMES_COMMISSION_AND_WAR_AGAINST_WHITECOLLAR_CRIMES_IN_NIGERIA.pdf
+
+Economic and Financial Crimes Commission. (n.d.-a). *The Establishment Act*. https://www.efcc.gov.ng/EstablishmentAct
+
+Economic and Financial Crimes Commission. (n.d.-b). *EFCC convictions by year*. https://www.efcc.gov.ng/Convictions
+
+Economic and Financial Crimes Commission. (2025a, October 27). *EFCC recovers N566bn, $411m, 1,502 properties in two years of Olukoyede's leadership*. https://www.efcc.gov.ng/news/efcc-recovers-566bn-411m-1502-properties-in-two-years-of-olukoyedes-leadership
+
+Federal Republic of Nigeria. (2004). *Economic and Financial Crimes Commission (Establishment) Act 2004* (Act No. 1). National Assembly.
+
+Federal Republic of Nigeria. (2018). *Nigerian Financial Intelligence Unit Act 2018*. Official Gazette.
+
+Federal Republic of Nigeria. (2022). *Money Laundering (Prevention and Prohibition) Act 2022* (Act No. 14). Official Gazette.
+
+Financial Action Task Force. (2024). *Nigeria's progress in strengthening measures to tackle money laundering and terrorist financing: Follow-up report*. https://www.fatf-gafi.org/en/publications/Mutualevaluations/fur-nigeria-2024.html
+
+Financial Action Task Force. (2025, October 24). *Jurisdictions under increased monitoring – 24 October 2025*. https://www.fatf-gafi.org/en/publications/High-risk-and-other-monitored-jurisdictions/increased-monitoring-october-2025.html
+
+Inter-Governmental Action Group against Money Laundering in West Africa. (2021). *Anti-money laundering and counter-terrorist financing measures – Federal Republic of Nigeria: Second round mutual evaluation report*. FATF/GIABA. https://www.fatf-gafi.org/content/dam/fatf-gafi/fsrb-mer/GIABA-Mutual%20Evaluation%20Report%20of%20the%20Federal%20Republic%20of%20Nigeria.pdf
+
+Inter-Governmental Action Group against Money Laundering in West Africa. (2022). *Nigeria: First enhanced follow-up report and technical compliance re-rating*. FATF/GIABA. https://www.fatf-gafi.org/content/dam/fatf-gafi/fsrb-fur/GIABA-Nigeria-Follow-Up-Report-2022.pdf.coredownload.inline.pdf
+
+Inter-Ministerial Committee on AML/CFT/CPF. (2022). *National inherent risk assessment of money laundering in Nigeria*. Nigerian Financial Intelligence Unit.
+
+Inter-Ministerial Committee on AML/CFT/CPF. (2023). *National anti-money laundering/countering the financing of terrorism/countering proliferation financing strategy 2023–2027*. Nigerian Financial Intelligence Unit.
+
+Nigerian Financial Intelligence Unit. (n.d.). *About us*. https://www.nfiu.gov.ng/AboutUs
+
+Obiwuru, C. R. (2020). The performance of the Economic and Financial Crimes Commission (EFCC) in the fight against corruption in Nigeria: A critical appraisal. *Economy*, 7(1), 52–58. https://doi.org/10.20448/journal.502.2020.71.52.58
+
+SOAS Anti-Corruption Evidence. (2019). *The politics and effectiveness of Nigeria's Economic and Financial Crimes Commission (EFCC)* (Working Paper 011). SOAS University of London. https://ace.soas.ac.uk/publication/the-politics-and-effectiveness-of-nigerias-economic-and-financial-crimes-commission-efcc/
+
+Special Control Unit against Money Laundering. (n.d.). *Mandate and functions of SCUML*. https://scuml.efcc.gov.ng/
+
+Ubi, F. L., & Ayuba, B. (2025). Assessment of the challenges of Economic and Financial Crimes Commission (EFCC) and its impact on performance. *International Journal of African Sustainable Development Research*, 7(2). https://doi.org/10.70382/tijasdr.v07i2.022
+
+Ugbala, K. I., Nwokwu, P. M., & Edeh, J. N. (2022). Economic and Financial Crimes Commission's (EFCC) performance in combating corruption in Nigeria: Buhari's administration in perspective (2015–2020). *The Social Sciences*, 17(9), 180–191.
+
+---
+
+# APPENDIX A: DOCUMENT REVIEW MATRIX
+
+| Document | Period / Status | Evidence Used | Analytical Limitation |
+| :--- | :--- | :--- | :--- |
+| **EFCC (Establishment) Act** | 2004 | Mandate, functions (Sections 6–7), leadership tenure (Sections 2–3), offence definitions (Section 46) | Formal statutory authority only |
+| **NFIU Act** | 2018 | Statutory separation and operational autonomy of the NFIU | Requires operational coordination evidence |
+| **MLPPA** | 2022 | Cash limits (Section 2), currency declarations (Section 3), CDD/STR rules (Sections 4–11), SCUML statutory anchor (Section 17), ML offences & stand-alone provision (Section 18) | Practical enforcement requires separate empirical evidence |
+| **GIABA MER** | 2021 | Independent baseline for Immediate Outcomes 6, 7 and 8 (effectiveness) and 40 Recommendations | On-site evaluation data primarily reflects pre-2020 period |
+| **GIABA/FATF Follow-Up Reports** | 2022–2024 | Re-rating of technical compliance (36/40 C/LC by Nov. 2024) | Follow-up reports do not re-rate Immediate Outcome effectiveness |
+| **FATF Monitoring Statement** | Oct. 2025 | Completion of Action Plan and removal from FATF grey list | Reflects system-wide national progress, not EFCC alone |
+| **EFCC Longitudinal Conviction Series** | 2015–2024 | Decadal growth in convictions (103 in 2015 to 4,111 in 2024) | Aggregate across all economic crimes; not disaggregated by ML typology |
+| **EFCC Two-Year Accountability Release** | Oct. 2023–Sept. 2025 | Aggregate investigations (29,240), filings (10,525), convictions (7,503) and recoveries (N566.3bn, $411.6m, 1,502 properties) | Agency self-reported; combines interim and final forfeitures |
+| **Empirical Academic Literature** | 2019–2025 | Administrative, judicial and political constraints (SOAS-ACE, 2019; Obiwuru, 2020; Ugbala et al., 2022; Chioke et al., 2023; Ubi & Ayuba, 2025; Adenigbagbe & Egbon-Charles, 2025) | Varying sample sizes and reliance on perception surveys in some studies |

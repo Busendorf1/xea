@@ -26,6 +26,43 @@ import AdvertiserHoverCard from "./AdvertiserHoverCard";
 import VerifiedBadge from "./VerifiedBadge";
 
 const HlsVideoPlayer = dynamic(() => import("./HlsVideoPlayer"), { ssr: false });
+const FullscreenVideoPlayer = dynamic(() => import("@/components/MyAds/FullscreenVideoPlayer"), { ssr: false });
+
+// Shared pooled IntersectionObservers for 1000+ card feed scrolling without per-card observer GC overhead
+const preloadCallbacks = new WeakMap<Element, (intersecting: boolean) => void>();
+const playCallbacks = new WeakMap<Element, (intersecting: boolean) => void>();
+let sharedPreloadObserver: IntersectionObserver | null = null;
+let sharedPlayObserver: IntersectionObserver | null = null;
+
+function getSharedPreloadObserver(): IntersectionObserver | null {
+  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
+  if (!sharedPreloadObserver) {
+    sharedPreloadObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          preloadCallbacks.get(entry.target)?.(entry.isIntersecting);
+        }
+      },
+      { rootMargin: "800px 0px 800px 0px", threshold: 0 }
+    );
+  }
+  return sharedPreloadObserver;
+}
+
+function getSharedPlayObserver(): IntersectionObserver | null {
+  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
+  if (!sharedPlayObserver) {
+    sharedPlayObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          playCallbacks.get(entry.target)?.(entry.isIntersecting);
+        }
+      },
+      { rootMargin: "0px 0px 0px 0px", threshold: 0.35 }
+    );
+  }
+  return sharedPlayObserver;
+}
 
 export type BaseAd = {
   id: string;
@@ -235,6 +272,8 @@ function AdCard({
   const [isTextReaderClosing, setIsTextReaderClosing] = useState(false);
   const [showReaderMenu, setShowReaderMenu] = useState(false);
 
+  const [lightboxSwipeOffsetY, setLightboxSwipeOffsetY] = useState(0);
+
   const closeLightbox = useCallback(() => {
     if (isLightboxClosing) return;
     setIsLightboxClosing(true);
@@ -242,11 +281,13 @@ function AdCard({
       setLightboxIndex(null);
       setIsLightboxClosing(false);
       setShowLightboxMenu(false);
+      setLightboxSwipeOffsetY(0);
     }, 220);
   }, [isLightboxClosing]);
 
   const openLightbox = useCallback((idx: number) => {
     setIsLightboxClosing(false);
+    setLightboxSwipeOffsetY(0);
     setLightboxIndex(idx);
   }, []);
 
@@ -267,6 +308,8 @@ function AdCard({
   const [interactionSecondsLeft, setInteractionSecondsLeft] = useState(16);
   const [interactionStage, setInteractionStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
   const lightboxTouchStartXRef = useRef<number | null>(null);
+  const lightboxTouchStartYRef = useRef<number | null>(null);
+  const lightboxPointerDownRef = useRef(false);
 
   const [activeAction, setActiveAction] = useState<"seen" | "earn" | "mutual" | null>(null);
   const [successAction, setSuccessAction] = useState<"seen" | "earn" | "mutual" | null>(null);
@@ -358,36 +401,27 @@ function AdCard({
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Two-tiered IntersectionObserver:
+  // Two-tiered shared IntersectionObserver pool:
   // Tier 1: 800px rootMargin pre-warms video buffer/first-frame in background
   // Tier 2: Active viewport threshold triggers autoplay with zero latency
   useEffect(() => {
-    if (!cardRef.current) return;
+    const el = cardRef.current;
+    if (!el) return;
 
-    const preloadObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          setIsPreloadWarm(entry.isIntersecting);
-        });
-      },
-      { rootMargin: "800px 0px 800px 0px", threshold: 0 }
-    );
+    const preloadObs = getSharedPreloadObserver();
+    const playObs = getSharedPlayObserver();
 
-    const playObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          setIsCardVisible(entry.isIntersecting);
-        });
-      },
-      { rootMargin: "0px 0px 0px 0px", threshold: 0.35 }
-    );
+    preloadCallbacks.set(el, setIsPreloadWarm);
+    playCallbacks.set(el, setIsCardVisible);
 
-    preloadObserver.observe(cardRef.current);
-    playObserver.observe(cardRef.current);
+    preloadObs?.observe(el);
+    playObs?.observe(el);
 
     return () => {
-      preloadObserver.disconnect();
-      playObserver.disconnect();
+      preloadObs?.unobserve(el);
+      playObs?.unobserve(el);
+      preloadCallbacks.delete(el);
+      playCallbacks.delete(el);
     };
   }, []);
 
@@ -709,70 +743,121 @@ function AdCard({
         {/* Action bar */}
         {ad.ad_type === "product_sales" ? (
           <div className={styles.productSalesActionBar}>
-            {isPlatformPost ? (
-              <>
-                <div className={styles.adminRowGroup}>
-                  <span className={styles.productPriceText}>{formatCurrency(ad.product_price || 0)}</span>
-                  <a
-                    href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.productCtaButton}
-                    onClick={() => handleCtaClick((ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_"))}
-                  >
-                    {ad.product_cta_type || "Buy"}
-                  </a>
-                </div>
+            <div className={styles.ctaButtonsGroup}>
+              <span className={styles.productPriceText}>
+                {formatCurrency(ad.product_price || 0, isPlatformPost ? undefined : ad.country)}
+              </span>
+              <a
+                href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.productCtaButton}
+                onClick={() => handleCtaClick((ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_"))}
+              >
+                {ad.product_cta_type || "Buy"}
+              </a>
 
-                <div className={styles.productMiddleGroup}>
-                  {actionButtons.map((type) => (
-                    <a
+              {actionButtons.map((type) => {
+                const isReadMore = type === "action_read_more";
+                if (isReadMore) {
+                  return (
+                    <button
                       key={`${type}-${ad.id}`}
-                      href={getHref(type, ad[type as keyof Ad] as string, ad)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.productActionButton}
-                      title={type.replace("action_", "")}
-                      onClick={() => handleCtaClick(type.replace("action_", ""))}
+                      type="button"
+                      className={`${styles.iconButton} ${isTextReaderOpen ? styles.expandedButton : ""}`}
+                      title="Read Full Post"
+                      onClick={() => {
+                        setIsTextReaderOpen(true);
+                        handleCtaClick("read_more");
+                      }}
                     >
                       {getIcon(type)}
-                    </a>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className={styles.productLeftGroup}>
-                  <span className={styles.productPriceText}>{formatCurrency(ad.product_price || 0, ad.country)}</span>
+                    </button>
+                  );
+                }
+                return (
                   <a
-                    href={ad.product_cta_link ? (ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`) : "#"}
+                    key={`${type}-${ad.id}`}
+                    href={getHref(type, ad[type as keyof Ad] as string, ad)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={styles.productCtaButton}
-                    onClick={() => handleCtaClick((ad.product_cta_type || "Buy").toLowerCase().replace(/\s+/g, "_"))}
+                    className={styles.iconButton}
+                    title={type.replace("action_", "")}
+                    onClick={() => handleCtaClick(type.replace("action_", ""))}
                   >
-                    {ad.product_cta_type || "Buy"}
+                    {getIcon(type)}
                   </a>
-                </div>
+                );
+              })}
 
-                <div className={styles.productMiddleGroup}>
-                  {actionButtons.map((type) => (
-                    <a
-                      key={`${type}-${ad.id}`}
-                      href={getHref(type, ad[type as keyof Ad] as string, ad)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.productActionButton}
-                      title={type.replace("action_", "")}
-                      onClick={() => handleCtaClick(type.replace("action_", ""))}
-                    >
-                      {getIcon(type)}
-                    </a>
-                  ))}
-                </div>
+              <button
+                title="Share Ad"
+                className={styles.iconButton}
+                type="button"
+                onClick={() => {
+                  try {
+                    const encodedId = btoa(ad.id.toString());
+                    const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
+                    navigator.clipboard.writeText(shareUrl).then(() => {
+                      showToast("Link copied to clipboard");
+                    }).catch(() => {
+                      onShare(ad.id);
+                    });
+                  } catch {
+                    onShare(ad.id);
+                  }
+                }}
+              >
+                <Share2 size={14} strokeWidth={1.5} />
+              </button>
+            </div>
 
-                <div className={styles.productRightGroup}>
-                  {isPlatformPost || isOwner ? (
+            {!isPlatformPost && (
+              <div className={styles.productRightGroup}>
+                {isOwner ? (
+                  <div className={styles.fromBrandContainer}>
+                    {targetLink && targetLink !== "#" ? (
+                      <a
+                        href={targetLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.fromBrandBtn}
+                        title={`Visit ${brandName}`}
+                        onClick={() => handleCtaClick("brand_visit")}
+                      >
+                        Visit {brandName}
+                      </a>
+                    ) : (
+                      <span className={styles.fromBrandText}>
+                        Visit {brandName}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
+                    <AdInteractionHandler
+                      ad={ad}
+                      userEmail={userEmail}
+                      isPlatformPost={isPlatformPost}
+                      isMutualTarget={isMutualTarget}
+                      isAlreadyMutual={isAlreadyMutual}
+                      viewerProfile={viewerProfile}
+                      isProcessing={isProcessing}
+                      isSuspended={isSuspended}
+                      successAction={successAction}
+                      activeAction={activeAction}
+                      handleAction={handleAction}
+                      onMarkSeen={onMarkSeen}
+                      onAdEarn={onAdEarn}
+                      onAdMutual={onAdMutual}
+                      brandName={brandName}
+                      targetLink={targetLink}
+                      externalSecondsLeft={interactionSecondsLeft}
+                      onSecondsLeftChange={setInteractionSecondsLeft}
+                      externalStage={interactionStage}
+                      onStageChange={setInteractionStage}
+                    />
+                  ) : (
                     <div className={styles.fromBrandContainer}>
                       {targetLink && targetLink !== "#" ? (
                         <a
@@ -791,53 +876,9 @@ function AdCard({
                         </span>
                       )}
                     </div>
-                  ) : (
-                    !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
-                      <AdInteractionHandler
-                        ad={ad}
-                        userEmail={userEmail}
-                        isPlatformPost={isPlatformPost}
-                        isMutualTarget={isMutualTarget}
-                        isAlreadyMutual={isAlreadyMutual}
-                        viewerProfile={viewerProfile}
-                        isProcessing={isProcessing}
-                        isSuspended={isSuspended}
-                        successAction={successAction}
-                        activeAction={activeAction}
-                        handleAction={handleAction}
-                        onMarkSeen={onMarkSeen}
-                        onAdEarn={onAdEarn}
-                        onAdMutual={onAdMutual}
-                        brandName={brandName}
-                        targetLink={targetLink}
-                        externalSecondsLeft={interactionSecondsLeft}
-                        onSecondsLeftChange={setInteractionSecondsLeft}
-                        externalStage={interactionStage}
-                        onStageChange={setInteractionStage}
-                      />
-                    ) : (
-                      <div className={styles.fromBrandContainer}>
-                        {targetLink && targetLink !== "#" ? (
-                          <a
-                            href={targetLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={styles.fromBrandBtn}
-                            title={`Visit ${brandName}`}
-                            onClick={() => handleCtaClick("brand_visit")}
-                          >
-                            Visit {brandName}
-                          </a>
-                        ) : (
-                          <span className={styles.fromBrandText}>
-                            Visit {brandName}
-                          </span>
-                        )}
-                      </div>
-                    )
-                  )}
-                </div>
-              </>
+                  )
+                )}
+              </div>
             )}
           </div>
         ) : (
@@ -996,23 +1037,41 @@ function AdCard({
               className={`${styles.lightboxDialog} ${isLightboxClosing ? styles.lightboxDialogExiting : ""}`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Top Bar: Back Arrow (Left) + Slide Counter (Center) + Report Ad Menu (Right) */}
+              {/* Top Bar: Back Arrow (Left) + Top-Left Line Indicators + Report Ad Menu (Right) */}
               <div className={styles.lightboxTopBar}>
-                <button
-                  type="button"
-                  className={styles.lightboxIconBtn}
-                  onClick={closeLightbox}
-                  aria-label="Back to feed"
-                  title="Back"
-                >
-                  <ArrowLeft size={20} strokeWidth={2.2} />
-                </button>
+                <div className={styles.lightboxTopLeftGroup}>
+                  <button
+                    type="button"
+                    className={styles.lightboxIconBtn}
+                    onClick={closeLightbox}
+                    aria-label="Back to feed"
+                    title="Back"
+                  >
+                    <ArrowLeft size={20} strokeWidth={2.2} />
+                  </button>
 
-                {mediaUrls.length > 1 && (
-                  <span className={styles.lightboxSlideCounter}>
-                    {lightboxIndex + 1} / {mediaUrls.length}
-                  </span>
-                )}
+                  {mediaUrls.length > 1 && (
+                    <div
+                      className={styles.lightboxLineIndicators}
+                      aria-label={`Slide ${lightboxIndex + 1} of ${mediaUrls.length}`}
+                    >
+                      {mediaUrls.map((_, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className={`${styles.topLineSegment} ${
+                            idx === lightboxIndex ? styles.topLineSegmentActive : ""
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightboxIndex(idx);
+                          }}
+                          aria-label={`Go to media ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <div className={styles.lightboxMenuContainer}>
                   <AdOptionsMenu
@@ -1025,23 +1084,60 @@ function AdCard({
                 </div>
               </div>
 
-              {/* Center Media Stage */}
+              {/* Center Media Stage with Horizontal Swipe & Vertical Swipe-to-Dismiss */}
               <div
                 className={styles.lightboxStage}
+                style={{
+                  transform:
+                    lightboxSwipeOffsetY !== 0
+                      ? `translate3d(0, ${lightboxSwipeOffsetY}px, 0) scale(${Math.max(
+                          0.86,
+                          1 - Math.abs(lightboxSwipeOffsetY) / 900
+                        )})`
+                      : undefined,
+                  opacity:
+                    lightboxSwipeOffsetY !== 0
+                      ? Math.max(0.35, 1 - Math.abs(lightboxSwipeOffsetY) / 380)
+                      : 1,
+                  transition: lightboxSwipeOffsetY === 0 ? "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease" : "none",
+                }}
                 onTouchStart={(e) => {
-                  if (mediaUrls.length > 1 && e.touches.length === 1) {
+                  if (e.touches.length === 1) {
                     lightboxTouchStartXRef.current = e.touches[0].clientX;
+                    lightboxTouchStartYRef.current = e.touches[0].clientY;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  if (
+                    lightboxTouchStartXRef.current !== null &&
+                    lightboxTouchStartYRef.current !== null &&
+                    e.touches.length === 1
+                  ) {
+                    const deltaX = e.touches[0].clientX - lightboxTouchStartXRef.current;
+                    const deltaY = e.touches[0].clientY - lightboxTouchStartYRef.current;
+                    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+                      setLightboxSwipeOffsetY(deltaY);
+                    }
                   }
                 }}
                 onTouchEnd={(e) => {
                   if (
-                    mediaUrls.length > 1 &&
                     lightboxTouchStartXRef.current !== null &&
+                    lightboxTouchStartYRef.current !== null &&
                     e.changedTouches.length > 0
                   ) {
                     const deltaX = e.changedTouches[0].clientX - lightboxTouchStartXRef.current;
+                    const deltaY = e.changedTouches[0].clientY - lightboxTouchStartYRef.current;
                     lightboxTouchStartXRef.current = null;
-                    if (Math.abs(deltaX) > 45) {
+                    lightboxTouchStartYRef.current = null;
+
+                    if (Math.abs(deltaY) > 65 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                      closeLightbox();
+                      return;
+                    }
+                    setLightboxSwipeOffsetY(0);
+
+                    if (mediaUrls.length > 1 && Math.abs(deltaX) > 40 && Math.abs(deltaX) >= Math.abs(deltaY)) {
                       if (deltaX < 0) {
                         setLightboxIndex((prev) =>
                           prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null
@@ -1054,18 +1150,66 @@ function AdCard({
                     }
                   }
                 }}
-              >
-                {mediaUrls.length > 1 && lightboxIndex > 0 && (
-                  <button
-                    type="button"
-                    className={`${styles.lightboxNavArrow} ${styles.lightboxNavPrev}`}
-                    onClick={() => setLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null))}
-                    aria-label="Previous media"
-                  >
-                    <ChevronLeft size={24} strokeWidth={2.5} />
-                  </button>
-                )}
+                onMouseDown={(e) => {
+                  lightboxPointerDownRef.current = true;
+                  lightboxTouchStartXRef.current = e.clientX;
+                  lightboxTouchStartYRef.current = e.clientY;
+                }}
+                onMouseMove={(e) => {
+                  if (
+                    !lightboxPointerDownRef.current ||
+                    lightboxTouchStartXRef.current === null ||
+                    lightboxTouchStartYRef.current === null
+                  ) {
+                    return;
+                  }
+                  const deltaX = e.clientX - lightboxTouchStartXRef.current;
+                  const deltaY = e.clientY - lightboxTouchStartYRef.current;
+                  if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 12) {
+                    setLightboxSwipeOffsetY(deltaY);
+                  }
+                }}
+                onMouseUp={(e) => {
+                  if (
+                    !lightboxPointerDownRef.current ||
+                    lightboxTouchStartXRef.current === null ||
+                    lightboxTouchStartYRef.current === null
+                  ) {
+                    return;
+                  }
+                  lightboxPointerDownRef.current = false;
+                  const deltaX = e.clientX - lightboxTouchStartXRef.current;
+                  const deltaY = e.clientY - lightboxTouchStartYRef.current;
+                  lightboxTouchStartXRef.current = null;
+                  lightboxTouchStartYRef.current = null;
 
+                  if (Math.abs(deltaY) > 70 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                    closeLightbox();
+                    return;
+                  }
+                  setLightboxSwipeOffsetY(0);
+
+                  if (mediaUrls.length > 1 && Math.abs(deltaX) > 45 && Math.abs(deltaX) >= Math.abs(deltaY)) {
+                    if (deltaX < 0) {
+                      setLightboxIndex((prev) =>
+                        prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null
+                      );
+                    } else {
+                      setLightboxIndex((prev) =>
+                        prev !== null ? Math.max(0, prev - 1) : null
+                      );
+                    }
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (lightboxPointerDownRef.current) {
+                    lightboxPointerDownRef.current = false;
+                    lightboxTouchStartXRef.current = null;
+                    lightboxTouchStartYRef.current = null;
+                    setLightboxSwipeOffsetY(0);
+                  }
+                }}
+              >
                 {(() => {
                   const activeUrl = mediaUrls[lightboxIndex];
                   const isVid = isVideoUrl(activeUrl) || (lightboxIndex === 0 && !!ad.hls_url);
@@ -1077,16 +1221,14 @@ function AdCard({
 
                   if (isVid) {
                     return (
-                      <HlsVideoPlayer
-                        key={`lightbox-${activeUrl}`}
-                        src={activeUrl}
-                        hlsSrc={itemHlsSrc}
-                        controls
-                        autoPlay
-                        playsInline
-                        muted={false}
-                        className={styles.lightboxMediaVideo}
-                      />
+                      <div className={styles.lightboxVideoPlayerWrap} onClick={(e) => e.stopPropagation()}>
+                        <FullscreenVideoPlayer
+                          key={`lightbox-${activeUrl}`}
+                          src={activeUrl}
+                          hlsSrc={itemHlsSrc}
+                          autoPlay={true}
+                        />
+                      </div>
                     );
                   }
                   return (
@@ -1098,19 +1240,6 @@ function AdCard({
                     />
                   );
                 })()}
-
-                {mediaUrls.length > 1 && lightboxIndex < mediaUrls.length - 1 && (
-                  <button
-                    type="button"
-                    className={`${styles.lightboxNavArrow} ${styles.lightboxNavNext}`}
-                    onClick={() =>
-                      setLightboxIndex((prev) => (prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null))
-                    }
-                    aria-label="Next media"
-                  >
-                    <ChevronRight size={24} strokeWidth={2.5} />
-                  </button>
-                )}
               </div>
 
               {/* Bottom Bar: CTA Buttons + Mutual / Seen / Earn Interaction Handler */}

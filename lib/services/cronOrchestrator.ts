@@ -29,6 +29,9 @@ const JOBS: Record<string, JobDefinition> = {
   },
 };
 
+let lastLocalCheckEpoch = 0;
+const LOCAL_CHECK_THROTTLE_SECONDS = 60;
+
 /**
  * Self-healing job dispatcher.
  * Checks if any critical maintenance job is overdue.
@@ -36,6 +39,12 @@ const JOBS: Record<string, JobDefinition> = {
  * Guarantees execution regardless of whether Vercel cron fires or fails.
  */
 export async function triggerSelfHealingJobsIfDue(): Promise<void> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (nowSec - lastLocalCheckEpoch < LOCAL_CHECK_THROTTLE_SECONDS) {
+    return;
+  }
+  lastLocalCheckEpoch = nowSec;
+
   if (!isRedisReady()) return;
 
   for (const [jobKey, job] of Object.entries(JOBS)) {

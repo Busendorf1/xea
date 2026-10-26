@@ -337,8 +337,8 @@ export default function Header() {
                     />
                   )}
                   <div className={styles.notificationContent}>
-                    <div className={styles.notificationTitle}>{n.title}</div>
-                    <div className={styles.notificationMsg}>{n.message}</div>
+                    <div className={styles.notificationTitle}>{(n.title || "").replace(/approved by admin(istrators?)?/gi, "approved")}</div>
+                    <div className={styles.notificationMsg}>{(n.message || "").replace(/approved by admin(istrators?)?/gi, "approved")}</div>
                     <span className={styles.notificationTime}>
                       {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>

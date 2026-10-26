@@ -141,10 +141,21 @@ export async function POST(req: NextRequest) {
         .from("adds")
         .select("total_cost, admin_statement, user_email")
         .eq("id", adId)
+        .ilike("user_email", email.toLowerCase().trim())
         .maybeSingle();
 
       if (adErr || !adRow) {
         return NextResponse.json({ error: "Campaign not found in review queue" }, { status: 404 });
+      }
+
+      if (!adRow.admin_statement || !adRow.admin_statement.startsWith("APPROVED:")) {
+        return NextResponse.json({ error: "Campaign has not been approved for publishing." }, { status: 400 });
+      }
+
+      const approvedTs = adRow.admin_statement.replace("APPROVED:", "").trim();
+      const approvedDate = new Date(approvedTs);
+      if (!isNaN(approvedDate.getTime()) && approvedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "This approved campaign has expired (exceeded 3 days)." }, { status: 400 });
       }
 
       const costVal = Number(adRow.total_cost || 0);
@@ -162,10 +173,21 @@ export async function POST(req: NextRequest) {
         .from("news")
         .select("campaign_days, bid_price, is_bidded, admin_statement, user_email")
         .eq("id", highlightId)
+        .ilike("user_email", email.toLowerCase().trim())
         .maybeSingle();
 
       if (hlErr || !hlRow) {
         return NextResponse.json({ error: "Highlight not found in review queue" }, { status: 404 });
+      }
+
+      if (!hlRow.admin_statement || !hlRow.admin_statement.startsWith("APPROVED:")) {
+        return NextResponse.json({ error: "Highlight has not been approved for publishing." }, { status: 400 });
+      }
+
+      const approvedHlTs = hlRow.admin_statement.replace("APPROVED:", "").trim();
+      const approvedHlDate = new Date(approvedHlTs);
+      if (!isNaN(approvedHlDate.getTime()) && approvedHlDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "This approved highlight has expired (exceeded 3 days)." }, { status: 400 });
       }
 
       const days = hlRow.campaign_days || 1;

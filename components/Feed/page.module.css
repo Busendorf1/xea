@@ -573,6 +573,73 @@
   left: 0;
   width: 100%;
   will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style;
+  animation: feedRowEaseIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes feedRowEaseIn {
+  from {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Scroll-to-Top Floating Arrow Button at Bottom Side of Feed */
+.scrollTopBtn {
+  position: fixed;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  right: max(18px, calc(50% - 282px));
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--card-bg, rgba(15, 23, 42, 0.88));
+  color: var(--foreground, #f8fafc);
+  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 950;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 14px, 0) scale(0.88);
+  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.scrollTopBtnVisible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.scrollTopBtn:hover {
+  background: var(--primary, #1d9bf0);
+  color: #ffffff;
+  border-color: var(--primary, #1d9bf0);
+  transform: translate3d(0, -2px, 0) scale(1.04);
+}
+
+.scrollTopBtn:active {
+  transform: translate3d(0, 0, 0) scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .scrollTopBtn {
+    right: 16px;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    width: 36px;
+    height: 36px;
+  }
 }
 
 

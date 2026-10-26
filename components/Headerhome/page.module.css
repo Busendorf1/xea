@@ -315,12 +315,12 @@
 
 .notificationDropdown {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 12px);
   right: 0;
   width: 380px;
-  max-width: 92vw;
-  height: auto;
-  max-height: min(540px, calc(100vh - 100px));
+  max-width: calc(100vw - 28px);
+  height: calc(100dvh - 88px);
+  max-height: calc(100dvh - 88px);
   background: var(--card-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -369,8 +369,8 @@
 .notificationList {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
-  max-height: min(460px, calc(100vh - 180px));
+  flex: 1 1 auto;
+  max-height: 100dvh;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
@@ -451,17 +451,17 @@
 @media screen and (max-width: 768px) {
   .notificationDropdown {
     position: fixed !important;
-    top: calc(env(safe-area-inset-top, 0px) + 78px) !important;
-    left: 12px !important;
-    right: 12px !important;
+    top: calc(env(safe-area-inset-top, 0px) + 76px) !important;
+    left: 14px !important;
+    right: 14px !important;
+    bottom: 14px !important;
     width: auto !important;
-    max-width: min(390px, calc(100vw - 24px)) !important;
+    max-width: min(390px, calc(100vw - 28px)) !important;
     margin: 0 0 0 auto !important;
-    bottom: auto !important;
-    height: auto !important;
-    max-height: min(75dvh, calc(100dvh - 96px)) !important;
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - 90px) !important;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 90px) !important;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
-    border-radius: 16px !important;
+    border-radius: 18px !important;
     z-index: 99999 !important;
     overflow: hidden !important;
     display: flex !important;
@@ -469,9 +469,9 @@
   }
 
   .notificationList {
-    flex: 0 1 auto !important;
+    flex: 1 1 auto !important;
     min-height: 0 !important;
-    max-height: min(65dvh, calc(100dvh - 120px)) !important;
+    max-height: 100% !important;
     overflow-y: auto !important;
     scrollbar-width: none !important;
     -ms-overflow-style: none !important;

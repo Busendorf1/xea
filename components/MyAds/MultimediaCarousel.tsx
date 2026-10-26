@@ -38,7 +38,19 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
   const [isClosingFullscreen, setIsClosingFullscreen] = useState(false);
+  const [fsSwipeOffsetY, setFsSwipeOffsetY] = useState(0);
+
+  const inlineContainerRef = useRef<HTMLDivElement | null>(null);
+  const inlineSlideRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const inlineScrollRafRef = useRef<number | null>(null);
+  const inlineStartXRef = useRef<number>(0);
+  const inlineScrollLeftRef = useRef<number>(0);
+  const inlinePointerDownRef = useRef(false);
+  const inlineDraggedRef = useRef(false);
+
   const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const fsPointerDownRef = useRef(false);
 
   const closeFullscreen = useCallback(() => {
     if (isClosingFullscreen) return;
@@ -46,11 +58,13 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
     setTimeout(() => {
       setFullscreenIndex(null);
       setIsClosingFullscreen(false);
+      setFsSwipeOffsetY(0);
     }, 220);
   }, [isClosingFullscreen]);
 
   const openFullscreen = useCallback((index: number) => {
     setIsClosingFullscreen(false);
+    setFsSwipeOffsetY(0);
     setFullscreenIndex(index);
   }, []);
 
@@ -98,35 +112,141 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
     );
   }
 
-  const handlePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : mediaList.length - 1));
+  const scrollToInlineSlide = (targetIdx: number, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const clampedIdx = Math.max(0, Math.min(mediaList.length - 1, targetIdx));
+    const container = inlineContainerRef.current;
+    const slide = inlineSlideRefs.current[clampedIdx];
+    if (!container || !slide) return;
+
+    let targetLeft = 0;
+    if (clampedIdx === 0) {
+      targetLeft = 0;
+    } else if (clampedIdx === mediaList.length - 1) {
+      targetLeft = container.scrollWidth - container.clientWidth;
+    } else {
+      targetLeft = slide.offsetLeft - (container.clientWidth - slide.offsetWidth) / 2;
+    }
+    container.scrollTo({
+      left: Math.max(0, targetLeft),
+      behavior: "smooth",
+    });
+    setCurrentIndex(clampedIdx);
   };
 
-  const handleNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev < mediaList.length - 1 ? prev + 1 : 0));
+  const handleInlineScroll = () => {
+    if (mediaList.length <= 1 || inlineScrollRafRef.current !== null) return;
+    inlineScrollRafRef.current = requestAnimationFrame(() => {
+      inlineScrollRafRef.current = null;
+      const container = inlineContainerRef.current;
+      if (!container) return;
+      const center = container.scrollLeft + container.clientWidth / 2;
+      let closestIdx = 0;
+      let minDist = Infinity;
+      inlineSlideRefs.current.forEach((slide, idx) => {
+        if (!slide) return;
+        const slideCenter = slide.offsetLeft + slide.offsetWidth / 2;
+        const dist = Math.abs(center - slideCenter);
+        if (dist < minDist) {
+          minDist = dist;
+          closestIdx = idx;
+        }
+      });
+      setCurrentIndex((prev) => (prev === closestIdx ? prev : closestIdx));
+    });
+  };
+
+  const handleInlineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    inlineDraggedRef.current = false;
+    if (!inlineContainerRef.current || mediaList.length <= 1) return;
+    inlinePointerDownRef.current = true;
+    inlineStartXRef.current = e.clientX;
+    inlineScrollLeftRef.current = inlineContainerRef.current.scrollLeft;
+  };
+
+  const handleInlineMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!inlinePointerDownRef.current || !inlineContainerRef.current) return;
+    const dx = e.clientX - inlineStartXRef.current;
+    if (Math.abs(dx) > 8) {
+      inlineDraggedRef.current = true;
+      inlineContainerRef.current.style.scrollSnapType = "none";
+      inlineContainerRef.current.scrollLeft = inlineScrollLeftRef.current - dx;
+    }
+  };
+
+  const handleInlineMouseUpOrLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!inlinePointerDownRef.current) return;
+    inlinePointerDownRef.current = false;
+    if (inlineContainerRef.current) {
+      inlineContainerRef.current.style.scrollSnapType = "x mandatory";
+    }
+    if (inlineDraggedRef.current && mediaList.length > 1) {
+      const dx = e.clientX - inlineStartXRef.current;
+      if (Math.abs(dx) > 28) {
+        const nextIdx = dx < 0 ? currentIndex + 1 : currentIndex - 1;
+        scrollToInlineSlide(nextIdx);
+      } else {
+        scrollToInlineSlide(currentIndex);
+      }
+      setTimeout(() => {
+        inlineDraggedRef.current = false;
+      }, 40);
+    }
   };
 
   return (
     <>
       <div className={styles.carouselContainer}>
+        {mediaList.length > 1 && (
+          <div
+            className={styles.topLineIndicators}
+            aria-label={`Slide ${currentIndex + 1} of ${mediaList.length}`}
+          >
+            {mediaList.map((_: string, idx: number) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={(e) => scrollToInlineSlide(idx, e)}
+                className={`${styles.topLineSegment} ${
+                  idx === currentIndex ? styles.topLineSegmentActive : ""
+                }`}
+                aria-label={`Slide ${idx + 1} of ${mediaList.length}`}
+              />
+            ))}
+          </div>
+        )}
+
         <div className={styles.carouselWrapper}>
           <div
+            ref={inlineContainerRef}
             className={styles.carouselTrack}
-            style={{
-              transform: `translate3d(calc(-${currentIndex} * (100% + 10px)), 0, 0)`,
-            }}
+            onScroll={mediaList.length > 1 ? handleInlineScroll : undefined}
+            onMouseDown={handleInlineMouseDown}
+            onMouseMove={handleInlineMouseMove}
+            onMouseUp={handleInlineMouseUpOrLeave}
+            onMouseLeave={handleInlineMouseUpOrLeave}
           >
             {mediaList.map((url: string, idx: number) => {
-              const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(url);
+              const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(url);
+              const isActiveSlide = idx === currentIndex && fullscreenIndex === null;
               return (
                 <div
                   key={idx}
-                  className={styles.carouselSlide}
+                  ref={(el) => {
+                    inlineSlideRefs.current[idx] = el;
+                  }}
+                  className={`${styles.carouselSlide} ${
+                    mediaList.length > 1 ? styles.carouselSlideMulti : styles.carouselSlideSingle
+                  }`}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (inlineDraggedRef.current) {
+                      return;
+                    }
                     openFullscreen(idx);
                   }}
                   style={{ cursor: "zoom-in" }}
@@ -135,16 +255,24 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   {isVid ? (
                     <div
                       style={{ width: "100%", height: "100%", position: "relative", cursor: "zoom-in" }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openFullscreen(idx);
-                      }}
                     >
                       <video
+                        ref={(el) => {
+                          if (!el) return;
+                          el.muted = true;
+                          el.defaultMuted = true;
+                          if (isActiveSlide) {
+                            el.play().catch(() => {});
+                          } else if (!el.paused) {
+                            el.pause();
+                          }
+                        }}
                         src={url}
+                        autoPlay={isActiveSlide}
+                        loop
                         muted
                         playsInline
+                        controls={false}
                         preload="metadata"
                         className={styles.mediaVideo}
                         style={{ pointerEvents: "none", width: "100%", height: "100%", objectFit: "cover" }}
@@ -158,11 +286,6 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                       className={styles.adImgElement}
                       draggable={false}
                       style={{ cursor: "zoom-in", userSelect: "none" }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openFullscreen(idx);
-                      }}
                       onError={() => setImgError(true)}
                     />
                   )}
@@ -170,47 +293,7 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
               );
             })}
           </div>
-
-          {mediaList.length > 1 && (
-            <>
-              {currentIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={handlePrev}
-                  className={`${styles.carouselBtn} ${styles.carouselBtnLeft}`}
-                  aria-label="Previous"
-                >
-                  ‹
-                </button>
-              )}
-              {currentIndex < mediaList.length - 1 && (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className={`${styles.carouselBtn} ${styles.carouselBtnRight}`}
-                  aria-label="Next"
-                >
-                  ›
-                </button>
-              )}
-            </>
-          )}
         </div>
-
-        {mediaList.length > 1 && (
-          <div className={styles.carouselDotsOutside}>
-            {mediaList.map((_: string, idx: number) => (
-              <span
-                key={idx}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentIndex(idx);
-                }}
-                className={`${styles.carouselDot} ${idx === currentIndex ? styles.carouselDotActive : ""}`}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Fullscreen Media Modal: Modal on Desktop, Full-Screen on Mobile, NO CTAs at the bottom */}
@@ -230,44 +313,98 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
               className={`${styles.lightboxDialog} ${isClosingFullscreen ? styles.lightboxDialogExiting : ""}`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Top Bar: Back Button (Top Left) + Optional Slide Counter */}
+              {/* Top Bar: Back Button + Top-Left Off-White Line Indicator */}
               <div className={styles.lightboxTopBar}>
-                <button
-                  type="button"
-                  className={styles.lightboxBackBtn}
-                  onClick={closeFullscreen}
-                  aria-label="Back"
-                  title="Back"
-                >
-                  <ArrowLeft size={20} strokeWidth={2.2} />
-                </button>
+                <div className={styles.lightboxTopLeftGroup}>
+                  <button
+                    type="button"
+                    className={styles.lightboxBackBtn}
+                    onClick={closeFullscreen}
+                    aria-label="Back"
+                    title="Back"
+                  >
+                    <ArrowLeft size={20} strokeWidth={2.2} />
+                  </button>
 
-                {mediaList.length > 1 && (
-                  <span className={styles.lightboxSlideCounter}>
-                    {fullscreenIndex + 1} / {mediaList.length}
-                  </span>
-                )}
-
-                {mediaList.length > 1 && <div className={styles.lightboxSpacer} />}
+                  {mediaList.length > 1 && (
+                    <div
+                      className={styles.lightboxLineIndicators}
+                      aria-label={`Slide ${fullscreenIndex + 1} of ${mediaList.length}`}
+                    >
+                      {mediaList.map((_: string, idx: number) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className={`${styles.topLineSegment} ${
+                            idx === fullscreenIndex ? styles.topLineSegmentActive : ""
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFullscreenIndex(idx);
+                          }}
+                          aria-label={`Slide ${idx + 1} of ${mediaList.length}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Center Media Stage */}
+              {/* Center Media Stage with Horizontal Swipe & Vertical Swipe-to-Dismiss */}
               <div
                 className={styles.lightboxStage}
+                style={{
+                  transform:
+                    fsSwipeOffsetY !== 0
+                      ? `translate3d(0, ${fsSwipeOffsetY}px, 0) scale(${Math.max(
+                          0.86,
+                          1 - Math.abs(fsSwipeOffsetY) / 900
+                        )})`
+                      : undefined,
+                  opacity:
+                    fsSwipeOffsetY !== 0 ? Math.max(0.35, 1 - Math.abs(fsSwipeOffsetY) / 380) : 1,
+                  transition:
+                    fsSwipeOffsetY === 0
+                      ? "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease"
+                      : "none",
+                }}
                 onTouchStart={(e) => {
-                  if (mediaList.length > 1 && e.touches.length === 1) {
+                  if (e.touches.length === 1) {
                     touchStartXRef.current = e.touches[0].clientX;
+                    touchStartYRef.current = e.touches[0].clientY;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  if (
+                    touchStartXRef.current !== null &&
+                    touchStartYRef.current !== null &&
+                    e.touches.length === 1
+                  ) {
+                    const dx = e.touches[0].clientX - touchStartXRef.current;
+                    const dy = e.touches[0].clientY - touchStartYRef.current;
+                    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+                      setFsSwipeOffsetY(dy);
+                    }
                   }
                 }}
                 onTouchEnd={(e) => {
                   if (
-                    mediaList.length > 1 &&
                     touchStartXRef.current !== null &&
+                    touchStartYRef.current !== null &&
                     e.changedTouches.length > 0
                   ) {
                     const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+                    const deltaY = e.changedTouches[0].clientY - touchStartYRef.current;
                     touchStartXRef.current = null;
-                    if (Math.abs(deltaX) > 45) {
+                    touchStartYRef.current = null;
+
+                    if (Math.abs(deltaY) > 65 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                      closeFullscreen();
+                      return;
+                    }
+                    setFsSwipeOffsetY(0);
+
+                    if (mediaList.length > 1 && Math.abs(deltaX) > 40 && Math.abs(deltaX) >= Math.abs(deltaY)) {
                       if (deltaX < 0) {
                         setFullscreenIndex((prev) =>
                           prev !== null ? Math.min(mediaList.length - 1, prev + 1) : null
@@ -280,24 +417,69 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                     }
                   }
                 }}
-              >
-                {mediaList.length > 1 && fullscreenIndex > 0 && (
-                  <button
-                    type="button"
-                    className={`${styles.lightboxNavArrow} ${styles.lightboxNavPrev}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFullscreenIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
-                    }}
-                    aria-label="Previous media"
-                  >
-                    <ChevronLeft size={24} strokeWidth={2.5} />
-                  </button>
-                )}
+                onMouseDown={(e) => {
+                  fsPointerDownRef.current = true;
+                  touchStartXRef.current = e.clientX;
+                  touchStartYRef.current = e.clientY;
+                }}
+                onMouseMove={(e) => {
+                  if (
+                    !fsPointerDownRef.current ||
+                    touchStartXRef.current === null ||
+                    touchStartYRef.current === null
+                  ) {
+                    return;
+                  }
+                  const dx = e.clientX - touchStartXRef.current;
+                  const dy = e.clientY - touchStartYRef.current;
+                  if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) {
+                    setFsSwipeOffsetY(dy);
+                  }
+                }}
+                onMouseUp={(e) => {
+                  if (
+                    !fsPointerDownRef.current ||
+                    touchStartXRef.current === null ||
+                    touchStartYRef.current === null
+                  ) {
+                    return;
+                  }
+                  fsPointerDownRef.current = false;
+                  const deltaX = e.clientX - touchStartXRef.current;
+                  const deltaY = e.clientY - touchStartYRef.current;
+                  touchStartXRef.current = null;
+                  touchStartYRef.current = null;
 
+                  if (Math.abs(deltaY) > 70 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                    closeFullscreen();
+                    return;
+                  }
+                  setFsSwipeOffsetY(0);
+
+                  if (mediaList.length > 1 && Math.abs(deltaX) > 45 && Math.abs(deltaX) >= Math.abs(deltaY)) {
+                    if (deltaX < 0) {
+                      setFullscreenIndex((prev) =>
+                        prev !== null ? Math.min(mediaList.length - 1, prev + 1) : null
+                      );
+                    } else {
+                      setFullscreenIndex((prev) =>
+                        prev !== null ? Math.max(0, prev - 1) : null
+                      );
+                    }
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (fsPointerDownRef.current) {
+                    fsPointerDownRef.current = false;
+                    touchStartXRef.current = null;
+                    touchStartYRef.current = null;
+                    setFsSwipeOffsetY(0);
+                  }
+                }}
+              >
                 {(() => {
                   const activeUrl = mediaList[fullscreenIndex];
-                  const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(activeUrl);
+                  const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(activeUrl);
                   if (isVid) {
                     return (
                       <FullscreenVideoPlayer
@@ -317,20 +499,6 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                     />
                   );
                 })()}
-
-                {mediaList.length > 1 && fullscreenIndex < mediaList.length - 1 && (
-                  <button
-                    type="button"
-                    className={`${styles.lightboxNavArrow} ${styles.lightboxNavNext}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFullscreenIndex((prev) => (prev !== null ? Math.min(mediaList.length - 1, prev + 1) : null));
-                    }}
-                    aria-label="Next media"
-                  >
-                    <ChevronRight size={24} strokeWidth={2.5} />
-                  </button>
-                )}
               </div>
             </div>
           </div>,

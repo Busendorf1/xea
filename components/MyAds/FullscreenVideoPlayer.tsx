@@ -13,9 +13,12 @@ import {
   Maximize,
 } from "lucide-react";
 import styles from "./FullscreenVideoPlayer.module.css";
+import HlsVideoPlayer from "@/components/ui/HlsVideoPlayer";
 
 interface FullscreenVideoPlayerProps {
   src: string;
+  hlsSrc?: string | null;
+  poster?: string;
   autoPlay?: boolean;
 }
 
@@ -30,6 +33,8 @@ function formatTime(seconds: number): string {
 
 export default function FullscreenVideoPlayer({
   src,
+  hlsSrc,
+  poster,
   autoPlay = true,
 }: FullscreenVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -56,7 +61,7 @@ export default function FullscreenVideoPlayer({
         if (!isSpeedMenuOpen) {
           setShowControls(false);
         }
-      }, 3000);
+      }, 3500);
     }
   }, [isPlaying, isSpeedMenuOpen]);
 
@@ -66,6 +71,33 @@ export default function FullscreenVideoPlayer({
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
     };
   }, [resetHideTimer]);
+
+  // Ensure fullscreen player starts unmuted and shows controls on open
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    setShowControls(true);
+    vid.muted = false;
+    vid.volume = 1;
+    setIsMuted(false);
+    setVolume(1);
+    if (autoPlay) {
+      vid
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch(() => {
+          // Fallback if browser blocks unmuted autoplay without direct gesture
+          vid.muted = true;
+          setIsMuted(true);
+          vid
+            .play()
+            .then(() => setIsPlaying(true))
+            .catch(() => setIsPlaying(false));
+        });
+    }
+  }, [src, hlsSrc, autoPlay]);
 
   // Video event handlers
   const handleTimeUpdate = () => {
@@ -77,8 +109,22 @@ export default function FullscreenVideoPlayer({
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration || 0);
+      videoRef.current.muted = false;
+      setIsMuted(false);
       if (autoPlay) {
-        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+        videoRef.current
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch(() => {
+            if (videoRef.current) {
+              videoRef.current.muted = true;
+              setIsMuted(true);
+              videoRef.current
+                .play()
+                .then(() => setIsPlaying(true))
+                .catch(() => setIsPlaying(false));
+            }
+          });
       }
     }
   };
@@ -162,10 +208,13 @@ export default function FullscreenVideoPlayer({
       onMouseMove={resetHideTimer}
       onClick={togglePlay}
     >
-      <video
+      <HlsVideoPlayer
         ref={videoRef}
         src={src}
+        hlsSrc={hlsSrc ?? undefined}
+        poster={poster}
         playsInline
+        muted={isMuted}
         className={styles.videoElement}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}

@@ -264,16 +264,17 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   // Only play the currently active slide's video when the card is visible; pause all non-active slides
   useEffect(() => {
+    const effectiveMuted = !isFullscreen ? true : isMuted;
     videoRefs.current.forEach((video, idx) => {
       if (!video) return;
       if (isCardVisible && idx === activeIndex) {
-        video.muted = isMuted;
-        video.defaultMuted = isMuted;
+        video.muted = effectiveMuted;
+        video.defaultMuted = effectiveMuted;
         const p = video.play();
         if (p !== undefined) {
           p.then(() => {
             setPlayingStates((prev) => ({ ...prev, [idx]: true }));
-            showControlsTemporarily(idx);
+            if (isFullscreen) showControlsTemporarily(idx);
           }).catch(() => {
             setPlayingStates((prev) => ({ ...prev, [idx]: false }));
           });
@@ -285,7 +286,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         setPlayingStates((prev) => (prev[idx] ? { ...prev, [idx]: false } : prev));
       }
     });
-  }, [isCardVisible, activeIndex, isMuted, showControlsTemporarily]);
+  }, [isCardVisible, activeIndex, isMuted, isFullscreen, showControlsTemporarily]);
 
   const togglePlayVideo = useCallback((idx: number) => {
     const video = videoRefs.current[idx];
@@ -339,7 +340,15 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       const slide = slideRefs.current[clampedIdx];
       if (!container || !slide) return;
 
-      const targetLeft = slide.offsetLeft - (container.clientWidth - slide.offsetWidth) / 2;
+      const startOffset = slideRefs.current[0]?.offsetLeft || 0;
+      let targetLeft = 0;
+      if (clampedIdx === 0) {
+        targetLeft = 0;
+      } else if (clampedIdx === mediaUrls.length - 1) {
+        targetLeft = container.scrollWidth - container.clientWidth;
+      } else {
+        targetLeft = slide.offsetLeft - startOffset;
+      }
       container.scrollTo({
         left: Math.max(0, targetLeft),
         behavior: "smooth",
@@ -359,28 +368,44 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     dragMovedRef.current = false;
     if (!containerRef.current || mediaUrls.length <= 1) return;
     isMouseDown.current = true;
-    startX.current = e.pageX - containerRef.current.offsetLeft;
+    startX.current = e.clientX;
     scrollLeft.current = containerRef.current.scrollLeft;
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isMouseDown.current || !containerRef.current) return;
-    const x = e.pageX - containerRef.current.offsetLeft;
-    if (Math.abs(x - startX.current) > 8) {
+    const dx = e.clientX - startX.current;
+    if (Math.abs(dx) > 8) {
       dragMovedRef.current = true;
+      containerRef.current.style.scrollSnapType = "none";
+      containerRef.current.scrollLeft = scrollLeft.current - dx;
     }
-    const walk = (x - startX.current) * 1.2;
-    containerRef.current.scrollLeft = scrollLeft.current - walk;
   };
 
-  const handleMouseUpOrLeave = () => {
+  const handleMouseUpOrLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMouseDown.current) return;
     isMouseDown.current = false;
+    if (containerRef.current) {
+      containerRef.current.style.scrollSnapType = "x mandatory";
+    }
+    if (dragMovedRef.current && mediaUrls.length > 1) {
+      const dx = e.clientX - startX.current;
+      if (Math.abs(dx) > 36) {
+        const nextIdx = dx < 0 ? activeIndex + 1 : activeIndex - 1;
+        scrollToSlide(nextIdx);
+      } else {
+        scrollToSlide(activeIndex);
+      }
+      setTimeout(() => {
+        dragMovedRef.current = false;
+      }, 40);
+    }
   };
 
   const handleItemActivate = useCallback(
     (index: number, e?: React.MouseEvent) => {
       if (dragMovedRef.current) {
-        dragMovedRef.current = false;
+        if (e) e.stopPropagation();
         return;
       }
       if (e) {
@@ -400,36 +425,27 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   return (
     <div className={styles.carouselOuterWrapper}>
       {isMulti && (
-        <div className={styles.mediaBadge} aria-label={`Slide ${activeIndex + 1} of ${mediaUrls.length}`}>
-          {activeIndex + 1} / {mediaUrls.length}
+        <div
+          className={styles.topLineIndicators}
+          aria-label={`Slide ${activeIndex + 1} of ${mediaUrls.length}`}
+        >
+          {mediaUrls.map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`${styles.topLineSegment} ${
+                idx === activeIndex ? styles.topLineSegmentActive : ""
+              }`}
+              onClick={(e) => scrollToSlide(idx, e)}
+              aria-label={`Slide ${idx + 1} of ${mediaUrls.length}`}
+            />
+          ))}
         </div>
-      )}
-
-      {isMulti && activeIndex > 0 && (
-        <button
-          type="button"
-          className={`${styles.carouselNavBtn} ${styles.carouselNavBtnPrev}`}
-          onClick={(e) => scrollToSlide(activeIndex - 1, e)}
-          aria-label="Previous media"
-        >
-          <ChevronLeft size={16} strokeWidth={2.5} />
-        </button>
-      )}
-
-      {isMulti && activeIndex < mediaUrls.length - 1 && (
-        <button
-          type="button"
-          className={`${styles.carouselNavBtn} ${styles.carouselNavBtnNext}`}
-          onClick={(e) => scrollToSlide(activeIndex + 1, e)}
-          aria-label="Next media"
-        >
-          <ChevronRight size={16} strokeWidth={2.5} />
-        </button>
       )}
 
       <div
         ref={containerRef}
-        className={styles.mediaRowContainer}
+        className={`${styles.mediaRowContainer} ${isMulti ? styles.mediaRowContainerMulti : ""}`}
         onScroll={isMulti ? handleCarouselScroll : undefined}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -458,17 +474,6 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                 <div
                   className={styles.webVideoContainer}
                   style={{ cursor: onMediaClick ? "pointer" : undefined }}
-                  onClick={(e) => {
-                    if (onMediaClick) {
-                      handleItemActivate(index, e);
-                    } else {
-                      e.stopPropagation();
-                      togglePlayVideo(index);
-                    }
-                  }}
-                  onPointerMove={() => showControlsTemporarily(index)}
-                  onTouchStart={() => showControlsTemporarily(index)}
-                  onMouseEnter={() => showControlsTemporarily(index)}
                 >
                   <HlsVideoPlayer
                     ref={(el) => {
@@ -485,18 +490,19 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     playsInline
                     autoPlay={isCardVisible && index === activeIndex}
                     preload={isPreloadWarm && shouldEagerLoad ? "auto" : "metadata"}
-                    muted={isMuted}
+                    muted={!isFullscreen ? true : isMuted}
                     controls={false}
                     className={styles.mediaVideo}
                     onPlay={() => {
                       setPlayingStates((prev) => ({ ...prev, [index]: true }));
-                      showControlsTemporarily(index);
+                      if (isFullscreen) showControlsTemporarily(index);
                     }}
                     onPause={() => {
                       setPlayingStates((prev) => ({ ...prev, [index]: false }));
-                      setControlsVisible((prev) => ({ ...prev, [index]: true }));
+                      if (isFullscreen) setControlsVisible((prev) => ({ ...prev, [index]: true }));
                     }}
                     onTimeUpdate={(e) => {
+                      if (!isFullscreen) return;
                       const cur = e.currentTarget.currentTime || 0;
                       setVideoCurrentTimes((prev) => {
                         if (Math.abs((prev[index] || 0) - cur) >= 0.5) {
@@ -525,19 +531,21 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     }}
                   />
 
-                  <VideoControlBar
-                    index={index}
-                    isPlaying={playingStates[index] ?? (isCardVisible && index === activeIndex)}
-                    isMuted={isMuted}
-                    isFullscreen={isFullscreen}
-                    showControls={controlsVisible[index] ?? true}
-                    videoDuration={videoDurations[index] || 0}
-                    videoCurrentTime={videoCurrentTimes[index] || 0}
-                    onTogglePlay={() => togglePlayVideo(index)}
-                    onToggleMute={onToggleMute}
-                    onToggleFullscreen={toggleFullscreen}
-                    formatVideoTime={formatVideoTime}
-                  />
+                  {isFullscreen && (
+                    <VideoControlBar
+                      index={index}
+                      isPlaying={playingStates[index] ?? (isCardVisible && index === activeIndex)}
+                      isMuted={isMuted}
+                      isFullscreen={isFullscreen}
+                      showControls={controlsVisible[index] ?? true}
+                      videoDuration={videoDurations[index] || 0}
+                      videoCurrentTime={videoCurrentTimes[index] || 0}
+                      onTogglePlay={() => togglePlayVideo(index)}
+                      onToggleMute={onToggleMute}
+                      onToggleFullscreen={toggleFullscreen}
+                      formatVideoTime={formatVideoTime}
+                    />
+                  )}
                 </div>
               ) : (
                 <img
@@ -549,7 +557,6 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                   draggable={false}
                   loading={shouldEagerLoad ? "eager" : "lazy"}
                   decoding="async"
-                  onClick={(e) => handleItemActivate(index, e)}
                   onLoad={(e) => {
                     if (index === 0 && firstUrl && !mediaAspectRatioCache.has(firstUrl)) {
                       const img = e.currentTarget;

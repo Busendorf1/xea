@@ -336,8 +336,55 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     getScrollElement: () => parentRef.current?.parentElement || null,
     estimateSize: () => 500,
     getItemKey: useCallback((index: number) => displayFeed[index]?.id || `feed-item-${index}`, [displayFeed]),
-    overscan: 5,
+    overscan: 8,
   });
+
+  // Scroll-to-Top button visibility tracking (RAF-throttled passive listener)
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const scrollEl = parentRef.current?.parentElement;
+    const target: HTMLElement | Window | null = scrollEl || (typeof window !== "undefined" ? window : null);
+    if (!target) return;
+
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const top =
+          scrollEl && scrollEl.scrollTop > 0
+            ? scrollEl.scrollTop
+            : typeof window !== "undefined"
+            ? window.scrollY || document.documentElement.scrollTop || 0
+            : 0;
+        const shouldShow = top > 360;
+        setShowScrollTop((prev) => (prev === shouldShow ? prev : shouldShow));
+      });
+    };
+
+    target.addEventListener("scroll", onScroll, { passive: true });
+    if (scrollEl && typeof window !== "undefined") {
+      window.addEventListener("scroll", onScroll, { passive: true });
+    }
+    return () => {
+      target.removeEventListener("scroll", onScroll);
+      if (scrollEl && typeof window !== "undefined") {
+        window.removeEventListener("scroll", onScroll);
+      }
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  const handleScrollToTop = useCallback(() => {
+    const scrollEl = parentRef.current?.parentElement;
+    if (scrollEl && scrollEl.scrollTop > 0) {
+      scrollEl.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
 
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -568,6 +615,29 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           {toastMessage}
         </div>
       )}
+
+      {/* Floating Scroll-to-Top Arrow at Bottom Side of Feed */}
+      <button
+        type="button"
+        onClick={handleScrollToTop}
+        className={`${styles.scrollTopBtn} ${showScrollTop ? styles.scrollTopBtnVisible : ""}`}
+        aria-label="Scroll to top (latest feed)"
+        title="Back to top"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 19V5" />
+          <path d="m5 12 7-7 7 7" />
+        </svg>
+      </button>
     </div>
   );
 };

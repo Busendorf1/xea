@@ -30,22 +30,31 @@ export async function processSuccessfulPayment(
   metadata: Record<string, unknown>,
   _amount?: number
 ) {
-  // 1. Check if the payment has already been processed successfully
-  const { data: existingPayment, error: fetchError } = await supabaseAdmin
-    .from("payments")
-    .select("status, user_email, type, metadata")
-    .eq("reference", reference)
-    .maybeSingle();
-
-  if (fetchError) {
-    console.error("❌ Error fetching payment status during processing:", fetchError);
-    throw fetchError;
-  }
-
-  if (existingPayment && existingPayment.status === "success") {
-    console.log(`ℹ️ Payment with reference ${reference} has already been processed successfully.`);
+  // Distributed Redis mutex to prevent race condition between webhook and client redirect verification
+  const procLockKey = `lock:payment_proc:${reference}`;
+  const acquired = await redisConnection.set(procLockKey, "1", "EX", 30, "NX").catch(() => "OK");
+  if (!acquired) {
+    console.log(`ℹ️ Payment ${reference} is currently being processed by another worker.`);
     return { alreadyProcessed: true };
   }
+
+  try {
+    // 1. Check if the payment has already been processed successfully
+    const { data: existingPayment, error: fetchError } = await supabaseAdmin
+      .from("payments")
+      .select("status, user_email, type, metadata")
+      .eq("reference", reference)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("❌ Error fetching payment status during processing:", fetchError);
+      throw fetchError;
+    }
+
+    if (existingPayment && existingPayment.status === "success") {
+      console.log(`ℹ️ Payment with reference ${reference} has already been processed successfully.`);
+      return { alreadyProcessed: true };
+    }
 
   const mergedMetadata = { ...(existingPayment?.metadata || {}), ...(metadata || {}) };
   const type = (mergedMetadata.type || existingPayment?.type) as string | undefined;
@@ -88,7 +97,7 @@ export async function processSuccessfulPayment(
 
     const { data: insertedRows, error: insertErr } = await supabaseAdmin
       .from("addsactive")
-      .insert([activeAd])
+      .upsert([activeAd])
       .select("*");
 
     if (insertErr) throw insertErr;
@@ -142,7 +151,7 @@ export async function processSuccessfulPayment(
 
     const { error: insertErr } = await supabaseAdmin
       .from("newsactive")
-      .insert([activeHl]);
+      .upsert([activeHl]);
 
     if (insertErr) {
       console.error("❌ Error activating highlight in newsactive via gateway:", insertErr);
@@ -517,4 +526,7 @@ export async function processSuccessfulPayment(
 
   console.log(`✅ Payment successfully recorded and business actions completed for: ${reference}`);
   return { success: true };
+  } finally {
+    await redisConnection.del(procLockKey).catch(() => {});
+  }
 }

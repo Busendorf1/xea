@@ -94,6 +94,68 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Limit reached, try again later." }, { status: 429 });
         }
       }
+    } else if (type === "publish_ad") {
+      const adId = metadata?.adId || body.adId;
+      if (!adId) {
+        return NextResponse.json({ error: "Missing adId parameter" }, { status: 400 });
+      }
+      const { data: adCheck, error: adCheckErr } = await supabaseAdmin
+        .from("adds")
+        .select("id, total_cost, admin_statement, user_email")
+        .eq("id", adId)
+        .ilike("user_email", emailLower)
+        .maybeSingle();
+
+      if (adCheckErr || !adCheck) {
+        return NextResponse.json({ error: "Campaign not found in review queue" }, { status: 404 });
+      }
+      if (!adCheck.admin_statement || !adCheck.admin_statement.startsWith("APPROVED:")) {
+        return NextResponse.json({ error: "Campaign has not been approved for publishing." }, { status: 400 });
+      }
+      const approvedTimestamp = adCheck.admin_statement.replace("APPROVED:", "").trim();
+      const approvedDate = new Date(approvedTimestamp);
+      if (!isNaN(approvedDate.getTime()) && approvedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "This approved campaign has expired (exceeded 3 days)." }, { status: 400 });
+      }
+      const expectedAdCost = Number(adCheck.total_cost || 0);
+      if (!isAdmin && Math.abs(amountNum - expectedAdCost) > 1) {
+        return NextResponse.json(
+          { error: "Cost validation mismatch. Payment amount does not match campaign configuration." },
+          { status: 400 }
+        );
+      }
+    } else if (type === "publish_highlight") {
+      const highlightId = metadata?.highlightId || body.highlightId;
+      if (!highlightId) {
+        return NextResponse.json({ error: "Missing highlightId parameter" }, { status: 400 });
+      }
+      const { data: hlCheck, error: hlCheckErr } = await supabaseAdmin
+        .from("news")
+        .select("id, campaign_days, bid_price, is_bidded, admin_statement, user_email")
+        .eq("id", highlightId)
+        .ilike("user_email", emailLower)
+        .maybeSingle();
+
+      if (hlCheckErr || !hlCheck) {
+        return NextResponse.json({ error: "Highlight not found in review queue" }, { status: 404 });
+      }
+      if (!hlCheck.admin_statement || !hlCheck.admin_statement.startsWith("APPROVED:")) {
+        return NextResponse.json({ error: "Highlight has not been approved for publishing." }, { status: 400 });
+      }
+      const approvedTimestamp = hlCheck.admin_statement.replace("APPROVED:", "").trim();
+      const approvedDate = new Date(approvedTimestamp);
+      if (!isNaN(approvedDate.getTime()) && approvedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "This approved highlight has expired (exceeded 3 days)." }, { status: 400 });
+      }
+      const days = hlCheck.campaign_days || 1;
+      const rate = hlCheck.is_bidded && hlCheck.bid_price ? Number(hlCheck.bid_price) : 1000;
+      const expectedHlCost = days * rate;
+      if (!isAdmin && Math.abs(amountNum - expectedHlCost) > 1) {
+        return NextResponse.json(
+          { error: "Cost validation mismatch for highlight campaign." },
+          { status: 400 }
+        );
+      }
     }
 
     // 2. Acquire per-user wallet mutex to prevent concurrent double-spend
@@ -224,7 +286,7 @@ export async function POST(req: NextRequest) {
 
       const { data: insertedRows, error: insertErr } = await supabaseAdmin
         .from("addsactive")
-        .insert([activeAd])
+        .upsert([activeAd])
         .select("*");
 
       if (insertErr) {
@@ -309,7 +371,7 @@ export async function POST(req: NextRequest) {
 
       const { data: insertedHlRows, error: insertErr } = await supabaseAdmin
         .from("newsactive")
-        .insert([activeHl])
+        .upsert([activeHl])
         .select("*");
 
       if (insertErr) {

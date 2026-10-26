@@ -35,11 +35,12 @@ export async function cleanupExpiredApprovedCampaigns(force: boolean = false): P
   let newsPurged = 0;
 
   try {
-    // 2. Find expired approved ads
-    // Checks both native approved_at column (if exists) and admin_statement 'APPROVED:<timestamp>'
+    // 2. Find expired approved ads (filter directly in SQL to avoid full-table scans)
     const { data: pendingAds, error: adsFetchErr } = await supabaseAdmin
       .from("adds")
-      .select("id, ad_media, ad_media_url, admin_statement, user_email, created_at");
+      .select("id, ad_media, ad_media_url, admin_statement, user_email, created_at")
+      .like("admin_statement", "APPROVED:%")
+      .limit(500);
 
     if (!adsFetchErr && pendingAds && pendingAds.length > 0) {
       const expiredAdIds: string[] = [];
@@ -81,10 +82,12 @@ export async function cleanupExpiredApprovedCampaigns(force: boolean = false): P
       }
     }
 
-    // 3. Find expired approved highlights (news)
+    // 3. Find expired approved highlights (news) — filter directly in SQL
     const { data: pendingNews, error: newsFetchErr } = await supabaseAdmin
       .from("news")
-      .select("id, image_url, admin_statement, user_email, created_at");
+      .select("id, image_url, admin_statement, user_email, created_at")
+      .like("admin_statement", "APPROVED:%")
+      .limit(500);
 
     if (!newsFetchErr && pendingNews && pendingNews.length > 0) {
       const expiredNewsIds: string[] = [];
