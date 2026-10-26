@@ -2,6 +2,8 @@ import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import ModalLandingPage from "@/components/ModalLanding/page";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const session = await auth0.getSession();
 

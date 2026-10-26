@@ -58,6 +58,20 @@ export default function ModalLandingPage() {
   const timeoutRef = useRef<number | null>(null);
   const closeTimeoutRef = useRef<number | null>(null);
 
+  // Prevent authenticated users from reaching the initial login screen via browser Back button / BFCache
+  useEffect(() => {
+    const enforceLoggedInRedirect = () => {
+      if (typeof document !== "undefined" && document.cookie.includes("paayh_active_tab=")) {
+        window.location.replace("/logged-in");
+      }
+    };
+    enforceLoggedInRedirect();
+    window.addEventListener("pageshow", enforceLoggedInRedirect);
+    return () => {
+      window.removeEventListener("pageshow", enforceLoggedInRedirect);
+    };
+  }, []);
+
   // Dynamic background aesthetic on page load / refresh / reload
   useEffect(() => {
     try {
@@ -559,7 +573,7 @@ export default function ModalLandingPage() {
                       onClick={() => {
                         if (termsAgreed && pendingAuth?.href && !isRedirecting) {
                           setIsRedirecting(true);
-                          window.location.href = pendingAuth.href;
+                          window.location.replace(pendingAuth.href);
                         }
                       }}
                       className={`${styles.termsSubmitBtn} ${isRedirecting ? styles.termsSubmitBtnLoading : ""}`}

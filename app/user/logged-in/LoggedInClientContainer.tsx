@@ -258,9 +258,9 @@ export default function LoggedInClientContainer({
         : finalTab === "myads" && isHighlights
         ? "/logged-in?view=myads&tab=highlights"
         : `/logged-in?view=${finalTab}`;
-    if (window.location.pathname + window.location.search !== targetUrl) {
-      window.history.replaceState(null, "", targetUrl);
-    }
+
+    window.history.replaceState({ paayhAuthRoot: true, tab: finalTab }, "", targetUrl);
+    window.history.pushState({ paayhAuthGuard: true, tab: finalTab }, "", targetUrl);
   };
 
   useEffect(() => {
@@ -279,7 +279,7 @@ export default function LoggedInClientContainer({
         sessionStorage.setItem("paayh_publications_subtab", "highlights");
         document.cookie = `paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax`;
         const targetUrl = "/logged-in?view=myads&tab=highlights";
-        window.history.replaceState(null, "", targetUrl);
+        window.history.replaceState({ paayhAuthGuard: true, tab: "myads" }, "", targetUrl);
         return;
       }
 
@@ -287,16 +287,34 @@ export default function LoggedInClientContainer({
         setActiveTab(targetTab as TabKey);
         document.cookie = `paayh_active_tab=${targetTab}; path=/; max-age=604800; SameSite=Lax`;
         const targetUrl = targetTab === "feed" ? "/logged-in" : `/logged-in?view=${targetTab}`;
-        window.history.replaceState(null, "", targetUrl);
+        window.history.replaceState({ paayhAuthGuard: true, tab: targetTab }, "", targetUrl);
       }
     };
 
+    const handlePopState = () => {
+      const currentTab = (sessionStorage.getItem("paayh_active_tab") as TabKey) || "feed";
+
+      // If user is on a secondary tab and clicks Back, return them smoothly to the main Feed tab
+      if (currentTab !== "feed") {
+        setActiveTab("feed");
+        sessionStorage.setItem("paayh_active_tab", "feed");
+        document.cookie = `paayh_active_tab=feed; path=/; max-age=604800; SameSite=Lax`;
+        window.history.replaceState({ paayhAuthRoot: true, tab: "feed" }, "", "/logged-in");
+        window.history.pushState({ paayhAuthGuard: true, tab: "feed" }, "", "/logged-in");
+        return;
+      }
+
+      // If user is already on the root Feed tab and clicks Back (which would otherwise lead back to the initial login point),
+      // block exiting to login and keep them anchored on /logged-in unless they explicitly click Logout.
+      window.history.pushState({ paayhAuthGuard: true, tab: "feed" }, "", "/logged-in");
+    };
+
     window.addEventListener("paayh_tab_change", handleTabChangeEvent);
-    window.addEventListener("popstate", handleTabChangeEvent);
+    window.addEventListener("popstate", handlePopState);
 
     return () => {
       window.removeEventListener("paayh_tab_change", handleTabChangeEvent);
-      window.removeEventListener("popstate", handleTabChangeEvent);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, []);
 

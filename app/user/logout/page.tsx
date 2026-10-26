@@ -34,7 +34,7 @@ export default function LogoutPage() {
         console.error("Supabase signOut error:", err);
       }
       setTimeout(() => {
-        window.location.href = "/auth/logout";
+        window.location.replace("/auth/logout");
       }, 500);
     };
 

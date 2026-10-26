@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { RotateCw, Search, Plus, ArrowUpDown, Megaphone, Sparkles } from "lucide-react";
+import { RotateCw, Search, Plus, Megaphone, Sparkles } from "lucide-react";
 import { Ad, Session } from "./types";
 import { fetchUserCampaignsShared, clearUserCampaignsCache, readUserCampaignsSyncCache } from "@/lib/campaignsClient";
 import CampaignKpiSummary from "./CampaignKpiSummary";
@@ -704,7 +704,6 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           </div>
 
           <div className={styles.sortWrapper}>
-            <ArrowUpDown size={13} className={styles.sortIcon} />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}

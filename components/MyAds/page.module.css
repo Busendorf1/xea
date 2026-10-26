@@ -80,25 +80,26 @@
   }
 }
 
-/* Thumbnail Column - Enlarged for Clear Advertiser Inspection */
+/* Thumbnail Column - Enlarged for Clear Advertiser Inspection (Indicator Outside Card, Like Feed) */
 .mediaCol {
   width: 100%;
-  height: 200px;
-  border-radius: var(--radius-inner, 12px);
-  overflow: hidden;
-  background: var(--sidebar-bg);
+  height: 215px;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
   flex-shrink: 0;
   position: relative;
-  border: 1px solid var(--card-border);
+  border: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
 }
 
 @media (min-width: 860px) {
   .mediaCol {
-    width: 250px;
-    height: 165px;
+    width: 260px;
+    height: 185px;
   }
 }
 
@@ -185,6 +186,8 @@
   width: 100%;
   height: 100%;
   background: var(--primary-glow);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -195,6 +198,7 @@
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  box-sizing: border-box;
 }
 
 /* Middle Info Column */
@@ -951,13 +955,9 @@
     border-radius: 6px;
   }
 
-  .sortIcon {
-    left: 12px;
-  }
-
   .sortSelect {
     height: 36px;
-    padding: 0 14px 0 38px !important;
+    padding: 0 14px !important;
     font-size: 0.78rem;
   }
 }
@@ -1223,7 +1223,7 @@
   height: 100%;
   position: relative;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .carouselTrack {
@@ -1259,7 +1259,9 @@
 .carouselSlide {
   height: 100%;
   flex-shrink: 0;
-  border-radius: 10px;
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background-color: var(--sidebar-bg);
   overflow: hidden;
   position: relative;
   box-sizing: border-box;
@@ -1271,15 +1273,14 @@
   width: 100%;
   min-width: 100%;
   max-width: 100%;
-  scroll-snap-align: center;
+  scroll-snap-align: start;
 }
 
 .carouselSlideMulti {
-  flex: 0 0 86%;
-  width: 86%;
-  min-width: 86%;
-  max-width: 86%;
-  border: 1px solid var(--card-border);
+  flex: 0 0 78%;
+  width: 78%;
+  min-width: 78%;
+  max-width: 78%;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
@@ -2103,7 +2104,7 @@
 
 .sortSelect {
   height: 36px;
-  padding: 0 14px 0 36px;
+  padding: 0 14px;
   border-radius: 8px;
   border: 1px solid var(--card-border);
   background: var(--sidebar-bg);
@@ -2551,7 +2552,7 @@
   justify-content: flex-start;
   gap: 4px;
   pointer-events: auto;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
   padding: 0;
   background: transparent;
   flex-shrink: 0;
@@ -2562,13 +2563,14 @@
   border: none;
   padding: 0;
   margin: 0;
-  width: clamp(13px, 3.8vw, 20px);
+  width: clamp(14px, 4vw, 22px);
   height: 2px;
   border-radius: 999px;
   background-color: rgba(244, 244, 238, 0.22);
   cursor: pointer;
   transition: width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    background-color 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
 }
 
 .topLineSegment:hover {
@@ -2576,7 +2578,7 @@
 }
 
 .topLineSegmentActive {
-  width: clamp(20px, 5.6vw, 28px);
+  width: clamp(22px, 6vw, 32px);
   background-color: rgba(244, 244, 238, 0.65);
 }
 
@@ -2626,4 +2628,14 @@
   height: 2.5px;
   background-color: rgba(248, 250, 252, 0.72) !important;
   box-shadow: none;
+}
+
+.lightboxVideoPlayerWrap {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

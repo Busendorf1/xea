@@ -482,11 +482,13 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(activeUrl);
                   if (isVid) {
                     return (
-                      <FullscreenVideoPlayer
-                        key={`myads-fs-${activeUrl}`}
-                        src={activeUrl}
-                        autoPlay={true}
-                      />
+                      <div className={styles.lightboxVideoPlayerWrap} onClick={(e) => e.stopPropagation()}>
+                        <FullscreenVideoPlayer
+                          key={`myads-fs-${activeUrl}`}
+                          src={activeUrl}
+                          autoPlay={true}
+                        />
+                      </div>
                     );
                   }
                   return (
