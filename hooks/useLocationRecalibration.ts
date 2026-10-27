@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { detectGpsLocation } from "@/lib/utils/locationHelper";
+import { detectGpsLocation, recordWebGpsProofVerified } from "@/lib/utils/locationHelper";
 
 interface UseLocationRecalibrationOptions {
   userCountry?: string;
@@ -40,6 +40,16 @@ export function useLocationRecalibration({
         localStorage.setItem("paayh_last_geo_recalibrate", String(Date.now()));
 
         if (!res.country) return;
+
+        if (res.source === "gps") {
+          recordWebGpsProofVerified(undefined, {
+            country: res.country,
+            state: res.state,
+            location: res.location,
+            latitude: res.latitude,
+            longitude: res.longitude,
+          });
+        }
 
         const normCurrentCountry = (userCountry || "").trim().toLowerCase();
         const normCurrentState = (userState || "").trim().toLowerCase();

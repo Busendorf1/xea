@@ -3,7 +3,11 @@
 import React, { useState, useEffect } from "react";
 import { MapPin, X, AlertCircle, Plus, Navigation, Check } from "lucide-react";
 import { countryList, locationData } from "@/lib/utils/locations";
-import { detectGpsLocation } from "@/lib/utils/locationHelper";
+import {
+  detectGpsLocation,
+  markWebManualLocationSelected,
+  recordWebGpsProofVerified,
+} from "@/lib/utils/locationHelper";
 import CustomSelect from "@/components/ui/CustomSelect";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./LocationSelector.module.css";
@@ -68,9 +72,21 @@ export default function LocationSelector({
       if (res.country) {
         onChange({ country: res.country, state: res.state, location: res.location });
         setGpsStatus("success");
+        if (res.source === "gps") {
+          recordWebGpsProofVerified(undefined, {
+            country: res.country,
+            state: res.state,
+            location: res.location,
+            latitude: res.latitude,
+            longitude: res.longitude,
+          });
+        } else {
+          markWebManualLocationSelected();
+        }
       } else {
         setManualFallback(true);
         setGpsStatus("error");
+        markWebManualLocationSelected();
       }
     }
   };
@@ -105,6 +121,7 @@ export default function LocationSelector({
   ];
 
   const handleCountryChange = (val: string) => {
+    if (gpsEnforced) markWebManualLocationSelected();
     if (val === "Other") {
       onChange({ country: "", state: "", location: "" });
     } else {
@@ -113,6 +130,7 @@ export default function LocationSelector({
   };
 
   const handleStateChange = (val: string) => {
+    if (gpsEnforced) markWebManualLocationSelected();
     if (val === "Other") {
       onChange({ country, state: "", location: "", multiLocations });
     } else {
@@ -121,6 +139,7 @@ export default function LocationSelector({
   };
 
   const handleCityChange = (val: string) => {
+    if (gpsEnforced) markWebManualLocationSelected();
     if (val === "Other") {
       onChange({ country, state, location: "", multiLocations });
     } else {
@@ -192,6 +211,35 @@ export default function LocationSelector({
             </div>
           </div>
 
+          {/* Manual fallback toggle link */}
+          {!disabled && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextManual = !manualFallback;
+                setManualFallback(nextManual);
+                if (nextManual) {
+                  markWebManualLocationSelected();
+                }
+              }}
+              style={{
+                marginTop: 8,
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--accent, #1d9bf0)",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              {manualFallback
+                ? "Hide manual location selector"
+                : "Prefer not to auto-detect? Select location manually (Proof of Location required)"}
+            </button>
+          )}
+
           {/* Hidden inputs to preserve form submission values without occupying 3 columns */}
           <input type="hidden" name="country" value={country} />
           <input type="hidden" name="state" value={state} />
@@ -199,7 +247,7 @@ export default function LocationSelector({
         </div>
       )}
 
-      {showFields && !gpsEnforced && (
+      {showFields && (!gpsEnforced || manualFallback) && (
         <>
           {/* Standard Manual Selectors for Advertisers on /adPage */}
           {/* Country Select */}

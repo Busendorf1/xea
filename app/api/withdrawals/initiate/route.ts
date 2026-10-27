@@ -140,8 +140,17 @@ export async function POST(req: NextRequest) {
       p_is_admin: isAdmin,
     });
 
-    if (atomicErr || !atomicResult) {
-      console.warn("⚠️ initiate_atomic_withdrawal RPC not active or failed, using strict OCC fallback:", atomicErr?.message);
+    const isRpcSchemaMismatch =
+      atomicResult?.success === false &&
+      /column .* does not exist|bvn_hash|bvn|function .* does not exist|relation .* does not exist/i.test(
+        String(atomicResult?.error || "")
+      );
+
+    if (atomicErr || !atomicResult || isRpcSchemaMismatch) {
+      console.warn(
+        "⚠️ initiate_atomic_withdrawal RPC unavailable or schema mismatch, using strict OCC fallback:",
+        atomicErr?.message || atomicResult?.error
+      );
       const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
         .from("users")
         .update({
@@ -150,7 +159,7 @@ export async function POST(req: NextRequest) {
         })
         .eq("email", emailLower)
         .eq("balance", currentBalance)
-        .select();
+        .select("id, email, balance, withdrawal");
 
       if (userUpdateErr || !updatedUser || updatedUser.length === 0) {
         console.error("❌ OCC check failed during withdrawal balance deduction:", userUpdateErr);

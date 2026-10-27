@@ -2072,13 +2072,27 @@ img.avatarImg {
     max-width: calc(100vw - 24px);
     max-height: 82dvh;
     border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: none !important;
+    box-shadow: none !important;
     background-color: #0b0e14;
     animation: lightboxDialogZoomIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .lightboxDialogExiting {
     animation: lightboxDialogZoomOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
+  }
+
+  .lightboxTopBar,
+  .lightboxBottomBar,
+  .lightboxIconBtn,
+  .lightboxSlideCounter,
+  .lightboxMenuContainer,
+  .lightboxNavArrow,
+  .lightboxActionBtn {
+    border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
   }
 }
 
@@ -2349,12 +2363,24 @@ img.avatarImg {
     max-width: 100vw;
     max-height: 100dvh;
     border-radius: 0;
-    border: none;
+    border: none !important;
+    box-shadow: none !important;
     animation: lightboxMobileIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .textReaderDialogExiting {
     animation: lightboxMobileOut 0.22s cubic-bezier(0.2, 0, 0, 1) forwards !important;
+  }
+
+  .textReaderTopBar,
+  .textReaderDialog .lightboxBottomBar,
+  .textReaderDialog .lightboxActionBtn,
+  .textReaderDialog .lightboxIconBtn,
+  .textReaderDialog .lightboxMenuContainer {
+    border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
   }
 }
 

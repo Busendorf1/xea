@@ -292,4 +292,11 @@
   .timeDisplay {
     font-size: 0.72rem;
   }
+  .centerPlayBtn,
+  .speedBadgeBtn,
+  .speedMenu,
+  .progressScrubberHead {
+    border: none !important;
+    box-shadow: none !important;
+  }
 }

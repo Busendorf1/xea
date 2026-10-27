@@ -12,6 +12,7 @@ const recalibrateSchema = z.object({
   state: z.string().trim().max(100).default(""),
   location: z.string().trim().max(100).default(""),
   source: z.enum(["gps", "ip"]).optional().default("gps"),
+  proofOfLocationAgreed: z.boolean().optional().default(false),
 });
 
 export async function POST(req: NextRequest) {
@@ -22,10 +23,20 @@ export async function POST(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
+    const body = await req.json().catch(() => ({}));
+    const parseResult = recalibrateSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Invalid location parameters", details: parseResult.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { country, state, location, source, proofOfLocationAgreed } = parseResult.data;
 
     // 1. Rate-limiting guard: strictly enforce once-a-day recalibration (24 hours = 86400 seconds)
-    // Absorbs high traffic bursts in Redis (<0.2ms) without executing a single database query.
-    if (isRedisReady()) {
+    // unless explicit Proof of Location GPS authentication is being enforced.
+    if (isRedisReady() && !proofOfLocationAgreed) {
       try {
         const rateLimitKey = `ratelimit:recalibrate:${emailLower}`;
         const alreadyChecked = await redisConnection.get(rateLimitKey);
@@ -39,17 +50,6 @@ export async function POST(req: NextRequest) {
         console.warn("⚠️ Rate-limit check warning:", err?.message || err);
       }
     }
-
-    const body = await req.json().catch(() => ({}));
-    const parseResult = recalibrateSchema.safeParse(body);
-    if (!parseResult.success) {
-      return NextResponse.json(
-        { error: "Invalid location parameters", details: parseResult.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const { country, state, location, source } = parseResult.data;
 
     // 2. Fetch current profile location from Supabase
     const { data: userProfile, error: fetchErr } = await supabaseAdmin

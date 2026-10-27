@@ -12,6 +12,8 @@ import CustomSelect from "@/components/ui/CustomSelect";
 import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import FormStepProgress from "@/components/ui/FormStepProgress";
 import FairAttentionModal from "@/components/ui/FairAttentionModal";
+import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
+import { MANUAL_LOCATION_PENDING_KEY } from "@/lib/utils/locationHelper";
 
 import {
   ALL_INDUSTRIES as industries,
@@ -121,6 +123,7 @@ export default function Update({ email }: Props) {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [goodwillAgreed, setGoodwillAgreed] = useState<boolean>(false);
   const [termsError, setTermsError] = useState<string | null>(null);
+  const [showProofOfLocationModal, setShowProofOfLocationModal] = useState<boolean>(false);
   const router = useRouter();
 
   const toggleDropdown = (key: keyof typeof openDropdowns) => {
@@ -165,6 +168,14 @@ export default function Update({ email }: Props) {
 
   const handleNextStep = () => {
     if (validateStep(currentStep)) {
+      if (
+        currentStep === 0 &&
+        typeof window !== "undefined" &&
+        localStorage.getItem(MANUAL_LOCATION_PENDING_KEY) === "true"
+      ) {
+        setShowProofOfLocationModal(true);
+        return;
+      }
       setCurrentStep((prev) => Math.min(steps.length - 1, prev + 1));
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -969,6 +980,28 @@ export default function Update({ email }: Props) {
           </motion.button>
         )}
       </div>
+
+      <ProofOfLocationModal
+        email={email || dbProfile?.email}
+        user={{
+          country: formData.country || dbProfile?.country,
+          state: formData.state || dbProfile?.state,
+          location: formData.location || dbProfile?.location,
+        }}
+        autoCheck={false}
+        forceOpen={showProofOfLocationModal}
+        onVerified={(verifiedLoc) => {
+          setFormData((prev) => ({
+            ...prev,
+            country: verifiedLoc.country,
+            state: verifiedLoc.state,
+            location: verifiedLoc.location,
+          }));
+          setShowProofOfLocationModal(false);
+          setCurrentStep(1);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
     </div>
   );
 }

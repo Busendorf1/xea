@@ -8,6 +8,7 @@ import Footer from "@/components/Footer/page";
 import myAdsStyles from "../myads/page.module.css";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
+import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
 
 // Clean Spinner Component for Dynamic Loading (Zero Text)
 const SimpleLoader = () => (
@@ -399,19 +400,29 @@ export default function LoggedInClientContainer({
 
   if (activeTab === "feed") {
     return (
-      <DashboardClient 
-        user={user} 
-        parsedInterest={parsedInterest} 
-        email={email || session?.user?.email} 
-        initialAds={initialAds}
-        initialProfiles={initialProfiles}
-        initialHighlights={initialHighlights}
-      />
+      <>
+        <ProofOfLocationModal
+          email={email || session?.user?.email}
+          user={user}
+        />
+        <DashboardClient 
+          user={user} 
+          parsedInterest={parsedInterest} 
+          email={email || session?.user?.email} 
+          initialAds={initialAds}
+          initialProfiles={initialProfiles}
+          initialHighlights={initialHighlights}
+        />
+      </>
     );
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
+      <ProofOfLocationModal
+        email={email || session?.user?.email}
+        user={user}
+      />
       <HeaderJoin />
 
       {/* Main Dynamic View Content: Keep adPage form state alive if visited; unmount polling tabs when inactive */}
