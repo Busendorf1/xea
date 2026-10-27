@@ -211,8 +211,6 @@ export default function ProofOfLocationModal({
 
   if (!visible) return null;
 
-  const hasSavedRegion = Boolean(user?.country || user?.state || user?.location);
-
   return (
     <div
       className={styles.overlay}
@@ -221,59 +219,18 @@ export default function ProofOfLocationModal({
       aria-labelledby="proof-of-location-title"
     >
       <div className={styles.card}>
-        <div className={styles.iconRow}>
+        <div className={styles.headerRow}>
           <div className={styles.iconBadge}>
-            <ShieldCheck size={24} />
+            <ShieldCheck size={20} />
           </div>
-          <div className={styles.requiredPill}>
-            <Lock size={11} />
-            <span>Verification Required</span>
-          </div>
+          <h2 id="proof-of-location-title" className={styles.title}>
+            Proof of Location
+          </h2>
         </div>
-
-        <h2 id="proof-of-location-title" className={styles.title}>
-          Proof of Location Required
-        </h2>
 
         <p className={styles.subtitle}>
-          To prevent location fraud in ad delivery and attention payouts, Paayh requires GPS{" "}
-          <strong>Proof of Location</strong> so advertisers reach genuine people in their targeted
-          region.
+          GPS verification is required to ensure ads reach genuine people in their targeted region and keep payouts fair.
         </p>
-
-        {hasSavedRegion && (
-          <div className={styles.currentRegionBox}>
-            <MapPin size={14} color="#f59e0b" />
-            <span>
-              Selected Region:{" "}
-              <span className={styles.currentRegionValue}>
-                {[user?.location, user?.state, user?.country].filter(Boolean).join(", ")}
-              </span>
-            </span>
-          </div>
-        )}
-
-        <div className={styles.whyBox}>
-          <div className={styles.whyItem}>
-            <span className={styles.whyDot} />
-            <span>
-              Confirm your physical presence via browser/device GPS — even if you selected your
-              region manually.
-            </span>
-          </div>
-          <div className={styles.whyItem}>
-            <span className={styles.whyDot} />
-            <span>
-              Ensures fair ad delivery and accurate payouts for both viewers and advertisers.
-            </span>
-          </div>
-          <div className={styles.whyItem}>
-            <span className={styles.whyDot} />
-            <span>
-              You must agree and grant GPS verification below to move ahead on Paayh.
-            </span>
-          </div>
-        </div>
 
         <button
           type="button"
@@ -287,23 +244,21 @@ export default function ProofOfLocationModal({
             {agreed && <Check size={13} strokeWidth={3} />}
           </span>
           <span className={styles.agreementText}>
-            I agree to the <strong>Proof of Location</strong> terms and authorize Paayh to
-            authenticate my genuine physical location via GPS to prevent ad delivery and payment
-            fraud.
+            I agree to verify my location with GPS to continue.
           </span>
         </button>
 
         {errorMsg && (
           <div className={styles.errorBox}>
-            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {detectedSummary && !errorMsg && (
           <div className={styles.successBox}>
-            <Check size={15} />
-            <span>Verified GPS: {detectedSummary}</span>
+            <Check size={14} />
+            <span>Verified: {detectedSummary}</span>
           </div>
         )}
 
@@ -316,22 +271,22 @@ export default function ProofOfLocationModal({
           {authenticating ? (
             <>
               <AppleSpinner size={16} />
-              <span>Authenticating GPS...</span>
+              <span>Verifying GPS...</span>
             </>
           ) : (
             <>
-              <Navigation size={16} />
-              <span>Agree &amp; Authenticate with GPS</span>
+              <Navigation size={15} />
+              <span>Continue</span>
             </>
           )}
         </button>
 
         <div className={styles.footerRow}>
           <span className={styles.footerNote}>
-            Cannot continue until GPS Proof of Location is granted
+            Required to continue on Paayh
           </span>
           <a href="/auth/logout" className={styles.logoutLink}>
-            <LogOut size={13} />
+            <LogOut size={12} />
             <span>Sign Out</span>
           </a>
         </div>
