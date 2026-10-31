@@ -29,13 +29,15 @@ export default function LogoutPage() {
           } catch {}
           document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         }
-        await supabase.auth.signOut(); // Clear Supabase session
+        // Bound Supabase signOut to 600ms max so slow network never blocks Auth0 logout redirect
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((resolve) => setTimeout(resolve, 600)),
+        ]);
       } catch (err) {
         console.error("Supabase signOut error:", err);
       }
-      setTimeout(() => {
-        window.location.replace("/auth/logout");
-      }, 500);
+      window.location.replace("/auth/logout");
     };
 
     logout();

@@ -58,7 +58,20 @@ export default function CampaignSpecsDrawer({
   const websiteClicks = ad.clicks_website || 0;
   const emailClicks = ad.clicks_email || 0;
   const productCtaClicks = ad.clicks_product_cta || 0;
-  const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productCtaClicks;
+  const iosClicks = ad.clicks_ios || 0;
+  const androidClicks = ad.clicks_android || 0;
+  const watchNowClicks = ad.clicks_watch_now || 0;
+  const readMoreClicks = ad.clicks_read_more || 0;
+  const clicksCount =
+    phoneClicks +
+    whatsappClicks +
+    websiteClicks +
+    emailClicks +
+    productCtaClicks +
+    iosClicks +
+    androidClicks +
+    watchNowClicks +
+    readMoreClicks;
 
   return (
     <AnimatePresence>
@@ -339,6 +352,26 @@ export default function CampaignSpecsDrawer({
                 {emailClicks > 0 ? (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                     <Mail size={13} /> Email: <strong>{emailClicks}</strong>
+                  </span>
+                ) : null}
+                {iosClicks > 0 ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <Globe size={13} /> iOS App: <strong>{iosClicks}</strong>
+                  </span>
+                ) : null}
+                {androidClicks > 0 ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <Globe size={13} /> Android App: <strong>{androidClicks}</strong>
+                  </span>
+                ) : null}
+                {watchNowClicks > 0 ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <Globe size={13} /> Watch Now: <strong>{watchNowClicks}</strong>
+                  </span>
+                ) : null}
+                {readMoreClicks > 0 ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <Globe size={13} /> Read More: <strong>{readMoreClicks}</strong>
                   </span>
                 ) : null}
               </div>

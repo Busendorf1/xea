@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import { feedQueue } from "@/lib/queue";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { streamImpressionsToClickHouse } from "@/lib/clickhouse";
-import { incrementCachedMonetizationClicks, invalidateCachedProfile } from "@/lib/utils/cache";
+import {
+  incrementCachedMonetizationClicks,
+  invalidateCachedProfile,
+  invalidateCachedUserCampaigns,
+} from "@/lib/utils/cache";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { getEarnTokenSecret } from "@/lib/targetingEngine";
 import { env } from "@/lib/env";
+import { recordCoalescedAdSeen } from "@/lib/impressionBuffer";
 
 export const dynamic = "force-dynamic";
+
+// L1 In-Memory deduplication & pacing lock when Redis is in circuit-breaker cooldown
+const l1SeenLocks = new Map<string, number>();
+const l1PaceLocks = new Map<string, number>();
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,12 +75,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // L1 In-Memory Anti-Bot Pacing & Deduplication Lock
+    const l1SeenKey = `${emailKey}:${adId}`;
+    const existingSeenExpiry = l1SeenLocks.get(l1SeenKey);
+    const existingPaceExpiry = l1PaceLocks.get(emailKey);
+    if ((existingSeenExpiry && existingSeenExpiry > now) || (existingPaceExpiry && existingPaceExpiry > now)) {
+      return NextResponse.json({ success: true, duplicate: true });
+    }
+    l1SeenLocks.set(l1SeenKey, now + 5000);
+    l1PaceLocks.set(emailKey, now + 9000);
+    if (l1SeenLocks.size > 5000) {
+      for (const [k, exp] of l1SeenLocks) {
+        if (exp <= now) l1SeenLocks.delete(k);
+      }
+    }
+    if (l1PaceLocks.size > 5000) {
+      for (const [k, exp] of l1PaceLocks) {
+        if (exp <= now) l1PaceLocks.delete(k);
+      }
+    }
+
     // 3. Server-side Anti-Bot Pacing Lock, Token Burn & Atomic Frequency Cap Enforcement
     const todayDate = nowIso.slice(0, 10);
     let userCap = 1;
     let isPlatformPost = false;
     let checkedFromCache = false;
     let currentLifetimeViews = 0;
+    let adOwnerEmail: string | null = null;
+    let adCpi = 0;
 
     if (isRedisReady()) {
       try {
@@ -104,6 +134,8 @@ export async function POST(request: NextRequest) {
           try {
             const parsed = JSON.parse(cached);
             userCap = Math.max(1, Number(parsed.user_frequency_cap || 1));
+            adOwnerEmail = parsed.user_email || parsed.email || null;
+            adCpi = Number(parsed.cost_per_impression || 0);
             isPlatformPost = Boolean(
               parsed.is_admin_post ||
               !parsed.cost_per_impression ||
@@ -114,7 +146,38 @@ export async function POST(request: NextRequest) {
             checkedFromCache = true;
           } catch {}
         }
+      } catch {}
+    }
 
+    // Resolve ad metadata BEFORE evaluating frequency cap when cache misses
+    let dbImpressionsTarget = 0;
+    let dbImpressionCount = 0;
+    if (!checkedFromCache) {
+      try {
+        const { data: adRow } = await supabaseAdmin
+          .from("addsactive")
+          .select("is_admin_post, cost_per_impression, impressions, impression_count, user_frequency_cap, user_email")
+          .eq("id", adId)
+          .maybeSingle();
+        if (adRow) {
+          userCap = Math.max(1, Number(adRow.user_frequency_cap || 1));
+          adOwnerEmail = adRow.user_email || null;
+          adCpi = Number(adRow.cost_per_impression || 0);
+          dbImpressionsTarget = Number(adRow.impressions || 0);
+          dbImpressionCount = Number(adRow.impression_count || 0);
+          isPlatformPost = Boolean(
+            adRow.is_admin_post ||
+            !adRow.cost_per_impression ||
+            Number(adRow.cost_per_impression) <= 0 ||
+            !adRow.impressions ||
+            Number(adRow.impressions) <= 0
+          );
+        }
+      } catch {}
+    }
+
+    if (isRedisReady()) {
+      try {
         // Hard frequency cap check: prevent bots from farming clicks on the same adId after cap is reached
         if (currentLifetimeViews >= userCap) {
           await redisConnection.sadd(`seen:ads:${emailKey}`, adId).catch(() => {});
@@ -145,59 +208,48 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    if (!checkedFromCache) {
-      try {
-        const { data: adRow } = await supabaseAdmin
-          .from("addsactive")
-          .select("is_admin_post, cost_per_impression, impressions, user_frequency_cap")
-          .eq("id", adId)
-          .maybeSingle();
-        if (adRow) {
-          userCap = Math.max(1, Number(adRow.user_frequency_cap || 1));
-          isPlatformPost = Boolean(
-            adRow.is_admin_post ||
-            !adRow.cost_per_impression ||
-            Number(adRow.cost_per_impression) <= 0 ||
-            !adRow.impressions ||
-            Number(adRow.impressions) <= 0
-          );
-        }
-      } catch {}
-    }
+    // Extract client device type and geo headers for ClickHouse telemetry
+    const ua = request.headers.get("user-agent") || "";
+    const deviceType = /Mobile|Android|iP(hone|od|ad)/i.test(ua) ? "mobile" : "desktop";
+    const geoCountry =
+      request.headers.get("x-vercel-ip-country") ||
+      request.headers.get("cf-ipcountry") ||
+      "Global";
 
-    // Run BullMQ worker enqueue and click progress increment concurrently
-    let queuedToWorker = false;
+    // Run single atomic DB impression record and click progress increment concurrently
     let clicksCount: number | undefined;
     let isMonetized: boolean | undefined;
 
     await Promise.all([
       (async () => {
-        // Always record seen in Postgres immediately so campaign delivery metrics are 100% real-time
+        // Record seen in Postgres via Hot-Row Coalescing Write-Behind Batcher (0ms on idle, batched on viral burst)
         try {
-          await supabaseAdmin.rpc("record_ad_seen", {
-            p_ad_id: adId,
-            p_user_email: emailKey,
-          });
+          await Promise.all([
+            recordCoalescedAdSeen(adId, emailKey, {
+              userCap,
+              isPlatformPost,
+              adOwnerEmail,
+              dbImpressionsTarget,
+              dbImpressionCount,
+            }),
+            supabaseAdmin.rpc("qualify_referral_on_interaction", {
+              p_referee_email: emailKey,
+            }),
+          ]);
         } catch {}
 
-        if (isRedisReady()) {
-          try {
-            await feedQueue.add("seen-click", {
-              adId,
-              email: emailKey,
-              type: "seen",
-            });
-            queuedToWorker = true;
-            return;
-          } catch {}
+        if (adOwnerEmail) {
+          invalidateCachedUserCampaigns(adOwnerEmail).catch(() => {});
         }
 
         streamImpressionsToClickHouse([
           {
             ad_id: adId,
             user_email: emailKey,
-            cost_per_impression: 0,
+            cost_per_impression: adCpi,
             interaction_type: "view",
+            device_type: deviceType,
+            country: geoCountry,
           },
         ]).catch(() => {});
       })(),
@@ -220,15 +272,13 @@ export async function POST(request: NextRequest) {
           isMonetized = liveVal >= 300;
         }
 
-        if (isRedisReady()) {
-          invalidateCachedProfile(emailKey).catch(() => {});
-        }
+        invalidateCachedProfile(emailKey).catch(() => {});
       })(),
     ]);
 
     return NextResponse.json({
       success: true,
-      queued: queuedToWorker,
+      queued: false,
       clicksCount,
       isMonetized,
     });

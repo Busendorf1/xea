@@ -251,13 +251,26 @@ function MyAdCard({
   }
   const seenCount = ad.impression_count ?? 0;
 
-  // Calculate click tracking counters
+  // Calculate click tracking counters across all 9 canonical click columns
   const phoneClicks = ad.clicks_phone ?? 0;
   const whatsappClicks = ad.clicks_whatsapp ?? 0;
   const websiteClicks = ad.clicks_website ?? 0;
   const emailClicks = ad.clicks_email ?? 0;
   const productCtaClicks = ad.clicks_product_cta ?? 0;
-  const clicksCount = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productCtaClicks;
+  const iosClicks = ad.clicks_ios ?? 0;
+  const androidClicks = ad.clicks_android ?? 0;
+  const watchNowClicks = ad.clicks_watch_now ?? 0;
+  const readMoreClicks = ad.clicks_read_more ?? 0;
+  const clicksCount =
+    phoneClicks +
+    whatsappClicks +
+    websiteClicks +
+    emailClicks +
+    productCtaClicks +
+    iosClicks +
+    androidClicks +
+    watchNowClicks +
+    readMoreClicks;
   const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
 
   // Parse all targeting dimensions
@@ -480,6 +493,26 @@ function MyAdCard({
             {productCtaClicks > 0 && (
               <span className={styles.ctaClickItem}>
                 Product: <strong>{productCtaClicks}</strong>
+              </span>
+            )}
+            {iosClicks > 0 && (
+              <span className={styles.ctaClickItem}>
+                iOS: <strong>{iosClicks}</strong>
+              </span>
+            )}
+            {androidClicks > 0 && (
+              <span className={styles.ctaClickItem}>
+                Android: <strong>{androidClicks}</strong>
+              </span>
+            )}
+            {watchNowClicks > 0 && (
+              <span className={styles.ctaClickItem}>
+                Watch: <strong>{watchNowClicks}</strong>
+              </span>
+            )}
+            {readMoreClicks > 0 && (
+              <span className={styles.ctaClickItem}>
+                Read More: <strong>{readMoreClicks}</strong>
               </span>
             )}
           </div>

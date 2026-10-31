@@ -40,17 +40,12 @@ function readFeedClientCache(email?: string): { ads: Ad[]; profiles: Record<stri
 }
 
 const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialHighlights, onEarnSuccess, onMutualSuccess }: FeedProps) => {
-  const [clientCache] = useState(() =>
-    !initialAds || initialAds.length === 0 ? readFeedClientCache(userEmail) : null
-  );
-
   const [ads, setAds] = useState<Ad[]>(() => {
     if (initialAds && initialAds.length > 0) return initialAds;
-    return clientCache?.ads || [];
+    return [];
   });
   const [loading, setLoading] = useState<boolean>(() => {
     if (initialAds && initialAds.length > 0) return false;
-    if (clientCache?.ads && clientCache.ads.length > 0) return false;
     return true;
   });
   const [error, setError] = useState(false);
@@ -76,13 +71,14 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     >
   >(() => {
     if (initialProfiles && Object.keys(initialProfiles).length > 0) return initialProfiles;
-    return clientCache?.profiles || {};
+    return {};
   });
   const [isMobile, setIsMobile] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasAdsRef = useRef<boolean>(ads.length > 0);
   hasAdsRef.current = ads.length > 0;
+  const inFlightFeedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const handleGlobalToast = (e: Event) => {
@@ -180,6 +176,13 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   // Paginated Feed Fetcher
   const fetchRelevantAds = useCallback(
     async (pageNum: number, isLoadMore = false, isSilentRefresh = false) => {
+      const isExplicitRefresh = typeof window !== "undefined" && (window as any).__xea_force_refresh === true;
+      const requestKey = `${userEmail || ""}:${pageNum}:${isExplicitRefresh ? "refresh" : "std"}`;
+      if (!isExplicitRefresh && inFlightFeedKeyRef.current === requestKey) {
+        return;
+      }
+      inFlightFeedKeyRef.current = requestKey;
+
       if (isLoadMore) {
         setLoadingMore(true);
       } else {
@@ -205,7 +208,6 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
         const LIMIT = 10;
         const offset = pageNum * LIMIT;
-        const isExplicitRefresh = (window as any).__xea_force_refresh === true;
         if (isExplicitRefresh && typeof window !== "undefined") {
           delete (window as any).__xea_force_refresh;
         }
@@ -278,6 +280,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           setError(true);
         }
       } finally {
+        if (inFlightFeedKeyRef.current === requestKey) {
+          inFlightFeedKeyRef.current = null;
+        }
         setLoading(false);
         setLoadingMore(false);
       }
@@ -303,11 +308,19 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
   useEffect(() => {
     if (!initialAds || initialAds.length === 0) {
-      // If we hydrated synchronously from sessionStorage, revalidate silently in the background without spinner
-      const hasWarmClientCache = Boolean(clientCache?.ads && clientCache.ads.length > 0);
+      // Hydrate from sessionStorage after mount (preserving 100% SSR/Client hydration parity)
+      const cached = readFeedClientCache(userEmail);
+      const hasWarmClientCache = Boolean(cached?.ads && cached.ads.length > 0);
+      if (hasWarmClientCache && cached) {
+        setAds(cached.ads);
+        if (cached.profiles && Object.keys(cached.profiles).length > 0) {
+          setAdvertiserProfiles((prev) => ({ ...prev, ...cached.profiles }));
+        }
+        setLoading(false);
+      }
       fetchRelevantAds(0, false, hasWarmClientCache);
     }
-  }, [fetchRelevantAds, initialAds, clientCache]);
+  }, [fetchRelevantAds, initialAds, userEmail]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore) return;
@@ -338,6 +351,10 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     getItemKey: useCallback((index: number) => displayFeed[index]?.id || `feed-item-${index}`, [displayFeed]),
     overscan: 8,
   });
+
+  // Compensate scroll offset only when an item strictly above the viewport resizes
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
+    item.start < (instance.scrollOffset ?? 0);
 
   // Scroll-to-Top button visibility tracking (RAF-throttled passive listener)
   const [showScrollTop, setShowScrollTop] = useState(false);

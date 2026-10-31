@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
 import { KoraService } from "@/lib/payment/kora";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
+const l1WithdrawalMutex = new Map<string, number>();
 
 function isTerminalBankAccountError(msg: string): boolean {
   const m = (msg || "").toLowerCase();
@@ -33,17 +34,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 0. Atomic In-Flight Mutex (Prevents concurrent double-click race conditions)
-    const lockKey = `withdrawal:mutex:${email.toLowerCase()}`;
-    let lockAcquired = false;
-    try {
-      lockAcquired = !!(await redisConnection.set(lockKey, "LOCKED", "EX", 5, "NX"));
-    } catch {
-      lockAcquired = true; // Fallback if Redis is down
+    // 0. Atomic In-Flight Mutex (Prevents concurrent double-click race conditions, resilient to Redis quota cooldown)
+    const emailClean = email.toLowerCase().trim();
+    const nowMs = Date.now();
+    const existingL1Lock = l1WithdrawalMutex.get(emailClean);
+    if (existingL1Lock && existingL1Lock > nowMs) {
+      return NextResponse.json(
+        { error: "A withdrawal request is already processing for this account. Please wait a moment." },
+        { status: 429 }
+      );
+    }
+    l1WithdrawalMutex.set(emailClean, nowMs + 5000);
+    if (l1WithdrawalMutex.size > 2000) {
+      for (const [k, exp] of l1WithdrawalMutex) {
+        if (exp <= nowMs) l1WithdrawalMutex.delete(k);
+      }
     }
 
-    if (!lockAcquired) {
-      return NextResponse.json({ error: "A withdrawal request is already processing for this account. Please wait a moment." }, { status: 429 });
+    if (isRedisReady()) {
+      const lockKey = `withdrawal:mutex:${emailClean}`;
+      try {
+        const res = await redisConnection.set(lockKey, "LOCKED", "EX", 5, "NX");
+        if (res === null && isRedisReady()) {
+          return NextResponse.json(
+            { error: "A withdrawal request is already processing for this account. Please wait a moment." },
+            { status: 429 }
+          );
+        }
+      } catch {}
     }
 
     const body = await req.json();

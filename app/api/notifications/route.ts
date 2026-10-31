@@ -2,24 +2,95 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
+import { getCachedProfile } from "@/lib/utils/cache";
 
 export const dynamic = "force-dynamic";
 
-const USER_NOTIF_TTL_SECONDS = 20;
+const USER_NOTIF_TTL_SECONDS = 25;
 const GLOBAL_ANN_TTL_SECONDS = 60;
 const GLOBAL_ANN_CACHE_KEY = "notifications:global_announcements:v1";
+
+// L1 In-Memory Caches (absorbs 30s header polling in <0.1ms even when Redis is over quota)
+const l1UserNotifCache = new Map<string, { data: any[]; expiresAt: number }>();
+const MAX_L1_NOTIF_USERS = 3000;
+let l1GlobalAnnCache: { data: any[]; expiresAt: number } | null = null;
+let inFlightGlobalAnnPromise: Promise<any[]> | null = null;
 
 function getUserNotifCacheKey(emailLower: string): string {
   return `notifications:user:${emailLower}`;
 }
 
+function setL1UserNotif(emailLower: string, data: any[]) {
+  if (l1UserNotifCache.size >= MAX_L1_NOTIF_USERS && !l1UserNotifCache.has(emailLower)) {
+    const firstKey = l1UserNotifCache.keys().next().value;
+    if (firstKey) l1UserNotifCache.delete(firstKey);
+  }
+  l1UserNotifCache.set(emailLower, {
+    data,
+    expiresAt: Date.now() + USER_NOTIF_TTL_SECONDS * 1000,
+  });
+}
+
 async function invalidateUserNotifCache(emailLower: string): Promise<void> {
+  l1UserNotifCache.delete(emailLower);
   if (!isRedisReady()) return;
   try {
     await redisConnection.del(getUserNotifCacheKey(emailLower));
   } catch {
     // Non-blocking cache invalidation
   }
+}
+
+async function loadGlobalAnnouncements(fifteenDaysAgo: string): Promise<any[]> {
+  if (l1GlobalAnnCache && Date.now() < l1GlobalAnnCache.expiresAt) {
+    return l1GlobalAnnCache.data;
+  }
+  if (inFlightGlobalAnnPromise) {
+    return inFlightGlobalAnnPromise;
+  }
+
+  inFlightGlobalAnnPromise = (async () => {
+    try {
+      if (isRedisReady()) {
+        try {
+          const cachedGlobalStr = await redisConnection.get(GLOBAL_ANN_CACHE_KEY);
+          if (cachedGlobalStr) {
+            const parsed = JSON.parse(cachedGlobalStr);
+            if (Array.isArray(parsed)) {
+              l1GlobalAnnCache = { data: parsed, expiresAt: Date.now() + GLOBAL_ANN_TTL_SECONDS * 1000 };
+              return parsed;
+            }
+          }
+        } catch {}
+      }
+
+      const { data: dbGlobalAnns, error: annErr } = await supabaseReadOnly
+        .from("global_announcements")
+        .select("*")
+        .gte("created_at", fifteenDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (annErr) {
+        console.error("❌ Error fetching global announcements:", annErr);
+        return l1GlobalAnnCache?.data || [];
+      }
+
+      const rows = dbGlobalAnns || [];
+      l1GlobalAnnCache = { data: rows, expiresAt: Date.now() + GLOBAL_ANN_TTL_SECONDS * 1000 };
+
+      if (isRedisReady()) {
+        redisConnection
+          .set(GLOBAL_ANN_CACHE_KEY, JSON.stringify(rows), "EX", GLOBAL_ANN_TTL_SECONDS)
+          .catch(() => {});
+      }
+      return rows;
+    } finally {
+      inFlightGlobalAnnPromise = null;
+    }
+  })();
+
+  return inFlightGlobalAnnPromise;
 }
 
 export async function GET(req: NextRequest) {
@@ -30,29 +101,44 @@ export async function GET(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
+
+    // 0a. Ultra-fast L1 In-Memory cache hit (<0.1ms)
+    const l1Hit = l1UserNotifCache.get(emailLower);
+    if (l1Hit && Date.now() < l1Hit.expiresAt) {
+      return NextResponse.json(l1Hit.data);
+    }
+
     const userCacheKey = getUserNotifCacheKey(emailLower);
 
-    // 0. Fast-path Redis L1 cache hit (absorbs 30s header polling across millions of tabs)
+    // 0b. Fast-path L2 Redis cache hit
     if (isRedisReady()) {
       try {
         const cachedPayload = await redisConnection.get(userCacheKey);
         if (cachedPayload) {
-          return NextResponse.json(JSON.parse(cachedPayload));
+          const parsed = JSON.parse(cachedPayload);
+          setL1UserNotif(emailLower, parsed);
+          return NextResponse.json(parsed);
         }
-      } catch {
-        // Fallback to DB on cache read failure
-      }
+      } catch {}
     }
 
     const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. Fetch user info, private notifications, read logs, and cached global announcements in parallel
-    const [userRes, privRes, readLogsRes, cachedGlobalStr] = await Promise.all([
-      supabaseReadOnly
-        .from("users")
-        .select("created_at, monetized")
-        .eq("email", emailLower)
-        .maybeSingle(),
+    // 1. Resolve user profile from L1/L2 cache first before touching Supabase
+    const cachedProf = await getCachedProfile<any>(emailLower);
+
+    const [user, privRes, readLogsRes, rawGlobalAnnouncements] = await Promise.all([
+      (async () => {
+        if (cachedProf && (cachedProf.created_at !== undefined || cachedProf.monetized !== undefined)) {
+          return cachedProf;
+        }
+        const { data } = await supabaseReadOnly
+          .from("users")
+          .select("created_at, monetized")
+          .eq("email", emailLower)
+          .maybeSingle();
+        return data;
+      })(),
       supabaseReadOnly
         .from("notifications")
         .select("*")
@@ -63,18 +149,12 @@ export async function GET(req: NextRequest) {
       supabaseReadOnly
         .from("read_announcements")
         .select("announcement_id")
-        .eq("user_email", emailLower),
-      isRedisReady()
-        ? redisConnection.get(GLOBAL_ANN_CACHE_KEY).catch(() => null)
-        : Promise.resolve(null),
+        .eq("user_email", emailLower)
+        .limit(200),
+      loadGlobalAnnouncements(fifteenDaysAgo),
     ]);
 
-    const user = userRes.data;
-    if (userRes.error || !user) {
-      console.warn(
-        "⚠️ User profile info query warning in /api/notifications:",
-        userRes.error?.message || "User not found"
-      );
+    if (!user) {
       return NextResponse.json([]);
     }
 
@@ -88,41 +168,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: readLogsRes.error.message }, { status: 500 });
     }
 
-    // 2. Resolve 15-day global announcements (shared 60s Redis cache across all users)
-    let rawGlobalAnnouncements: any[] | null = null;
-    if (cachedGlobalStr) {
-      try {
-        rawGlobalAnnouncements = JSON.parse(cachedGlobalStr);
-      } catch {
-        rawGlobalAnnouncements = null;
-      }
-    }
-
-    if (!rawGlobalAnnouncements) {
-      const { data: dbGlobalAnns, error: annErr } = await supabaseReadOnly
-        .from("global_announcements")
-        .select("*")
-        .gte("created_at", fifteenDaysAgo)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (annErr) {
-        console.error("❌ Error fetching global announcements:", annErr);
-        return NextResponse.json({ error: annErr.message }, { status: 500 });
-      }
-
-      rawGlobalAnnouncements = dbGlobalAnns || [];
-      if (isRedisReady()) {
-        redisConnection
-          .set(GLOBAL_ANN_CACHE_KEY, JSON.stringify(rawGlobalAnnouncements), "EX", GLOBAL_ANN_TTL_SECONDS)
-          .catch(() => {});
-      }
-    }
-
     const userSignupTime = user.created_at ? new Date(user.created_at).getTime() : 0;
-    const isMonetized = user.monetized === "yes" || user.monetized === true;
+    const isMonetized = user.monetized === "yes" || user.monetized === "true" || user.monetized === true;
 
-    const globalAnnouncements = rawGlobalAnnouncements.filter((ga) => {
+    const globalAnnouncements = (rawGlobalAnnouncements || []).filter((ga) => {
       const gaTime = ga.created_at ? new Date(ga.created_at).getTime() : 0;
       if (userSignupTime > 0 && gaTime < userSignupTime) return false;
       if (isMonetized) {
@@ -158,7 +207,6 @@ export async function GET(req: NextRequest) {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    // Deduplicate: ensure unique by id and unique by content (title + message + date)
     const seenIds = new Set<string>();
     const seenContentKeys = new Set<string>();
     const deduplicated: typeof merged = [];
@@ -181,6 +229,8 @@ export async function GET(req: NextRequest) {
 
       deduplicated.push(item);
     }
+
+    setL1UserNotif(emailLower, deduplicated);
 
     if (isRedisReady()) {
       redisConnection
@@ -207,7 +257,6 @@ export async function POST(req: NextRequest) {
     const { notificationId, all } = body;
 
     if (all) {
-      // 1. Mark all private notifications as read and fetch user info concurrently
       const [, userRes] = await Promise.all([
         supabaseAdmin
           .from("notifications")
@@ -253,7 +302,6 @@ export async function POST(req: NextRequest) {
       await invalidateUserNotifCache(emailLower);
       return NextResponse.json({ success: true, message: "All notifications marked as read." });
     } else if (notificationId) {
-      // Check if it's a global announcement
       const { data: isGlobal } = await supabaseAdmin
         .from("global_announcements")
         .select("id")
@@ -336,5 +384,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
-

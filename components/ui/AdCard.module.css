@@ -223,6 +223,7 @@ img.avatarImg {
 }
 
 .mediaRowContainer {
+  --single-max-h: 450px;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -230,7 +231,7 @@ img.avatarImg {
   overflow-x: auto;
   overflow-y: hidden;
   width: 100%;
-  max-height: 360px;
+  max-height: 460px;
   position: relative;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -247,6 +248,7 @@ img.avatarImg {
 /* Edge-to-edge feed bleed when sliding multi-media cards:
    Starts aligned with the text column, and slides all the way into the left & right walls of the feed section */
 .mediaRowContainerMulti {
+  max-height: 330px;
   width: calc(100% + 40px + 0.75rem + 2rem);
   margin-left: calc(-40px - 0.75rem - 1rem);
   margin-right: -1rem;
@@ -277,25 +279,30 @@ img.avatarImg {
   display: flex;
   align-items: center;
   justify-content: center;
-  max-height: 360px;
-  min-height: 170px;
   scroll-snap-align: start;
 }
 
+/* Single media: X / Bluesky snug aspect-ratio frame — shows 100% of media uncropped,
+   scales taller up to --single-max-h for portrait media without stretching width */
 .mediaRowItemSingle {
-  flex: 0 0 92%;
-  width: 92%;
-  min-width: 92%;
-  max-width: 440px;
+  --single-media-ratio: 1;
+  flex: 0 0 auto;
+  width: min(100%, 480px, calc(var(--single-max-h, 450px) * var(--single-media-ratio, 1)));
+  max-width: min(100%, 480px);
+  max-height: var(--single-max-h, 450px);
+  min-height: 160px;
+  aspect-ratio: var(--single-media-ratio, 1);
   scroll-snap-align: start;
 }
 
+/* Multi media: Every item shares the exact same uniform frame size */
 .mediaRowItemMulti {
-  flex: 0 0 clamp(210px, 72%, 320px);
-  width: clamp(210px, 72%, 320px);
+  flex: 0 0 clamp(210px, 68%, 280px);
+  width: clamp(210px, 68%, 280px);
   min-width: 210px;
-  max-width: 320px;
-  max-height: 320px;
+  max-width: 280px;
+  aspect-ratio: 0.85;
+  max-height: 330px;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
@@ -306,10 +313,12 @@ img.avatarImg {
 
 @media (max-width: 640px) {
   .mediaRowContainer {
-    max-height: 320px;
+    --single-max-h: 390px;
+    max-height: 400px;
   }
 
   .mediaRowContainerMulti {
+    max-height: 300px;
     width: calc(100% + 40px + 0.55rem + 1.3rem);
     margin-left: calc(-40px - 0.55rem - 0.65rem);
     margin-right: -0.65rem;
@@ -319,24 +328,20 @@ img.avatarImg {
     scroll-padding-right: 0.65rem;
   }
 
-  .mediaRowItem {
-    max-height: 320px;
-    min-height: 155px;
-  }
-
   .mediaRowItemSingle {
-    flex: 0 0 95%;
-    width: 95%;
-    min-width: 95%;
-    max-width: 95%;
+    width: min(100%, calc(var(--single-max-h, 390px) * var(--single-media-ratio, 1)));
+    max-width: 100%;
+    max-height: var(--single-max-h, 390px);
+    min-height: 150px;
   }
 
   .mediaRowItemMulti {
-    flex: 0 0 clamp(195px, 76%, 285px);
-    width: clamp(195px, 76%, 285px);
-    min-width: 195px;
-    max-width: 285px;
-    max-height: 290px;
+    flex: 0 0 clamp(190px, 72%, 250px);
+    width: clamp(190px, 72%, 250px);
+    min-width: 190px;
+    max-width: 250px;
+    aspect-ratio: 0.85;
+    max-height: 295px;
   }
 }
 
@@ -447,17 +452,35 @@ img.avatarImg {
 
 
 .mediaBox {
-  width: 100%;
-  max-height: 540px;
+  --single-max-h: 440px;
+  --single-media-ratio: 1;
+  width: min(100%, 480px, calc(var(--single-max-h, 440px) * var(--single-media-ratio, 1)));
+  max-width: min(100%, 480px);
+  max-height: var(--single-max-h, 440px);
+  min-height: 160px;
+  aspect-ratio: var(--single-media-ratio, 1);
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
   overflow: hidden;
   position: relative;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   contain: layout paint;
-  background-color: transparent;
-  border: none;
+  background-color: var(--sidebar-bg);
+}
+
+@media (max-width: 640px) {
+  .mediaBox {
+    --single-max-h: 390px;
+    width: min(100%, calc(var(--single-max-h, 390px) * var(--single-media-ratio, 1)));
+    max-width: 100%;
+    max-height: var(--single-max-h, 390px);
+    min-height: 150px;
+  }
 }
 
 .mediaTrack {
@@ -496,13 +519,12 @@ img.avatarImg {
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
   position: relative;
-  overflow: hidden;
 }
 
 .adImgElement {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   display: block;
   user-select: none;
@@ -515,10 +537,10 @@ img.avatarImg {
 .mediaVideo {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   display: block;
-  background-color: var(--background);
+  background-color: var(--sidebar-bg);
 }
 
 .webVideoContainer {
@@ -624,6 +646,40 @@ img.avatarImg {
 .videoFullscreenBtn:hover {
   transform: scale(1.08);
   background-color: rgba(15, 23, 42, 0.9);
+}
+
+.feedVideoMuteBtn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 12;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: rgba(15, 17, 21, 0.68);
+  backdrop-filter: blur(10px) saturate(160%);
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.feedVideoMuteBtn:hover {
+  transform: scale(1.08);
+  background-color: rgba(15, 17, 21, 0.86);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.feedVideoMuteBtn:active {
+  transform: scale(0.93);
 }
 
 .videoMuteBtn:active,

@@ -9,7 +9,32 @@ const redisUrl = process.env.REDIS_URL || (redisHost && redisPassword
   ? `${redisTls ? "rediss" : "redis"}://:${encodeURIComponent(redisPassword)}@${redisHost}:${redisPort}`
   : (process.env.NODE_ENV === "production" ? "" : "redis://127.0.0.1:6379"));
 
-const globalForRedis = global as unknown as { redisRaw: Redis | undefined; redisSafe: Redis | undefined };
+const globalForRedis = global as unknown as {
+  redisRaw: Redis | undefined;
+  redisSafe: Redis | undefined;
+  redisQuotaExceededUntil: number | undefined;
+};
+
+let quotaExceededUntil = globalForRedis.redisQuotaExceededUntil || 0;
+let lastQuotaWarnTime = 0;
+
+function markQuotaExceeded(errMessage: string) {
+  const now = Date.now();
+  quotaExceededUntil = now + 5 * 60 * 1000; // 5-minute circuit breaker cooldown
+  globalForRedis.redisQuotaExceededUntil = quotaExceededUntil;
+  if (now - lastQuotaWarnTime > 60000) {
+    lastQuotaWarnTime = now;
+    console.warn(`⚠️ Upstash Redis quota limit reached (${errMessage}). Circuit-breaker active for 5m; falling back to direct DB/memory.`);
+  }
+}
+
+function isQuotaError(msg: string): boolean {
+  return (
+    msg.includes("max requests limit exceeded") ||
+    msg.includes("max daily request limit exceeded") ||
+    msg.includes("NOPERM")
+  );
+}
 
 const useTls = redisTls || (!!redisUrl && redisUrl.startsWith("rediss://"));
 
@@ -155,13 +180,29 @@ function createSafeRedisProxy(client: Redis): Redis {
             if (batch && typeof batch.exec === "function") {
               const origExec = batch.exec;
               batch.exec = async (...execArgs: any[]) => {
-                if (target.status !== "ready") {
+                if (target.status !== "ready" || Date.now() < quotaExceededUntil) {
                   return [];
                 }
                 try {
-                  return await origExec.apply(batch, execArgs);
+                  const res = await origExec.apply(batch, execArgs);
+                  if (Array.isArray(res)) {
+                    for (const item of res) {
+                      if (Array.isArray(item) && item[0]) {
+                        const itemErrMsg = String(item[0]?.message || item[0] || "");
+                        if (isQuotaError(itemErrMsg)) {
+                          markQuotaExceeded(itemErrMsg);
+                          return [];
+                        }
+                      }
+                    }
+                  }
+                  return res;
                 } catch (err: any) {
                   const msg = String(err?.message || "");
+                  if (isQuotaError(msg)) {
+                    markQuotaExceeded(msg);
+                    return [];
+                  }
                   if (
                     msg.includes("Connection is closed") ||
                     msg.includes("closed") ||
@@ -184,7 +225,7 @@ function createSafeRedisProxy(client: Redis): Redis {
         // Intercept async redis commands
         return async (...args: any[]) => {
           const status = target.status;
-          const isReady = status === "ready";
+          const isReady = status === "ready" && Date.now() >= quotaExceededUntil;
 
           // If client was closed or ended, automatically initiate reconnection
           if (status === "close" || status === "end") {
@@ -193,7 +234,7 @@ function createSafeRedisProxy(client: Redis): Redis {
             } catch {}
           }
 
-          // If Redis is not ready, fail fast and return safe fallbacks instead of throwing
+          // If Redis is not ready or in quota cooldown, fail fast and return safe fallbacks instead of throwing
           if (!isReady) {
             if (method === "hgetall") {
               return {};
@@ -233,11 +274,33 @@ function createSafeRedisProxy(client: Redis): Redis {
             return scanKeys(pattern);
           }
 
-          // Redis is ready: execute command with protection against mid-flight disconnects
+          // Redis is ready: execute command with protection against mid-flight disconnects & quota exhaustion
           try {
             return await orig.apply(target, args);
           } catch (err: any) {
             const errMsg = String(err?.message || "");
+            if (isQuotaError(errMsg)) {
+              markQuotaExceeded(errMsg);
+              if (method === "hgetall") return {};
+              if (
+                method === "exists" ||
+                method === "del" ||
+                method === "hdel" ||
+                method === "publish" ||
+                method === "srem" ||
+                method === "scard" ||
+                method === "hlen" ||
+                method === "sismember" ||
+                method === "incr" ||
+                method === "incrby" ||
+                method === "hincrby" ||
+                method === "decr" ||
+                method === "decrby"
+              ) {
+                return 0;
+              }
+              return null;
+            }
             const isConnectionError =
               errMsg.includes("Connection is closed") ||
               errMsg.includes("closed") ||
@@ -291,7 +354,7 @@ function createSafeRedisProxy(client: Redis): Redis {
 export const redisConnection: Redis = createSafeRedisProxy(rawClient);
 
 export const isRedisReady = (): boolean => {
-  return !!rawClient && rawClient.status === "ready";
+  return !!rawClient && rawClient.status === "ready" && Date.now() >= quotaExceededUntil;
 };
 
 /**

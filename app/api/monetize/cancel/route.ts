@@ -40,10 +40,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
 
-    // Invalidate Redis Caches
+    // Invalidate L1 & L2 Redis Caches including live_clicks counter so GET /api/monetize never re-monetizes
     await Promise.all([
       invalidateCachedProfile(cleanUserEmail),
-      redisConnection.del(`monetize:status:${cleanUserEmail}`),
+      redisConnection.del(`monetize:status:${cleanUserEmail}`).catch(() => {}),
+      redisConnection.del(`user:live_clicks:${cleanUserEmail}`).catch(() => {}),
     ]).catch((err) => console.warn("⚠️ Redis cache invalidation error:", err));
 
     return NextResponse.json({

@@ -58,24 +58,65 @@ export class PayoutProvider {
     accountNumber: string,
     bankCode: string
   ): Promise<{ account_number: string; account_name: string }> {
+    const cleanAccount = String(accountNumber || "").replace(/\D/g, "");
+    if (cleanAccount.length !== 10) {
+      throw new Error(
+        cleanAccount.length < 10 ? "Account number is too short" : "Account number is too long"
+      );
+    }
+
     const active = this.getActiveGateway();
+    const isProd = process.env.NODE_ENV === "production";
+    const canTryKora = !isProd || KoraService.hasLiveKey();
+    const canTryPaystack = !isProd || PaystackService.hasLiveKey();
 
     if (active === "kora") {
+      if (canTryKora) {
+        try {
+          const res = await KoraService.resolveAccount(cleanAccount, bankCode);
+          return {
+            account_number: res.account_number,
+            account_name: res.account_name,
+          };
+        } catch (err: any) {
+          console.warn("⚠️ Kora resolveAccount failed, checking Paystack fallback:", err?.message || err);
+          if (canTryPaystack) {
+            return PaystackService.resolveAccount(cleanAccount, bankCode);
+          }
+          throw err;
+        }
+      }
+      if (canTryPaystack) {
+        return PaystackService.resolveAccount(cleanAccount, bankCode);
+      }
+      throw new Error("GATEWAY_RESOLVE_DEFERRED: No live payout gateway key configured for instant NUBAN lookup.");
+    }
+
+    // Direct Paystack mode with Kora fallback
+    if (canTryPaystack) {
       try {
-        const res = await KoraService.resolveAccount(accountNumber, bankCode);
-        return {
-          account_number: res.account_number,
-          account_name: res.account_name,
-        };
+        return await PaystackService.resolveAccount(cleanAccount, bankCode);
       } catch (err: any) {
-        console.warn("⚠️ Kora resolveAccount failed, attempting Paystack fallback:", err?.message || err);
-        // Fallback to Paystack if Kora resolution hits network issue
-        return PaystackService.resolveAccount(accountNumber, bankCode);
+        if (canTryKora) {
+          const res = await KoraService.resolveAccount(cleanAccount, bankCode);
+          return {
+            account_number: res.account_number,
+            account_name: res.account_name,
+          };
+        }
+        throw err;
       }
     }
 
-    // Direct Paystack mode
-    return PaystackService.resolveAccount(accountNumber, bankCode);
+    if (canTryKora) {
+      const res = await KoraService.resolveAccount(cleanAccount, bankCode);
+      return {
+        account_number: res.account_number,
+        account_name: res.account_name,
+      };
+    }
+
+    throw new Error("GATEWAY_RESOLVE_DEFERRED: No live payout gateway key configured for instant NUBAN lookup.");
   }
 
   /**

@@ -138,9 +138,11 @@ export async function POST(req: NextRequest) {
     // 1. Asynchronous Media Cleanup: Schedule storage asset purging in background without delaying user response
     (async () => {
       try {
-        const [userAds, userNews] = await Promise.all([
-          supabaseAdmin.from("adds").select("ad_media_url").eq("user_email", emailLower),
+        const [userAds, userActiveAds, userNews, userActiveNews] = await Promise.all([
+          supabaseAdmin.from("adds").select("ad_media, custom_sponsor_logo").eq("user_email", emailLower),
+          supabaseAdmin.from("addsactive").select("ad_media, custom_sponsor_logo").eq("user_email", emailLower),
           supabaseAdmin.from("news").select("image_url").eq("user_email", emailLower),
+          supabaseAdmin.from("newsactive").select("image_url").eq("user_email", emailLower),
         ]);
 
         // Purge profile avatar from 'dp' bucket
@@ -150,11 +152,12 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin.storage.from("dp").remove([existingPath]).catch(() => {});
         }
 
-        // Purge ad creative media from 'ad-media' bucket
+        // Purge ad creative media from 'ad-media' bucket across both pending and active campaigns
         const adFilesToRemove: string[] = [];
-        (userAds.data || []).forEach((ad: any) => {
-          if (ad.ad_media_url && typeof ad.ad_media_url === "string") {
-            ad.ad_media_url.split(",").forEach((url: string) => {
+        [...(userAds.data || []), ...(userActiveAds.data || [])].forEach((ad: any) => {
+          const rawMedia = [ad.ad_media, ad.custom_sponsor_logo].filter(Boolean).join(",");
+          if (rawMedia) {
+            rawMedia.split(",").forEach((url: string) => {
               const trimmed = url.trim();
               if (trimmed.includes("/ad-media/")) {
                 const filename = trimmed.split("/ad-media/").pop()?.split("?")[0];
@@ -164,12 +167,12 @@ export async function POST(req: NextRequest) {
           }
         });
         if (adFilesToRemove.length > 0) {
-          await supabaseAdmin.storage.from("ad-media").remove(adFilesToRemove).catch(() => {});
+          await supabaseAdmin.storage.from("ad-media").remove(Array.from(new Set(adFilesToRemove))).catch(() => {});
         }
 
-        // Purge highlight media from 'news' bucket
+        // Purge highlight media from 'news' bucket across both pending and active highlights
         const newsFilesToRemove: string[] = [];
-        (userNews.data || []).forEach((item: any) => {
+        [...(userNews.data || []), ...(userActiveNews.data || [])].forEach((item: any) => {
           if (item.image_url && typeof item.image_url === "string") {
             const trimmed = item.image_url.trim();
             if (trimmed.includes("/news/")) {
@@ -179,7 +182,7 @@ export async function POST(req: NextRequest) {
           }
         });
         if (newsFilesToRemove.length > 0) {
-          await supabaseAdmin.storage.from("news").remove(newsFilesToRemove).catch(() => {});
+          await supabaseAdmin.storage.from("news").remove(Array.from(new Set(newsFilesToRemove))).catch(() => {});
         }
       } catch (storageErr) {
         console.warn("⚠️ Background storage cleanup notice:", storageErr);

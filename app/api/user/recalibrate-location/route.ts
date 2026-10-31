@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
     // 2. Fetch current profile location from Supabase
     const { data: userProfile, error: fetchErr } = await supabaseAdmin
       .from("users")
-      .select("country, state, location")
-      .eq("email", emailLower)
+      .select("email, country, state, location")
+      .ilike("email", emailLower)
       .maybeSingle();
 
     if (fetchErr) {
@@ -95,18 +95,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 4. Location has changed (e.g. user traveled or relocated)! Update database record
+    // 4. Location has changed (e.g. user traveled, relocated, or had PLACEHOLDER)! Update database record
     const updatePayload = {
       country,
       state,
       location,
-      lastUpdated: new Date().toISOString(),
     };
 
     const { error: updateErr } = await supabaseAdmin
       .from("users")
       .update(updatePayload)
-      .eq("email", emailLower);
+      .ilike("email", emailLower);
 
     if (updateErr) {
       console.error("❌ Failed to update recalibrated location:", updateErr);

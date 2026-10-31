@@ -236,6 +236,36 @@ describe("targetingEngine", () => {
       ]);
     });
 
+    it("falls back to Pass 3 nearest-match ranking when no strict or geo/demo matches exist so ads are never stranded", () => {
+      const nicheAds: TargetableAd[] = [
+        {
+          id: "distant-country-ad",
+          user_email: "adv1@example.com",
+          country: "Kenya",
+          state: ["Nairobi"],
+          gender: ["Male"],
+          impressions: 1000,
+          view_count: 0,
+        },
+        {
+          id: "same-country-different-state-ad",
+          user_email: "adv2@example.com",
+          country: "Nigeria",
+          state: ["Rivers"],
+          gender: ["Female"],
+          interest: ["FinTech"],
+          impressions: 1000,
+          view_count: 0,
+        },
+      ];
+
+      const ranked = rankAndFilterTargetedAds(nicheAds, baseViewer);
+      expect(ranked.map((a) => a.id)).toEqual([
+        "same-country-different-state-ad",
+        "distant-country-ad",
+      ]);
+    });
+
     it("spaces ads from the same advertiser so they do not appear back-to-back", () => {
       const list: TargetableAd[] = [
         { id: "a1", user_email: "same@brand.com" },

@@ -1,13 +1,37 @@
 import redisConnection from "./redis";
 import supabaseAdmin from "./utils/dbAdmin";
 import { streamImpressionsToClickHouse } from "./clickhouse";
+import { invalidateCachedUserCampaigns } from "./utils/cache";
 
 /**
  * High-Throughput Impression & Click Buffer for 100M+ Users.
- * Instead of hitting PostgreSQL on every single view/click (which causes write locks),
- * impression and click increments are written to Redis in < 1ms.
- * A background batch worker flushes accumulated totals to PostgreSQL.
+ * Instead of hitting PostgreSQL with thousands of concurrent row locks on a hot ad,
+ * concurrent increments on the same adId are coalesced in L1 Memory / L2 Redis and
+ * flushed in single atomic batch deltas, while overlaying real-time pending counts on /myAds reads.
  */
+
+export type CanonicalClickType =
+  | "phone"
+  | "whatsapp"
+  | "website"
+  | "email"
+  | "product_cta"
+  | "ios"
+  | "android"
+  | "watch_now"
+  | "read_more";
+
+export const CLICK_TYPE_TO_COLUMN: Record<CanonicalClickType, string> = {
+  phone: "clicks_phone",
+  whatsapp: "clicks_whatsapp",
+  website: "clicks_website",
+  email: "clicks_email",
+  product_cta: "clicks_product_cta",
+  ios: "clicks_ios",
+  android: "clicks_android",
+  watch_now: "clicks_watch_now",
+  read_more: "clicks_read_more",
+};
 
 const REDIS_KEY_IMPRESSIONS = "buffer:ad_impressions";
 const REDIS_KEY_CLICKS_PHONE = "buffer:clicks_phone";
@@ -15,6 +39,304 @@ const REDIS_KEY_CLICKS_WHATSAPP = "buffer:clicks_whatsapp";
 const REDIS_KEY_CLICKS_WEBSITE = "buffer:clicks_website";
 const REDIS_KEY_CLICKS_EMAIL = "buffer:clicks_email";
 const REDIS_KEY_CLICKS_PRODUCT_CTA = "buffer:clicks_product_cta";
+
+// ── L1 Hot-Row Write-Behind Micro-Batch Coalescer (100M+ Traffic Protection) ──
+const COALESCE_WINDOW_MS = 1500;
+const l1PendingClicks = new Map<string, Partial<Record<CanonicalClickType, number>>>();
+const l1ActiveClickFlushers = new Set<string>();
+
+interface PendingSeenBatch {
+  delta: number;
+  adOwnerEmail?: string | null;
+  isPlatformPost?: boolean;
+}
+const l1PendingSeen = new Map<string, PendingSeenBatch>();
+const l1ActiveSeenFlushers = new Set<string>();
+
+/**
+ * Coalesces high-concurrency non-monetized Seen increments on the same adId so a viral ad
+ * watched by 50,000 simultaneous users never causes PostgreSQL row-lock contention on addsactive.
+ * - First view on an idle ad executes immediately (0ms latency) and opens a 1.5s hot-row shield.
+ * - Concurrent views arriving during the 1.5s window record their user-level ad_impressions row
+ *   (zero cross-user contention) and coalesce their addsactive.impression_count increment into 1 batch UPDATE.
+ */
+export async function recordCoalescedAdSeen(
+  adId: string,
+  emailKey: string,
+  meta: {
+    userCap: number;
+    isPlatformPost: boolean;
+    adOwnerEmail?: string | null;
+    dbImpressionsTarget?: number;
+    dbImpressionCount?: number;
+  }
+): Promise<void> {
+  const nowIso = new Date().toISOString();
+
+  // If this adId is currently in an active 1.5s burst window, record per-user ad_impressions
+  // and coalesce the hot addsactive counter increment in O(1) RAM:
+  if (l1ActiveSeenFlushers.has(adId)) {
+    const { data: existingImp } = await supabaseAdmin
+      .from("ad_impressions")
+      .select("id, view_count")
+      .eq("ad_id", adId)
+      .ilike("user_email", emailKey)
+      .maybeSingle();
+
+    const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
+    if (existingViews >= meta.userCap) return;
+
+    if (existingImp) {
+      await supabaseAdmin
+        .from("ad_impressions")
+        .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
+        .eq("id", existingImp.id);
+    } else {
+      await supabaseAdmin
+        .from("ad_impressions")
+        .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
+    }
+
+    const pending = l1PendingSeen.get(adId) || {
+      delta: 0,
+      adOwnerEmail: meta.adOwnerEmail,
+      isPlatformPost: meta.isPlatformPost,
+    };
+    pending.delta += 1;
+    if (!pending.adOwnerEmail && meta.adOwnerEmail) {
+      pending.adOwnerEmail = meta.adOwnerEmail;
+    }
+    l1PendingSeen.set(adId, pending);
+    return;
+  }
+
+  // First view on an idle ad: open the 1.5s hot-row shield and execute immediately
+  l1ActiveSeenFlushers.add(adId);
+  try {
+    const { data: seenRpcRes, error: seenRpcErr } = await supabaseAdmin.rpc("record_ad_seen", {
+      p_ad_id: adId,
+      p_user_email: emailKey,
+    });
+
+    const rpcFailedOrMissing =
+      Boolean(seenRpcErr) ||
+      (seenRpcRes &&
+        typeof seenRpcRes === "object" &&
+        seenRpcRes.success === false &&
+        seenRpcRes.reason !== "frequency_cap_reached");
+
+    if (rpcFailedOrMissing) {
+      const { data: existingImp } = await supabaseAdmin
+        .from("ad_impressions")
+        .select("id, view_count")
+        .eq("ad_id", adId)
+        .ilike("user_email", emailKey)
+        .maybeSingle();
+
+      const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
+      if (existingViews < meta.userCap) {
+        if (existingImp) {
+          await supabaseAdmin
+            .from("ad_impressions")
+            .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
+            .eq("id", existingImp.id);
+        } else {
+          await supabaseAdmin
+            .from("ad_impressions")
+            .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
+        }
+
+        await applyBatchedSeenDeltaToAd(adId, 1, meta.isPlatformPost, meta.adOwnerEmail);
+      }
+    }
+
+    setTimeout(async () => {
+      try {
+        const batch = l1PendingSeen.get(adId);
+        if (batch && batch.delta > 0) {
+          l1PendingSeen.delete(adId);
+          await applyBatchedSeenDeltaToAd(
+            adId,
+            batch.delta,
+            Boolean(batch.isPlatformPost),
+            batch.adOwnerEmail
+          );
+        }
+      } finally {
+        l1ActiveSeenFlushers.delete(adId);
+      }
+    }, COALESCE_WINDOW_MS);
+  } catch {
+    l1ActiveSeenFlushers.delete(adId);
+  }
+}
+
+async function applyBatchedSeenDeltaToAd(
+  adId: string,
+  delta: number,
+  isPlatformPost: boolean,
+  adOwnerEmail?: string | null
+): Promise<void> {
+  if (delta <= 0) return;
+  const nowIso = new Date().toISOString();
+
+  const { data: liveAd } = await supabaseAdmin
+    .from("addsactive")
+    .select("impressions, impression_count, user_email")
+    .eq("id", adId)
+    .maybeSingle();
+
+  if (!liveAd) return;
+
+  const currentImpCount = Number(liveAd.impression_count || 0);
+  const targetImps = Number(liveAd.impressions || 0);
+  const resolvedOwner = adOwnerEmail || liveAd.user_email || null;
+  const nextImpCount = currentImpCount + delta;
+  const isNowExhausted = !isPlatformPost && targetImps > 0 && nextImpCount >= targetImps;
+  const completedIso = isNowExhausted ? nowIso : null;
+
+  const { data: updatedAdRow } = await supabaseAdmin
+    .from("addsactive")
+    .update({
+      impression_count: nextImpCount,
+      ...(completedIso ? { completed_at: completedIso } : {}),
+    })
+    .eq("id", adId)
+    .select("*")
+    .maybeSingle();
+
+  if (isNowExhausted) {
+    if (updatedAdRow) {
+      await supabaseAdmin.from("completed_ads").upsert([updatedAdRow], { onConflict: "id" });
+    }
+    await supabaseAdmin.from("addsactive").delete().eq("id", adId);
+    await supabaseAdmin
+      .from("adds")
+      .update({ completed_at: completedIso, impression_count: nextImpCount })
+      .eq("id", adId);
+  }
+
+  if (resolvedOwner) {
+    invalidateCachedUserCampaigns(resolvedOwner).catch(() => {});
+  }
+}
+
+/**
+ * Coalesces high-concurrency CTA clicks on the same adId into a single batched PostgreSQL write.
+ * - First click on an idle ad flushes immediately (0ms latency) and opens a 1.5s hot-row shield.
+ * - Any concurrent clicks arriving during the 1.5s window accumulate in O(1) RAM and flush in 1 SQL query.
+ */
+export async function recordCoalescedAdClick(
+  adId: string,
+  clickType: CanonicalClickType
+): Promise<void> {
+  const existing = l1PendingClicks.get(adId) || {};
+  existing[clickType] = (existing[clickType] || 0) + 1;
+  l1PendingClicks.set(adId, existing);
+
+  if (l1ActiveClickFlushers.has(adId)) {
+    // Another worker is already flushing/coalescing this hot adId; delta is safely queued in RAM
+    return;
+  }
+
+  l1ActiveClickFlushers.add(adId);
+  try {
+    await drainClickBufferForAd(adId);
+    // Keep hot-row shield active for COALESCE_WINDOW_MS to absorb burst traffic
+    setTimeout(async () => {
+      try {
+        if (l1PendingClicks.has(adId)) {
+          await drainClickBufferForAd(adId);
+        }
+      } finally {
+        l1ActiveClickFlushers.delete(adId);
+      }
+    }, COALESCE_WINDOW_MS);
+  } catch {
+    l1ActiveClickFlushers.delete(adId);
+  }
+}
+
+async function drainClickBufferForAd(adId: string): Promise<void> {
+  const batch = l1PendingClicks.get(adId);
+  if (!batch) return;
+  l1PendingClicks.delete(adId);
+
+  const entries = Object.entries(batch).filter(([, count]) => (count || 0) > 0) as Array<
+    [CanonicalClickType, number]
+  >;
+  if (entries.length === 0) return;
+
+  let needsColumnFallback = false;
+  for (const [clickType, count] of entries) {
+    if (count === 1) {
+      const { error } = await supabaseAdmin.rpc("increment_ad_click", {
+        p_ad_id: adId,
+        p_click_type: clickType,
+      });
+      if (error) needsColumnFallback = true;
+    } else {
+      const { error } = await supabaseAdmin.rpc("increment_ad_clicks_bulk", {
+        p_ad_id: adId,
+        p_click_type: clickType,
+        p_count: count,
+      });
+      if (error) needsColumnFallback = true;
+    }
+  }
+
+  if (needsColumnFallback) {
+    try {
+      const cols = entries.map(([ct]) => CLICK_TYPE_TO_COLUMN[ct]);
+      const { data: adRow } = await supabaseAdmin
+        .from("addsactive")
+        .select(`id, user_email, ${cols.join(", ")}`)
+        .eq("id", adId)
+        .maybeSingle();
+
+      if (adRow) {
+        const patch: Record<string, number> = {};
+        for (const [ct, count] of entries) {
+          const col = CLICK_TYPE_TO_COLUMN[ct];
+          patch[col] = Number((adRow as any)[col] || 0) + count;
+        }
+        await supabaseAdmin.from("addsactive").update(patch).eq("id", adId);
+        if ((adRow as any).user_email) {
+          invalidateCachedUserCampaigns((adRow as any).user_email).catch(() => {});
+        }
+      }
+    } catch {}
+  }
+}
+
+/**
+ * Overlays any in-flight L1 coalesced click or impression deltas onto a campaign row
+ * so /myAds always reflects 100% real-time counts with 0ms lag even during viral bursts.
+ */
+export function overlayPendingBufferedDeltas<T extends Record<string, any>>(item: T): T {
+  if (!item || !item.id) return item;
+  const adId = String(item.id);
+  const pendingClicks = l1PendingClicks.get(adId);
+  const pendingSeen = l1PendingSeen.get(adId);
+
+  if (!pendingClicks && !pendingSeen) return item;
+
+  const clone: Record<string, any> = { ...item };
+  if (pendingSeen && pendingSeen.delta > 0) {
+    clone.impression_count = Number(clone.impression_count || 0) + pendingSeen.delta;
+  }
+  if (pendingClicks) {
+    for (const [ct, delta] of Object.entries(pendingClicks)) {
+      if (delta && delta > 0) {
+        const col = CLICK_TYPE_TO_COLUMN[ct as CanonicalClickType];
+        if (col) {
+          clone[col] = Number(clone[col] || 0) + delta;
+        }
+      }
+    }
+  }
+  return clone as T;
+}
 
 /**
  * Record an ad view asynchronously in Redis (Sub-millisecond latency).

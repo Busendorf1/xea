@@ -61,22 +61,23 @@ export default function DashboardClient({
   const [showSendMoneyModal, setShowSendMoneyModal] = useState(false);
   const [transferSuccessData, setTransferSuccessData] = useState<TransferSuccessData | null>(null);
 
-  // Inactivity warning state
-  const [inactivityDismissed, setInactivityDismissed] = useState(() => {
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem("paayh_inactivity_dismissed") === "true";
-    }
-    return false;
-  });
+  // Inactivity warning state (initialized deterministically for SSR parity, hydrated on mount)
+  const [inactivityDismissed, setInactivityDismissed] = useState(false);
 
-  // Balance visibility toggle
-  const [showBalance, setShowBalance] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("paayh_show_balance");
-      if (saved !== null) return saved === "true";
-    }
-    return true;
-  });
+  // Balance visibility toggle (initialized deterministically for SSR parity, hydrated on mount)
+  const [showBalance, setShowBalance] = useState(true);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("paayh_inactivity_dismissed") === "true") {
+        setInactivityDismissed(true);
+      }
+      const savedBalance = localStorage.getItem("paayh_show_balance");
+      if (savedBalance !== null) {
+        setShowBalance(savedBalance === "true");
+      }
+    } catch {}
+  }, []);
 
   const toggleShowBalance = () => {
     setShowBalance((prev) => {

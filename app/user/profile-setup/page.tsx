@@ -308,7 +308,8 @@ interface ProfileFormData {
           behavior: formData.behavior,
           lifestyle: formData.lifestyle,
           personality: formData.personality,
-          businessName: formData.businessName
+          businessName: formData.businessName,
+          has_updated_profile: true
         })
       });
 
@@ -418,7 +419,7 @@ interface ProfileFormData {
 
   return (
     <>
-      <FairAttentionModal />
+      <FairAttentionModal onAccept={() => setGoodwillAgreed(true)} />
       <HeaderJoin />
       <main className={styles.container}>
         <div className={styles.glowBlob}></div>

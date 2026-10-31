@@ -10,7 +10,7 @@ import { cookies } from "next/headers";
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-  searchParams?: Promise<{ view?: string; id?: string }>;
+  searchParams?: Promise<{ view?: string; id?: string; retry?: string }>;
 }
 
 const SETTINGS_TABS = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
@@ -18,7 +18,7 @@ const SETTINGS_TABS = ["adPage", "monetize", "myads", "profile", "statement", "n
 export default async function LoggedInPage({ searchParams }: PageProps) {
   const [session, resolvedParams, cookieStore] = await Promise.all([
     auth0.getSession(),
-    searchParams ? searchParams : Promise.resolve({} as { view?: string; id?: string }),
+    searchParams ? searchParams : Promise.resolve({} as { view?: string; id?: string; retry?: string }),
     cookies(),
   ]);
 
@@ -40,8 +40,11 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
       profileResult = await getUserProfileForDashboard(session);
     } catch (retryErr: any) {
       console.error("❌ [LoggedInPage] Persistent profile fetch failure:", retryErr?.message || retryErr);
-      // Never send established users into onboarding on transient network/database errors
-      redirect("/logged-in?view=feed&retry=1");
+      // Only retry once via redirect to avoid infinite reload loops on persistent DB outages
+      if (!resolvedParams?.retry) {
+        redirect("/logged-in?view=feed&retry=1");
+      }
+      redirect("/user/profile-setup");
     }
   }
 
@@ -50,7 +53,7 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
   }
 
   if (!profileResult.user || !profileResult.parsedInterest || !profileResult.email) {
-    redirect("/");
+    redirect("/user/profile-setup");
   }
 
   const tabCookie = cookieStore.get("paayh_active_tab")?.value as TabKey | undefined;

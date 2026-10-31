@@ -7,6 +7,95 @@ import { safeParseArray } from "@/lib/utils/parsers";
 
 export const dynamic = "force-dynamic";
 
+const SHARED_POOL_REDIS_KEY = "highlights:active_pool:v3";
+const SHARED_POOL_TTL_SECONDS = 45;
+const SHARED_POOL_L1_TTL_MS = 30 * 1000;
+
+let l1SharedHighlightsPool: { rows: any[]; expiresAt: number } | null = null;
+let inFlightPoolPromise: Promise<any[]> | null = null;
+
+/**
+ * Single-Flight Shared Active Highlights Pool Loader (L1 Memory -> L2 Redis -> Bounded Indexed DB Query).
+ * Collapses millions of unique user interest permutations into 1 shared DB query every 45 seconds.
+ */
+async function loadActiveHighlightsPool(): Promise<any[]> {
+  const now = Date.now();
+  if (l1SharedHighlightsPool && now < l1SharedHighlightsPool.expiresAt) {
+    return l1SharedHighlightsPool.rows;
+  }
+
+  if (inFlightPoolPromise) {
+    return inFlightPoolPromise;
+  }
+
+  inFlightPoolPromise = (async () => {
+    try {
+      if (isRedisReady()) {
+        try {
+          const cachedPoolStr = await redisConnection.get(SHARED_POOL_REDIS_KEY);
+          if (cachedPoolStr) {
+            const parsed = JSON.parse(cachedPoolStr);
+            if (Array.isArray(parsed)) {
+              l1SharedHighlightsPool = {
+                rows: parsed,
+                expiresAt: Date.now() + SHARED_POOL_L1_TTL_MS,
+              };
+              return parsed;
+            }
+          }
+        } catch {}
+      }
+
+      // Query up to 35 days back so boosted highlights with up to 30 campaign_days are never prematurely excluded
+      const thirtyFiveDaysAgo = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
+
+      let rawHighlights: any[] = [];
+      const { data: primaryData, error } = await supabaseReadOnly
+        .from("newsactive")
+        .select(
+          "id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement, is_ai_content"
+        )
+        .or("is_paused.eq.false,is_paused.is.null")
+        .gte("created_at", thirtyFiveDaysAgo)
+        .order("is_bidded", { ascending: false })
+        .order("bid_price", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(300);
+
+      if (error && (error.code === "42703" || error.message?.includes("does not exist"))) {
+        const fallbackRes = await supabaseReadOnly
+          .from("newsactive")
+          .select("id, title, content, image_url, interest, created_at, user_email")
+          .gte("created_at", thirtyFiveDaysAgo)
+          .order("created_at", { ascending: false })
+          .limit(300);
+        rawHighlights = fallbackRes.data || [];
+      } else if (error) {
+        console.error("❌ Error fetching highlights pool:", error);
+        return l1SharedHighlightsPool?.rows || [];
+      } else {
+        rawHighlights = primaryData || [];
+      }
+
+      l1SharedHighlightsPool = {
+        rows: rawHighlights,
+        expiresAt: Date.now() + SHARED_POOL_L1_TTL_MS,
+      };
+
+      if (isRedisReady()) {
+        redisConnection
+          .set(SHARED_POOL_REDIS_KEY, JSON.stringify(rawHighlights), "EX", SHARED_POOL_TTL_SECONDS)
+          .catch(() => {});
+      }
+
+      return rawHighlights;
+    } finally {
+      inFlightPoolPromise = null;
+    }
+  })();
+
+  return inFlightPoolPromise;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +128,7 @@ export async function GET(req: NextRequest) {
           await redisConnection.set(interestKey, String(highestBid), "EX", 15).catch(() => {});
         }
         return NextResponse.json({ highestBid, interest: interestQuery });
-      } catch (e) {
+      } catch {
         return NextResponse.json({ highestBid: 1000, interest: interestQuery });
       }
     }
@@ -87,7 +176,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     let profileSource: any = user;
-    if (!profileSource || (!profileSource.interest && !profileSource.country)) {
+    if (!profileSource && !interestsParam) {
       const { data: dbUser } = await supabaseReadOnly
         .from("users")
         .select("interest, country, state, location")
@@ -119,7 +208,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 1. Check 30-Second Redis Edge Cache for 100M+ Scale Optimization (shared candidate list without per-user state)
+    // 1. Check L1/L2 Cache for exact targeting slice
     const cachedData = await getCachedHighlights(interests, resolvedCountry || null, resolvedState || null);
     if (cachedData) {
       const personalizedCached = cachedData.map((h: any) => ({
@@ -134,38 +223,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Strict 5-day / 24-hour active window
-    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
-
-    // Primary Query: Active highlights with targeting & bidding metadata (ordered via DB B-Tree Index)
-    let query = supabaseReadOnly
-      .from("newsactive")
-      .select("id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement, is_ai_content")
-      .or("is_paused.eq.false,is_paused.is.null")
-      .gte("created_at", fiveDaysAgo)
-      .order("is_bidded", { ascending: false })
-      .order("bid_price", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    let rawHighlights: any[] = [];
-    const { data: primaryData, error } = await query;
-
-    // Graceful Fallback if new columns (e.g. province) do not exist yet in schema cache
-    if (error && (error.code === "42703" || error.message?.includes("does not exist"))) {
-      console.warn("⚠️ Column missing on newsactive table — executing graceful fallback query...");
-      const fallbackQuery = supabaseReadOnly
-        .from("newsactive")
-        .select("id, title, content, image_url, interest, created_at, user_email")
-        .gte("created_at", fiveDaysAgo);
-
-      const fallbackRes = await fallbackQuery;
-      rawHighlights = fallbackRes.data || [];
-    } else if (error) {
-      console.error("❌ Error fetching highlights:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    } else {
-      rawHighlights = primaryData || [];
-    }
+    // 2. Load from Single-Flight Shared Active Highlights Pool (1 DB query per 45s across all users)
+    const rawHighlights = await loadActiveHighlightsPool();
 
     // Normalize viewer targeting tokens for accurate case-insensitive interest + LocationSelector matching
     const normalizedViewerInterests = new Set(interests.map((i) => i.toLowerCase().trim()).filter(Boolean));
@@ -185,60 +244,70 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    // Filter highlights strictly based on expiration rules AND interest/location targeting:
-    // - If bidded: expires on the exact date/days bidded for (campaign_days * 24h)
-    // - If not bidded: expires strictly after 24 hours
+    // Filter highlights strictly based on expiration rules, with Progressive Nearest-Match fallback so 0% of active highlights are stranded
     const nowMs = Date.now();
-    const validHighlights = (rawHighlights || []).filter((h: any) => {
-      if (h.is_paused) return false;
+    const strictHighlights: any[] = [];
+    const fallbackHighlights: Array<{ hl: any; affinityScore: number }> = [];
+
+    for (const h of rawHighlights || []) {
+      if (h.is_paused) continue;
       const createdAtMs = new Date(h.created_at).getTime();
       const diffHours = (nowMs - createdAtMs) / (1000 * 60 * 60);
 
       const isNotExpired = h.is_bidded
         ? diffHours < Math.max(1, Number(h.campaign_days || 1)) * 24
         : diffHours < 24;
-      if (!isNotExpired) return false;
+      if (!isNotExpired) continue;
 
-      // 1. Interest match (case-insensitive against registered user interests)
+      let interestMatched = true;
       if (normalizedViewerInterests.size > 0 && h.interest) {
         const hlInterest = String(h.interest).toLowerCase().trim();
         if (hlInterest && hlInterest !== "all" && hlInterest !== "general" && !normalizedViewerInterests.has(hlInterest)) {
-          return false;
+          interestMatched = false;
         }
       }
 
-      // 2. Country match (if highlight targets a specific country)
+      let countryMatched = true;
       const hlCountry = h.country ? String(h.country).toLowerCase().trim() : "";
       if (hlCountry && hlCountry !== "all" && hlCountry !== "global" && normCountry) {
-        if (hlCountry !== normCountry) return false;
+        if (hlCountry !== normCountry) countryMatched = false;
       }
 
-      // 3. State / Province / LocationSelector match (if highlight targets a state or province)
+      let stateMatched = true;
       const hlState = h.state ? String(h.state).toLowerCase().replace(/\b(state|province|region|county|district|lga)\b/g, "").trim() : "";
       const hlProvince = h.province ? String(h.province).toLowerCase().replace(/\b(state|province|region|county|district|lga)\b/g, "").trim() : "";
 
       if (hlState && hlState !== "all" && (normState || normCity)) {
-        const stateMatched =
+        const stHit =
           (normState && (normState.includes(hlState) || hlState.includes(normState))) ||
           (normCity && (normCity.includes(hlState) || hlState.includes(normCity)));
-        if (!stateMatched) return false;
+        if (!stHit) stateMatched = false;
       }
 
-      if (hlProvince && hlProvince !== "all" && (normState || normCity)) {
+      if (stateMatched && hlProvince && hlProvince !== "all" && (normState || normCity)) {
         const provTokens = hlProvince.split(/[;,]/).map((s: string) => s.trim()).filter(Boolean);
-        const provMatched = provTokens.some(
+        const provHit = provTokens.some(
           (tok: string) =>
             (normCity && (normCity.includes(tok) || tok.includes(normCity))) ||
             (normState && (normState.includes(tok) || tok.includes(normState)))
         );
-        if (!provMatched) return false;
+        if (!provHit) stateMatched = false;
       }
 
-      return true;
-    });
+      if (interestMatched && countryMatched && stateMatched) {
+        strictHighlights.push(h);
+      } else {
+        let affinityScore = 0;
+        if (countryMatched) affinityScore += 40;
+        if (stateMatched) affinityScore += 25;
+        if (interestMatched) affinityScore += 20;
+        if (h.is_bidded) affinityScore += Math.min(50, parseFloat(h.bid_price || 0) / 100);
+        fallbackHighlights.push({ hl: h, affinityScore });
+      }
+    }
 
     // Rank Bidded highlights at the top sorted by bid_price DESC, then standard highlights by created_at DESC
-    const sortedHighlights = validHighlights.sort((a: any, b: any) => {
+    const sortByBidAndRecency = (a: any, b: any) => {
       const aIsBidded = !!a.is_bidded;
       const bIsBidded = !!b.is_bidded;
       if (aIsBidded && !bIsBidded) return -1;
@@ -249,7 +318,18 @@ export async function GET(req: NextRequest) {
         if (aBid !== bBid) return bBid - aBid;
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+    };
+
+    const sortedHighlights = [...strictHighlights.sort(sortByBidAndRecency)];
+    const minHighlightPoolSize = limit ?? 15;
+    if (sortedHighlights.length < minHighlightPoolSize && fallbackHighlights.length > 0) {
+      fallbackHighlights.sort(
+        (a, b) => b.affinityScore - a.affinityScore || sortByBidAndRecency(a.hl, b.hl)
+      );
+      sortedHighlights.push(
+        ...fallbackHighlights.slice(0, minHighlightPoolSize - sortedHighlights.length).map((f) => f.hl)
+      );
+    }
 
     // Build shared cacheable highlights (without user-specific render counts)
     const sharedHighlights = sortedHighlights.map((h: any) => {
@@ -285,7 +365,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Cache the shared candidate list in Redis (free of per-user render count pollution)
+    // Cache the shared candidate list in L1 + L2 Redis
     await setCachedHighlights(interests, sharedHighlights, resolvedCountry || null, resolvedState || null);
 
     // Overlay per-user render count for this specific viewer
@@ -306,4 +386,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
 }
-

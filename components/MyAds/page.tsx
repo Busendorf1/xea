@@ -346,7 +346,20 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
     const websiteClicks = ad.clicks_website ?? 0;
     const emailClicks = ad.clicks_email ?? 0;
     const productClicks = ad.clicks_product_cta ?? 0;
-    const totalClicks = phoneClicks + whatsappClicks + websiteClicks + emailClicks + productClicks;
+    const iosClicks = ad.clicks_ios ?? 0;
+    const androidClicks = ad.clicks_android ?? 0;
+    const watchNowClicks = ad.clicks_watch_now ?? 0;
+    const readMoreClicks = ad.clicks_read_more ?? 0;
+    const totalClicks =
+      phoneClicks +
+      whatsappClicks +
+      websiteClicks +
+      emailClicks +
+      productClicks +
+      iosClicks +
+      androidClicks +
+      watchNowClicks +
+      readMoreClicks;
     const ctr = seenCount > 0 ? ((totalClicks / seenCount) * 100).toFixed(2) : "0.00";
     const daysInfo = getCampaignDaysInfo(ad, timeNow);
 
@@ -429,7 +442,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
       (ad.clicks_whatsapp || 0) +
       (ad.clicks_website || 0) +
       (ad.clicks_email || 0) +
-      (ad.clicks_product_cta || 0);
+      (ad.clicks_product_cta || 0) +
+      (ad.clicks_ios || 0) +
+      (ad.clicks_android || 0) +
+      (ad.clicks_watch_now || 0) +
+      (ad.clicks_read_more || 0);
 
     const sortFn = (a: Ad, b: Ad) => {
       if (sortBy === "views") return (b.impression_count || 0) - (a.impression_count || 0);
@@ -543,7 +560,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
           (a.clicks_whatsapp || 0) +
           (a.clicks_website || 0) +
           (a.clicks_email || 0) +
-          (a.clicks_product_cta || 0),
+          (a.clicks_product_cta || 0) +
+          (a.clicks_ios || 0) +
+          (a.clicks_android || 0) +
+          (a.clicks_watch_now || 0) +
+          (a.clicks_read_more || 0),
         0
       ),
     [activeAds]

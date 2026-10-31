@@ -174,9 +174,26 @@ export default function TransactionReceiptModal({
     );
   };
 
+  // Mask middle digits of bank account numbers on receipts (e.g. 0123456789 -> 012****789)
+  const maskAccountNumber = (acct?: string | null): string => {
+    if (!acct) return "";
+    const trimmed = String(acct).trim();
+    if (trimmed.length <= 6) return trimmed;
+    const prefix = trimmed.slice(0, 3);
+    const suffix = trimmed.slice(-3);
+    const stars = "*".repeat(Math.max(4, trimmed.length - 6));
+    return `${prefix}${stars}${suffix}`;
+  };
+
+  const maskAccountNumbersInText = (text?: string | null): string => {
+    if (!text) return "";
+    return String(text).replace(/\b(\d{3})\d{4,6}(\d{3})\b/g, "$1****$2");
+  };
+
   // Destination / Recipient info
   const destinationBank = meta.bankName || meta.bank_name;
-  const destinationAccount = meta.accountNumber || meta.account_number;
+  const rawDestinationAccount = meta.accountNumber || meta.account_number;
+  const destinationAccount = maskAccountNumber(rawDestinationAccount);
   const destinationName = meta.accountName || meta.account_name || meta.recipientName;
   const isTransferReceived = transaction.type === "transfer_received";
   const recipientEmail = isTransferReceived
@@ -186,8 +203,9 @@ export default function TransactionReceiptModal({
     ? (meta.sender_email || meta.senderEmail || meta.counterparty_email || "Paayh User")
     : (transaction.user_email || currentUserEmail || "Account Holder");
 
-  // Payment purpose / narration
-  const purpose = transaction.description || meta.purpose || getTypeLabel(transaction.type);
+  // Payment purpose / narration (with any embedded bank account number masked)
+  const rawPurpose = transaction.description || meta.purpose || getTypeLabel(transaction.type);
+  const purpose = isWithdrawal ? maskAccountNumbersInText(rawPurpose) : rawPurpose;
 
   const handlePrint = () => {
     // Generate clean printable receipt window

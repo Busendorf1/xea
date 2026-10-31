@@ -222,7 +222,10 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
       
       if (activeTab === "payments") {
         const type = `"${tx.type}"`;
-        const amt = tx.type === "transfer_received" ? tx.amount : -tx.amount;
+        const isInflow = ["transfer_received", "refund", "campaign_refund", "wallet_credit", "earning"].includes(
+          String(tx.type || "").toLowerCase()
+        );
+        const amt = isInflow ? tx.amount : -tx.amount;
         return [formattedDate, ref, type, desc, amt, status].join(",");
       } else {
         return [formattedDate, ref, desc, -tx.amount, status].join(",");
@@ -627,7 +630,9 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                     </thead>
                     <tbody>
                       {paginatedPayments.map((tx) => {
-                        const isCredit = tx.type === "transfer_received";
+                        const isCredit = ["transfer_received", "refund", "campaign_refund", "wallet_credit", "earning"].includes(
+                          String(tx.type || "").toLowerCase()
+                        );
                         return (
                           <tr key={tx.id} className={styles.row}>
                             <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
@@ -673,7 +678,9 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
                   {/* Mobile Card List View (matches xea-mobile, no horizontal scroll) */}
                   <div className={styles.mobileCardList}>
                     {paginatedPayments.map((tx) => {
-                      const isCredit = tx.type === "transfer_received";
+                      const isCredit = ["transfer_received", "refund", "campaign_refund", "wallet_credit", "earning"].includes(
+                        String(tx.type || "").toLowerCase()
+                      );
                       return (
                         <div key={tx.id} className={styles.mobileCard}>
                           <div className={styles.mobileCardLeft}>

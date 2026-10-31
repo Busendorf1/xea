@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
+import { getCachedProfile } from "@/lib/utils/cache";
 import { Ad, AdvertiserProfile } from "@/types/ads";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import {
@@ -16,8 +17,106 @@ export const dynamic = "force-dynamic";
 // Optimized TTLs for high-scalability candidate ID caching
 const USER_FEED_IDS_TTL_SECONDS = 600; // 10 minutes TTL for candidate ID pool
 const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
+const L1_USER_FEED_TTL_MS = 120 * 1000; // 2 minutes L1 fallback cache (absorbs repeat fetches even when Redis is over quota)
+const L1_SHARED_ADS_POOL_TTL_MS = 25 * 1000; // 25s shared active campaign pool
 
 const AD_SELECT_FIELDS = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, is_ai_content";
+
+// Circuit breaker when DB RPC get_user_feed has a return-type mismatch (avoids wasted 500ms roundtrip per request)
+let rpcGetFeedBrokenUntil = 0;
+
+// L1 Shared Active Campaigns Pool by normalized country key (Single-Flight Coalesced)
+const l1SharedCampaignsPool = new Map<string, { ads: any[]; expiresAt: number }>();
+const inFlightCampaignPoolPromises = new Map<string, Promise<any[]>>();
+
+// L1 Shared Ad Detail Map & Publisher Profile Map
+const l1AdDetailsCache = new Map<string, { ad: Ad; expiresAt: number }>();
+const l1PublisherProfilesCache = new Map<string, { profile: AdvertiserProfile; expiresAt: number }>();
+
+// L1 Per-User Candidate Feed Cache (prevents repeated DB scans when candidateAdIds is empty or Redis is in quota cooldown)
+interface L1UserFeedEntry {
+  adIds: string[];
+  profilesMap: Record<string, AdvertiserProfile>;
+  expiresAt: number;
+}
+const l1UserFeedCache = new Map<string, L1UserFeedEntry>();
+const MAX_L1_USER_FEEDS = 3000;
+
+function setL1UserFeed(emailKey: string, adIds: string[], profilesMap: Record<string, AdvertiserProfile>) {
+  if (l1UserFeedCache.size >= MAX_L1_USER_FEEDS && !l1UserFeedCache.has(emailKey)) {
+    const firstKey = l1UserFeedCache.keys().next().value;
+    if (firstKey) l1UserFeedCache.delete(firstKey);
+  }
+  l1UserFeedCache.set(emailKey, {
+    adIds,
+    profilesMap,
+    expiresAt: Date.now() + L1_USER_FEED_TTL_MS,
+  });
+}
+
+/**
+ * Single-Flight Loader for Active Unpaused Campaigns by Country Slice.
+ * Collapses thousands of concurrent user feed refreshes into 1 indexed DB query per 25 seconds.
+ */
+async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): Promise<any[]> {
+  const cleanCountry = (viewerCountryRaw || "").trim();
+  const poolKey =
+    cleanCountry && cleanCountry.toUpperCase() !== "PLACEHOLDER"
+      ? cleanCountry.toLowerCase()
+      : "__global__";
+
+  const cachedPool = l1SharedCampaignsPool.get(poolKey);
+  if (cachedPool && Date.now() < cachedPool.expiresAt) {
+    return cachedPool.ads;
+  }
+
+  const existingPromise = inFlightCampaignPoolPromises.get(poolKey);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      let query = supabaseReadOnly
+        .from("addsactive")
+        .select(AD_SELECT_FIELDS)
+        .is("completed_at", null)
+        .or("is_paused.is.null,is_paused.eq.false");
+
+      if (poolKey !== "__global__") {
+        const safeCountry = cleanCountry.replace(/[,()]/g, "");
+        query = query.or(
+          `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`
+        );
+      }
+
+      const { data: fallbackAds } = await query
+        .order("cost_per_impression", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(250);
+
+      const rows = fallbackAds || [];
+      l1SharedCampaignsPool.set(poolKey, {
+        ads: rows,
+        expiresAt: Date.now() + L1_SHARED_ADS_POOL_TTL_MS,
+      });
+
+      const detailExp = Date.now() + AD_DETAIL_TTL_SECONDS * 1000;
+      rows.forEach((ad: any) => {
+        if (ad?.id) {
+          l1AdDetailsCache.set(ad.id, { ad, expiresAt: detailExp });
+        }
+      });
+
+      return rows;
+    } finally {
+      inFlightCampaignPoolPromises.delete(poolKey);
+    }
+  })();
+
+  inFlightCampaignPoolPromises.set(poolKey, fetchPromise);
+  return fetchPromise;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,7 +133,7 @@ export async function GET(req: NextRequest) {
       limit: refresh ? 8 : 45,
       windowSeconds: 60,
       identifierPrefix: refresh ? "feed_refresh" : "feed_paginate",
-      blockDurationSeconds: refresh ? 21600 : undefined, // 6-hour lockout window on refresh violation
+      blockDurationSeconds: refresh ? 21600 : undefined,
     });
 
     if (!rateLimit.allowed) {
@@ -52,7 +151,7 @@ export async function GET(req: NextRequest) {
     const adIdsCacheKey = `feed:ad_ids:${emailKey}`;
     const legacyAdsCacheKey = `feed:ads:${emailKey}`;
     const profilesCacheKey = `feed:profiles:${emailKey}`;
-    const viewerProfileCacheKey = `profile:${emailKey}`;
+    const viewerProfileCacheKey = `user:profile:${emailKey}`;
     const seenAdsSetKey = `seen:ads:${emailKey}`;
 
     const blockedAdsSetKey = `blocked:ads:${emailKey}`;
@@ -67,22 +166,8 @@ export async function GET(req: NextRequest) {
     const lastViewedHashKey = `user:last_viewed:${emailKey}`;
     const RETARGET_MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours minimum gap between retargeted views
 
-    // Pipeline all Redis lookups (Cache, Viewer Profile, Sets, Frequency Hashes, Pacing, Last Viewed) into a single O(1) network trip
-    const redisPipe = redisConnection.pipeline();
-    if (!refresh) {
-      redisPipe.get(adIdsCacheKey);
-      redisPipe.get(profilesCacheKey);
-    }
-    redisPipe.smembers(seenAdsSetKey);
-    redisPipe.smembers(blockedAdsSetKey);
-    redisPipe.smembers(blockedAdvertisersSetKey);
-    redisPipe.hgetall(pacingHashKey);
-    redisPipe.hgetall(`user:freq:${emailKey}:${todayDate}`);
-    redisPipe.hgetall(`user:freq_lifetime:${emailKey}`);
-    redisPipe.get(viewerProfileCacheKey);
-    redisPipe.hgetall(lastViewedHashKey);
-
-    const redisResultsRaw = await redisPipe.exec().catch(() => []);
+    // Check L1 profile cache first (<0.05ms)
+    let viewerProfile: ViewerTargetingProfile | null = await getCachedProfile<ViewerTargetingProfile>(emailKey);
 
     let cachedAdIdsStr: string | null = null;
     let cachedProfilesStr: string | null = null;
@@ -95,25 +180,59 @@ export async function GET(req: NextRequest) {
     let cachedViewerProfileStr: string | null = null;
     let lastViewedMap: Record<string, string> = {};
 
-    if (Array.isArray(redisResultsRaw) && redisResultsRaw.length > 0) {
-      let offsetIdx = 0;
-      if (!refresh) {
-        cachedAdIdsStr = redisResultsRaw[0]?.[1] as string | null;
-        cachedProfilesStr = redisResultsRaw[1]?.[1] as string | null;
-        offsetIdx = 2;
+    // Check L1 per-user feed cache before network call when not refreshing
+    if (!refresh) {
+      const l1Feed = l1UserFeedCache.get(emailKey);
+      if (l1Feed && Date.now() < l1Feed.expiresAt) {
+        cachedAdIdsStr = JSON.stringify(l1Feed.adIds);
+        cachedProfilesStr = JSON.stringify(l1Feed.profilesMap);
       }
-      seenAdIdsList = (redisResultsRaw[offsetIdx]?.[1] as string[]) || [];
-      blockedAdIdsList = (redisResultsRaw[offsetIdx + 1]?.[1] as string[]) || [];
-      blockedAdvertisersList = (redisResultsRaw[offsetIdx + 2]?.[1] as string[]) || [];
-      todayPacingMap = (redisResultsRaw[offsetIdx + 3]?.[1] as Record<string, string>) || {};
-      todayFreqMap = (redisResultsRaw[offsetIdx + 4]?.[1] as Record<string, string>) || {};
-      lifetimeFreqMap = (redisResultsRaw[offsetIdx + 5]?.[1] as Record<string, string>) || {};
-      cachedViewerProfileStr = (redisResultsRaw[offsetIdx + 6]?.[1] as string | null) || null;
-      lastViewedMap = (redisResultsRaw[offsetIdx + 7]?.[1] as Record<string, string>) || {};
     }
 
-    let viewerProfile: ViewerTargetingProfile | null = null;
-    if (cachedViewerProfileStr) {
+    // Pipeline Redis lookups only when Redis is online and under quota
+    if (isRedisReady()) {
+      const redisPipe = redisConnection.pipeline();
+      const needRedisFeedCache = !refresh && (!cachedAdIdsStr || !cachedProfilesStr);
+      if (needRedisFeedCache) {
+        redisPipe.get(adIdsCacheKey);
+        redisPipe.get(profilesCacheKey);
+      }
+      redisPipe.smembers(seenAdsSetKey);
+      redisPipe.smembers(blockedAdsSetKey);
+      redisPipe.smembers(blockedAdvertisersSetKey);
+      redisPipe.hgetall(pacingHashKey);
+      redisPipe.hgetall(`user:freq:${emailKey}:${todayDate}`);
+      redisPipe.hgetall(`user:freq_lifetime:${emailKey}`);
+      if (!viewerProfile) {
+        redisPipe.get(viewerProfileCacheKey);
+      }
+      redisPipe.hgetall(lastViewedHashKey);
+
+      const redisResultsRaw = await redisPipe.exec().catch(() => []);
+
+      if (Array.isArray(redisResultsRaw) && redisResultsRaw.length > 0) {
+        let offsetIdx = 0;
+        if (needRedisFeedCache) {
+          cachedAdIdsStr = (redisResultsRaw[0]?.[1] as string | null) || cachedAdIdsStr;
+          cachedProfilesStr = (redisResultsRaw[1]?.[1] as string | null) || cachedProfilesStr;
+          offsetIdx = 2;
+        }
+        seenAdIdsList = (redisResultsRaw[offsetIdx]?.[1] as string[]) || [];
+        blockedAdIdsList = (redisResultsRaw[offsetIdx + 1]?.[1] as string[]) || [];
+        blockedAdvertisersList = (redisResultsRaw[offsetIdx + 2]?.[1] as string[]) || [];
+        todayPacingMap = (redisResultsRaw[offsetIdx + 3]?.[1] as Record<string, string>) || {};
+        todayFreqMap = (redisResultsRaw[offsetIdx + 4]?.[1] as Record<string, string>) || {};
+        lifetimeFreqMap = (redisResultsRaw[offsetIdx + 5]?.[1] as Record<string, string>) || {};
+        if (!viewerProfile) {
+          cachedViewerProfileStr = (redisResultsRaw[offsetIdx + 6]?.[1] as string | null) || null;
+          lastViewedMap = (redisResultsRaw[offsetIdx + 7]?.[1] as Record<string, string>) || {};
+        } else {
+          lastViewedMap = (redisResultsRaw[offsetIdx + 6]?.[1] as Record<string, string>) || {};
+        }
+      }
+    }
+
+    if (!viewerProfile && cachedViewerProfileStr) {
       try {
         viewerProfile = JSON.parse(cachedViewerProfileStr);
       } catch {}
@@ -131,16 +250,19 @@ export async function GET(req: NextRequest) {
       });
     });
 
-    // 2. If Redis frequency counters are cold, hydrate once from DB and backfill Redis asynchronously
-    if (userImpressionMap.size === 0) {
+    // 2. If Redis frequency counters are cold and we don't already have an empty L1 feed hit, hydrate once from DB (bounded to latest 1000)
+    const isInstantEmptyL1Hit = !refresh && cachedAdIdsStr === "[]";
+    if (userImpressionMap.size === 0 && !isInstantEmptyL1Hit) {
       try {
         const { data: dbImpressions } = await supabaseReadOnly
           .from("ad_impressions")
           .select("ad_id, view_count, today_view_count, last_viewed_at")
-          .eq("user_email", emailKey);
+          .eq("user_email", emailKey)
+          .order("last_viewed_at", { ascending: false })
+          .limit(1000);
 
         if (dbImpressions && dbImpressions.length > 0) {
-          const backfillPipe = redisConnection.pipeline();
+          const backfillPipe = isRedisReady() ? redisConnection.pipeline() : null;
           dbImpressions.forEach((imp: any) => {
             if (imp.ad_id) {
               userImpressionMap.set(imp.ad_id, {
@@ -148,19 +270,23 @@ export async function GET(req: NextRequest) {
                 today_view_count: Number(imp.today_view_count || 0),
                 last_viewed_at: imp.last_viewed_at,
               });
-              backfillPipe.hset(`user:freq_lifetime:${emailKey}`, imp.ad_id, String(imp.view_count || 1));
-              if (imp.last_viewed_at) {
-                backfillPipe.hset(lastViewedHashKey, imp.ad_id, imp.last_viewed_at);
-              }
-              if (imp.today_view_count && imp.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate) {
-                backfillPipe.hset(`user:freq:${emailKey}:${todayDate}`, imp.ad_id, String(imp.today_view_count));
+              if (backfillPipe) {
+                backfillPipe.hset(`user:freq_lifetime:${emailKey}`, imp.ad_id, String(imp.view_count || 1));
+                if (imp.last_viewed_at) {
+                  backfillPipe.hset(lastViewedHashKey, imp.ad_id, imp.last_viewed_at);
+                }
+                if (imp.today_view_count && imp.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate) {
+                  backfillPipe.hset(`user:freq:${emailKey}:${todayDate}`, imp.ad_id, String(imp.today_view_count));
+                }
               }
             }
           });
-          backfillPipe.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30);
-          backfillPipe.expire(lastViewedHashKey, 86400 * 30);
-          backfillPipe.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2);
-          backfillPipe.exec().catch(() => {});
+          if (backfillPipe) {
+            backfillPipe.expire(`user:freq_lifetime:${emailKey}`, 86400 * 30);
+            backfillPipe.expire(lastViewedHashKey, 86400 * 30);
+            backfillPipe.expire(`user:freq:${emailKey}:${todayDate}`, 86400 * 2);
+            backfillPipe.exec().catch(() => {});
+          }
         }
       } catch {}
     }
@@ -190,31 +316,49 @@ export async function GET(req: NextRequest) {
         const slicedIds = eligibleIds.slice(effectiveOffset, effectiveOffset + limit);
 
         if (slicedIds.length > 0) {
-          // Fetch shared ad details from Redis in bulk
-          const detailKeys = slicedIds.map((id) => `ad:detail:${id}`);
-          const cachedDetailsRaw = detailKeys.length > 0 ? await redisConnection.mget(detailKeys) : [];
-
-          const missingIds: string[] = [];
           const fetchedDetailsMap: Record<string, Ad> = {};
+          const redisLookupIds: string[] = [];
 
-          cachedDetailsRaw.forEach((raw, idx) => {
-            const adId = slicedIds[idx];
-            if (raw) {
-              try {
-                const adDetail: Ad = JSON.parse(raw);
-                if (adDetail.user_email && blockedAdvertisersSet.has(adDetail.user_email.toLowerCase())) {
-                  return;
-                }
+          // 1. Check L1 Ad Details Cache first (0ms)
+          for (const adId of slicedIds) {
+            const l1Detail = l1AdDetailsCache.get(adId);
+            if (l1Detail && Date.now() < l1Detail.expiresAt) {
+              const adDetail = l1Detail.ad;
+              if (!adDetail.user_email || !blockedAdvertisersSet.has(adDetail.user_email.toLowerCase())) {
                 fetchedDetailsMap[adId] = adDetail;
-              } catch {
-                missingIds.push(adId);
               }
             } else {
-              missingIds.push(adId);
+              redisLookupIds.push(adId);
             }
-          });
+          }
 
-          // Backfill missing ad details from Supabase using pruned columns if evicted from Redis
+          // 2. Check L2 Redis for any IDs not in L1
+          const missingIds: string[] = [];
+          if (redisLookupIds.length > 0 && isRedisReady()) {
+            const detailKeys = redisLookupIds.map((id) => `ad:detail:${id}`);
+            const cachedDetailsRaw = await redisConnection.mget(detailKeys);
+            cachedDetailsRaw.forEach((raw, idx) => {
+              const adId = redisLookupIds[idx];
+              if (raw) {
+                try {
+                  const adDetail: Ad = JSON.parse(raw);
+                  l1AdDetailsCache.set(adId, { ad: adDetail, expiresAt: Date.now() + AD_DETAIL_TTL_SECONDS * 1000 });
+                  if (adDetail.user_email && blockedAdvertisersSet.has(adDetail.user_email.toLowerCase())) {
+                    return;
+                  }
+                  fetchedDetailsMap[adId] = adDetail;
+                } catch {
+                  missingIds.push(adId);
+                }
+              } else {
+                missingIds.push(adId);
+              }
+            });
+          } else {
+            missingIds.push(...redisLookupIds);
+          }
+
+          // 3. Backfill missing ad details from Supabase if evicted from L1 & L2
           if (missingIds.length > 0) {
             const { data: dbMissing, error: dbErr } = await supabaseReadOnly
               .from("addsactive")
@@ -222,15 +366,20 @@ export async function GET(req: NextRequest) {
               .in("id", missingIds);
 
             if (!dbErr && dbMissing) {
-              const pipeline = redisConnection.pipeline();
+              const pipeline = isRedisReady() ? redisConnection.pipeline() : null;
               dbMissing.forEach((ad: any) => {
+                l1AdDetailsCache.set(ad.id, { ad, expiresAt: Date.now() + AD_DETAIL_TTL_SECONDS * 1000 });
                 if (ad.user_email && blockedAdvertisersSet.has(ad.user_email.toLowerCase())) {
                   return;
                 }
                 fetchedDetailsMap[ad.id] = ad;
-                pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
+                if (pipeline) {
+                  pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
+                }
               });
-              pipeline.exec().catch((err) => console.error("❌ Redis backfill error:", err));
+              if (pipeline) {
+                pipeline.exec().catch(() => {});
+              }
             }
           }
 
@@ -252,7 +401,6 @@ export async function GET(req: NextRequest) {
               const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? userCap : 0);
               if (totalViews >= userCap) return false;
 
-              // Enforce 2-hour retargeting spacing for repeat views
               if (totalViews > 0 && imp?.last_viewed_at) {
                 const lastViewedMs = new Date(imp.last_viewed_at).getTime();
                 if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < RETARGET_MIN_COOLDOWN_MS) {
@@ -264,51 +412,45 @@ export async function GET(req: NextRequest) {
         }
 
         cacheHit = true;
-        console.log(`🚀 Scalable Feed cache hit for user: ${emailKey} (Offset: ${offset}, EffectiveOffset: ${effectiveOffset}, Limit: ${limit})`);
       } catch (err: any) {
-        console.error("❌ Redis read error in feed route:", err.message || err);
+        console.error("❌ Cache read error in feed route:", err.message || err);
       }
     }
 
     if (!cacheHit) {
-      console.log(`🔄 Feed cache miss/refresh for user: ${emailKey}. Fetching matching campaigns...`);
+      // Resolve viewer profile (L1/L2 cached or DB fallback)
+      if (!viewerProfile) {
+        const { data: dbUser } = await supabaseReadOnly
+          .from("users")
+          .select("email, dob, country, state, location, gender, employment, employment_status, interest, lifestyle, behavior, personality, industry")
+          .ilike("email", emailKey)
+          .maybeSingle();
+        viewerProfile = (dbUser as ViewerTargetingProfile) || { email: emailKey };
+      } else {
+        viewerProfile = { ...viewerProfile, email: emailKey };
+      }
 
-      // Fetch viewer profile (if not already in Redis pipeline) and RPC get_user_feed in parallel
-      const [resolvedViewerProfile, rpcRes] = await Promise.all([
-        (async (): Promise<ViewerTargetingProfile> => {
-          if (viewerProfile) return { ...viewerProfile, email: emailKey };
-          const { data: dbUser } = await supabaseReadOnly
-            .from("users")
-            .select("email, dob, country, state, location, gender, employment, employment_status, interest, lifestyle, behavior, personality, industry")
-            .ilike("email", emailKey)
-            .maybeSingle();
-          return (dbUser as ViewerTargetingProfile) || { email: emailKey };
-        })(),
-        supabaseReadOnly.rpc("get_user_feed", {
+      let rawAds: any[] = [];
+
+      // Only attempt RPC get_user_feed if not in schema-mismatch circuit-breaker cooldown
+      if (Date.now() >= rpcGetFeedBrokenUntil) {
+        const rpcRes = await supabaseReadOnly.rpc("get_user_feed", {
           p_user_email: email,
           p_limit: 100,
           p_offset: 0,
-        }),
-      ]);
-
-      viewerProfile = resolvedViewerProfile;
-      let rawAds: any[] = rpcRes.data || [];
-
-      // Fallback: If RPC fails or returns 0 rows, query active unpaused ads from addsactive
-      if (rpcRes.error || rawAds.length === 0) {
+        });
         if (rpcRes.error) {
-          console.warn("⚠️ RPC get_user_feed fallback to addsactive:", rpcRes.error.message || rpcRes.error);
+          // Trip 30-minute circuit breaker so we don't waste a 500ms round-trip on every subsequent request
+          rpcGetFeedBrokenUntil = Date.now() + 30 * 60 * 1000;
+          console.warn("⚠️ RPC get_user_feed schema mismatch (circuit-breaker active for 30m); using indexed addsactive pool.");
+        } else if (rpcRes.data && rpcRes.data.length > 0) {
+          rawAds = rpcRes.data;
         }
+      }
 
-        const { data: fallbackAds } = await supabaseReadOnly
-          .from("addsactive")
-          .select(AD_SELECT_FIELDS)
-          .is("completed_at", null)
-          .order("cost_per_impression", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(150);
-
-        rawAds = fallbackAds || [];
+      // Fast Single-Flight Shared Active Campaign Pool (1 DB query per 25s across all users in country)
+      if (rawAds.length === 0) {
+        rawAds = await loadSharedActiveAdsForCountry(viewerProfile?.country || "");
       }
 
       // Enforce accurate demographic, geographic (country + state/province), employment, and psychographic targeting
@@ -331,7 +473,6 @@ export async function GET(req: NextRequest) {
         const impressionsTarget = Number(ad.impressions || 0);
         const impressionCount = Number(ad.impression_count ?? ad.view_count ?? 0);
 
-        // Hard exclusion if campaign impressions are exhausted
         if (impressionsTarget > 0 && impressionCount >= impressionsTarget) {
           return;
         }
@@ -340,7 +481,6 @@ export async function GET(req: NextRequest) {
         const imp = userImpressionMap.get(ad.id);
         const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? userCap : 0);
 
-        // Hard exclusion once user reaches frequency cap — user will NEVER see this ad again
         if (totalViews >= userCap) {
           completedOrCappedAdIds.push(ad.id);
           return;
@@ -354,7 +494,6 @@ export async function GET(req: NextRequest) {
           isToday ? (imp?.today_view_count || 0) : 0
         );
 
-        // Daily retargeting cap & minimum 2-hour cooldown spacing between repeat views
         if (totalViews > 0) {
           if (viewsToday >= dailyUserCap) {
             return;
@@ -398,8 +537,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Google Enterprise Tiered Priority Interleaver:
-      // Separate candidate ads into Bidded Tier and Standard Floor Tier while preserving targeting affinity order
+      // Google Enterprise Tiered Priority Interleaver
       const biddedTier: Ad[] = [];
       const standardTier: Ad[] = [];
 
@@ -412,8 +550,6 @@ export async function GET(req: NextRequest) {
         }
       });
 
-      // Interleave candidates using 75% bidded priority / 25% floor distribution
-      // with Anti-Fatigue / Advertiser Diversity (no 2 identical user_emails consecutively)
       const interleavedAds: Ad[] = [];
       let bIdx = 0;
       let sIdx = 0;
@@ -439,21 +575,34 @@ export async function GET(req: NextRequest) {
       const orderedCandidateAds = interleavedAds;
       const candidateAdIds = orderedCandidateAds.map((a: Ad) => a.id);
 
-      // Extract publisher emails to fetch basic profile info server-side
+      // Extract publisher emails and resolve from L1 cache before querying Supabase
       const publisherEmails = Array.from(
         new Set(orderedCandidateAds.map((ad: Ad) => ad.user_email).filter(Boolean))
       ) as string[];
 
-      if (publisherEmails.length > 0) {
+      const missingPublisherEmails: string[] = [];
+      for (const pubEmail of publisherEmails) {
+        const lower = pubEmail.toLowerCase();
+        const cachedPub = l1PublisherProfilesCache.get(lower);
+        if (cachedPub && Date.now() < cachedPub.expiresAt) {
+          profilesMap[lower] = cachedPub.profile;
+        } else {
+          missingPublisherEmails.push(pubEmail);
+        }
+      }
+
+      if (missingPublisherEmails.length > 0) {
         const { data: profiles, error: profilesError } = await supabaseReadOnly
           .from("users")
           .select('email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized')
-          .in("email", publisherEmails);
+          .in("email", missingPublisherEmails);
 
         if (!profilesError && profiles) {
+          const pubExp = Date.now() + 5 * 60 * 1000;
           profiles.forEach((p: any) => {
             if (p.email) {
-              profilesMap[p.email.toLowerCase()] = {
+              const lower = p.email.toLowerCase();
+              const formatted: AdvertiserProfile = {
                 email: p.email,
                 username: p.username || "",
                 business_name: p.business_name || "",
@@ -467,31 +616,40 @@ export async function GET(req: NextRequest) {
                 created_at: p.created_at || "",
                 monetized: p.monetized === true || p.monetized === "true" || p.monetized === "yes",
               };
+              profilesMap[lower] = formatted;
+              l1PublisherProfilesCache.set(lower, { profile: formatted, expiresAt: pubExp });
             }
           });
         }
       }
 
-      // Store in Redis via a Single Atomic Pipeline (O(1) Network Roundtrip)
-      try {
-        const pipeline = redisConnection.pipeline();
-        pipeline.set(adIdsCacheKey, JSON.stringify(candidateAdIds), "EX", USER_FEED_IDS_TTL_SECONDS);
-        pipeline.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", USER_FEED_IDS_TTL_SECONDS);
-        pipeline.del(legacyAdsCacheKey);
+      // Always store in L1 per-user cache (even if candidateAdIds is empty `[]`) so repeat calls resolve in 0ms
+      setL1UserFeed(emailKey, candidateAdIds, profilesMap);
 
-        if (completedOrCappedAdIds.length > 0) {
-          pipeline.sadd(seenAdsSetKey, ...completedOrCappedAdIds);
-          pipeline.expire(seenAdsSetKey, 86400 * 30);
-        }
+      const detailExp = Date.now() + AD_DETAIL_TTL_SECONDS * 1000;
+      orderedCandidateAds.forEach((ad: Ad) => {
+        l1AdDetailsCache.set(ad.id, { ad, expiresAt: detailExp });
+      });
 
-        orderedCandidateAds.forEach((ad: Ad) => {
-          pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
-        });
+      // Store in L2 Redis via a Single Atomic Pipeline when Redis is online
+      if (isRedisReady()) {
+        try {
+          const pipeline = redisConnection.pipeline();
+          pipeline.set(adIdsCacheKey, JSON.stringify(candidateAdIds), "EX", USER_FEED_IDS_TTL_SECONDS);
+          pipeline.set(profilesCacheKey, JSON.stringify(profilesMap), "EX", USER_FEED_IDS_TTL_SECONDS);
+          pipeline.del(legacyAdsCacheKey);
 
-        await pipeline.exec();
-        console.log(`✅ Cached ${candidateAdIds.length} candidate ads in single Redis Pipeline for: ${emailKey}`);
-      } catch (err: any) {
-        console.error("❌ Redis pipeline write error:", err.message || err);
+          if (completedOrCappedAdIds.length > 0) {
+            pipeline.sadd(seenAdsSetKey, ...completedOrCappedAdIds);
+            pipeline.expire(seenAdsSetKey, 86400 * 30);
+          }
+
+          orderedCandidateAds.forEach((ad: Ad) => {
+            pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
+          });
+
+          await pipeline.exec();
+        } catch {}
       }
 
       pageAds = orderedCandidateAds.slice(offset, offset + limit);
@@ -500,8 +658,13 @@ export async function GET(req: NextRequest) {
     // Server-side Shared Ad Resolution (Zero Client Waterfall)
     if (sharedAdId && offset === 0) {
       try {
-        const cachedRaw = await redisConnection.get(`ad:detail:${sharedAdId}`);
-        let sharedAd: Ad | null = cachedRaw ? JSON.parse(cachedRaw) : null;
+        const l1Shared = l1AdDetailsCache.get(sharedAdId);
+        let sharedAd: Ad | null = l1Shared && Date.now() < l1Shared.expiresAt ? l1Shared.ad : null;
+
+        if (!sharedAd && isRedisReady()) {
+          const cachedRaw = await redisConnection.get(`ad:detail:${sharedAdId}`);
+          if (cachedRaw) sharedAd = JSON.parse(cachedRaw);
+        }
 
         if (!sharedAd) {
           const { data: sharedDb } = await supabaseReadOnly
@@ -512,7 +675,10 @@ export async function GET(req: NextRequest) {
 
           if (sharedDb && !sharedDb.completed_at) {
             sharedAd = sharedDb as Ad;
-            redisConnection.set(`ad:detail:${sharedAd.id}`, JSON.stringify(sharedAd), "EX", AD_DETAIL_TTL_SECONDS).catch(() => {});
+            l1AdDetailsCache.set(sharedAd.id, { ad: sharedAd, expiresAt: Date.now() + AD_DETAIL_TTL_SECONDS * 1000 });
+            if (isRedisReady()) {
+              redisConnection.set(`ad:detail:${sharedAd.id}`, JSON.stringify(sharedAd), "EX", AD_DETAIL_TTL_SECONDS).catch(() => {});
+            }
           }
         }
 

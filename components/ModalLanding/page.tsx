@@ -59,16 +59,28 @@ export default function ModalLandingPage() {
   const closeTimeoutRef = useRef<number | null>(null);
 
   // Prevent authenticated users from reaching the initial login screen via browser Back button / BFCache
+  // Note: app/page.tsx (force-dynamic) already redirects authenticated sessions on the server.
+  // If ModalLandingPage renders on a fresh document load, the server confirmed there is no active Auth0 session,
+  // so clear any stale paayh_active_tab cookie to prevent a / <-> /logged-in reload loop.
   useEffect(() => {
-    const enforceLoggedInRedirect = () => {
-      if (typeof document !== "undefined" && document.cookie.includes("paayh_active_tab=")) {
+    if (typeof document !== "undefined" && document.cookie.includes("paayh_active_tab=")) {
+      document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (
+        event.persisted &&
+        typeof document !== "undefined" &&
+        document.cookie.includes("paayh_active_tab=")
+      ) {
+        document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         window.location.replace("/logged-in");
       }
     };
-    enforceLoggedInRedirect();
-    window.addEventListener("pageshow", enforceLoggedInRedirect);
+
+    window.addEventListener("pageshow", handlePageShow);
     return () => {
-      window.removeEventListener("pageshow", enforceLoggedInRedirect);
+      window.removeEventListener("pageshow", handlePageShow);
     };
   }, []);
 

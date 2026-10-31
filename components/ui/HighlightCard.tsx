@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./AdCard.module.css";
 import { Ad } from "./AdCard";
+import { mediaAspectRatioCache, saveRatioToCache } from "./MediaCarousel";
 
 interface HighlightCardProps {
   ad: Ad;
@@ -47,10 +48,17 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
 
   React.useEffect(() => {
     if (!ad.ad_media) return;
+    if (mediaAspectRatioCache.has(ad.ad_media)) {
+      const cached = mediaAspectRatioCache.get(ad.ad_media)!;
+      setAspectRatio((prev) => (prev === cached ? prev : cached));
+      return;
+    }
+
     const applyRatio = (w: number, h: number) => {
       if (w > 0 && h > 0) {
         const rawRatio = w / h;
-        const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
+        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
+        if (ad.ad_media) saveRatioToCache(ad.ad_media, clamped);
         setAspectRatio((prev) => (prev === clamped ? prev : clamped));
         return true;
       }
@@ -111,7 +119,13 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
         {ad.ad_media && (
           <div
             className={styles.mediaBox}
-            style={{ aspectRatio: `${aspectRatio}`, cursor: "pointer" }}
+            style={
+              {
+                "--single-media-ratio": aspectRatio,
+                aspectRatio: `${aspectRatio}`,
+                cursor: "pointer",
+              } as React.CSSProperties
+            }
             role="button"
             tabIndex={0}
             aria-label="Open highlight media viewer"
@@ -136,7 +150,8 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
                 const img = e.currentTarget;
                 if (img.naturalWidth && img.naturalHeight) {
                   const rawRatio = img.naturalWidth / img.naturalHeight;
-                  const clamped = Math.min(Math.max(rawRatio, 0.8), 2.0);
+                  const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
+                  if (ad.ad_media) saveRatioToCache(ad.ad_media, clamped);
                   setAspectRatio(clamped);
                 }
               }}

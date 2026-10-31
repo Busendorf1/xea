@@ -5,6 +5,7 @@ import { getCachedUserCampaigns, setCachedUserCampaigns } from "@/lib/utils/cach
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
 import { triggerSelfHealingJobsIfDue } from "@/lib/services/cronOrchestrator";
+import { overlayPendingBufferedDeltas } from "@/lib/impressionBuffer";
 
 export const dynamic = "force-dynamic";
 
@@ -94,8 +95,8 @@ export async function GET(req: NextRequest) {
 
     if (adIds.length > 0) {
       const [reportsRes, blockedAdsRes] = await Promise.all([
-        supabaseReadOnly.from("ad_reports").select("ad_id").in("ad_id", adIds),
-        supabaseReadOnly.from("blocked_ads").select("ad_id").in("ad_id", adIds),
+        supabaseReadOnly.from("ad_reports").select("ad_id").in("ad_id", adIds).limit(5000),
+        supabaseReadOnly.from("blocked_ads").select("ad_id").in("ad_id", adIds).limit(5000),
       ]);
       if (reportsRes.data) {
         for (const r of reportsRes.data) {
@@ -110,21 +111,31 @@ export async function GET(req: NextRequest) {
     }
 
     const ratedAdIds = (ratingsData.data || []).map((r: { ad_id: string }) => r.ad_id);
+    const todayUtc = new Date().toISOString().slice(0, 10);
 
     const sanitizeItem = (item: any) => {
       if (!item) return item;
-      const stmt = item.admin_statement;
+      let normalized = overlayPendingBufferedDeltas(item);
+      // Normalize stale daily_impression_count when last_reset_date is prior to today UTC
+      if (
+        normalized.last_reset_date &&
+        String(normalized.last_reset_date).slice(0, 10) < todayUtc &&
+        Number(normalized.daily_impression_count || 0) > 0
+      ) {
+        normalized = { ...normalized, daily_impression_count: 0 };
+      }
+      const stmt = normalized.admin_statement;
       if (typeof stmt === "string") {
         const trimmed = stmt.trim();
         if (/^status:\s*pending_review$/i.test(trimmed) || trimmed === "pending_review" || trimmed === "STATUS:pending_review") {
-          return { ...item, admin_statement: "Status: Pending review" };
+          return { ...normalized, admin_statement: "Status: Pending review" };
         }
         if (trimmed.startsWith("STATUS:")) {
           const rest = trimmed.replace(/^STATUS:\s*/i, "").trim();
-          return { ...item, admin_statement: rest === "pending_review" ? "Status: Pending review" : `Status: ${rest}` };
+          return { ...normalized, admin_statement: rest === "pending_review" ? "Status: Pending review" : `Status: ${rest}` };
         }
       }
-      return item;
+      return normalized;
     };
 
     const result = {

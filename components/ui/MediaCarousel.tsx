@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Volume2, VolumeX } from "lucide-react";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./AdCard.module.css";
 import VideoControlBar from "./VideoControlBar";
@@ -37,7 +37,7 @@ export const isVideoUrl = (url?: string | null): boolean => {
 };
 
 // Global in-memory aspect ratio cache to preserve exact media dimensions across virtual scroll recycling
-const mediaAspectRatioCache = new Map<string, number>();
+export const mediaAspectRatioCache = new Map<string, number>();
 
 // Hydrate cache from sessionStorage on client
 if (typeof window !== "undefined") {
@@ -54,7 +54,7 @@ if (typeof window !== "undefined") {
   } catch {}
 }
 
-const saveRatioToCache = (url: string, ratio: number) => {
+export const saveRatioToCache = (url: string, ratio: number) => {
   if (!url || !ratio || isNaN(ratio)) return;
   mediaAspectRatioCache.set(url, ratio);
   if (typeof window !== "undefined") {
@@ -207,12 +207,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   );
   const fallbackRatio = isFirstVideo ? 16 / 9 : 1.0;
 
-  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => {
-    if (firstUrl && mediaAspectRatioCache.has(firstUrl)) {
-      return mediaAspectRatioCache.get(firstUrl)!;
-    }
-    return fallbackRatio;
-  });
+  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(fallbackRatio);
 
   useEffect(() => {
     if (!firstUrl) return;
@@ -227,7 +222,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       const v = videoRefs.current[0];
       if (v && v.videoWidth && v.videoHeight) {
         const rawRatio = v.videoWidth / v.videoHeight;
-        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
         saveRatioToCache(firstUrl, clamped);
         setBaseAspectRatio(clamped);
       }
@@ -237,7 +232,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     const applyRatio = (w: number, h: number) => {
       if (w > 0 && h > 0) {
         const rawRatio = w / h;
-        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
         saveRatioToCache(firstUrl, clamped);
         setBaseAspectRatio((prev) => (prev === clamped ? prev : clamped));
         return true;
@@ -264,19 +259,29 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   // Only play the currently active slide's video when the card is visible; pause all non-active slides
   useEffect(() => {
-    const effectiveMuted = !isFullscreen ? true : isMuted;
     videoRefs.current.forEach((video, idx) => {
       if (!video) return;
       if (isCardVisible && idx === activeIndex) {
-        video.muted = effectiveMuted;
-        video.defaultMuted = effectiveMuted;
+        video.muted = isMuted;
+        video.defaultMuted = isMuted;
         const p = video.play();
         if (p !== undefined) {
           p.then(() => {
             setPlayingStates((prev) => ({ ...prev, [idx]: true }));
             if (isFullscreen) showControlsTemporarily(idx);
           }).catch(() => {
-            setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+            // If browser blocked unmuted autoplay without direct gesture, fall back to muted playback
+            if (!video.muted) {
+              video.muted = true;
+              video.defaultMuted = true;
+              video.play().then(() => {
+                setPlayingStates((prev) => ({ ...prev, [idx]: true }));
+              }).catch(() => {
+                setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+              });
+            } else {
+              setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+            }
           });
         }
       } else {
@@ -464,10 +469,17 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                 slideRefs.current[index] = el;
               }}
               className={`${styles.mediaRowItem} ${mediaUrls.length === 1 ? styles.mediaRowItemSingle : styles.mediaRowItemMulti}`}
-              style={{
-                aspectRatio: `${baseAspectRatio}`,
-                cursor: onMediaClick ? "pointer" : undefined,
-              }}
+              style={
+                mediaUrls.length === 1
+                  ? ({
+                      "--single-media-ratio": baseAspectRatio,
+                      aspectRatio: `${baseAspectRatio}`,
+                      cursor: onMediaClick ? "pointer" : undefined,
+                    } as React.CSSProperties)
+                  : {
+                      cursor: onMediaClick ? "pointer" : undefined,
+                    }
+              }
               onClick={(e) => handleItemActivate(index, e)}
             >
               {isVideo ? (
@@ -490,7 +502,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     playsInline
                     autoPlay={isCardVisible && index === activeIndex}
                     preload={isPreloadWarm && shouldEagerLoad ? "auto" : "metadata"}
-                    muted={!isFullscreen ? true : isMuted}
+                    muted={isMuted}
                     controls={false}
                     className={styles.mediaVideo}
                     onPlay={() => {
@@ -518,7 +530,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                       }
                       if (index === 0 && v.videoWidth && v.videoHeight) {
                         const rawRatio = v.videoWidth / v.videoHeight;
-                        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+                        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
                         if (firstUrl) saveRatioToCache(firstUrl, clamped);
                         setBaseAspectRatio((prev) => (mediaAspectRatioCache.has(firstUrl) ? prev : clamped));
                       }
@@ -531,7 +543,36 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                     }}
                   />
 
-                  {isFullscreen && (
+                  {!isFullscreen ? (
+                    <button
+                      type="button"
+                      className={styles.feedVideoMuteBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const video = videoRefs.current[index];
+                        const nextMuted = !isMuted;
+                        if (video) {
+                          video.muted = nextMuted;
+                          video.defaultMuted = nextMuted;
+                          if (!nextMuted && video.paused && isCardVisible) {
+                            video.play().catch(() => {});
+                          }
+                        }
+                        onToggleMute();
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      title={isMuted ? "Unmute sound" : "Mute sound"}
+                      aria-label={isMuted ? "Unmute sound" : "Mute sound"}
+                    >
+                      {isMuted ? (
+                        <VolumeX size={15} strokeWidth={2.2} />
+                      ) : (
+                        <Volume2 size={15} strokeWidth={2.2} />
+                      )}
+                    </button>
+                  ) : (
                     <VideoControlBar
                       index={index}
                       isPlaying={playingStates[index] ?? (isCardVisible && index === activeIndex)}
@@ -562,7 +603,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                       const img = e.currentTarget;
                       if (img.naturalWidth && img.naturalHeight) {
                         const rawRatio = img.naturalWidth / img.naturalHeight;
-                        const clamped = Math.min(Math.max(rawRatio, 0.8), 1.777);
+                        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
                         saveRatioToCache(firstUrl, clamped);
                         setBaseAspectRatio(clamped);
                       }

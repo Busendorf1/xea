@@ -3,11 +3,32 @@ import supabaseAdmin from "./dbAdmin";
 import { invalidateCachedProfile } from "./cache";
 
 const ACTIVITY_THROTTLE_TTL_SECONDS = 86400; // 24 Hours
+const ACTIVITY_THROTTLE_MS = ACTIVITY_THROTTLE_TTL_SECONDS * 1000;
+
+// L1 In-Memory 24-Hour Throttle Map (prevents DB write storms even if Redis is offline or over quota)
+const l1ActivityTouchMap = new Map<string, number>();
+const MAX_L1_ACTIVITY_ENTRIES = 10000;
+
+function isL1ActivityTouched(emailLower: string): boolean {
+  const exp = l1ActivityTouchMap.get(emailLower);
+  if (!exp) return false;
+  if (Date.now() < exp) return true;
+  l1ActivityTouchMap.delete(emailLower);
+  return false;
+}
+
+function markL1ActivityTouched(emailLower: string): void {
+  if (l1ActivityTouchMap.size >= MAX_L1_ACTIVITY_ENTRIES) {
+    const firstKey = l1ActivityTouchMap.keys().next().value;
+    if (firstKey) l1ActivityTouchMap.delete(firstKey);
+  }
+  l1ActivityTouchMap.set(emailLower, Date.now() + ACTIVITY_THROTTLE_MS);
+}
 
 /**
  * 24-Hour Throttled Activity Writer & 7-Day Inactivity Check
  * 1. Checks if user was inactive for 7+ days (instant lazy evaluation).
- * 2. If active, writes last_active_at to PostgreSQL at most once every 24 hours via Redis deduplication.
+ * 2. If active, writes last_active_at to PostgreSQL at most once every 24 hours via L1 Memory + L2 Redis deduplication.
  */
 export async function touchUserActivity(
   email: string,
@@ -41,24 +62,33 @@ export async function touchUserActivity(
           p_email: emailLower,
         });
         await invalidateCachedProfile(emailLower);
+        markL1ActivityTouched(emailLower);
         return { daysInactive, isDeMonetized: true };
+      }
+
+      // If last_active_at in DB was already updated within the last 12 hours, mark L1 touched and skip DB write
+      if (nowMs - lastActiveMs < 12 * 60 * 60 * 1000) {
+        markL1ActivityTouched(emailLower);
+        return { daysInactive, isDeMonetized: false };
       }
     }
 
-    // 2. 24-Hour Throttling Gate in Redis
+    // 2. Fast L1 In-Memory 24-Hour Throttling Gate (0ms, zero Redis commands)
+    if (isL1ActivityTouched(emailLower)) {
+      return { daysInactive, isDeMonetized: false };
+    }
+
+    // 3. L2 Redis 24-Hour Throttling Gate
     let isAlreadyTouched: string | null = null;
     if (isRedisReady()) {
       try {
         isAlreadyTouched = await redisConnection.get(throttleKey);
-      } catch (err: any) {
-        if (err?.message !== "Connection is closed.") {
-          console.warn("⚠️ Redis touchUserActivity read warning:", err.message || err);
-        }
-      }
+      } catch {}
     }
 
+    markL1ActivityTouched(emailLower);
+
     if (!isAlreadyTouched) {
-      // Set Redis key with 24-hour TTL to prevent further DB writes today
       if (isRedisReady()) {
         try {
           await redisConnection.set(throttleKey, "1", "EX", ACTIVITY_THROTTLE_TTL_SECONDS);

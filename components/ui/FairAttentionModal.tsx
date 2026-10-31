@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck, Eye, Sparkles } from "lucide-react";
+import { Check } from "lucide-react";
 import styles from "./FairAttentionModal.module.css";
 
 const STORAGE_KEY = "paayh_fair_attention_pledge_v1";
@@ -18,19 +18,32 @@ export default function FairAttentionModal({ onAccept }: Props) {
 
   useEffect(() => {
     try {
-      const alreadyAccepted = localStorage.getItem(STORAGE_KEY) === "true";
+      const alreadyAccepted = sessionStorage.getItem(STORAGE_KEY) === "true";
       if (!alreadyAccepted) {
         setIsOpen(true);
+      } else {
+        onAccept?.();
       }
     } catch {
-      // Graceful fallback for strict cookie/storage privacy settings
+      setIsOpen(true);
     }
-  }, []);
+  }, [onAccept]);
+
+  // Lock background scroll while modal is open
+  useEffect(() => {
+    if (!isOpen || typeof window === "undefined") return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
 
   const handleConfirm = () => {
     if (!agreed) return;
     try {
       localStorage.setItem(STORAGE_KEY, "true");
+      sessionStorage.setItem(STORAGE_KEY, "true");
     } catch {}
     setIsOpen(false);
     onAccept?.();
@@ -39,82 +52,99 @@ export default function FairAttentionModal({ onAccept }: Props) {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="fair-attention-title">
+        <motion.div
+          className={styles.overlay}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fair-attention-title"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        >
           <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ type: "spring", damping: 25, stiffness: 320 }}
-            className={styles.modalCard}
+            className={styles.card}
+            initial={{ opacity: 0, scale: 0.92, y: 14, filter: "blur(6px)" }}
+            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, scale: 0.95, y: 8, filter: "blur(4px)" }}
+            transition={{ type: "spring", stiffness: 380, damping: 28, mass: 0.8 }}
           >
-            <div className={styles.header}>
-              <div className={styles.iconCircle}>
-                <ShieldCheck size={26} color="#10b981" />
-              </div>
+            <div className={styles.headerRow}>
               <h2 id="fair-attention-title" className={styles.title}>
-                Fair Attention &amp; Good Faith Value
+                Goodwill &amp; Fair Attention
               </h2>
             </div>
 
-            <div className={styles.body}>
-              <p className={styles.leadText}>
-                The least you can give back in good faith is to <strong>genuinely see the content, read it</strong>, and deliver the real attention an advertiser values. That is the foundational reason you earn on Paayh.
-              </p>
+            <p className={styles.subtitle}>
+              View ads genuinely in good faith and never use automation or scripts so advertisers receive real attention and payouts stay fair.
+            </p>
 
-              <div className={styles.bulletList}>
-                <div className={styles.bulletItem}>
-                  <Eye size={18} className={styles.bulletIcon} />
-                  <span>
-                    <strong>Authentic Attention:</strong> You are not mandated to purchase or patronize, but you must never cheat, automate, or farm earnings without fair play.
-                  </span>
-                </div>
-                <div className={styles.bulletItem}>
-                  <Sparkles size={18} className={styles.bulletIcon} />
-                  <span>
-                    <strong>Due Diligence:</strong> If an offer resonates with you and you choose to patronize a brand, please exercise due diligence.
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.termsNotice}>
-                <span>
-                  Please read our full{" "}
-                  <Link href="/terms" target="_blank" className={styles.legalLink}>
-                    Terms of Service
-                  </Link>{" "}
-                  and{" "}
-                  <Link href="/privacy" target="_blank" className={styles.legalLink}>
-                    Privacy Policy
-                  </Link>
-                  . If you do not agree to uphold these standards, you may not use Paayh.
-                </span>
-              </div>
-
-              <label className={styles.checkboxRow}>
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                  className={styles.checkboxInput}
-                />
-                <span className={styles.checkboxLabel}>
-                  I pledge to deliver authentic attention in good faith, play fair without cheat scripts, and I agree to the Terms of Service.
-                </span>
-              </label>
-            </div>
-
-            <div className={styles.footer}>
-              <button
+            <div className={styles.actionRow}>
+              <motion.button
                 type="button"
+                role="checkbox"
+                aria-checked={agreed}
+                onClick={() => setAgreed((prev) => !prev)}
+                whileHover={{ scale: 1.015 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: "spring", stiffness: 420, damping: 24 }}
+                className={`${styles.agreementBox} ${agreed ? styles.agreementBoxChecked : ""}`}
+              >
+                <motion.span
+                  className={`${styles.checkbox} ${agreed ? styles.checkboxChecked : ""}`}
+                  animate={agreed ? { scale: [0.85, 1.12, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <AnimatePresence>
+                    {agreed && (
+                      <motion.span
+                        key="tick"
+                        className={styles.tickIconWrap}
+                        initial={{ scale: 0, opacity: 0, rotate: -15 }}
+                        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 24 }}
+                      >
+                        <Check size={10} strokeWidth={3.2} />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.span>
+                <span className={styles.agreementText}>
+                  I pledge genuine attention &amp; fair play
+                </span>
+              </motion.button>
+
+              <motion.button
+                type="button"
+                className={styles.verifyBtn}
                 disabled={!agreed}
                 onClick={handleConfirm}
-                className={`${styles.submitBtn} ${agreed ? styles.submitBtnActive : styles.submitBtnDisabled}`}
+                whileHover={agreed ? { scale: 1.03, y: -1 } : undefined}
+                whileTap={agreed ? { scale: 0.96, y: 0 } : undefined}
+                transition={{ type: "spring", stiffness: 420, damping: 24 }}
               >
-                I Understand &amp; Accept
-              </button>
+                <span className={styles.btnContent}>
+                  <Check size={13} strokeWidth={2.6} />
+                  <span>Continue</span>
+                </span>
+              </motion.button>
+            </div>
+
+            <div className={styles.footerRow}>
+              <span className={styles.footerNote}>
+                By continuing, you agree to our{" "}
+                <Link href="/terms" target="_blank" className={styles.legalLink}>
+                  Terms
+                </Link>{" "}
+                &amp;{" "}
+                <Link href="/privacy" target="_blank" className={styles.legalLink}>
+                  Privacy Policy
+                </Link>
+              </span>
             </div>
           </motion.div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );

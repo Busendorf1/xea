@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { ShieldCheck, MapPin, Navigation, AlertTriangle, Check, Lock, LogOut } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Navigation, AlertTriangle, Check, LogOut } from "lucide-react";
 import {
   authenticateStrictGpsLocation,
   PROOF_OF_LOCATION_KEY_PREFIX,
   MANUAL_LOCATION_PENDING_KEY,
   recordWebGpsProofVerified,
 } from "@/lib/utils/locationHelper";
-import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./ProofOfLocationModal.module.css";
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -139,10 +139,10 @@ export default function ProofOfLocationModal({
     try {
       const gpsResult = await authenticateStrictGpsLocation();
 
-      if (gpsResult.error || !gpsResult.country) {
+      if (!gpsResult.country) {
         setErrorMsg(
           gpsResult.error ||
-            "Could not verify your GPS location. Please enable browser Location permission and try again."
+            "Could not verify your location. Please check your internet connection and try again."
         );
         setAuthenticating(false);
         return;
@@ -209,88 +209,163 @@ export default function ProofOfLocationModal({
     }
   };
 
-  if (!visible) return null;
-
   return (
-    <div
-      className={styles.overlay}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="proof-of-location-title"
-    >
-      <div className={styles.card}>
-        <div className={styles.headerRow}>
-          <div className={styles.iconBadge}>
-            <ShieldCheck size={20} />
-          </div>
-          <h2 id="proof-of-location-title" className={styles.title}>
-            Proof of Location
-          </h2>
-        </div>
-
-        <p className={styles.subtitle}>
-          GPS verification is required to ensure ads reach genuine people in their targeted region and keep payouts fair.
-        </p>
-
-        <button
-          type="button"
-          onClick={() => {
-            setAgreed((prev) => !prev);
-            if (errorMsg) setErrorMsg(null);
-          }}
-          className={`${styles.agreementBox} ${agreed ? styles.agreementBoxChecked : ""}`}
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          className={styles.overlay}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="proof-of-location-title"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         >
-          <span className={`${styles.checkbox} ${agreed ? styles.checkboxChecked : ""}`}>
-            {agreed && <Check size={13} strokeWidth={3} />}
-          </span>
-          <span className={styles.agreementText}>
-            I agree to verify my location with GPS to continue.
-          </span>
-        </button>
+          <motion.div
+            className={styles.card}
+            initial={{ opacity: 0, scale: 0.92, y: 14, filter: "blur(6px)" }}
+            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, scale: 0.95, y: 8, filter: "blur(4px)" }}
+            transition={{ type: "spring", stiffness: 380, damping: 28, mass: 0.8 }}
+          >
+            <div className={styles.headerRow}>
+              <h2 id="proof-of-location-title" className={styles.title}>
+                Proof of Location
+              </h2>
+            </div>
 
-        {errorMsg && (
-          <div className={styles.errorBox}>
-            <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+            <p className={styles.subtitle}>
+              GPS verification is required to ensure ads reach genuine people in their targeted region and keep payouts fair.
+            </p>
 
-        {detectedSummary && !errorMsg && (
-          <div className={styles.successBox}>
-            <Check size={14} />
-            <span>Verified: {detectedSummary}</span>
-          </div>
-        )}
+            <AnimatePresence mode="popLayout">
+              {errorMsg && (
+                <motion.div
+                  key="error-box"
+                  className={styles.errorBox}
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1, x: [0, -4, 4, -2, 2, 0] }}
+                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>{errorMsg}</span>
+                </motion.div>
+              )}
 
-        <button
-          type="button"
-          className={styles.verifyBtn}
-          disabled={!agreed || authenticating}
-          onClick={handleAuthenticateWithGps}
-        >
-          {authenticating ? (
-            <>
-              <AppleSpinner size={16} />
-              <span>Verifying GPS...</span>
-            </>
-          ) : (
-            <>
-              <Navigation size={15} />
-              <span>Continue</span>
-            </>
-          )}
-        </button>
+              {detectedSummary && !errorMsg && (
+                <motion.div
+                  key="success-box"
+                  className={styles.successBox}
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                  transition={{ type: "spring", stiffness: 360, damping: 25 }}
+                >
+                  <Check size={14} />
+                  <span>Verified: {detectedSummary}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        <div className={styles.footerRow}>
-          <span className={styles.footerNote}>
-            Required to continue on Paayh
-          </span>
-          <a href="/auth/logout" className={styles.logoutLink}>
-            <LogOut size={12} />
-            <span>Sign Out</span>
-          </a>
-        </div>
-      </div>
-    </div>
+            <div className={styles.actionRow}>
+              <motion.button
+                type="button"
+                role="checkbox"
+                aria-checked={agreed}
+                disabled={authenticating}
+                onClick={() => {
+                  setAgreed((prev) => !prev);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                whileHover={{ scale: 1.015 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: "spring", stiffness: 420, damping: 24 }}
+                className={`${styles.agreementBox} ${agreed ? styles.agreementBoxChecked : ""}`}
+              >
+                <motion.span
+                  className={`${styles.checkbox} ${agreed ? styles.checkboxChecked : ""}`}
+                  animate={agreed ? { scale: [0.85, 1.12, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <AnimatePresence>
+                    {agreed && (
+                      <motion.span
+                        key="tick"
+                        className={styles.tickIconWrap}
+                        initial={{ scale: 0, opacity: 0, rotate: -15 }}
+                        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 24 }}
+                      >
+                        <Check size={10} strokeWidth={3.2} />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.span>
+                <span className={styles.agreementText}>
+                  I agree to verify my location with GPS
+                </span>
+              </motion.button>
+
+              <motion.button
+                type="button"
+                className={styles.verifyBtn}
+                disabled={!agreed || authenticating}
+                onClick={handleAuthenticateWithGps}
+                whileHover={agreed && !authenticating ? { scale: 1.03, y: -1 } : undefined}
+                whileTap={agreed && !authenticating ? { scale: 0.96, y: 0 } : undefined}
+                transition={{ type: "spring", stiffness: 420, damping: 24 }}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  {authenticating ? (
+                    <motion.span
+                      key="verifying"
+                      className={styles.btnContent}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <span className={`btnSpinner ${styles.brandSpinner}`} aria-hidden="true" />
+                      <span>Verifying</span>
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="continue"
+                      className={styles.btnContent}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <Navigation size={13} className={styles.navIcon} />
+                      <span>Continue</span>
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+            </div>
+
+            <div className={styles.footerRow}>
+              <span className={styles.footerNote}>
+                Required to continue on Paayh
+              </span>
+              <motion.a
+                href="/user/logout"
+                className={styles.logoutLink}
+                whileHover={{ scale: 1.03, x: 1 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 400, damping: 24 }}
+              >
+                <LogOut size={12} className={styles.logoutIcon} />
+                <span>Sign Out</span>
+              </motion.a>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

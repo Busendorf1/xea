@@ -541,7 +541,7 @@ export default function Update({ email }: Props) {
 
   return (
     <div className={styles.profileContainer}>
-      <FairAttentionModal />
+      <FairAttentionModal onAccept={() => setGoodwillAgreed(true)} />
       {/* Step Progress Bar Header (Standardized to /news) */}
       <FormStepProgress
         steps={steps}
@@ -670,9 +670,10 @@ export default function Update({ email }: Props) {
                 name="email"
                 type="email"
                 placeholder={dbProfile.email || "Email"}
-                value={formData.email || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
+                value={dbProfile.email || formData.email || ""}
+                readOnly
+                disabled
+                title="Account email address cannot be modified"
               />
             </div>
 

@@ -566,22 +566,99 @@ export function evaluateAdTargeting(
 }
 
 /**
+ * Computes a soft nearest-match affinity score for an active ad when strict/relaxed passes
+ * have not yet filled the viewer's feed, ensuring zero active ads are ever stranded in the DB.
+ */
+function scoreNearestAvailableMatch(ad: TargetableAd, viewer: ViewerTargetingProfile): number {
+  let score = 0;
+
+  const viewerCountryNorm = (viewer.country || "").trim().toLowerCase();
+  const viewerStateNorm = viewer.state ? normalizeLocationToken(viewer.state) : "";
+  const viewerCityNorm = viewer.location ? normalizeLocationToken(viewer.location) : "";
+
+  const adCountries = normalizeStringArray(ad.country);
+  if (isUnrestrictedTarget(adCountries)) {
+    score += 30;
+  } else if (viewerCountryNorm && adCountries.includes(viewerCountryNorm)) {
+    score += 40;
+  }
+
+  const adStates = [
+    ...normalizeStringArray(ad.state),
+    ...normalizeStringArray(ad.province),
+  ];
+  if (isUnrestrictedTarget(adStates)) {
+    score += 15;
+  } else if (viewerStateNorm || viewerCityNorm) {
+    const normAdStates = adStates.map(normalizeLocationToken).filter(Boolean);
+    const viewerLocs = [viewerStateNorm, viewerCityNorm].filter(Boolean);
+    if (normAdStates.some((st) => viewerLocs.some((vl) => vl === st || vl.includes(st) || st.includes(vl)))) {
+      score += 25;
+    }
+  }
+
+  const adGenders = normalizeStringArray(ad.gender).map(normalizeGender).filter(Boolean);
+  const viewerGender = normalizeGender(viewer.gender);
+  if (isUnrestrictedTarget(adGenders) || (viewerGender && adGenders.includes(viewerGender))) {
+    score += 15;
+  }
+
+  const viewerAge = getViewerAge(viewer);
+  if (matchesAgeRange(viewerAge, ad.age_range)) {
+    score += 15;
+  }
+
+  const adEmployment = normalizeStringArray(ad.employment_status);
+  const viewerEmp = [
+    ...normalizeStringArray(viewer.employment),
+    ...normalizeStringArray(viewer.employment_status),
+  ];
+  if (isUnrestrictedTarget(adEmployment) || viewerEmp.some((e) => adEmployment.includes(e))) {
+    score += 10;
+  }
+
+  const viewerPersona = new Set([
+    ...normalizeStringArray(viewer.interest),
+    ...normalizeStringArray(viewer.industry),
+    ...normalizeStringArray(viewer.behavior),
+    ...normalizeStringArray(viewer.lifestyle),
+    ...normalizeStringArray(viewer.personality),
+  ]);
+  const adPersona = [
+    ...normalizeStringArray(ad.interest),
+    ...normalizeStringArray(ad.industry),
+    ...normalizeStringArray(ad.behavior),
+    ...normalizeStringArray(ad.lifestyle),
+    ...normalizeStringArray(ad.personality),
+  ].filter((t) => !WILDCARD_VALUES.has(t));
+
+  for (const tag of adPersona) {
+    if (viewerPersona.has(tag)) {
+      score += 20;
+    }
+  }
+
+  return score;
+}
+
+/**
  * Ranks and filters a list of candidate ads for a specific viewer.
- * Strictly prioritizes ads that match 100% of demographic, geographic, and psychographic criteria,
- * sorted by combined Relevance Score + Bid Priority (eCPM).
- * If strict matches are fewer than `minResults`, fills remaining slots only with ads that still
- * strictly satisfy Country, State, Gender, Age, and Employment targeting.
+ * - Pass 1 (Strict): 100% of Geographic + Demographic + Psychographic criteria, sorted by Relevance + Bid Priority.
+ * - Pass 2 (Geo + Demo Rollover): Satisfies Country, State, Gender, Age, and Employment targeting.
+ * - Pass 3 (Progressive Nearest-Match Fallback): Ranks remaining active eligible ads by closest Location,
+ *   Demographic, and Psychographic affinity so zero active campaigns are ever left stranded in the DB.
  */
 export function rankAndFilterTargetedAds<T extends TargetableAd>(
   ads: T[],
   viewer: ViewerTargetingProfile,
-  options: { minResults?: number; seenAdIds?: Set<string> } = {}
+  options: { minResults?: number; seenAdIds?: Set<string>; allowNearestFallback?: boolean } = {}
 ): T[] {
   const minResults = options.minResults ?? 10;
   const seenAdIds = options.seenAdIds;
 
   const strictMatches: Array<{ ad: T; totalScore: number; createdAtMs: number }> = [];
   const geoDemoMatches: Array<{ ad: T; totalScore: number; createdAtMs: number }> = [];
+  const nearestFallbackMatches: Array<{ ad: T; totalScore: number; createdAtMs: number }> = [];
 
   for (const ad of ads) {
     if (!ad || !ad.id) continue;
@@ -601,7 +678,17 @@ export function rankAndFilterTargetedAds<T extends TargetableAd>(
       continue;
     }
 
-    // Check if it passes all hard Geographic + Demographic rules (Country, State, Gender, Age, Employment)
+    // Hard lifecycle / self-ad exclusions are NEVER relaxed in any pass
+    if (
+      strictEval.reason === "paused" ||
+      strictEval.reason === "completed" ||
+      strictEval.reason === "impressions_exhausted" ||
+      strictEval.reason === "own_ad"
+    ) {
+      continue;
+    }
+
+    // Pass 2: Check if it passes all hard Geographic + Demographic rules (Country, State, Gender, Age, Employment)
     const relaxedEval = evaluateAdTargeting(ad, viewer, { allowRolloverPsychographics: true });
     if (relaxedEval.matches) {
       geoDemoMatches.push({
@@ -609,12 +696,35 @@ export function rankAndFilterTargetedAds<T extends TargetableAd>(
         totalScore: relaxedEval.relevanceScore + bidBonus * 0.5,
         createdAtMs,
       });
+      continue;
+    }
+
+    // Pass 3: Progressive Nearest-Match Fallback (for stranded rollover campaigns or when viewer has 0 strict/geoDemo matches)
+    const scheduledDays = Math.max(1, Number(ad.campaign_days || 1));
+    const ageDays = createdAtMs > 0 ? (Date.now() - createdAtMs) / (1000 * 60 * 60 * 24) : 0;
+    const isStrandedRollover = ageDays >= scheduledDays;
+
+    if (options.allowNearestFallback || isStrandedRollover) {
+      const nearestScore = scoreNearestAvailableMatch(ad, viewer);
+      nearestFallbackMatches.push({
+        ad,
+        totalScore: nearestScore + bidBonus * 0.25,
+        createdAtMs,
+      });
+    } else {
+      // Keep in reserve if combined strict + geoDemo is completely empty (0 matches)
+      const nearestScore = scoreNearestAvailableMatch(ad, viewer);
+      nearestFallbackMatches.push({
+        ad,
+        totalScore: nearestScore + bidBonus * 0.25,
+        createdAtMs,
+      });
     }
   }
 
   strictMatches.sort((a, b) => b.totalScore - a.totalScore || b.createdAtMs - a.createdAtMs);
 
-  if (strictMatches.length >= minResults || geoDemoMatches.length === 0) {
+  if (strictMatches.length >= minResults) {
     return spaceFeedAdsByAdvertiser(strictMatches.map((item) => item.ad));
   }
 
@@ -623,6 +733,17 @@ export function rankAndFilterTargetedAds<T extends TargetableAd>(
     ...strictMatches.map((item) => item.ad),
     ...geoDemoMatches.slice(0, minResults - strictMatches.length).map((item) => item.ad),
   ];
+
+  // Activate Pass 3 Nearest-Match Fallback when:
+  // (a) caller explicitly enables allowNearestFallback, OR
+  // (b) strict + geoDemo yielded 0 ads so neither the feed nor active ads are left stranded
+  if ((options.allowNearestFallback || combined.length === 0) && combined.length < minResults && nearestFallbackMatches.length > 0) {
+    nearestFallbackMatches.sort((a, b) => b.totalScore - a.totalScore || b.createdAtMs - a.createdAtMs);
+    combined.push(
+      ...nearestFallbackMatches.slice(0, minResults - combined.length).map((item) => item.ad)
+    );
+  }
+
   return spaceFeedAdsByAdvertiser(combined);
 }
 

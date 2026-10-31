@@ -26,11 +26,16 @@ export interface ResolveAccountResponse {
 }
 
 export class PaystackService {
+  static hasLiveKey(): boolean {
+    const key = (process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET || "").trim();
+    return Boolean(key && !key.startsWith("sk_test_mock"));
+  }
+
   private static getSecretKey(): string {
-    const key = process.env.PAYSTACK_SECRET_KEY;
+    const key = (process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET || "").trim();
     if (!key) {
       if (process.env.NODE_ENV === "production") {
-        throw new Error("CRITICAL: PAYSTACK_SECRET_KEY is not configured in production.");
+        throw new Error("Paystack gateway key is not configured.");
       }
       return "sk_test_mock_1234567890abcdef";
     }
@@ -185,7 +190,7 @@ export class PaystackService {
       { name: "Zenith Bank", code: "057" },
     ];
 
-    if (this.isMock()) {
+    if (this.isMock() || !this.hasLiveKey()) {
       return fallbackBanks;
     }
 

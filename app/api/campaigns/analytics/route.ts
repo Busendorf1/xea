@@ -43,10 +43,10 @@ export async function GET(req: NextRequest) {
     // 3. Query reports, dismissals, and advertiser blocks in parallel
     const [reportsRes, blockedAdsRes, advBlockRes] = await Promise.all([
       adIds.length > 0
-        ? supabaseAdmin.from("ad_reports").select("ad_id").in("ad_id", adIds)
+        ? supabaseAdmin.from("ad_reports").select("ad_id").in("ad_id", adIds).limit(5000)
         : Promise.resolve({ data: null, error: null }),
       adIds.length > 0
-        ? supabaseAdmin.from("blocked_ads").select("ad_id").in("ad_id", adIds)
+        ? supabaseAdmin.from("blocked_ads").select("ad_id").in("ad_id", adIds).limit(5000)
         : Promise.resolve({ data: null, error: null }),
       supabaseAdmin
         .from("blocked_advertisers")

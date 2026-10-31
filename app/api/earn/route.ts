@@ -580,11 +580,11 @@ export async function POST(request: NextRequest) {
           .select("*")
           .maybeSingle();
 
-        // If ad is exhausted, move it out of addsactive into addscompleted
+        // If ad is exhausted, move it out of addsactive into completed_ads
         if (isNowExhausted) {
           try {
             if (updatedAdRow) {
-              await supabaseAdmin.from("addscompleted").upsert([updatedAdRow], { onConflict: "id" });
+              await supabaseAdmin.from("completed_ads").upsert([updatedAdRow], { onConflict: "id" });
             }
             await supabaseAdmin.from("addsactive").delete().eq("id", adId);
             await supabaseAdmin.from("adds").update({ completed_at: completedIso, impression_count: impressionCount + 1 }).eq("id", adId);
@@ -592,6 +592,11 @@ export async function POST(request: NextRequest) {
               await redisConnection.del(`ad:detail:${adId}`).catch(() => {});
             }
           } catch {}
+        }
+
+        if (updatedAdRow?.user_email) {
+          const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
+          invalidateCachedUserCampaigns(updatedAdRow.user_email).catch(() => {});
         }
 
         const { error: userUpdateErr } = await supabaseAdmin
@@ -632,6 +637,12 @@ export async function POST(request: NextRequest) {
         logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Atomic RPC)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 60% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n   👁️ View Cap   : ${atomicViews}/${atomicCap}\n========================================================================\n`);
 
         // Stream earned impression directly to ClickHouse Cloud (high-throughput non-blocking)
+        const ua = request.headers.get("user-agent") || "";
+        const deviceType = /Mobile|Android|iP(hone|od|ad)/i.test(ua) ? "mobile" : "desktop";
+        const geoCountry =
+          request.headers.get("x-vercel-ip-country") ||
+          request.headers.get("cf-ipcountry") ||
+          "Global";
         const { streamImpressionsToClickHouse } = await import("@/lib/clickhouse");
         streamImpressionsToClickHouse([
           {
@@ -639,6 +650,8 @@ export async function POST(request: NextRequest) {
             user_email: emailKey,
             cost_per_impression: rawCpi,
             interaction_type: "view",
+            device_type: deviceType,
+            country: geoCountry,
           },
         ]).catch(() => {});
       }

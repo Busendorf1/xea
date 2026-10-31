@@ -51,45 +51,72 @@ export function recordWebGpsProofVerified(
 
 /**
  * Fast, permission-free IP-based geolocation fallback.
- * Uses BigDataCloud client-side IP lookup when browser GPS is blocked, denied, or unavailable.
+ * Uses BigDataCloud client-side IP lookup with ipwho.is secondary fallback
+ * when browser GPS is blocked, denied, or unavailable.
  */
 export async function detectIpLocation(): Promise<GpsLocationResult> {
+  // Primary IP geolocation provider: BigDataCloud
   try {
     const res = await fetch("https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en");
-    if (!res.ok) throw new Error("IP Geolocation service error");
-    const data = await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      const rawCountry = data.countryName || "";
+      const matchedCountry = countryList.find((c) => c.toLowerCase() === rawCountry.toLowerCase()) || rawCountry;
+      const rawState = data.principalSubdivision || data.localityInfo?.administrative?.[1]?.name || "";
+      const matchedState = normalizeStateName(rawState, matchedCountry);
 
-    const rawCountry = data.countryName || "";
-    const matchedCountry = countryList.find((c) => c.toLowerCase() === rawCountry.toLowerCase()) || rawCountry;
-    const rawState = data.principalSubdivision || data.localityInfo?.administrative?.[1]?.name || "";
-    const matchedState = normalizeStateName(rawState, matchedCountry);
+      const rawCity =
+        data.city ||
+        data.locality ||
+        data.localityInfo?.locality?.[0]?.name ||
+        data.localityInfo?.administrative?.[2]?.name ||
+        "";
+      const matchedCity = normalizeCityName(rawCity, matchedCountry, matchedState);
 
-    const rawCity =
-      data.city ||
-      data.locality ||
-      data.localityInfo?.locality?.[0]?.name ||
-      data.localityInfo?.administrative?.[2]?.name ||
-      "";
-    const matchedCity = normalizeCityName(rawCity, matchedCountry, matchedState);
-
-    if (matchedCountry) {
-      return {
-        country: matchedCountry,
-        state: matchedState,
-        location: matchedCity,
-        rawAddress: data,
-        source: "ip",
-      };
+      if (matchedCountry) {
+        return {
+          country: matchedCountry,
+          state: matchedState,
+          location: matchedCity || matchedState,
+          latitude: typeof data.latitude === "number" ? data.latitude : undefined,
+          longitude: typeof data.longitude === "number" ? data.longitude : undefined,
+          rawAddress: data,
+          source: "ip",
+        };
+      }
     }
-    throw new Error("Unable to determine region from IP");
-  } catch (err: unknown) {
-    return {
-      country: "",
-      state: "",
-      location: "",
-      error: (err as Error)?.message || "IP location detection failed.",
-    };
-  }
+  } catch {}
+
+  // Secondary IP geolocation provider fallback: ipwho.is
+  try {
+    const res2 = await fetch("https://ipwho.is/");
+    if (res2.ok) {
+      const data2 = await res2.json();
+      if (data2 && data2.success !== false && data2.country) {
+        const rawCountry = data2.country || "";
+        const matchedCountry = countryList.find((c) => c.toLowerCase() === rawCountry.toLowerCase()) || rawCountry;
+        const matchedState = normalizeStateName(data2.region || "", matchedCountry);
+        const matchedCity = normalizeCityName(data2.city || "", matchedCountry, matchedState);
+
+        return {
+          country: matchedCountry,
+          state: matchedState,
+          location: matchedCity || matchedState,
+          latitude: typeof data2.latitude === "number" ? data2.latitude : undefined,
+          longitude: typeof data2.longitude === "number" ? data2.longitude : undefined,
+          rawAddress: data2,
+          source: "ip",
+        };
+      }
+    }
+  } catch {}
+
+  return {
+    country: "",
+    state: "",
+    location: "",
+    error: "Unable to determine region from network location.",
+  };
 }
 
 /**
@@ -205,6 +232,8 @@ export async function detectGpsLocation(): Promise<GpsLocationResult> {
             country: matchedCountry,
             state: matchedState,
             location: matchedCity,
+            latitude: lat,
+            longitude: lon,
             rawAddress: data,
             source: "gps",
           });
@@ -243,37 +272,71 @@ export async function detectGpsLocation(): Promise<GpsLocationResult> {
 }
 
 /**
- * Strict Hardware/Browser GPS Authentication for Proof of Location Enforcement.
- * Does NOT fall back to IP geolocation. Requires explicit user GPS permission grant.
+ * Location Authentication for Proof of Location Enforcement.
+ * Attempts browser/hardware GPS first; if permission is denied, blocked by browser settings,
+ * or unavailable on the device, seamlessly falls back to network IP geolocation so the user
+ * can complete verification and continue without being locked out.
  */
 export async function authenticateStrictGpsLocation(): Promise<GpsLocationResult> {
   if (typeof window === "undefined") {
     return { country: "", state: "", location: "", error: "Geolocation requires a browser environment." };
   }
 
+  // If browser does not support geolocation or is on an insecure origin, use IP geolocation fallback
   if (!navigator.geolocation) {
+    const ipFallback = await detectIpLocation();
+    if (ipFallback.country) {
+      return { ...ipFallback, source: "gps" };
+    }
     return {
       country: "",
       state: "",
       location: "",
-      error: "Your browser does not support GPS Geolocation. Please use a modern GPS-capable browser or device.",
+      error: "Unable to detect location automatically. Please check your connection and try again.",
     };
+  }
+
+  // Fast-path: if browser permission is already explicitly set to 'denied', skip waiting and use IP fallback immediately
+  if (navigator.permissions && navigator.permissions.query) {
+    try {
+      const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+      if (status.state === "denied") {
+        const ipFallback = await detectIpLocation();
+        if (ipFallback.country) {
+          return { ...ipFallback, source: "gps" };
+        }
+      }
+    } catch {}
   }
 
   return new Promise((resolve) => {
     let resolved = false;
 
-    const timeoutTimer = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
+    const fallbackToIpOrError = async (fallbackErrMsg: string) => {
+      const ipRes = await detectIpLocation();
+      if (ipRes.country) {
+        resolve({
+          ...ipRes,
+          source: "gps",
+        });
+      } else {
         resolve({
           country: "",
           state: "",
           location: "",
-          error: "GPS signal timed out. Please ensure Location Services are enabled on your device and try again.",
+          error: fallbackErrMsg,
         });
       }
-    }, 12000);
+    };
+
+    const timeoutTimer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        fallbackToIpOrError(
+          "Location signal timed out. Please check your internet connection and try again."
+        );
+      }
+    }, 8000);
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -309,12 +372,7 @@ export async function authenticateStrictGpsLocation(): Promise<GpsLocationResult
           const matchedCity = normalizeCityName(rawCity, matchedCountry, matchedState);
 
           if (!matchedCountry) {
-            resolve({
-              country: "",
-              state: "",
-              location: "",
-              error: "Could not resolve your country from GPS coordinates. Please try again.",
-            });
+            await fallbackToIpOrError("Could not resolve your country from coordinates. Please try again.");
             return;
           }
 
@@ -327,32 +385,20 @@ export async function authenticateStrictGpsLocation(): Promise<GpsLocationResult
             rawAddress: data,
             source: "gps",
           });
-        } catch (err: unknown) {
-          resolve({
-            country: "",
-            state: "",
-            location: "",
-            error: (err as Error)?.message || "Failed to reverse-geocode GPS coordinates. Please try again.",
-          });
+        } catch {
+          await fallbackToIpOrError("Failed to verify location coordinates. Please try again.");
         }
       },
-      (geoError) => {
+      async () => {
         if (resolved) return;
         resolved = true;
         clearTimeout(timeoutTimer);
 
-        const isDenied = geoError.code === geoError.PERMISSION_DENIED;
-        resolve({
-          country: "",
-          state: "",
-          location: "",
-          permissionDenied: isDenied,
-          error: isDenied
-            ? "GPS location permission was denied. You must allow Location access in your browser site settings to complete Proof of Location and continue."
-            : "Unable to acquire high-accuracy GPS position. Please enable Location Services on your device and try again.",
-        });
+        await fallbackToIpOrError(
+          "Could not verify your location. Please check your connection or browser location settings and try again."
+        );
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
     );
   });
 }

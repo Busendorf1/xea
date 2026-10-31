@@ -1,8 +1,33 @@
-import { createClient, ClickHouseClient } from "@clickhouse/client";
+import { createClient, ClickHouseClient, ClickHouseLogLevel } from "@clickhouse/client";
 
 let clickhouseClientInstance: ClickHouseClient | null = null;
+let clickhouseOfflineUntil = 0;
+let lastClickhouseWarnTime = 0;
+
+function handleClickHouseOfflineError(context: string, err: any) {
+  const msg = String(err?.message || err || "");
+  const code = String(err?.code || "");
+  const isDnsOrNetwork =
+    code === "ENOTFOUND" ||
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    msg.includes("ENOTFOUND") ||
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("ETIMEDOUT");
+
+  const now = Date.now();
+  if (isDnsOrNetwork) {
+    // Pause ClickHouse attempts for 5 minutes when host is unreachable
+    clickhouseOfflineUntil = now + 5 * 60 * 1000;
+  }
+  if (now - lastClickhouseWarnTime > 60000) {
+    lastClickhouseWarnTime = now;
+    console.warn(`⚠️ ClickHouse ${context} notice (circuit-breaker 5m): ${msg}`);
+  }
+}
 
 export function getClickHouseClient(): ClickHouseClient | null {
+  if (Date.now() < clickhouseOfflineUntil) return null;
   if (clickhouseClientInstance) return clickhouseClientInstance;
 
   const url = process.env.CLICKHOUSE_HOST;
@@ -20,12 +45,15 @@ export function getClickHouseClient(): ClickHouseClient | null {
       username,
       password,
       database,
-      request_timeout: 30000,
+      request_timeout: 10000,
       max_open_connections: 50,
+      log: {
+        level: ClickHouseLogLevel.OFF,
+      },
     });
     return clickhouseClientInstance;
   } catch (err) {
-    console.warn("⚠️ Failed to initialize ClickHouse client:", err);
+    handleClickHouseOfflineError("initialization", err);
     return null;
   }
 }
@@ -76,7 +104,7 @@ export async function flushClickHouseQueue(): Promise<boolean> {
     });
     return true;
   } catch (err: any) {
-    console.warn("⚠️ ClickHouse batch ingestion warning:", err?.message || err);
+    handleClickHouseOfflineError("batch ingestion", err);
     return false;
   } finally {
     isFlushing = false;
@@ -144,7 +172,7 @@ export async function getCampaignDeliveryCounts(adIds?: string[]): Promise<Recor
     });
     return result;
   } catch (err: any) {
-    console.warn("⚠️ ClickHouse delivery counts query warning:", err?.message || err);
+    handleClickHouseOfflineError("delivery counts query", err);
     return {};
   }
 }

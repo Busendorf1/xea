@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,9 +12,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const emailLower = email.toLowerCase().trim();
+    const isAdmin = isAdminEmail(emailLower);
     const data = await req.json();
 
-    // Check phone uniqueness if phone is provided in update
+    // 1. Server-Side 30-Day Cooldown Enforcement (for users who have already completed initial setup)
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("id, lastUpdated, has_updated_profile")
+      .ilike("email", emailLower)
+      .maybeSingle();
+
+    if (!isAdmin && existingUser?.has_updated_profile && existingUser?.lastUpdated) {
+      const lastUpdatedTime = new Date(existingUser.lastUpdated).getTime();
+      if (!isNaN(lastUpdatedTime)) {
+        const elapsedMs = Date.now() - lastUpdatedTime;
+        if (elapsedMs < THIRTY_DAYS_MS) {
+          const daysLeft = Math.ceil((THIRTY_DAYS_MS - elapsedMs) / (24 * 60 * 60 * 1000));
+          return NextResponse.json(
+            { error: `You can only update your profile once every 30 days. (${daysLeft} day(s) remaining)` },
+            { status: 429 }
+          );
+        }
+      }
+    }
+
+    // 2. Check phone uniqueness if phone is provided in update
     const phone = data.phone;
     if (phone) {
       const { data: phoneCheck, error: phoneErr } = await supabaseAdmin
@@ -31,7 +56,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check username uniqueness if username is provided in update
+    // 3. Check username uniqueness if username is provided in update
     const usernameInput = data.username;
     if (usernameInput) {
       const cleanUsername = usernameInput.trim().toLowerCase().replace(/^@/, "");
@@ -56,11 +81,11 @@ export async function POST(req: NextRequest) {
       "username", "dob", "country", "state", "location", "phone", "passphrase",
       "industry", "interest", "behavior", "lifestyle", "personality",
       "intl_travel", "local_travel", "profileImage", "bio", "gender", "employment",
-      "business_name", "has_updated_profile"
+      "business_name", "has_updated_profile", "firstName", "lastName"
     ];
 
     const updateData: any = {
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
 
     allowedFields.forEach((field) => {
@@ -86,16 +111,26 @@ export async function POST(req: NextRequest) {
       updateData.business_name = data.businessName;
     }
 
-    // Ensure dob, country, state, location, and phone are validated if they are being updated or set
-    // (but only require them on initial setup, i.e. when they are not placeholders, or if they are in data)
-    // Wait, on initial profile setup we validate dob, country, state, location, phone in profile-setup component.
-    // So we don't need strict validation on all updates unless they are provided.
+    // Cap psychographic trait arrays at 5 items on the server
+    for (const arrField of ["behavior", "lifestyle", "personality"] as const) {
+      if (Array.isArray(updateData[arrField]) && updateData[arrField].length > 5) {
+        updateData[arrField] = updateData[arrField].slice(0, 5);
+      }
+    }
 
-    // Sanitize dob if present to guarantee valid date syntax
+    // Sanitize and validate 18+ dob if present
     let sanitizedDob: string | null = null;
-    if (updateData.dob && updateData.dob !== "PLACEHOLDER" && updateData.dob.trim() !== "") {
+    if (updateData.dob && updateData.dob !== "PLACEHOLDER" && String(updateData.dob).trim() !== "") {
       const parsedDate = new Date(updateData.dob);
       if (!isNaN(parsedDate.getTime())) {
+        const ageDiffMs = Date.now() - parsedDate.getTime();
+        const ageYears = ageDiffMs / (365.25 * 24 * 60 * 60 * 1000);
+        if (ageYears < 18) {
+          return NextResponse.json(
+            { error: "You must be at least 18 years old to use this platform." },
+            { status: 400 }
+          );
+        }
         sanitizedDob = parsedDate.toISOString().split("T")[0];
       }
     }
@@ -124,7 +159,7 @@ export async function POST(req: NextRequest) {
       p_profile_image: updateData.profileImage || null,
       p_bio: updateData.bio || null,
       p_business_name: updateData.business_name || null,
-      p_has_updated_profile: updateData.has_updated_profile !== undefined ? updateData.has_updated_profile : null
+      p_has_updated_profile: true,
     });
 
     if (error) {
@@ -132,8 +167,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Invalidate cached profile and feed targeting caches in Redis
-    const emailLower = email.toLowerCase().trim();
+    // Persist firstName / lastName if provided
+    if (updateData.firstName !== undefined || updateData.lastName !== undefined) {
+      const namePatch: Record<string, any> = {};
+      if (updateData.firstName !== undefined) namePatch.firstName = String(updateData.firstName).trim();
+      if (updateData.lastName !== undefined) namePatch.lastName = String(updateData.lastName).trim();
+      try {
+        await supabaseAdmin.from("users").update(namePatch).ilike("email", emailLower);
+      } catch {}
+    }
+
+    // Invalidate cached profile and feed targeting caches in L1 & L2 Redis
     await invalidateCachedProfile(emailLower);
 
     try {

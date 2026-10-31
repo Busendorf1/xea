@@ -98,8 +98,8 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
 
   let dbError: any = null;
 
-  // 1. Attempt to fetch profile, live clicks, and preloaded feed keys in a single Redis MGET (<0.5ms)
-  let user: any = null;
+  // 1. Check L1 In-Memory cache first (<0.05ms), then batch Redis MGET
+  let user: any = await getCachedProfile(email);
   let prefetchedLiveClicksStr: string | null = null;
   let prefetchedAdIdsStr: string | null = null;
   let prefetchedProfilesStr: string | null = null;
@@ -107,22 +107,18 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
   if (isRedisReady()) {
     try {
       const [rawProfile, rawLiveClicks, rawAdIds, rawProfiles] = await redisConnection.mget([
-        `profile:${email}`,
+        `user:profile:${email}`,
         `user:live_clicks:${email}`,
         `feed:ad_ids:${email}`,
         `feed:profiles:${email}`,
       ]);
-      if (rawProfile) {
+      if (!user && rawProfile) {
         user = JSON.parse(rawProfile);
       }
       prefetchedLiveClicksStr = rawLiveClicks;
       prefetchedAdIdsStr = rawAdIds;
       prefetchedProfilesStr = rawProfiles;
-    } catch {
-      user = await getCachedProfile(email);
-    }
-  } else {
-    user = await getCachedProfile(email);
+    } catch {}
   }
 
   if (user) {

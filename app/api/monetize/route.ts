@@ -4,6 +4,7 @@ import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { calculateAtwTier } from "@/lib/referralEngine";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     const [{ data: uData, error: uErr }, rawLiveClicks] = await Promise.all([
       supabaseReadOnly
         .from("users")
-        .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at")
+        .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, has_cancelled_monetization")
         .eq("email", emailLower)
         .maybeSingle(),
       isRedisReady()
@@ -96,11 +97,14 @@ export async function GET(req: NextRequest) {
       // Immediately enforce 7-day inactivity reset if threshold reached
       if (daysInactive >= 7 && (isMonetized || clicks > 0)) {
         await supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower });
+        if (isRedisReady()) {
+          await redisConnection.del(`user:live_clicks:${emailLower}`).catch(() => {});
+        }
         effectiveMonetized = false;
         effectiveClicks = 0;
       }
 
-      const { tier: computedTier, level: computedLevel } = calculateAtwTier(effectiveClicks);
+      const { level: computedLevel } = calculateAtwTier(effectiveClicks);
       const dbLevelMatch = (uData.atw_tier || "ATW1").match(/\d+/);
       const dbLevel = dbLevelMatch ? parseInt(dbLevelMatch[0], 10) : 1;
       const finalLevel = Math.max(dbLevel, computedLevel);
@@ -151,14 +155,39 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimit = await checkRateLimit(req, {
+      limit: 10,
+      windowSeconds: 60,
+      identifierPrefix: "monetize_post",
+    });
+    if (!rateLimit.allowed && rateLimit.response) {
+      return rateLimit.response;
+    }
+
     const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const emailLower = email.toLowerCase().trim();
+    const body = await req.json().catch(() => ({}));
 
-    // Increment click progress atomically
+    // Require a valid ad interaction context (adId) so unverified direct calls cannot farm free clicks
+    if (!body?.adId) {
+      const { data: uRow } = await supabaseReadOnly
+        .from("users")
+        .select("monetized, monetization_clicks")
+        .eq("email", emailLower)
+        .maybeSingle();
+      const currentClicks = Number(uRow?.monetization_clicks || 0);
+      return NextResponse.json({
+        success: true,
+        clicksCount: currentClicks,
+        clicksRemaining: Math.max(0, 300 - currentClicks),
+        isMonetized: !!(uRow?.monetized === "true" || uRow?.monetized === true || currentClicks >= 300),
+      });
+    }
+
     const { data, error } = await supabaseAdmin.rpc("increment_user_click_progress", {
       p_email: emailLower,
     });

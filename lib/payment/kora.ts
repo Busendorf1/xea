@@ -49,15 +49,30 @@ export interface KoraBulkPayoutParams {
 }
 
 export class KoraService {
+  static hasLiveKey(): boolean {
+    const key = (
+      process.env.KORA_SECRET_KEY ||
+      process.env.KORAPAY_SECRET_KEY ||
+      process.env.KORA_SECRET ||
+      ""
+    ).trim();
+    return Boolean(key && !key.startsWith("sk_test_mock"));
+  }
+
   private static getBaseUrl(): string {
     return process.env.KORA_BASE_URL || "https://api.korapay.com/merchant/api/v1";
   }
 
   private static getSecretKey(): string {
-    const key = process.env.KORA_SECRET_KEY;
+    const key = (
+      process.env.KORA_SECRET_KEY ||
+      process.env.KORAPAY_SECRET_KEY ||
+      process.env.KORA_SECRET ||
+      ""
+    ).trim();
     if (!key) {
       if (process.env.NODE_ENV === "production") {
-        throw new Error("CRITICAL: KORA_SECRET_KEY is not configured in production.");
+        throw new Error("Kora gateway key is not configured.");
       }
       return "sk_test_mock_kora_1234567890";
     }
@@ -106,7 +121,7 @@ export class KoraService {
       { name: "Zenith Bank", code: "057" },
     ];
 
-    if (this.isMock()) {
+    if (this.isMock() || !this.hasLiveKey()) {
       return fallbackBanks;
     }
 

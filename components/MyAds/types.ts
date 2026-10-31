@@ -35,6 +35,12 @@ export type Ad = {
   clicks_website?: number | null;
   clicks_email?: number | null;
   clicks_product_cta?: number | null;
+  clicks_ios?: number | null;
+  clicks_android?: number | null;
+  clicks_watch_now?: number | null;
+  clicks_read_more?: number | null;
+  daily_impression_count?: number | null;
+  last_reset_date?: string | null;
   is_paused?: boolean;
   cost_per_impression?: number;
   total_cost?: number;

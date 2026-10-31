@@ -70,11 +70,12 @@ export async function POST(req: NextRequest) {
           if (ad.admin_statement?.startsWith("APPROVED:")) {
             const parts = ad.admin_statement.split("APPROVED:");
             if (parts[1]) {
-              const approvedTime = new Date(parts[1]).getTime();
+              const approvedTime = new Date(parts[1].trim()).getTime();
               if (!isNaN(approvedTime) && Date.now() - approvedTime > 72 * 60 * 60 * 1000) {
                 return false; // Expired approved ad waiting to be purged
               }
             }
+            return true;
           }
           if (!ad.admin_statement) return true; // Newly submitted
           if (ad.admin_statement.startsWith("Status: Pending review")) return true;
@@ -99,7 +100,22 @@ export async function POST(req: NextRequest) {
     const adId = editingId || adData.id;
     const isBidded = !!adData.isBidded;
     const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
-    const effectiveRate = isBidded && bidPrice ? bidPrice : adData.costPerImpression;
+    const CATEGORY_FLOOR_RATES: Record<string, number> = {
+      politics: 30,
+      product: 25,
+      service: 25,
+      business: 25,
+      event: 20,
+      public: 20,
+      individual: 15,
+    };
+    const adCategory = String(adData.adType || "business").toLowerCase();
+    const floorRate = CATEGORY_FLOOR_RATES[adCategory] ?? 15;
+    const clientCpi = Number(adData.costPerImpression || floorRate);
+    const rawEffectiveRate = isBidded && bidPrice ? bidPrice : clientCpi;
+    const effectiveRate = Math.max(floorRate, rawEffectiveRate);
+    const impressionsCount = Math.max(100, Number(adData.impressions || 1000));
+    const computedTotalCost = Math.round(effectiveRate * impressionsCount);
 
     const { isAdminEmail } = await import("@/lib/authHelper");
     const isAdmin = isAdminEmail(emailLower) || !!adData.isAdminPost;
@@ -184,7 +200,7 @@ export async function POST(req: NextRequest) {
 
       if (activeAd) {
         isDeliveringActive = true;
-        isBudgetIncreased = Number(adData.totalCost || 0) > Number(activeAd.total_cost || 0);
+        isBudgetIncreased = computedTotalCost > Number(activeAd.total_cost || 0);
       }
 
       // Clean up previous review draft from adds if updating to prevent primary key collision
@@ -202,7 +218,7 @@ export async function POST(req: NextRequest) {
       p_personality: adData.personality || [],
       p_age_range: adData.ageRange || [18, 65],
       p_targeting_all: adData.targetingAll ?? false,
-      p_impressions: adData.impressions || 1000,
+      p_impressions: impressionsCount,
       p_campaign_days: adData.campaignDays || 1,
       p_user_frequency_cap: adData.userFrequencyCap || 1,
       p_country: adData.country || null,
@@ -218,7 +234,7 @@ export async function POST(req: NextRequest) {
       p_action_website: adData.actionWebsite || null,
       p_action_email: adData.actionEmail || null,
       p_cost_per_impression: effectiveRate,
-      p_total_cost: adData.totalCost || 0,
+      p_total_cost: computedTotalCost,
       p_user_email: emailLower,
       p_ad_media: adData.adMedia || adData.ad_media || null,
       p_display_mutual_button: adData.displayMutualButton ?? true,

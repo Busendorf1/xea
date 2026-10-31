@@ -58,8 +58,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     fetch("/api/campaigns")
       .then((res) => res.json())
       .then((data) => {
-        if (data?.reviewAds && Array.isArray(data.reviewAds)) {
-          const pendingCount = data.reviewAds.filter((ad: any) => {
+        const queueList = data?.adsQueue || data?.reviewAds;
+        if (queueList && Array.isArray(queueList)) {
+          const pendingCount = queueList.filter((ad: any) => {
             if (ad.admin_statement?.startsWith("REJECTED:")) return false;
             return true;
           }).length;
