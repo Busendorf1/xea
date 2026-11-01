@@ -227,7 +227,7 @@ img.avatarImg {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 8px;
+  gap: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   width: 100%;
