@@ -692,7 +692,7 @@ export default function UbiAiPage() {
 
       {/* ABOUT & TERMS MODAL */}
       {showAbout && (
-        <div className={styles.modalBackdrop} onClick={() => setShowAbout(false)}>
+        <div role="presentation" className={styles.modalBackdrop} onClick={() => setShowAbout(false)}>
           <div
             className={styles.modalDialog}
             onClick={(e) => e.stopPropagation()}

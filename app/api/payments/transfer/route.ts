@@ -19,6 +19,7 @@ import {
   isUserAccountFrozen,
 } from "@/lib/security/discrepancyAuditor";
 import { captureApiException } from "@/lib/logger";
+import { transferApiSchema } from "@/lib/validationSchemas";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
@@ -37,20 +38,17 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { recipientEmail, amount, idempotencyKey } = body;
+    const parsed = transferApiSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message || "Invalid transfer details" },
+        { status: 400 }
+      );
+    }
+    const { recipientEmail, amount: amountNum, idempotencyKey } = parsed.data;
 
     const cleanSender = senderEmail.toLowerCase().trim();
-    const cleanRecipient = recipientEmail ? recipientEmail.toLowerCase().trim() : "";
-    const amountNum = parseFloat(amount);
-
-    // 2. Input Validation & Negative Amount Defense
-    if (!cleanRecipient || !cleanRecipient.includes("@")) {
-      return NextResponse.json({ error: "Please provide a valid recipient email address" }, { status: 400 });
-    }
-
-    if (isNaN(amountNum) || amountNum <= 0) {
-      return NextResponse.json({ error: "Please enter a valid positive transfer amount" }, { status: 400 });
-    }
+    const cleanRecipient = recipientEmail.toLowerCase().trim();
 
     if (cleanSender === cleanRecipient) {
       return NextResponse.json({ error: "You cannot send money to your own email account" }, { status: 400 });
@@ -339,7 +337,7 @@ export async function POST(req: NextRequest) {
       reference,
       new_balance: newBalance,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("❌ Network error in POST /api/payments/transfer:", err);
     captureApiException(err, {
       route: "POST /api/payments/transfer",

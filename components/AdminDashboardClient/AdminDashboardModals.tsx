@@ -116,7 +116,7 @@ export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.m
     <>
       {/* MODAL: USER DETAILED PROFILE OPERATIONS */}
       {selectedUser && (
-        <div className={styles.modalOverlay} onClick={() => setSelectedUser(null)}>
+        <div role="presentation" className={styles.modalOverlay} onClick={() => setSelectedUser(null)}>
           <div className={`${styles.modalContent} ${styles.adminCls_159}`} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.adminCls_160}>
@@ -472,7 +472,7 @@ export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.m
 
       {/* MODAL: INSPECT AD DETAILS */}
       {inspectingAd && (
-        <div className={styles.modalOverlay} onClick={() => setInspectingAd(null)}>
+        <div role="presentation" className={styles.modalOverlay} onClick={() => setInspectingAd(null)}>
           <div className={`${styles.modalContent} ${styles.adminCls_159}`} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.adminCls_172}>
@@ -526,7 +526,7 @@ export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.m
 
       {/* MODAL: ADVERTISER BAN & DEACTIVATION MANAGEMENT */}
       {banModalUser && (
-        <div className={styles.modalOverlay} onClick={() => setBanModalUser(null)}>
+        <div role="presentation" className={styles.modalOverlay} onClick={() => setBanModalUser(null)}>
           <div className={`${styles.modalContent} ${styles.adminCls_178}`} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.adminCls_160}>

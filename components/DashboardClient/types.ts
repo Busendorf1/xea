@@ -1,3 +1,5 @@
+import type { Ad } from "@/components/ui/AdCard";
+import type { AdvertiserProfile } from "@/types/ads";
 export interface UserProfile {
   id: string;
   profileImage: string | null;
@@ -40,8 +42,8 @@ export interface DashboardClientProps {
   user: UserProfile;
   parsedInterest: string[];
   email: string;
-  initialAds?: any[];
-  initialProfiles?: Record<string, any>;
+  initialAds?: Ad[];
+  initialProfiles?: Record<string, AdvertiserProfile>;
   initialHighlights?: any[];
 }
 

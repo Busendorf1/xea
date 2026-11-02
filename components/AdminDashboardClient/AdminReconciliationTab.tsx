@@ -1138,7 +1138,7 @@ export default function AdminReconciliationTab({ renderPagination }: AdminReconc
 
       {/* Modal: Transfer Reversal */}
       {showReverseModal && (
-        <div className={styles.modalOverlay} onClick={() => !reversalLoading && setShowReverseModal(false)}>
+        <div role="presentation" className={styles.modalOverlay} onClick={() => !reversalLoading && setShowReverseModal(false)}>
           <div className={`${styles.modalContent} ${styles.adminCls_179}`} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.adminCls_160}>

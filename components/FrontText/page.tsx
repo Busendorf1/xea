@@ -14,7 +14,11 @@ export default function FrontText() {
   useEffect(() => { setMounted(true); }, []);
 
   const modal = (
-    <div className={styles.modalOverlay} onClick={() => setIsOpen(false)}>
+    <div
+      role="presentation"
+      className={styles.modalOverlay}
+      onClick={() => setIsOpen(false)}
+    >
       <div className={styles.modalDialog} onClick={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h2 className={styles.modalTitle}>How Paayh Works</h2>

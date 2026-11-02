@@ -260,6 +260,16 @@ export const sendMoneySchema = z.object({
     .max(1_000_000_000, "Transfer limit exceeded"),
 });
 
+export const transferApiSchema = z.object({
+  recipientEmail: z.string().email("Enter a valid recipient email address"),
+  amount: z
+    .union([z.number(), z.string()])
+    .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
+    .refine((n) => !isNaN(n) && n > 0, "Transfer amount must be greater than 0"),
+  idempotencyKey: z.string().min(8, "Idempotency key must be at least 8 characters").optional(),
+});
+export type TransferApiPayload = z.infer<typeof transferApiSchema>;
+
 // ─── Withdrawal Form ─────────────────────────────────────────────────────────
 
 export const withdrawalSchema = z.object({
@@ -273,6 +283,18 @@ export const withdrawalSchema = z.object({
     .regex(/^\d{10}$/, "Account number must be exactly 10 digits"),
   accountName: z.string().min(1, "Account name resolution required"),
 });
+
+export const initiateWithdrawalApiSchema = z.object({
+  bankCode: z.string().min(1, "Bank code is required"),
+  bankName: z.string().min(1, "Bank name is required"),
+  accountNumber: z.string().regex(/^\d{10}$/, "Account number must be exactly 10 digits"),
+  amount: z
+    .union([z.number(), z.string()])
+    .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
+    .refine((n) => !isNaN(n) && n > 0, "Withdrawal amount must be greater than 0"),
+  phone: z.string().min(7, "Phone number is required"),
+});
+export type InitiateWithdrawalApiPayload = z.infer<typeof initiateWithdrawalApiSchema>;
 
 // ─── Boost Form ──────────────────────────────────────────────────────────────
 

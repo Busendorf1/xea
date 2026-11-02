@@ -797,7 +797,21 @@ export default function Step3Creative({
                               isLimitReached ? styles.actionCardDisabled : ""
                             }`}
                           >
-                            <div className={styles.actionCardHeader} onClick={toggleButton}>
+                            <div
+                              role="button"
+                              tabIndex={isLimitReached && !isSelected ? -1 : 0}
+                              aria-pressed={isSelected}
+                              aria-disabled={isLimitReached && !isSelected}
+                              aria-label={`Toggle ${meta.title}`}
+                              className={styles.actionCardHeader}
+                              onClick={toggleButton}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  toggleButton();
+                                }
+                              }}
+                            >
                               <div className={styles.actionIconWrapper}>
                                 {meta.icon}
                               </div>

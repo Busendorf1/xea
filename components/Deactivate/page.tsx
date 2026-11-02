@@ -210,7 +210,11 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
         {/* Apple-styled Destructive Confirmation Modal */}
         <AnimatePresence>
           {showModal && (
-            <div className={styles.modalOverlay} onClick={() => !loading && setShowModal(false)}>
+            <div
+              role="presentation"
+              className={styles.modalOverlay}
+              onClick={() => !loading && setShowModal(false)}
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}

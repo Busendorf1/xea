@@ -26,6 +26,23 @@ export interface InitialProfileInput {
   interest?: string[] | string | null;
 }
 
+export interface UserDatabaseRow {
+  balance?: number | string | null;
+  monetization_clicks?: number | string | null;
+  mutual_count?: number | string | null;
+  monetized?: boolean | string | null;
+  suspended_until?: string | null;
+  cooldown_until?: string | null;
+  cooldown_type?: "pacing_15m" | "review_hours" | null;
+  interest?: string[] | string | null;
+  mutuals?: string[] | null;
+}
+
+export interface LiveBalanceSyncEventDetail {
+  newBalance?: number;
+  clicks?: number;
+}
+
 export function useViewerProfile(userEmail: string, initialProfile?: InitialProfileInput) {
   const [viewerProfile, setViewerProfile] = useState<ViewerProfileState | null>(() => {
     if (initialProfile) {
@@ -109,7 +126,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
         },
         (payload) => {
           if (payload.new) {
-            const newRow = payload.new as any;
+            const newRow = payload.new as UserDatabaseRow;
             const newBalance = Number(newRow.balance);
             const newClicks = Number(newRow.monetization_clicks);
             const newMutualCount = Number(newRow.mutual_count);
@@ -160,8 +177,9 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
 
   // Local event listener for cross-component and optimistic sync
   useEffect(() => {
-    const handleLocalSync = (e: any) => {
-      const { newBalance, clicks } = e.detail || {};
+    const handleLocalSync = (e: Event) => {
+      const customEvent = e as CustomEvent<LiveBalanceSyncEventDetail>;
+      const { newBalance, clicks } = customEvent.detail || {};
       if (typeof newBalance === "number" && !isNaN(newBalance)) {
         setViewerProfile((prev) =>
           prev

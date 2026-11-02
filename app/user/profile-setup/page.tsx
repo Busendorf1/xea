@@ -346,7 +346,20 @@ interface ProfileFormData {
     return (
       <div className={styles.dropdownContainer}>
         <label className={styles.inputLabel}>{label}</label>
-        <div className={styles.dropdownHeader} onClick={() => toggleDropdown(name)}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={Boolean(openDropdowns[name])}
+          aria-label={`Select ${label}`}
+          className={styles.dropdownHeader}
+          onClick={() => toggleDropdown(name)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleDropdown(name);
+            }
+          }}
+        >
           <span>{selectedArr.length > 0 ? `${selectedArr.length} selected` : `Select ${label}`}</span>
           <span>{openDropdowns[name] ? "▲" : "▼"}</span>
         </div>

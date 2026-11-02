@@ -62,8 +62,14 @@ export default function TransferSuccessModal({
     : data.accountNumber;
 
  return (
- <div className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true">
- <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+  <div className={styles.overlay} onClick={onClose} role="presentation">
+    <div
+      className={styles.modal}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Transfer Successful"
+      onClick={(e) => e.stopPropagation()}
+    >
  {/* Animated Checkmark Badge */}
  <div className={styles.iconWrapper}>
  <div className={styles.pulseRing} />

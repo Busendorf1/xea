@@ -683,7 +683,12 @@ export default function DashboardClient({
 
         {/* Backdrop overlay for Mobile side menus */}
         {isMobile && (showProfileMobile || showHighlightsMobile) && (
-          <div className={styles.backdrop} onClick={closeAllToggles} />
+          <div
+            role="presentation"
+            aria-hidden="true"
+            className={styles.backdrop}
+            onClick={closeAllToggles}
+          />
         )}
 
         {/* Modals rendered directly to document.body */}

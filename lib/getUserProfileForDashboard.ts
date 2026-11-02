@@ -2,6 +2,8 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile, getCachedHighlights } from "@/lib/utils/cache";
 import { safeParseArray } from "@/lib/utils/parsers";
 import { UserProfile } from "@/components/DashboardClient/page";
+import type { Ad, AdvertiserProfile } from "@/types/ads";
+import type { HighlightItem } from "@/components/MyNews/types";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import crypto from "crypto";
 import { isAdminEmail } from "@/lib/authHelper";
@@ -13,14 +15,28 @@ export interface DashboardProfileResult {
   user?: UserProfile;
   parsedInterest?: string[];
   email?: string;
-  initialAds?: any[];
-  initialProfiles?: Record<string, any>;
-  initialHighlights?: any[];
+  initialAds?: Ad[];
+  initialProfiles?: Record<string, AdvertiserProfile>;
+  initialHighlights?: HighlightItem[];
   redirectUrl?: string;
   error?: string;
 }
 
-export async function getUserProfileForDashboard(session: any): Promise<DashboardProfileResult> {
+export interface SessionLike {
+  user?: {
+    email?: string | null;
+    name?: string | null;
+    given_name?: string | null;
+    family_name?: string | null;
+    picture?: string | null;
+    image?: string | null;
+    business_name?: string | null;
+    [key: string]: unknown;
+  } | null;
+  [key: string]: unknown;
+}
+
+export async function getUserProfileForDashboard(session: SessionLike | null | undefined): Promise<DashboardProfileResult> {
   const rawEmail = session?.user?.email;
   if (!rawEmail || typeof rawEmail !== "string" || !rawEmail.trim()) {
     return { error: "No valid email associated with session" };
@@ -199,11 +215,12 @@ export async function getUserProfileForDashboard(session: any): Promise<Dashboar
       throw new Error(`Database connection failed while fetching user profile: ${dbError.message || dbError}`);
     }
     console.log(`👤 User not found in database. Auto-provisioning profile for: ${email}`);
-    const givenName = String(session.user.given_name || session.user.name || email.split("@")[0] || "User").trim();
-    const familyName = String(session.user.family_name || "").trim();
-    const rawPicture = typeof session.user.picture === "string" ? session.user.picture : "";
+    const sessionUser = session?.user;
+    const givenName = String(sessionUser?.given_name || sessionUser?.name || email.split("@")[0] || "User").trim();
+    const familyName = String(sessionUser?.family_name || "").trim();
+    const rawPicture = typeof sessionUser?.picture === "string" ? (sessionUser.picture as string) : "";
     const profileImage = isDefaultProviderAvatar(rawPicture) ? "" : rawPicture;
-    const business_name = typeof session.user.business_name === "string" ? session.user.business_name : "";
+    const business_name = typeof sessionUser?.business_name === "string" ? (sessionUser.business_name as string) : "";
 
     const timestamp = Date.now();
     const rand = Math.floor(Math.random() * 1000000);

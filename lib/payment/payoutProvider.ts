@@ -17,6 +17,11 @@ import { PaystackService, Bank as PaystackBank, ResolveAccountResponse as Paysta
 
 export type PayoutGateway = "kora" | "paystack";
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 export class PayoutProvider {
   /**
    * Returns current active payout gateway ("kora" by default, or "paystack")
@@ -78,8 +83,8 @@ export class PayoutProvider {
             account_number: res.account_number,
             account_name: res.account_name,
           };
-        } catch (err: any) {
-          console.warn("⚠️ Kora resolveAccount failed, checking Paystack fallback:", err?.message || err);
+        } catch (err: unknown) {
+          console.warn("⚠️ Kora resolveAccount failed, checking Paystack fallback:", getErrorMessage(err));
           if (canTryPaystack) {
             return PaystackService.resolveAccount(cleanAccount, bankCode);
           }
@@ -96,7 +101,7 @@ export class PayoutProvider {
     if (canTryPaystack) {
       try {
         return await PaystackService.resolveAccount(cleanAccount, bankCode);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (canTryKora) {
           const res = await KoraService.resolveAccount(cleanAccount, bankCode);
           return {
@@ -159,7 +164,7 @@ export class PayoutProvider {
           customerEmail: params.customerEmail,
           narration: params.narration,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("❌ Kora payout initiation failed:", err);
         throw err;
       }
@@ -182,7 +187,7 @@ export class PayoutProvider {
         status: res.status,
         reference: params.reference,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("❌ Paystack payout initiation failed:", err);
       throw err;
     }
@@ -214,8 +219,8 @@ export class PayoutProvider {
           authorization_url: res.checkout_url,
           reference: res.reference,
         };
-      } catch (err: any) {
-        console.warn("⚠️ Kora initializeCharge failed, falling back to Paystack:", err?.message || err);
+      } catch (err: unknown) {
+        console.warn("⚠️ Kora initializeCharge failed, falling back to Paystack:", getErrorMessage(err));
       }
     }
 
@@ -252,8 +257,8 @@ export class PayoutProvider {
           reference: res.reference,
           metadata: res.metadata,
         };
-      } catch (koraErr: any) {
-        console.warn("⚠️ Kora charge verification failed, checking Paystack fallback:", koraErr?.message || koraErr);
+      } catch (koraErr: unknown) {
+        console.warn("⚠️ Kora charge verification failed, checking Paystack fallback:", getErrorMessage(koraErr));
         if (!isKoraRef) {
           try {
             const paystackRes = await PaystackService.verifyTransaction(reference);
@@ -282,8 +287,8 @@ export class PayoutProvider {
         reference: paystackRes.reference,
         metadata: paystackRes.metadata,
       };
-    } catch (paystackErr: any) {
-      console.warn("⚠️ Paystack verification failed, attempting Kora fallback:", paystackErr?.message || paystackErr);
+    } catch (paystackErr: unknown) {
+      console.warn("⚠️ Paystack verification failed, attempting Kora fallback:", getErrorMessage(paystackErr));
       const res = await KoraService.verifyCharge(reference);
       return {
         success: res.status === "success" || res.status === "successful",

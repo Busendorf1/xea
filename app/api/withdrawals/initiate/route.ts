@@ -7,6 +7,7 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
+import { initiateWithdrawalApiSchema } from "@/lib/validationSchemas";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
 const l1WithdrawalMutex = new Map<string, number>();
@@ -65,7 +66,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { bankCode, bankName, accountNumber, amount, phone } = body;
+    const parsed = initiateWithdrawalApiSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message || "Invalid withdrawal parameters" },
+        { status: 400 }
+      );
+    }
+    const { bankCode, bankName, accountNumber, amount: withdrawAmount, phone } = parsed.data;
 
     // 1. Fetch user's current profile details using indexed .eq lookup
     const emailLower = email.toLowerCase().trim();
@@ -80,15 +88,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to verify account balance" }, { status: 500 });
     }
 
-    if (!bankCode || !bankName || !accountNumber || !phone) {
-      return NextResponse.json({ error: "bankCode, bankName, accountNumber, and phone are required" }, { status: 400 });
-    }
-
     const currentBalance = parseFloat(user.balance || 0);
     const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
     const isAdmin = isAdminEmail(email);
-    const withdrawAmount = parseFloat(amount);
 
     // Rule 1: Minimum balance requirement (Bypassed for Admins)
     if (!isAdmin && currentBalance < MIN_WITHDRAWAL_AMOUNT) {

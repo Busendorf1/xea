@@ -5,7 +5,9 @@ import {
   adCreativeProductSchema,
   newsSchema,
   sendMoneySchema,
+  transferApiSchema,
   withdrawalSchema,
+  initiateWithdrawalApiSchema,
   boostSchema,
   cancelMonetizationSchema,
   deactivationSchema,
@@ -261,6 +263,74 @@ describe("Zod Validation Schemas", () => {
         replyText: "Thank you for contacting support. Your issue has been resolved.",
       };
       expect(adminTicketReplySchema.safeParse(validReply).success).toBe(true);
+    });
+  });
+
+  describe("transferApiSchema", () => {
+    it("should accept valid transfer payload with numeric amount", () => {
+      const valid = {
+        recipientEmail: "friend@example.com",
+        amount: 2500,
+        idempotencyKey: "trf_idemp_12345678",
+      };
+      const res = transferApiSchema.safeParse(valid);
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.data.amount).toBe(2500);
+      }
+    });
+
+    it("should accept and transform valid string amount", () => {
+      const valid = {
+        recipientEmail: "friend@example.com",
+        amount: "1500.50",
+      };
+      const res = transferApiSchema.safeParse(valid);
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.data.amount).toBe(1500.5);
+      }
+    });
+
+    it("should reject negative or zero transfer amounts", () => {
+      expect(transferApiSchema.safeParse({ recipientEmail: "friend@example.com", amount: 0 }).success).toBe(false);
+      expect(transferApiSchema.safeParse({ recipientEmail: "friend@example.com", amount: -500 }).success).toBe(false);
+      expect(transferApiSchema.safeParse({ recipientEmail: "invalid-email", amount: 1000 }).success).toBe(false);
+    });
+  });
+
+  describe("initiateWithdrawalApiSchema", () => {
+    it("should accept valid withdrawal request payload", () => {
+      const valid = {
+        bankCode: "058",
+        bankName: "Guaranty Trust Bank",
+        accountNumber: "0123456789",
+        amount: 15000,
+        phone: "+2348012345678",
+      };
+      const res = initiateWithdrawalApiSchema.safeParse(valid);
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.data.amount).toBe(15000);
+        expect(res.data.accountNumber).toBe("0123456789");
+      }
+    });
+
+    it("should reject invalid bank account numbers", () => {
+      const invalidAccount = {
+        bankCode: "058",
+        bankName: "Guaranty Trust Bank",
+        accountNumber: "12345", // too short
+        amount: 15000,
+        phone: "+2348012345678",
+      };
+      expect(initiateWithdrawalApiSchema.safeParse(invalidAccount).success).toBe(false);
+
+      const letterAccount = {
+        ...invalidAccount,
+        accountNumber: "012345678A", // contains non-digits
+      };
+      expect(initiateWithdrawalApiSchema.safeParse(letterAccount).success).toBe(false);
     });
   });
 });

@@ -74,7 +74,23 @@ export default function Avatar({
   // 1. Genuine manual image uploaded by user/advertiser
   if (hasValidImage) {
     return (
-      <div className={containerClasses} style={containerStyle} onClick={onClick}>
+      <div
+        className={containerClasses}
+        style={containerStyle}
+        onClick={onClick}
+        role={onClick ? "button" : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
+                }
+              }
+            : undefined
+        }
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={normalizedSrc}
@@ -105,6 +121,18 @@ export default function Avatar({
         backgroundColor: silhouetteBg,
       }}
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
+              }
+            }
+          : undefined
+      }
       aria-label={alt || name || "Default avatar"}
       title={name || "Default avatar"}
     >
