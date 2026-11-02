@@ -18,10 +18,10 @@ jobs:
 
     env:
       NODE_ENV: test
-      AUTH0_SECRET: ${{ secrets.AUTH0_SECRET || 'ci_auth0_secret_must_be_thirty_two_chars_min' }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'ci-anon-key' }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'ci-service-role-key' }}
+      AUTH0_SECRET: "ci_auth0_secret_must_be_thirty_two_chars_min"
+      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-anon-key"
+      SUPABASE_SERVICE_ROLE_KEY: "ci-service-role-key"
 
     steps:
       - name: Checkout code
@@ -31,10 +31,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run ESLint
         run: npm run lint
