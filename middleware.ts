@@ -25,6 +25,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/auth/login") ||
     pathname.startsWith("/auth/logout") ||
     pathname.startsWith("/api/feed") ||
+    pathname === "/api/health" ||
     pathname.startsWith("/api/highlights");
 
   if (isPublicPage) {

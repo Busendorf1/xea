@@ -102,6 +102,7 @@ export default function AdInteractionHandler({
   const trackRef = useRef<HTMLDivElement>(null);
   const kinematicsRef = useRef<KinematicsCollector>(new KinematicsCollector());
   const recordedTelemetryRef = useRef<KinematicVector[]>([]);
+  const holdCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // 1. Intersection Observer to check if 65% of ad card is visible in view
   useEffect(() => {
@@ -310,8 +311,7 @@ export default function AdInteractionHandler({
     setSwipeOffset(0);
   };
 
-  // 5. Challenge B: Hold Handlers
-  const holdCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // 5. Challenge B: Hold Handlers (holdCoords ref is declared with the other refs, before any early return)
 
   const startHold = (e?: React.MouseEvent | React.TouchEvent) => {
     if (stage !== "challenge" || challengeType !== "hold") return;

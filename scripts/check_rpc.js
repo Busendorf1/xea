@@ -1,51 +1,74 @@
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
+#!/usr/bin/env node
+/**
+ * RLS exposure probe (read-only).
+ *
+ * Uses ONLY the public anon/publishable key (the same key shipped to every browser)
+ * and checks, per table, whether that key can read rows. Uses HEAD + count queries,
+ * so no row data is ever downloaded or printed. Keys are never printed.
+ *
+ * Usage:  node scripts/check_rpc.js            (reads .env.local, then .env)
+ * Exit code 1 if any sensitive table is readable by the anon key.
+ */
+const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env.local") });
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
-const envPath = 'c:/Users/USER/xea/.env.local';
-let supabaseUrl = '';
-let supabaseKey = '';
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const anonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-try {
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  envContent.split('\n').forEach(line => {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const parts = trimmed.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        const value = parts.slice(1).join('=').trim();
-        if (key === 'NEXT_PUBLIC_SUPABASE_URL') {
-          supabaseUrl = value;
-        } else if (key === 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') {
-          supabaseKey = value;
-        }
-      }
-    }
-  });
-} catch (e) {
-  console.error(e);
+if (!url || !anonKey) {
+  console.error("Missing NEXT_PUBLIC_SUPABASE_URL or anon/publishable key in .env.local / .env");
+  process.exit(2);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Tables that must NEVER be readable with the public key.
+const SENSITIVE = [
+  "users",
+  "payments",
+  "ledger_entries",
+  "notifications",
+  "admin_audit_logs",
+  "pending_admin_requests",
+  "help_tickets",
+  "forfeited_balances",
+  "system_reconciliation_logs",
+  "premium_subscribers",
+  "ad_impressions",
+  "completed_ads",
+  "completed_ads_ratings",
+  "ad_reports",
+  "blocked_ads",
+  "bidded_ads",
+  "adds",
+  "news",
+];
+// Tables the browser currently subscribes to via Realtime (public ad content).
+const PUBLIC_CONTENT = ["addsactive", "newsactive", "global_announcements"];
 
-async function check() {
-  const { data: ads, error: adError } = await supabase.from('adds').select('*').limit(1);
-  const { data: users, error: userError } = await supabase.from('users').select('*').limit(1);
+const supabase = createClient(url, anonKey, { auth: { persistSession: false } });
 
-  console.log("Supabase URL:", supabaseUrl);
-  console.log("Supabase Key:", supabaseKey);
-  console.log("Ad query error:", adError);
-  console.log("User query error:", userError);
-  if (ads) console.log("Ads count:", ads.length);
-  if (users) console.log("Users count:", users.length);
-
-  // Also try with the fallback key in lib/utils/db.js
-  const fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkZ2FvZ25tbmZzaXd2dnF2eGRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNDMxNzEsImV4cCI6MjA4OTYxOTE3MX0.21AOR9PKcxY55oAm-YLzTleQQQ2fFfI4WQ00--H4al4";
-  console.log("\nTesting with fallback key...");
-  const fallbackClient = createClient(supabaseUrl, fallbackKey);
-  const { data: fbUsers, error: fbError } = await fallbackClient.from('users').select('*').limit(1);
-  console.log("Fallback Key User query error:", fbError);
-  if (fbUsers) console.log("Fallback Key Users count:", fbUsers.length);
+async function probe(table) {
+  const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true });
+  if (error) return { table, readable: false, detail: error.code || error.message };
+  // RLS-on with no matching policy returns count 0 without error; count > 0 means rows are visible.
+  return { table, readable: (count ?? 0) > 0, detail: `visible rows: ${count ?? 0}` };
 }
 
-check();
+(async () => {
+  let exposed = 0;
+  console.log("== Sensitive tables (must be NOT readable) ==");
+  for (const t of SENSITIVE) {
+    const r = await probe(t);
+    if (r.readable) exposed++;
+    console.log(`${r.readable ? "EXPOSED " : "ok      "} ${t.padEnd(28)} ${r.detail}`);
+  }
+  console.log("\n== Public content tables (readable is expected) ==");
+  for (const t of PUBLIC_CONTENT) {
+    const r = await probe(t);
+    console.log(`${r.readable ? "readable" : "blocked "} ${t.padEnd(28)} ${r.detail}`);
+  }
+  console.log(exposed ? `\n${exposed} sensitive table(s) readable with the public key.` : "\nNo sensitive tables readable.");
+  process.exit(exposed ? 1 : 0);
+})();

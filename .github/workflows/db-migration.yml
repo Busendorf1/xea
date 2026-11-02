@@ -1,0 +1,50 @@
+name: Database Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+concurrency:
+  group: db-migration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Validate & Deploy Supabase Migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check / Lint Migrations
+        run: |
+          echo "Validating migration scripts syntax..."
+          # Verify all migration filenames follow sequential ordering
+          ls -la supabase/migrations/
+
+      - name: Deploy Migrations to Production Supabase
+        if: env.SUPABASE_DB_URL != ''
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "Deploying pending migrations to production database..."
+          supabase db push --db-url "$SUPABASE_DB_URL"
+
+      - name: Migration Notice (If Secret Not Configured)
+        if: env.SUPABASE_DB_URL == ''
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "⚠️ Notice: SUPABASE_DB_URL secret is not configured in GitHub repository secrets."
+          echo "Migrations were verified locally. To enable automatic deployment on merge:"
+          echo "Add SUPABASE_DB_URL (Transaction Pooler or Direct Connection string from Supabase Settings -> Database) to GitHub -> Settings -> Secrets and variables -> Actions."

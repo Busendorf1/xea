@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const { name, email, category, subject, message } = body;
 
     // 4. Determine which identifier/email to validate and associate with the ticket.
-    let rawIdentifier = (authEmail || email || "").toLowerCase().trim();
+    const rawIdentifier = (authEmail || email || "").toLowerCase().trim();
     let targetEmail = rawIdentifier;
 
     if (rawIdentifier && !rawIdentifier.includes(".")) {
