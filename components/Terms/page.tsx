@@ -36,11 +36,19 @@ export default function TermsPage() {
             least <strong>18 years of age</strong> to register an account, launch campaigns, or earn attention rewards.
           </p>
           <p>
-            <strong>1.2 Account Security:</strong> Paayh utilizes federated authentication (including Google OAuth via
-            Auth0). You agree to provide accurate registration information and are strictly prohibited from operating
-            multiple accounts to inflate monetization metrics. You are solely responsible for maintaining the
-            confidentiality of your credentials and session. Paayh bears zero liability for disbursements or actions
-            executed through an authenticated session.
+            <strong>1.2 Account Security, Public Handles &amp; Email Privacy:</strong> Paayh utilizes federated authentication
+            (including Google OAuth via Auth0). Your registered account email address is kept strictly private for session
+            authentication, peer-to-peer wallet routing, and settlement notifications, and is never publicly displayed to other
+            users on the promotional feed. Conversely, your chosen <code>@username</code> and optional business name operate as
+            your public, unencrypted display handle visible across the platform. Sensitive profile fields (such as your phone
+            number and legal first/last name) are encrypted at the application layer (`AES-256-GCM`), while your 4-digit Wallet
+            PIN is irreversibly one-way hashed. <strong>You must never share your 4-digit Wallet PIN, OAuth login credentials,
+            or sensitive account recovery details (such as your registered email and phone number combination) with any third
+            party.</strong> Official Paayh personnel will never ask you for your Wallet PIN. You agree to provide accurate
+            registration information, are strictly prohibited from operating multiple accounts to inflate monetization metrics,
+            and remain solely responsible for maintaining the confidentiality of your credentials, PIN, and session. Paayh bears
+            zero liability for disbursements or actions executed through an authenticated session or resulting from your
+            voluntary disclosure of sensitive account details or PINs.
           </p>
           <p>
             <strong>1.3 Non Transferability:</strong> Accounts, credentials, and accrued incentive balances are personal
@@ -226,6 +234,23 @@ export default function TermsPage() {
               withdrawals to a single static bank account, granting users flexibility across verified accounts. You agree to
               keep all account login credentials and personal devices secure; Paayh shall not be held liable for payouts
               disbursed to banking details submitted through an authenticated account session.
+            </li>
+            <li className={styles.listItem}>
+              <strong>4-Digit Wallet PIN, 5-Minute Auto-Lock &amp; Brute-Force Lockout Protocol:</strong> To safeguard your
+              dashboard balance, peer-to-peer transfers, and payout requests, Paayh requires you to establish a confidential{" "}
+              <strong>4-digit Wallet PIN</strong> upon first unlocking your wallet visibility toggle. Entering your 4-digit
+              Wallet PIN is mandatory to reveal your wallet balance, send funds, or initiate a withdrawal. Once unlocked, your
+              wallet remains visible until you manually close the visibility toggle (the eye icon) or until{" "}
+              <strong>five (5) minutes</strong> elapse, after which the wallet automatically re-locks and requires your PIN
+              again on next access. To prevent unauthorized guessing or brute-force attacks,{" "}
+              <strong>five (5) consecutive incorrect PIN attempts</strong> automatically enforce a{" "}
+              <strong>fifteen (15) minute security lockout</strong>. If you forget your PIN, you may reset it only by
+              verifying both your exact registered account email address and your registered profile phone number; accordingly,{" "}
+              <strong>you must never share your 4-digit Wallet PIN or expose your sensitive account recovery details
+              (registered email and phone number combination) to anyone</strong>. Because your 4-digit PIN is irreversibly
+              hashed using salted cryptographic key derivation (PBKDF2-HMAC-SHA256), Paayh cannot view or retrieve your raw
+              PIN, will never ask for your PIN under any circumstances, and bears zero liability for any balance disclosure,
+              transfer, or payout executed following valid PIN verification on your account.
             </li>
           </ul>
         {/* PLATFORM INACTIVITY MANAGEMENT GUIDELINES */}

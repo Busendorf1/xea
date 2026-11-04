@@ -96,6 +96,9 @@ export default function FullscreenVideoPlayer({
             .then(() => setIsPlaying(true))
             .catch(() => setIsPlaying(false));
         });
+    } else {
+      vid.pause();
+      setIsPlaying(false);
     }
   }, [src, hlsSrc, autoPlay]);
 

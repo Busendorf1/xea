@@ -194,7 +194,24 @@ export function useFeedActions({
             setSeenAds((prev) => (prev.includes(ad.id) ? prev : [...prev, ad.id]));
             return false;
           }
+          if (errData?.code === "COOLDOWN_ACTIVE" || errData?.code === "USER_SUSPENDED") {
+            setSeenAds((prev) => prev.filter((id) => id !== ad.id));
+            if (setViewerProfile) {
+              const fallbackUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+              setViewerProfile((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      cooldown_until: errData.cooldownUntil || prev.suspended_until || fallbackUntil,
+                      cooldown_type: errData.cooldownType || (errData.code === "USER_SUSPENDED" ? "review_hours" : "pacing_15m"),
+                    }
+                  : null
+              );
+            }
+            return false;
+          }
           if (errData?.code === "POH_RETRY") {
+            setSeenAds((prev) => prev.filter((id) => id !== ad.id));
             if (typeof window !== "undefined") {
               window.dispatchEvent(
                 new CustomEvent("xea:toast", {
@@ -207,6 +224,7 @@ export function useFeedActions({
             }
             return false;
           }
+          setSeenAds((prev) => prev.filter((id) => id !== ad.id));
           return false;
         }
 
@@ -214,6 +232,7 @@ export function useFeedActions({
 
         // Handle Active Earning Cooldown (Pacing 15m or Review 48h)
         if (resData.code === "COOLDOWN_ACTIVE") {
+          setSeenAds((prev) => prev.filter((id) => id !== ad.id));
           if (expectedRate > 0) {
             updateBalance(-expectedRate);
             onEarnSuccess?.(-expectedRate);
@@ -354,8 +373,8 @@ export function useFeedActions({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             adId: ad.id,
-            token: ad.verification_token,
-            servedAt: ad.served_at,
+            token: ad.verification_token || (ad as any)._token,
+            servedAt: ad.served_at || (ad as any)._served_at,
             type: "mutual",
             turnstileToken: "no-turnstile-script",
           }),
@@ -367,10 +386,35 @@ export function useFeedActions({
             console.warn("⚠️ Session expired or unauthorized in handleAdMutual");
             return false;
           }
+          if (errData?.code === "COOLDOWN_ACTIVE" && setViewerProfile) {
+            setViewerProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    cooldown_until: errData.cooldownUntil,
+                    cooldown_type: errData.cooldownType || "pacing_15m",
+                  }
+                : null
+            );
+          }
           throw new Error(errData?.error || "Failed to add mutual");
         }
 
         const resData = await response.json();
+        if (resData.code === "COOLDOWN_ACTIVE") {
+          if (setViewerProfile) {
+            setViewerProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    cooldown_until: resData.cooldownUntil,
+                    cooldown_type: resData.cooldownType || "pacing_15m",
+                  }
+                : null
+            );
+          }
+          return false;
+        }
         const mutualResult = resData.result !== undefined ? resData.result : 1;
 
         if (mutualResult === -1 || mutualResult === -2) {

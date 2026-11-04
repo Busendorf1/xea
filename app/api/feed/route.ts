@@ -602,12 +602,14 @@ export async function GET(req: NextRequest) {
           profiles.forEach((p: any) => {
             if (p.email) {
               const lower = p.email.toLowerCase();
+              const rawFirst = typeof p.firstName === "string" && !p.firstName.startsWith("enc:v1:") ? p.firstName : "";
+              const rawLast = typeof p.lastName === "string" && !p.lastName.startsWith("enc:v1:") ? p.lastName : "";
               const formatted: AdvertiserProfile = {
                 email: p.email,
                 username: p.username || "",
                 business_name: p.business_name || "",
-                firstName: p.firstName || "",
-                lastName: p.lastName || "",
+                firstName: rawFirst,
+                lastName: rawLast,
                 profileImage: p.profileImage || "",
                 gender: p.gender || "",
                 bio: p.bio || "",

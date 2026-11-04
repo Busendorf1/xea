@@ -1,8 +1,14 @@
 import crypto from "crypto";
+import { promisify } from "util";
 import { env } from "../env";
+
+const pbkdf2Async = promisify(crypto.pbkdf2);
 
 const ENCRYPTION_PREFIX = "enc:v1:";
 const ONE_WAY_HASH_PREFIX = "hash:v1:";
+const WALLET_PIN_PREFIX = "pin:v1:";
+const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_KEYLEN = 32;
 
 /**
  * Derives a deterministic 32-byte (256-bit) AES key from the platform's master secret.
@@ -96,6 +102,187 @@ export function hashPassphraseOneWay(value: string | null | undefined): string |
 }
 
 /**
+ * Hashes a 4-digit Wallet PIN using PBKDF2-HMAC-SHA256 (100,000 iterations)
+ * combined with a random 16-byte salt and the platform master key + normalized email pepper.
+ * Returns `pin:v1:<salt_hex>:<derived_key_hex>`.
+ */
+export function hashWalletPin(pin: string, email: string): string {
+  const cleanPin = String(pin).trim();
+  if (!/^\d{4}$/.test(cleanPin)) {
+    throw new Error("Wallet PIN must be exactly 4 digits.");
+  }
+  const cleanEmail = String(email).trim().toLowerCase();
+  const masterKey = getMasterEncryptionKey();
+  const randomSalt = crypto.randomBytes(16);
+  const compositeSalt = crypto
+    .createHmac("sha256", masterKey)
+    .update(`wallet-pin-salt:${cleanEmail}:`)
+    .update(randomSalt)
+    .digest();
+
+  const derived = crypto.pbkdf2Sync(
+    `pin:${cleanEmail}:${cleanPin}`,
+    compositeSalt,
+    PBKDF2_ITERATIONS,
+    PBKDF2_KEYLEN,
+    "sha256"
+  );
+
+  return `${WALLET_PIN_PREFIX}${randomSalt.toString("hex")}:${derived.toString("hex")}`;
+}
+
+/**
+ * Non-blocking asynchronous PBKDF2-HMAC-SHA256 hash offloaded to libuv's C++ thread pool
+ * so the Node.js event loop is never blocked under high concurrency (100M+ user traffic).
+ */
+export async function hashWalletPinAsync(pin: string, email: string): Promise<string> {
+  const cleanPin = String(pin).trim();
+  if (!/^\d{4}$/.test(cleanPin)) {
+    throw new Error("Wallet PIN must be exactly 4 digits.");
+  }
+  const cleanEmail = String(email).trim().toLowerCase();
+  const masterKey = getMasterEncryptionKey();
+  const randomSalt = crypto.randomBytes(16);
+  const compositeSalt = crypto
+    .createHmac("sha256", masterKey)
+    .update(`wallet-pin-salt:${cleanEmail}:`)
+    .update(randomSalt)
+    .digest();
+
+  const derived = await pbkdf2Async(
+    `pin:${cleanEmail}:${cleanPin}`,
+    compositeSalt,
+    PBKDF2_ITERATIONS,
+    PBKDF2_KEYLEN,
+    "sha256"
+  );
+
+  return `${WALLET_PIN_PREFIX}${randomSalt.toString("hex")}:${derived.toString("hex")}`;
+}
+
+/**
+ * Verifies a 4-digit Wallet PIN against a stored `pin:v1:<salt_hex>:<derived_key_hex>`
+ * (or fallback `hash:v1:<sha256_hex>` from the PostgreSQL trigger) in constant time.
+ */
+export function verifyWalletPin(
+  pin: string | null | undefined,
+  email: string | null | undefined,
+  storedHash: string | null | undefined
+): boolean {
+  if (!pin || !email || !storedHash) return false;
+  const cleanPin = String(pin).trim();
+  if (!/^\d{4}$/.test(cleanPin)) return false;
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const rawStored = String(storedHash).trim();
+
+  try {
+    if (rawStored.startsWith(WALLET_PIN_PREFIX)) {
+      const parts = rawStored.slice(WALLET_PIN_PREFIX.length).split(":");
+      if (parts.length !== 2) return false;
+      const [saltHex, expectedHex] = parts;
+      const randomSalt = Buffer.from(saltHex, "hex");
+      const expectedBuf = Buffer.from(expectedHex, "hex");
+      if (randomSalt.length !== 16 || expectedBuf.length !== PBKDF2_KEYLEN) return false;
+
+      const masterKey = getMasterEncryptionKey();
+      const compositeSalt = crypto
+        .createHmac("sha256", masterKey)
+        .update(`wallet-pin-salt:${cleanEmail}:`)
+        .update(randomSalt)
+        .digest();
+
+      const candidateBuf = crypto.pbkdf2Sync(
+        `pin:${cleanEmail}:${cleanPin}`,
+        compositeSalt,
+        PBKDF2_ITERATIONS,
+        PBKDF2_KEYLEN,
+        "sha256"
+      );
+
+      return crypto.timingSafeEqual(candidateBuf, expectedBuf);
+    }
+
+    if (rawStored.startsWith(ONE_WAY_HASH_PREFIX)) {
+      const expectedHex = rawStored.slice(ONE_WAY_HASH_PREFIX.length);
+      const candidateHex = crypto
+        .createHash("sha256")
+        .update(`xea-wallet-pin-v1:${cleanEmail}:${cleanPin}`)
+        .digest("hex");
+      const a = Buffer.from(candidateHex, "hex");
+      const b = Buffer.from(expectedHex, "hex");
+      if (a.length !== b.length) return false;
+      return crypto.timingSafeEqual(a, b);
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Non-blocking asynchronous PIN verification offloaded to libuv's C++ worker pool
+ * with constant-time comparison (`crypto.timingSafeEqual`).
+ */
+export async function verifyWalletPinAsync(
+  pin: string | null | undefined,
+  email: string | null | undefined,
+  storedHash: string | null | undefined
+): Promise<boolean> {
+  if (!pin || !email || !storedHash) return false;
+  const cleanPin = String(pin).trim();
+  if (!/^\d{4}$/.test(cleanPin)) return false;
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const rawStored = String(storedHash).trim();
+
+  try {
+    if (rawStored.startsWith(WALLET_PIN_PREFIX)) {
+      const parts = rawStored.slice(WALLET_PIN_PREFIX.length).split(":");
+      if (parts.length !== 2) return false;
+      const [saltHex, expectedHex] = parts;
+      const randomSalt = Buffer.from(saltHex, "hex");
+      const expectedBuf = Buffer.from(expectedHex, "hex");
+      if (randomSalt.length !== 16 || expectedBuf.length !== PBKDF2_KEYLEN) return false;
+
+      const masterKey = getMasterEncryptionKey();
+      const compositeSalt = crypto
+        .createHmac("sha256", masterKey)
+        .update(`wallet-pin-salt:${cleanEmail}:`)
+        .update(randomSalt)
+        .digest();
+
+      const candidateBuf = await pbkdf2Async(
+        `pin:${cleanEmail}:${cleanPin}`,
+        compositeSalt,
+        PBKDF2_ITERATIONS,
+        PBKDF2_KEYLEN,
+        "sha256"
+      );
+
+      return crypto.timingSafeEqual(candidateBuf, expectedBuf);
+    }
+
+    if (rawStored.startsWith(ONE_WAY_HASH_PREFIX)) {
+      const expectedHex = rawStored.slice(ONE_WAY_HASH_PREFIX.length);
+      const candidateHex = crypto
+        .createHash("sha256")
+        .update(`xea-wallet-pin-v1:${cleanEmail}:${cleanPin}`)
+        .digest("hex");
+      const a = Buffer.from(candidateHex, "hex");
+      const b = Buffer.from(expectedHex, "hex");
+      if (a.length !== b.length) return false;
+      return crypto.timingSafeEqual(a, b);
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Generates an HMAC-SHA256 blind index for O(1) equality lookups without exposing plaintext PII.
  */
 export function blindHashPII(value: string | null | undefined): string {
@@ -134,6 +321,15 @@ export function decryptProfilePII<T extends Record<string, any>>(user: T | null)
   }
   if (typeof copy.lastName === "string" && copy.lastName.startsWith(ENCRYPTION_PREFIX)) {
     copy.lastName = decryptSensitiveField(copy.lastName) || "";
+  }
+  const fallbackPassphrasePin =
+    typeof copy.passphrase === "string" && copy.passphrase.startsWith(WALLET_PIN_PREFIX)
+      ? copy.passphrase
+      : "";
+  if ("wallet_pin_hash" in copy || fallbackPassphrasePin) {
+    const effectiveHash = copy.wallet_pin_hash || fallbackPassphrasePin;
+    copy.has_wallet_pin = Boolean(effectiveHash && String(effectiveHash).trim() !== "");
+    delete copy.wallet_pin_hash;
   }
   delete copy.passphrase;
   return copy as T;

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import Collapsible from "../ui/Collapsible";
 import styles from "./page.module.css";
 
 interface PersonaDrawerProps {
@@ -18,6 +20,7 @@ export default function PersonaDrawer({
   lifestyle = [],
   personality = [],
 }: PersonaDrawerProps) {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("all");
   const categories = useMemo(
     () =>
@@ -48,33 +51,58 @@ export default function PersonaDrawer({
 
   return (
     <div className={styles.personaCard}>
-      <div className={styles.personaHeader}>
+      <div
+        className={styles.personaHeader}
+        onClick={() => setIsOpen((prev) => !prev)}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsOpen((prev) => !prev);
+          }
+        }}
+        title="Toggle Targeting & Persona"
+      >
         <h5 className={styles.personaTitle}>Targeting & Persona</h5>
-        <span className={styles.personaCount}>{categories[0]?.items.length || 0} traits</span>
+        <div className={styles.personaHeaderRight}>
+          <span className={styles.personaCount}>{categories[0]?.items.length || 0} traits</span>
+          <ChevronDown
+            size={18}
+            strokeWidth={2}
+            className={`${styles.personaChevron} ${isOpen ? styles.personaChevronOpen : ""}`}
+          />
+        </div>
       </div>
-      <div className={styles.personaTabRow}>
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            className={`${styles.personaTabBtn} ${activeTab === cat.id ? styles.personaTabBtnActive : ""}`}
-            onClick={() => setActiveTab(cat.id)}
-          >
-            {cat.label} ({cat.items.length})
-          </button>
-        ))}
-      </div>
-      <div className={styles.personaTagsGrid}>
-        {currentItems.length > 0 ? (
-          currentItems.map((item) => (
-            <span key={item} className={styles.personaTag}>
-              {item}
-            </span>
-          ))
-        ) : (
-          <span className={styles.emptyPersonaNote}>No targeting attributes assigned yet.</span>
-        )}
-      </div>
+
+      <Collapsible isOpen={isOpen}>
+        <div className={styles.personaCollapsibleInner}>
+          <div className={styles.personaTabRow}>
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                className={`${styles.personaTabBtn} ${activeTab === cat.id ? styles.personaTabBtnActive : ""}`}
+                onClick={() => setActiveTab(cat.id)}
+              >
+                {cat.label} ({cat.items.length})
+              </button>
+            ))}
+          </div>
+          <div className={styles.personaTagsGrid}>
+            {currentItems.length > 0 ? (
+              currentItems.map((item) => (
+                <span key={item} className={styles.personaTag}>
+                  {item}
+                </span>
+              ))
+            ) : (
+              <span className={styles.emptyPersonaNote}>No targeting attributes assigned yet.</span>
+            )}
+          </div>
+        </div>
+      </Collapsible>
     </div>
   );
 }

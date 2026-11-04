@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Share2 } from "lucide-react";
@@ -105,6 +105,9 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
   const lightboxTouchStartXRef = useRef<number | null>(null);
   const lightboxTouchStartYRef = useRef<number | null>(null);
   const lightboxPointerDownRef = useRef(false);
+  const lightboxSwipeAxisRef = useRef<"x" | "y" | null>(null);
+  const lightboxWheelCooldownRef = useRef<number>(0);
+  const [lightboxSwipeOffsetX, setLightboxSwipeOffsetX] = useState(0);
 
   if (typeof document === "undefined" || !mediaUrls[lightboxIndex]) return null;
 
@@ -167,7 +170,7 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
           </div>
         </div>
 
-        {/* Center Media Stage with Horizontal Swipe & Vertical Swipe-to-Dismiss */}
+        {/* Center Media Stage with Smooth Horizontal Track & Vertical Swipe-to-Dismiss */}
         <div
           className={styles.lightboxStage}
           style={{
@@ -184,13 +187,29 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
                 : 1,
             transition:
               lightboxSwipeOffsetY === 0
-                ? "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease"
+                ? "transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s ease"
                 : "none",
+          }}
+          onWheel={(e) => {
+            if (mediaUrls.length <= 1) return;
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 22) {
+              const now = Date.now();
+              if (now - lightboxWheelCooldownRef.current < 420) return;
+              lightboxWheelCooldownRef.current = now;
+              if (e.deltaX > 0) {
+                setLightboxIndex((prev) =>
+                  prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null
+                );
+              } else {
+                setLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+              }
+            }
           }}
           onTouchStart={(e) => {
             if (e.touches.length === 1) {
               lightboxTouchStartXRef.current = e.touches[0].clientX;
               lightboxTouchStartYRef.current = e.touches[0].clientY;
+              lightboxSwipeAxisRef.current = null;
             }
           }}
           onTouchMove={(e) => {
@@ -201,7 +220,18 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
             ) {
               const deltaX = e.touches[0].clientX - lightboxTouchStartXRef.current;
               const deltaY = e.touches[0].clientY - lightboxTouchStartYRef.current;
-              if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+              if (!lightboxSwipeAxisRef.current) {
+                if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+                  lightboxSwipeAxisRef.current =
+                    Math.abs(deltaX) >= Math.abs(deltaY) && mediaUrls.length > 1 ? "x" : "y";
+                }
+              }
+              if (lightboxSwipeAxisRef.current === "x") {
+                const isAtEdge =
+                  (lightboxIndex === 0 && deltaX > 0) ||
+                  (lightboxIndex === mediaUrls.length - 1 && deltaX < 0);
+                setLightboxSwipeOffsetX(isAtEdge ? deltaX * 0.28 : deltaX);
+              } else if (lightboxSwipeAxisRef.current === "y" && Math.abs(deltaY) > 10) {
                 setLightboxSwipeOffsetY(deltaY);
               }
             }
@@ -214,16 +244,24 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
             ) {
               const deltaX = e.changedTouches[0].clientX - lightboxTouchStartXRef.current;
               const deltaY = e.changedTouches[0].clientY - lightboxTouchStartYRef.current;
+              const axis = lightboxSwipeAxisRef.current;
               lightboxTouchStartXRef.current = null;
               lightboxTouchStartYRef.current = null;
+              lightboxSwipeAxisRef.current = null;
 
-              if (Math.abs(deltaY) > 65 && Math.abs(deltaY) > Math.abs(deltaX)) {
+              if ((axis === "y" || (!axis && Math.abs(deltaY) > Math.abs(deltaX))) && Math.abs(deltaY) > 65) {
+                setLightboxSwipeOffsetX(0);
                 closeLightbox();
                 return;
               }
               setLightboxSwipeOffsetY(0);
+              setLightboxSwipeOffsetX(0);
 
-              if (mediaUrls.length > 1 && Math.abs(deltaX) > 40 && Math.abs(deltaX) >= Math.abs(deltaY)) {
+              if (
+                mediaUrls.length > 1 &&
+                (axis === "x" || Math.abs(deltaX) >= Math.abs(deltaY)) &&
+                Math.abs(deltaX) > 36
+              ) {
                 if (deltaX < 0) {
                   setLightboxIndex((prev) =>
                     prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null
@@ -238,6 +276,7 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
             lightboxPointerDownRef.current = true;
             lightboxTouchStartXRef.current = e.clientX;
             lightboxTouchStartYRef.current = e.clientY;
+            lightboxSwipeAxisRef.current = null;
           }}
           onMouseMove={(e) => {
             if (
@@ -249,7 +288,18 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
             }
             const deltaX = e.clientX - lightboxTouchStartXRef.current;
             const deltaY = e.clientY - lightboxTouchStartYRef.current;
-            if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 12) {
+            if (!lightboxSwipeAxisRef.current) {
+              if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+                lightboxSwipeAxisRef.current =
+                  Math.abs(deltaX) >= Math.abs(deltaY) && mediaUrls.length > 1 ? "x" : "y";
+              }
+            }
+            if (lightboxSwipeAxisRef.current === "x") {
+              const isAtEdge =
+                (lightboxIndex === 0 && deltaX > 0) ||
+                (lightboxIndex === mediaUrls.length - 1 && deltaX < 0);
+              setLightboxSwipeOffsetX(isAtEdge ? deltaX * 0.28 : deltaX);
+            } else if (lightboxSwipeAxisRef.current === "y" && Math.abs(deltaY) > 12) {
               setLightboxSwipeOffsetY(deltaY);
             }
           }}
@@ -264,16 +314,24 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
             lightboxPointerDownRef.current = false;
             const deltaX = e.clientX - lightboxTouchStartXRef.current;
             const deltaY = e.clientY - lightboxTouchStartYRef.current;
+            const axis = lightboxSwipeAxisRef.current;
             lightboxTouchStartXRef.current = null;
             lightboxTouchStartYRef.current = null;
+            lightboxSwipeAxisRef.current = null;
 
-            if (Math.abs(deltaY) > 70 && Math.abs(deltaY) > Math.abs(deltaX)) {
+            if ((axis === "y" || (!axis && Math.abs(deltaY) > Math.abs(deltaX))) && Math.abs(deltaY) > 70) {
+              setLightboxSwipeOffsetX(0);
               closeLightbox();
               return;
             }
             setLightboxSwipeOffsetY(0);
+            setLightboxSwipeOffsetX(0);
 
-            if (mediaUrls.length > 1 && Math.abs(deltaX) > 45 && Math.abs(deltaX) >= Math.abs(deltaY)) {
+            if (
+              mediaUrls.length > 1 &&
+              (axis === "x" || Math.abs(deltaX) >= Math.abs(deltaY)) &&
+              Math.abs(deltaX) > 40
+            ) {
               if (deltaX < 0) {
                 setLightboxIndex((prev) =>
                   prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null
@@ -288,40 +346,62 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
               lightboxPointerDownRef.current = false;
               lightboxTouchStartXRef.current = null;
               lightboxTouchStartYRef.current = null;
+              lightboxSwipeAxisRef.current = null;
               setLightboxSwipeOffsetY(0);
+              setLightboxSwipeOffsetX(0);
             }
           }}
         >
-          {(() => {
-            const activeUrl = mediaUrls[lightboxIndex];
-            const isVid = isVideoUrl(activeUrl) || (lightboxIndex === 0 && !!ad.hls_url);
-            const itemHlsSrc = activeUrl.includes(".m3u8")
-              ? activeUrl
-              : lightboxIndex === 0 && ad.hls_url
-              ? ad.hls_url
-              : undefined;
+          <div
+            className={styles.lightboxTrack}
+            style={{
+              transform: `translate3d(calc(${-lightboxIndex * 100}% + ${lightboxSwipeOffsetX}px), 0, 0)`,
+              transition:
+                lightboxSwipeOffsetX === 0
+                  ? "transform 0.44s cubic-bezier(0.22, 1, 0.36, 1)"
+                  : "none",
+            }}
+          >
+            {mediaUrls.map((url, idx) => {
+              const isSlideActive = idx === lightboxIndex;
+              const isVid = isVideoUrl(url) || (idx === 0 && !!ad.hls_url);
+              const itemHlsSrc = url.includes(".m3u8")
+                ? url
+                : idx === 0 && ad.hls_url
+                ? ad.hls_url
+                : undefined;
 
-            if (isVid) {
               return (
-                <div className={styles.lightboxVideoPlayerWrap} onClick={(e) => e.stopPropagation()}>
-                  <FullscreenVideoPlayer
-                    key={`lightbox-${activeUrl}`}
-                    src={activeUrl}
-                    hlsSrc={itemHlsSrc}
-                    autoPlay={true}
-                  />
+                <div
+                  key={`lb-slide-${idx}-${url}`}
+                  className={`${styles.lightboxSlide} ${
+                    isSlideActive ? styles.lightboxSlideActive : styles.lightboxSlideInactive
+                  }`}
+                >
+                  {isVid ? (
+                    <div
+                      className={styles.lightboxVideoPlayerWrap}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <FullscreenVideoPlayer
+                        key={`lightbox-${idx}-${url}`}
+                        src={url}
+                        hlsSrc={itemHlsSrc}
+                        autoPlay={isSlideActive}
+                      />
+                    </div>
+                  ) : (
+                    <img
+                      src={url}
+                      alt={`${brandName} media ${idx + 1}`}
+                      className={styles.lightboxMediaImage}
+                      draggable={false}
+                    />
+                  )}
                 </div>
               );
-            }
-            return (
-              <img
-                src={activeUrl}
-                alt={`${brandName} media ${lightboxIndex + 1}`}
-                className={styles.lightboxMediaImage}
-                draggable={false}
-              />
-            );
-          })()}
+            })}
+          </div>
         </div>
 
         {/* Bottom Bar: CTA Buttons + Mutual / Seen / Earn Interaction Handler */}

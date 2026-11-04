@@ -65,7 +65,7 @@ export default function NewsletterForm() {
       <div className={styles.newsletterPrivacy}>
         <Info size={14} color="#6366f1" className={styles.newsletterPrivacyIcon} />
         <span>
-          <strong>Privacy Notice:</strong> Subscribing constitutes sharing your email.
+          <strong>Privacy Notice:</strong> Your email is stored securely on access-controlled servers strictly for Paayh updates and is never publicly displayed or shared.
         </span>
       </div>
     </form>

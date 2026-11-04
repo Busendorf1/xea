@@ -10,6 +10,7 @@ import { isAdminEmail } from "@/lib/authHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
 import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
 import { signAdImpressionToken, evaluateAdTargeting } from "@/lib/targetingEngine";
+import { decryptProfilePII, encryptSensitiveField } from "@/lib/security/piiCrypto";
 
 export interface DashboardProfileResult {
   user?: UserProfile;
@@ -111,7 +112,9 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     has_updated_profile,
     referral_code,
     referral_downloads_count,
-    atw_tier
+    atw_tier,
+    wallet_pin_hash,
+    suspended_until
   `;
 
   let dbError: any = null;
@@ -121,14 +124,16 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
   let prefetchedLiveClicksStr: string | null = null;
   let prefetchedAdIdsStr: string | null = null;
   let prefetchedProfilesStr: string | null = null;
+  let prefetchedCooldownStr: string | null = null;
 
   if (isRedisReady()) {
     try {
-      const [rawProfile, rawLiveClicks, rawAdIds, rawProfiles] = await redisConnection.mget([
+      const [rawProfile, rawLiveClicks, rawAdIds, rawProfiles, rawCooldown] = await redisConnection.mget([
         `user:profile:${email}`,
         `user:live_clicks:${email}`,
         `feed:ad_ids:${email}`,
         `feed:profiles:${email}`,
+        `user:cooldown:${email}`,
       ]);
       if (!user && rawProfile) {
         user = JSON.parse(rawProfile);
@@ -136,6 +141,7 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
       prefetchedLiveClicksStr = rawLiveClicks;
       prefetchedAdIdsStr = rawAdIds;
       prefetchedProfilesStr = rawProfiles;
+      prefetchedCooldownStr = rawCooldown;
     } catch {}
   }
 
@@ -209,6 +215,18 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     if ((user.monetization_clicks || 0) >= 300) {
       user.monetized = true;
     }
+    if (prefetchedCooldownStr) {
+      try {
+        const parsedCooldown = JSON.parse(prefetchedCooldownStr);
+        if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > Date.now()) {
+          user.cooldown_until = parsedCooldown.cooldownUntil;
+          user.cooldown_type = parsedCooldown.cooldownType || "pacing_15m";
+        }
+      } catch {}
+    } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
+      user.cooldown_until = user.suspended_until;
+      user.cooldown_type = "review_hours";
+    }
   }
 
   // 2. If user does not exist in DB, auto-provision
@@ -220,6 +238,8 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     const sessionUser = session?.user;
     const givenName = String(sessionUser?.given_name || sessionUser?.name || email.split("@")[0] || "User").trim();
     const familyName = String(sessionUser?.family_name || "").trim();
+    const encryptedFirstName = encryptSensitiveField(givenName) || givenName;
+    const encryptedLastName = familyName ? (encryptSensitiveField(familyName) || familyName) : "";
     const rawPicture = typeof sessionUser?.picture === "string" ? (sessionUser.picture as string) : "";
     const profileImage = isDefaultProviderAvatar(rawPicture) ? "" : rawPicture;
     const business_name = typeof sessionUser?.business_name === "string" ? (sessionUser.business_name as string) : "";
@@ -235,8 +255,8 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     try {
       const { error: insertError } = await supabaseAdmin.rpc("auto_provision_user", {
         p_email: email,
-        p_first_name: givenName,
-        p_last_name: familyName,
+        p_first_name: encryptedFirstName,
+        p_last_name: encryptedLastName,
         p_profile_image: profileImage,
         p_business_name: business_name,
         p_phone: dummyPhone,
@@ -268,8 +288,8 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
             email,
             username: email,
             business_name,
-            firstName: givenName,
-            lastName: familyName,
+            firstName: encryptedFirstName,
+            lastName: encryptedLastName,
             profileImage,
             dob: "1970-01-01",
             country: "PLACEHOLDER",
@@ -415,9 +435,10 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     // Non-blocking prefetch failure fallback
   }
 
-  // Strip sensitive credentials from RSC client payload
+  // Strip sensitive credentials and decrypt PII from RSC client payload
+  const decrypted = decryptProfilePII(user) || user;
   const sanitizedUser = {
-    ...user,
+    ...decrypted,
     passphrase: "",
   };
 

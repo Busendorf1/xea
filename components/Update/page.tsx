@@ -614,7 +614,7 @@ export default function Update({ email }: Props) {
               <div className={styles.privacyNoticeBox}>
                 <Info size={15} color="#6366f1" className={styles.privacyNoticeIcon} />
                 <span>
-                  <strong>Privacy Notice:</strong> Using your email as a username is allowed, but please note that usernames are publicly visible across the platform.
+                  <strong>Public Handle vs. Private Email:</strong> Your <code>@username</code> is publicly visible across the platform and not encrypted, whereas your account email remains private (used only for login, notifications, and wallet routing) and is never displayed on the feed.
                 </span>
               </div>
             </div>

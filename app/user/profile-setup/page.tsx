@@ -518,7 +518,7 @@ interface ProfileFormData {
                     <div className={styles.privacyNotice}>
                       <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
                       <span>
-                        <strong>Public Handle:</strong> Usernames are visible to others and not encrypted. Avoid using private email addresses.
+                        <strong>Public Handle vs. Private Email:</strong> Your <code>@username</code> is publicly visible across the platform and not encrypted, whereas your account email remains private and is never shown on the feed. Avoid using a private email address as your username.
                       </span>
                     </div>
 

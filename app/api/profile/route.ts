@@ -3,7 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
-import { decryptProfilePII } from "@/lib/security/piiCrypto";
+import { decryptProfilePII, encryptSensitiveField } from "@/lib/security/piiCrypto";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +31,21 @@ export async function GET(req: NextRequest) {
 
       if (isRedisReady()) {
         try {
-          const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
+          const [liveVal, cooldownRaw] = await Promise.all([
+            redisConnection.get(`user:live_clicks:${emailLower}`),
+            redisConnection.get(`user:cooldown:${emailLower}`),
+          ]);
           if (liveVal) {
             const liveClicks = Number(liveVal) || 0;
             user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
             if (user.monetization_clicks >= 300) user.monetized = "true";
+          }
+          if (cooldownRaw) {
+            const parsedCooldown = JSON.parse(cooldownRaw);
+            if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > Date.now()) {
+              user.cooldown_until = parsedCooldown.cooldownUntil;
+              user.cooldown_type = parsedCooldown.cooldownType || "pacing_15m";
+            }
           }
         } catch {}
       }
@@ -44,7 +54,7 @@ export async function GET(req: NextRequest) {
     }
 
     const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at`;
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, wallet_pin_hash, suspended_until`;
 
     let error: any = null;
     const attempts = 3;
@@ -112,8 +122,8 @@ export async function GET(req: NextRequest) {
 
       const { error: insertError } = await supabaseAdmin.rpc("auto_provision_user", {
         p_email: email,
-        p_first_name: email.split("@")[0],
-        p_last_name: "User",
+        p_first_name: encryptSensitiveField(email.split("@")[0]) || email.split("@")[0],
+        p_last_name: encryptSensitiveField("User") || "User",
         p_profile_image: "",
         p_business_name: "",
         p_phone: dummyPhone,
@@ -141,7 +151,10 @@ export async function GET(req: NextRequest) {
       user = sanitizeProfileResponse(user);
       if (isRedisReady()) {
         try {
-          const liveVal = await redisConnection.get(`user:live_clicks:${emailLower}`);
+          const [liveVal, cooldownRaw] = await Promise.all([
+            redisConnection.get(`user:live_clicks:${emailLower}`),
+            redisConnection.get(`user:cooldown:${emailLower}`),
+          ]);
           if (liveVal) {
             const liveClicks = Number(liveVal) || 0;
             user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
@@ -149,7 +162,20 @@ export async function GET(req: NextRequest) {
               user.monetized = "true";
             }
           }
+          if (cooldownRaw) {
+            const parsedCooldown = JSON.parse(cooldownRaw);
+            if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > Date.now()) {
+              user.cooldown_until = parsedCooldown.cooldownUntil;
+              user.cooldown_type = parsedCooldown.cooldownType || "pacing_15m";
+            }
+          } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
+            user.cooldown_until = user.suspended_until;
+            user.cooldown_type = "review_hours";
+          }
         } catch {}
+      } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
+        user.cooldown_until = user.suspended_until;
+        user.cooldown_type = "review_hours";
       }
 
       await setCachedProfile(emailLower, user);

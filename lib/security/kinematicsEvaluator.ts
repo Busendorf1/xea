@@ -177,6 +177,32 @@ export function evaluateKinematics(
       : 0;
   const jitterStdDev = Math.sqrt(varianceJ);
 
+  // 4. Synthetic Trajectory & Macro Cadence Entropy Checks
+  if (mode === "swipe" && sampleCount >= 6) {
+    // Perfectly linear horizontal interpolation with zero velocity & zero vertical variance
+    if (velocityStdDev < 0.001 && jitterStdDev < 0.001 && yDelta === 0) {
+      score += 70;
+      reasons.push("Zero-entropy linear interpolated swipe macro");
+    }
+  } else if (mode === "tap" && sampleCount >= 3) {
+    const xCoordinates = vectors.map((v) => v.x);
+    const xDelta = Math.max(...xCoordinates) - Math.min(...xCoordinates);
+    const intervals: number[] = [];
+    for (let i = 1; i < sampleCount; i++) {
+      intervals.push(vectors[i].t - vectors[i - 1].t);
+    }
+    const maxInterval = Math.max(...intervals);
+    const minInterval = Math.min(...intervals);
+    const pressures = vectors.map((v) => (typeof v.p === "number" ? v.p : 0.5));
+    const pDelta = Math.max(...pressures) - Math.min(...pressures);
+
+    // Fixed-coordinate, fixed-interval, zero-pressure-variance macro tapper
+    if (xDelta === 0 && yDelta === 0 && maxInterval - minInterval <= 2 && pDelta === 0) {
+      score += 70;
+      reasons.push("Zero-entropy fixed-interval tap macro");
+    }
+  }
+
   // Bound score between 0 and 100
   const finalScore = Math.min(100, Math.max(0, score));
   // Score < 65 indicates verified human interaction

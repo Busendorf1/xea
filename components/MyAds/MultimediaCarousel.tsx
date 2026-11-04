@@ -40,6 +40,7 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
   const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
   const [isClosingFullscreen, setIsClosingFullscreen] = useState(false);
   const [fsSwipeOffsetY, setFsSwipeOffsetY] = useState(0);
+  const [fsSwipeOffsetX, setFsSwipeOffsetX] = useState(0);
 
   const inlineContainerRef = useRef<HTMLDivElement | null>(null);
   const inlineSlideRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -52,6 +53,8 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const fsPointerDownRef = useRef(false);
+  const fsSwipeAxisRef = useRef<"x" | "y" | null>(null);
+  const fsWheelCooldownRef = useRef<number>(0);
 
   const closeFullscreen = useCallback(() => {
     if (isClosingFullscreen) return;
@@ -60,12 +63,14 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
       setFullscreenIndex(null);
       setIsClosingFullscreen(false);
       setFsSwipeOffsetY(0);
+      setFsSwipeOffsetX(0);
     }, 220);
   }, [isClosingFullscreen]);
 
   const openFullscreen = useCallback((index: number) => {
     setIsClosingFullscreen(false);
     setFsSwipeOffsetY(0);
+    setFsSwipeOffsetX(0);
     setFullscreenIndex(index);
   }, []);
 
@@ -350,7 +355,7 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                 </div>
               </div>
 
-              {/* Center Media Stage with Horizontal Swipe & Vertical Swipe-to-Dismiss */}
+              {/* Center Media Stage with Smooth Horizontal Track & Vertical Swipe-to-Dismiss */}
               <div
                 className={styles.lightboxStage}
                 style={{
@@ -365,13 +370,29 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                     fsSwipeOffsetY !== 0 ? Math.max(0.35, 1 - Math.abs(fsSwipeOffsetY) / 380) : 1,
                   transition:
                     fsSwipeOffsetY === 0
-                      ? "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease"
+                      ? "transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s ease"
                       : "none",
+                }}
+                onWheel={(e) => {
+                  if (mediaList.length <= 1) return;
+                  if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 22) {
+                    const now = Date.now();
+                    if (now - fsWheelCooldownRef.current < 420) return;
+                    fsWheelCooldownRef.current = now;
+                    if (e.deltaX > 0) {
+                      setFullscreenIndex((prev) =>
+                        prev !== null ? Math.min(mediaList.length - 1, prev + 1) : null
+                      );
+                    } else {
+                      setFullscreenIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+                    }
+                  }
                 }}
                 onTouchStart={(e) => {
                   if (e.touches.length === 1) {
                     touchStartXRef.current = e.touches[0].clientX;
                     touchStartYRef.current = e.touches[0].clientY;
+                    fsSwipeAxisRef.current = null;
                   }
                 }}
                 onTouchMove={(e) => {
@@ -382,7 +403,18 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   ) {
                     const dx = e.touches[0].clientX - touchStartXRef.current;
                     const dy = e.touches[0].clientY - touchStartYRef.current;
-                    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+                    if (!fsSwipeAxisRef.current) {
+                      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                        fsSwipeAxisRef.current =
+                          Math.abs(dx) >= Math.abs(dy) && mediaList.length > 1 ? "x" : "y";
+                      }
+                    }
+                    if (fsSwipeAxisRef.current === "x") {
+                      const isAtEdge =
+                        (fullscreenIndex === 0 && dx > 0) ||
+                        (fullscreenIndex === mediaList.length - 1 && dx < 0);
+                      setFsSwipeOffsetX(isAtEdge ? dx * 0.28 : dx);
+                    } else if (fsSwipeAxisRef.current === "y" && Math.abs(dy) > 10) {
                       setFsSwipeOffsetY(dy);
                     }
                   }
@@ -395,16 +427,24 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   ) {
                     const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
                     const deltaY = e.changedTouches[0].clientY - touchStartYRef.current;
+                    const axis = fsSwipeAxisRef.current;
                     touchStartXRef.current = null;
                     touchStartYRef.current = null;
+                    fsSwipeAxisRef.current = null;
 
-                    if (Math.abs(deltaY) > 65 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                    if ((axis === "y" || (!axis && Math.abs(deltaY) > Math.abs(deltaX))) && Math.abs(deltaY) > 65) {
+                      setFsSwipeOffsetX(0);
                       closeFullscreen();
                       return;
                     }
                     setFsSwipeOffsetY(0);
+                    setFsSwipeOffsetX(0);
 
-                    if (mediaList.length > 1 && Math.abs(deltaX) > 40 && Math.abs(deltaX) >= Math.abs(deltaY)) {
+                    if (
+                      mediaList.length > 1 &&
+                      (axis === "x" || Math.abs(deltaX) >= Math.abs(deltaY)) &&
+                      Math.abs(deltaX) > 36
+                    ) {
                       if (deltaX < 0) {
                         setFullscreenIndex((prev) =>
                           prev !== null ? Math.min(mediaList.length - 1, prev + 1) : null
@@ -421,6 +461,7 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   fsPointerDownRef.current = true;
                   touchStartXRef.current = e.clientX;
                   touchStartYRef.current = e.clientY;
+                  fsSwipeAxisRef.current = null;
                 }}
                 onMouseMove={(e) => {
                   if (
@@ -432,7 +473,18 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   }
                   const dx = e.clientX - touchStartXRef.current;
                   const dy = e.clientY - touchStartYRef.current;
-                  if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) {
+                  if (!fsSwipeAxisRef.current) {
+                    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                      fsSwipeAxisRef.current =
+                        Math.abs(dx) >= Math.abs(dy) && mediaList.length > 1 ? "x" : "y";
+                    }
+                  }
+                  if (fsSwipeAxisRef.current === "x") {
+                    const isAtEdge =
+                      (fullscreenIndex === 0 && dx > 0) ||
+                      (fullscreenIndex === mediaList.length - 1 && dx < 0);
+                    setFsSwipeOffsetX(isAtEdge ? dx * 0.28 : dx);
+                  } else if (fsSwipeAxisRef.current === "y" && Math.abs(dy) > 12) {
                     setFsSwipeOffsetY(dy);
                   }
                 }}
@@ -447,16 +499,24 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                   fsPointerDownRef.current = false;
                   const deltaX = e.clientX - touchStartXRef.current;
                   const deltaY = e.clientY - touchStartYRef.current;
+                  const axis = fsSwipeAxisRef.current;
                   touchStartXRef.current = null;
                   touchStartYRef.current = null;
+                  fsSwipeAxisRef.current = null;
 
-                  if (Math.abs(deltaY) > 70 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                  if ((axis === "y" || (!axis && Math.abs(deltaY) > Math.abs(deltaX))) && Math.abs(deltaY) > 70) {
+                    setFsSwipeOffsetX(0);
                     closeFullscreen();
                     return;
                   }
                   setFsSwipeOffsetY(0);
+                  setFsSwipeOffsetX(0);
 
-                  if (mediaList.length > 1 && Math.abs(deltaX) > 45 && Math.abs(deltaX) >= Math.abs(deltaY)) {
+                  if (
+                    mediaList.length > 1 &&
+                    (axis === "x" || Math.abs(deltaX) >= Math.abs(deltaY)) &&
+                    Math.abs(deltaX) > 40
+                  ) {
                     if (deltaX < 0) {
                       setFullscreenIndex((prev) =>
                         prev !== null ? Math.min(mediaList.length - 1, prev + 1) : null
@@ -473,34 +533,59 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
                     fsPointerDownRef.current = false;
                     touchStartXRef.current = null;
                     touchStartYRef.current = null;
+                    fsSwipeAxisRef.current = null;
                     setFsSwipeOffsetY(0);
+                    setFsSwipeOffsetX(0);
                   }
                 }}
               >
-                {(() => {
-                  const activeUrl = mediaList[fullscreenIndex];
-                  const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(activeUrl);
-                  if (isVid) {
+                <div
+                  className={styles.lightboxTrack}
+                  style={{
+                    transform: `translate3d(calc(${-fullscreenIndex * 100}% + ${fsSwipeOffsetX}px), 0, 0)`,
+                    transition:
+                      fsSwipeOffsetX === 0
+                        ? "transform 0.44s cubic-bezier(0.22, 1, 0.36, 1)"
+                        : "none",
+                  }}
+                >
+                  {mediaList.map((url: string, idx: number) => {
+                    const isSlideActive = idx === fullscreenIndex;
+                    const isVid =
+                      adMediaType === "video" ||
+                      /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(url.split("?")[0]);
                     return (
-                      <div className={styles.lightboxVideoPlayerWrap} onClick={(e) => e.stopPropagation()}>
-                        <FullscreenVideoPlayer
-                          key={`myads-fs-${activeUrl}`}
-                          src={activeUrl}
-                          autoPlay={true}
-                        />
+                      <div
+                        key={`myads-fs-slide-${idx}-${url}`}
+                        className={`${styles.lightboxSlide} ${
+                          isSlideActive
+                            ? styles.lightboxSlideActive
+                            : styles.lightboxSlideInactive
+                        }`}
+                      >
+                        {isVid ? (
+                          <div
+                            className={styles.lightboxVideoPlayerWrap}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <FullscreenVideoPlayer
+                              key={`myads-fs-${idx}-${url}`}
+                              src={url}
+                              autoPlay={isSlideActive}
+                            />
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={`Ad preview ${idx + 1}`}
+                            className={styles.lightboxMediaImage}
+                            draggable={false}
+                          />
+                        )}
                       </div>
                     );
-                  }
-                  return (
-                    <img
-                      key={`myads-fs-${activeUrl}`}
-                      src={activeUrl}
-                      alt={`Ad preview ${fullscreenIndex + 1}`}
-                      className={styles.lightboxMediaImage}
-                      draggable={false}
-                    />
-                  );
-                })()}
+                  })}
+                </div>
               </div>
             </div>
           </div>,

@@ -11,6 +11,8 @@ import {
   incrementCachedMutualCount,
   incrementCachedMonetizationClicks,
   publishLiveBalanceUpdate,
+  getCachedProfile,
+  setCachedProfile,
 } from "@/lib/utils/cache";
 import { dispatchEarningWebhook } from "@/lib/webhookDispatcher";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
@@ -82,8 +84,8 @@ export async function POST(request: NextRequest) {
     }
     const now = Date.now();
 
-    // 2. Cryptographic HMAC verification token & dwell time verification
-    if (type === "earn") {
+    // 2. Cryptographic HMAC verification token & dwell time verification (enforced for both earn and mutual)
+    if (type === "earn" || (type === "mutual" && (token || servedAt))) {
       if (!token || !servedAt) {
         return NextResponse.json(
           { error: "Verification token and timestamp required to claim reward." },
@@ -123,7 +125,21 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+    } else if (type === "mutual" && isRedisReady()) {
+      // Fallback pacing guard if legacy client calls mutual without token
+      try {
+        const mutualPaceKey = `lock:attention_pace:${emailKey}`;
+        const paceAcquired = await redisConnection.set(mutualPaceKey, "1", "EX", 10, "NX");
+        if (!paceAcquired) {
+          return NextResponse.json(
+            { error: "Please view one ad at a time before claiming the next action." },
+            { status: 429 }
+          );
+        }
+      } catch {}
+    }
 
+    if (type === "earn") {
       // 2.2 Anti-Replay & Global Per-User Attention Pacing Lock (Blocks multi-tab farming & replay scripts)
       if (isRedisReady()) {
         try {
@@ -215,16 +231,24 @@ export async function POST(request: NextRequest) {
 
         // Only lock account if they repeatedly fail (>= 3 times within 2 minutes)
         if (retryCount >= 3) {
+          const cooldownUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
           if (isRedisReady()) {
             try {
               const cooldownKey = `user:cooldown:${emailKey}`;
-              const cooldownUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
               await redisConnection.set(
                 cooldownKey,
                 JSON.stringify({ cooldownUntil, cooldownType: "pacing_15m" }),
                 "EX",
                 900
               );
+              const cachedProf = await getCachedProfile<any>(emailKey);
+              if (cachedProf) {
+                await setCachedProfile(emailKey, {
+                  ...cachedProf,
+                  cooldown_until: cooldownUntil,
+                  cooldown_type: "pacing_15m",
+                });
+              }
             } catch {}
           }
 
@@ -232,7 +256,7 @@ export async function POST(request: NextRequest) {
             {
               error: "Repeated invalid interaction attempts. Account placed on temporary pacing cooldown.",
               code: "COOLDOWN_ACTIVE",
-              cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+              cooldownUntil,
               cooldownType: "pacing_15m",
             },
             { status: 403 }
@@ -270,12 +294,26 @@ export async function POST(request: NextRequest) {
         const violationsKey = `user:violations:${emailKey}`;
         const adDetailKey = `ad:detail:${adId}`;
 
-        const [cachedCooldownRaw, historyListRaw, violationsCountRaw, cachedAd] = await Promise.all([
+        const [cachedCooldownRaw, historyListRaw, violationsCountRaw, cachedAd, cachedProf] = await Promise.all([
           redisConnection.get(cooldownKey).catch(() => null),
           type === "earn" ? redisConnection.lrange(historyKey, 0, 19).catch(() => []) : Promise.resolve([]),
           type === "earn" ? redisConnection.get(violationsKey).catch(() => "0") : Promise.resolve("0"),
           redisConnection.get(adDetailKey).catch(() => null),
+          getCachedProfile<any>(emailKey).catch(() => null),
         ]);
+
+        if (cachedProf?.suspended_until && new Date(cachedProf.suspended_until).getTime() > now) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "COOLDOWN_ACTIVE",
+              cooldownUntil: cachedProf.suspended_until,
+              cooldownType: "review_hours",
+              error: "Account is currently under review or suspended.",
+            },
+            { status: 403 }
+          );
+        }
 
         if (cachedCooldownRaw) {
           const { cooldownUntil, cooldownType } = JSON.parse(cachedCooldownRaw);
@@ -312,7 +350,22 @@ export async function POST(request: NextRequest) {
               redisConnection.set(cooldownKey, JSON.stringify({ cooldownUntil, cooldownType }), "EX", cooldownMinutes * 60).catch(() => {}),
               redisConnection.incr(violationsKey).catch(() => {}),
               redisConnection.expire(violationsKey, 7 * 24 * 3600).catch(() => {}),
+              cachedProf
+                ? setCachedProfile(emailKey, {
+                    ...cachedProf,
+                    cooldown_until: cooldownUntil,
+                    cooldown_type: cooldownType,
+                  }).catch(() => {})
+                : Promise.resolve(),
             ]);
+
+            if (cooldownType === "review_hours") {
+              supabaseAdmin
+                .from("users")
+                .update({ suspended_until: cooldownUntil })
+                .ilike("email", emailKey)
+                .then(() => {});
+            }
 
             return NextResponse.json({
               success: false,

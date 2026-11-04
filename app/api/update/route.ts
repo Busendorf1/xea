@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     // 1. Server-Side 30-Day Cooldown Enforcement (for users who have already completed initial setup)
     const { data: existingUser } = await supabaseAdmin
       .from("users")
-      .select("id, lastUpdated, has_updated_profile")
+      .select('id, "lastUpdated", has_updated_profile, "firstName", "lastName", phone')
       .ilike("email", emailLower)
       .maybeSingle();
 
@@ -177,18 +177,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Persist encrypted firstName / lastName and HMAC blind hashes if provided
+    // Persist encrypted firstName / lastName and HMAC blind hashes if provided (or auto-encrypt existing plaintext names)
     const piiPatch: Record<string, any> = {
       email_hash: blindHashPII(emailLower),
     };
     if (updateData.phone) {
       piiPatch.phone_hash = blindHashPII(String(updateData.phone).replace(/\D/g, ""));
     }
-    if (updateData.firstName !== undefined) {
-      piiPatch.firstName = encryptSensitiveField(String(updateData.firstName).trim());
+    const rawFirst = updateData.firstName !== undefined ? updateData.firstName : existingUser?.firstName;
+    if (rawFirst && typeof rawFirst === "string" && !rawFirst.startsWith("enc:v1:")) {
+      piiPatch.firstName = encryptSensitiveField(rawFirst.trim());
     }
-    if (updateData.lastName !== undefined) {
-      piiPatch.lastName = encryptSensitiveField(String(updateData.lastName).trim());
+    const rawLast = updateData.lastName !== undefined ? updateData.lastName : existingUser?.lastName;
+    if (rawLast && typeof rawLast === "string" && !rawLast.startsWith("enc:v1:")) {
+      piiPatch.lastName = encryptSensitiveField(rawLast.trim());
     }
     try {
       await supabaseAdmin.from("users").update(piiPatch).ilike("email", emailLower);

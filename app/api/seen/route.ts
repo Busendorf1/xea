@@ -109,12 +109,31 @@ export async function POST(request: NextRequest) {
         const lockKey = `lock:click:${emailKey}:${adId}:seen`;
         const globalPaceKey = `lock:attention_pace:${emailKey}`;
 
-        const [lockAcquired, paceAcquired, cached, existingLifetimeStr] = await Promise.all([
+        const [lockAcquired, paceAcquired, cached, existingLifetimeStr, activeCooldownRaw] = await Promise.all([
           redisConnection.set(lockKey, "1", "EX", 5, "NX"),
           redisConnection.set(globalPaceKey, "1", "EX", 9, "NX"),
           redisConnection.get(`ad:detail:${adId}`).catch(() => null),
           redisConnection.hget(`user:freq_lifetime:${emailKey}`, adId).catch(() => null),
+          redisConnection.get(`user:cooldown:${emailKey}`).catch(() => null),
         ]);
+
+        if (activeCooldownRaw) {
+          try {
+            const parsedCooldown = JSON.parse(activeCooldownRaw);
+            if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > now) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "COOLDOWN_ACTIVE",
+                  cooldownUntil: parsedCooldown.cooldownUntil,
+                  cooldownType: parsedCooldown.cooldownType || "pacing_15m",
+                  error: "Account is currently in pacing cooldown.",
+                },
+                { status: 429 }
+              );
+            }
+          } catch {}
+        }
 
         if (!lockAcquired || !paceAcquired) {
           return NextResponse.json({ success: true, duplicate: true });
@@ -174,6 +193,14 @@ export async function POST(request: NextRequest) {
           );
         }
       } catch {}
+    }
+
+    // Enforce cryptographic token & minimum 10s dwell time for all paid advertiser campaigns
+    if (!isPlatformPost && (!token || !servedAt)) {
+      return NextResponse.json(
+        { error: "Verification token and minimum attention duration required for paid campaigns." },
+        { status: 403 }
+      );
     }
 
     if (isRedisReady()) {

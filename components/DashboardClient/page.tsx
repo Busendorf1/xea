@@ -15,6 +15,7 @@ import {
   Trash2,
   Settings,
   Clock,
+  ChevronDown,
 } from "lucide-react";
 import { useTheme } from "../ThemeProvider";
 import supabase from "@/lib/utils/db";
@@ -64,29 +65,19 @@ export default function DashboardClient({
   // Inactivity warning state (initialized deterministically for SSR parity, hydrated on mount)
   const [inactivityDismissed, setInactivityDismissed] = useState(false);
 
-  // Balance visibility toggle (initialized deterministically for SSR parity, hydrated on mount)
-  const [showBalance, setShowBalance] = useState(true);
+  // Balance visibility toggle (locked by default until 4-digit Wallet PIN is verified)
+  const [showBalance, setShowBalance] = useState(false);
 
   useEffect(() => {
     try {
       if (sessionStorage.getItem("paayh_inactivity_dismissed") === "true") {
         setInactivityDismissed(true);
       }
-      const savedBalance = localStorage.getItem("paayh_show_balance");
-      if (savedBalance !== null) {
-        setShowBalance(savedBalance === "true");
-      }
     } catch {}
   }, []);
 
-  const toggleShowBalance = () => {
-    setShowBalance((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("paayh_show_balance", String(next));
-      } catch {}
-      return next;
-    });
+  const toggleShowBalance = (nextState?: boolean) => {
+    setShowBalance((prev) => (typeof nextState === "boolean" ? nextState : !prev));
   };
 
   const [mounted, setMounted] = useState(false);
@@ -493,40 +484,41 @@ export default function DashboardClient({
   };
 
   const renderAccountLinks = () => (
-    <div className={styles.menuButtonGroup}>
+    <nav className={styles.menuButtonGroup} aria-label="Account navigation">
       <Link href="/logged-in" onClick={() => selectTab("profile")} className={styles.menuButton}>
-        <User size={16} />
+        <User size={20} strokeWidth={2} />
         <span>Profile</span>
       </Link>
       <Link href="/logged-in" onClick={() => selectTab("myads")} className={styles.menuButton}>
-        <TrendingUp size={16} />
+        <TrendingUp size={20} strokeWidth={2} />
         <span>My Ads</span>
       </Link>
-      <Link href="/logged-in" onClick={() => selectTab("news")} className={styles.menuButton}>
-        <Compass size={16} />
-        <span>Create Highlight</span>
-      </Link>
       <Link href="/logged-in" onClick={() => selectTab("adPage")} className={styles.menuButton}>
-        <FileText size={16} />
+        <FileText size={20} strokeWidth={2} />
         <span>Create Ad</span>
       </Link>
+      <Link href="/logged-in" onClick={() => selectTab("news")} className={styles.menuButton}>
+        <Compass size={20} strokeWidth={2} />
+        <span>Create Highlight</span>
+      </Link>
       <Link href="/logged-in" onClick={() => selectTab("monetize")} className={styles.menuButton}>
-        <UserCheck size={16} />
+        <UserCheck size={20} strokeWidth={2} />
         <span>Monetization</span>
       </Link>
       <Link href="/logged-in" onClick={() => selectTab("statement")} className={styles.menuButton}>
-        <Wallet size={16} />
+        <Wallet size={20} strokeWidth={2} />
         <span>Statement</span>
       </Link>
+      <div className={styles.menuDivider} role="separator" />
       <Link href="/user/logout" className={styles.menuButton}>
-        <LogOut size={16} />
-        <span>Logout</span>
+        <LogOut size={20} strokeWidth={2} />
+        <span>Log out</span>
       </Link>
       <Link href="/logged-in" onClick={() => selectTab("deactivate")} className={styles.menuButtonDanger}>
-        <Trash2 size={16} />
-        <span>Deactivate Account</span>
+        <Trash2 size={20} strokeWidth={2} />
+        <span>Deactivate account</span>
       </Link>
-    </div>
+    </nav>
   );
 
   return (
@@ -604,15 +596,28 @@ export default function DashboardClient({
             <div
               className={styles.desktopLeftHeader}
               onClick={() => setShowAccountMenuLeft(!showAccountMenuLeft)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={showAccountMenuLeft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setShowAccountMenuLeft(!showAccountMenuLeft);
+                }
+              }}
               title="Toggle Account Menu"
             >
-              <button
-                type="button"
-                className={`${styles.leftSettingsToggle} ${!showAccountMenuLeft ? styles.rotated : ""}`}
-              >
-                <Settings size={18} />
-              </button>
-              <h3 className={styles.menuTitle}>Account Menu</h3>
+              <div className={styles.desktopLeftHeaderLeft}>
+                <span className={`${styles.leftSettingsToggle} ${!showAccountMenuLeft ? styles.rotated : ""}`}>
+                  <Settings size={20} strokeWidth={2} />
+                </span>
+                <h3 className={styles.menuTitle}>Account Menu</h3>
+              </div>
+              <ChevronDown
+                size={18}
+                strokeWidth={2}
+                className={`${styles.leftHeaderChevron} ${showAccountMenuLeft ? styles.leftHeaderChevronOpen : ""}`}
+              />
             </div>
             <Collapsible isOpen={showAccountMenuLeft}>{renderAccountLinks()}</Collapsible>
             <div ref={highlightsRef} className={styles.highlightsWrap}>
@@ -658,6 +663,7 @@ export default function DashboardClient({
               user={user}
               showBalance={showBalance}
               onToggleShowBalance={toggleShowBalance}
+              onPinConfigured={() => setUser((prev) => ({ ...prev, has_wallet_pin: true }))}
               formatCurrency={formatCurrency}
               onOpenWithdrawModal={() => setShowWithdrawModal(true)}
               onOpenSendMoneyModal={() => setShowSendMoneyModal(true)}

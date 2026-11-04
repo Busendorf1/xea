@@ -36,6 +36,7 @@ export interface UserProfile {
   last_active_at?: string | null;
   attention_worth_score?: number | null;
   daysInactive?: number;
+  has_wallet_pin?: boolean;
 }
 
 export interface DashboardClientProps {

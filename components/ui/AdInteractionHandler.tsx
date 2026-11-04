@@ -44,6 +44,54 @@ interface AdInteractionHandlerProps {
 
 type ChallengeType = "swipe" | "hold" | "tap";
 
+// Shared pooled IntersectionObserver & passive fast-scroll velocity monitor (0 per-card observer overhead)
+const interactionObserverCallbacks = new WeakMap<Element, (inView: boolean) => void>();
+let sharedInteractionObserver: IntersectionObserver | null = null;
+let lastFastScrollTimestamp = 0;
+let scrollMonitorAttached = false;
+let lastScrollYPos = 0;
+let lastScrollTimeMs = 0;
+
+function ensureFastScrollMonitor() {
+  if (scrollMonitorAttached || typeof window === "undefined") return;
+  scrollMonitorAttached = true;
+  lastScrollYPos = window.scrollY;
+  lastScrollTimeMs = Date.now();
+  window.addEventListener(
+    "scroll",
+    () => {
+      const now = Date.now();
+      const dt = Math.max(1, now - lastScrollTimeMs);
+      const dy = Math.abs(window.scrollY - lastScrollYPos);
+      // > 1.2 px/ms (~1200 px/sec) indicates active fast-scroll / fling
+      if (dt <= 120 && dy / dt > 1.2) {
+        lastFastScrollTimestamp = now;
+      }
+      lastScrollYPos = window.scrollY;
+      lastScrollTimeMs = now;
+    },
+    { passive: true }
+  );
+}
+
+function getSharedInteractionObserver(): IntersectionObserver | null {
+  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
+  ensureFastScrollMonitor();
+  if (!sharedInteractionObserver) {
+    sharedInteractionObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          interactionObserverCallbacks.get(entry.target)?.(
+            entry.isIntersecting && entry.intersectionRatio >= 0.65
+          );
+        }
+      },
+      { threshold: [0.6, 0.65, 0.75] }
+    );
+  }
+  return sharedInteractionObserver;
+}
+
 export default function AdInteractionHandler({
   ad,
   userEmail: _userEmail,
@@ -104,24 +152,23 @@ export default function AdInteractionHandler({
   const recordedTelemetryRef = useRef<KinematicVector[]>([]);
   const holdCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // 1. Intersection Observer to check if 65% of ad card is visible in view
+  // 1. Pooled Intersection Observer to check if 65% of ad card is visible in view
   useEffect(() => {
     if (forceInView) {
       setObservedInView(true);
       return;
     }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setObservedInView(entry.isIntersecting && entry.intersectionRatio >= 0.65);
-      },
-      { threshold: [0.6, 0.65, 0.75] } // Must be 60%-75% visible in view
-    );
+    const el = containerRef.current;
+    const observer = getSharedInteractionObserver();
+    if (!el || !observer) return;
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    interactionObserverCallbacks.set(el, setObservedInView);
+    observer.observe(el);
 
-    return () => observer.disconnect();
+    return () => {
+      interactionObserverCallbacks.delete(el);
+      observer.unobserve(el);
+    };
   }, [forceInView]);
 
   // Dynamic Scroll-Away Seen Registration
@@ -187,13 +234,18 @@ export default function AdInteractionHandler({
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
-  // 3. Countdown timer
+  // 3. Countdown timer (pauses automatically during fast-scroll flings or backgrounded tab)
   useEffect(() => {
     if (stage !== "countdown") return;
 
     let timer: NodeJS.Timeout;
     if (inView && tabVisible && secondsLeft > 0) {
       timer = setTimeout(() => {
+        if (Date.now() - lastFastScrollTimestamp < 250) {
+          // User was actively fast-scrolling during this tick; hold countdown until scroll settles
+          setSecondsLeft((prev) => prev);
+          return;
+        }
         setSecondsLeft((prev) => prev - 1);
       }, 1000);
     } else if (secondsLeft === 0) {
