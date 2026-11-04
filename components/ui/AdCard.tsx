@@ -12,8 +12,6 @@ import {
   ChevronDown,
   Video,
   ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";

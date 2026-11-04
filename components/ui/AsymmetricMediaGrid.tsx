@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import styles from "./AdCard.module.css";
 import {
   MediaCollageCell,
@@ -161,27 +160,6 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
             );
           })}
         </div>
-
-        {activeIndex > 0 && onScrollToSlide && (
-          <button
-            type="button"
-            className={`${styles.carouselNavBtn} ${styles.carouselNavBtnPrev}`}
-            onClick={(e) => onScrollToSlide(activeIndex - 1, e)}
-            aria-label="Previous media"
-          >
-            <ChevronLeft size={18} strokeWidth={2.4} />
-          </button>
-        )}
-        {activeIndex < layout.cells.length - 1 && onScrollToSlide && (
-          <button
-            type="button"
-            className={`${styles.carouselNavBtn} ${styles.carouselNavBtnNext}`}
-            onClick={(e) => onScrollToSlide(activeIndex + 1, e)}
-            aria-label="Next media"
-          >
-            <ChevronRight size={18} strokeWidth={2.4} />
-          </button>
-        )}
       </>
     );
   }

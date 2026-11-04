@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, Volume2, VolumeX } from "lucide-react";
+import { Volume2, VolumeX } from "lucide-react";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./AdCard.module.css";
 import VideoControlBar from "./VideoControlBar";
