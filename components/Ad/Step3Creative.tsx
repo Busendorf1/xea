@@ -74,14 +74,14 @@ export default function Step3Creative({
                   value: "video",
                   title: "Video(s)",
                   badge: "1–2 Videos (≤60m)",
-                  desc: "Upload 1 or 2 videos (MP4, MOV, up to 60 mins / 500MB each).",
+                  desc: "Upload 1 or 2 videos (MP4, MOV, up to 60 mins / 50MB each).",
                   icon: <Video size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "mixed",
                   title: "Mixed Media",
                   badge: "Max 4 (≤2 Videos)",
-                  desc: "Combine up to 3 images and up to 2 videos (max 4 media files total, videos ≤60 mins each).",
+                  desc: "Combine up to 3 images and up to 2 videos (max 4 media files total, videos ≤60 mins / 50MB each).",
                   icon: <Layers size={15} color="var(--foreground)" />,
                 },
               ].map((format) => {
@@ -188,7 +188,7 @@ export default function Step3Creative({
                     }
                   }
 
-                  const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500MB for up to 60-minute videos
+                  const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50MB per video (matches Supabase Storage bucket limit)
                   const MAX_VIDEO_DURATION_SECONDS = 3600; // 60 minutes
 
                   for (const file of newlyPicked) {
@@ -203,7 +203,7 @@ export default function Step3Creative({
                       }
                     } else if (isVideo) {
                       if (file.size > MAX_VIDEO_BYTES) {
-                        showAppleAlert(`Video ${file.name} exceeds 500MB limit.`, "warning");
+                        showAppleAlert(`Video ${file.name} exceeds 50MB limit.`, "warning");
                         e.target.value = "";
                         return;
                       }
