@@ -258,11 +258,16 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     }
   }, [firstUrl, isFirstVideo]);
 
-  // Only play the currently active slide's video when the card is visible; pause all non-active slides
+  // Play the active slide's video (or the first video in a Bento Grid if activeIndex points to an image)
+  // when the card is visible; pause all other videos so 2 videos never overlap audio
   useEffect(() => {
+    const activeHasVideo = Boolean(videoRefs.current[activeIndex]);
+    const firstVideoIdx = videoRefs.current.findIndex((v) => Boolean(v));
+    const targetVideoIdx = activeHasVideo ? activeIndex : firstVideoIdx;
+
     videoRefs.current.forEach((video, idx) => {
       if (!video) return;
-      if (isCardVisible && idx === activeIndex) {
+      if (isCardVisible && idx === targetVideoIdx) {
         video.muted = isMuted;
         video.defaultMuted = isMuted;
         const p = video.play();

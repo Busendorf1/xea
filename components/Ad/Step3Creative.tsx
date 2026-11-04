@@ -67,21 +67,21 @@ export default function Step3Creative({
                   value: "image",
                   title: "Image(s)",
                   badge: "Up to 4 Photos",
-                  desc: "High-resolution photos & banners (JPG, PNG, max 5MB each).",
+                  desc: "High-resolution photos & banners (1 to 4 images, JPG/PNG, max 5MB each).",
                   icon: <ImageIcon size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "video",
-                  title: "Video Only",
-                  badge: "Max 60 Mins",
-                  desc: "High-impact video storytelling (MP4, MOV, up to 60 mins / 500MB).",
+                  title: "Video(s)",
+                  badge: "1–2 Videos (≤60m)",
+                  desc: "Upload 1 or 2 videos (MP4, MOV, up to 60 mins / 500MB each).",
                   icon: <Video size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "mixed",
                   title: "Mixed Media",
-                  badge: "Images + Video",
-                  desc: "Up to 3 high-res images and 1 video (up to 60 mins) for maximum engagement.",
+                  badge: "Max 4 (≤2 Videos)",
+                  desc: "Combine up to 3 images and up to 2 videos (max 4 media files total, videos ≤60 mins each).",
                   icon: <Layers size={15} color="var(--foreground)" />,
                 },
               ].map((format) => {
@@ -112,10 +112,15 @@ export default function Step3Creative({
 
           {formSelections.adMediaType && formSelections.adMediaType !== "text" && (
             <div className={styles.formGroup}>
-              <label className={styles.fieldLabelBold}>Upload Files</label>
+              <label className={styles.fieldLabelBold}>
+                Upload Files{" "}
+                <span className={styles.charCount}>
+                  ({formSelections.adMediaFiles.length}/4 selected • max 2 videos, up to 60 mins each)
+                </span>
+              </label>
               <input
                 type="file"
-                multiple={formSelections.adMediaType !== "video"}
+                multiple
                 accept={
                   formSelections.adMediaType === "video"
                     ? "video/*"
@@ -126,18 +131,26 @@ export default function Step3Creative({
                 onChange={async (e) => {
                   const files = e.target.files;
                   if (!files || files.length === 0) return;
-                  const fileArray = Array.from(files);
+                  const newlyPicked = Array.from(files);
+                  const combinedFiles = [...formSelections.adMediaFiles, ...newlyPicked];
 
-                  const images = fileArray.filter(
-                    (f) => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name)
-                  );
-                  const videos = fileArray.filter(
-                    (f) => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name)
-                  );
+                  const isImageFile = (f: File) =>
+                    f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name);
+                  const isVideoFile = (f: File) =>
+                    f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name);
+
+                  const images = combinedFiles.filter(isImageFile);
+                  const videos = combinedFiles.filter(isVideoFile);
+
+                  if (combinedFiles.length > 4) {
+                    showAppleAlert("Total media files cannot exceed 4 combinations.", "warning");
+                    e.target.value = "";
+                    return;
+                  }
 
                   if (formSelections.adMediaType === "image") {
                     if (videos.length > 0) {
-                      showAppleAlert("Only images are allowed for this type.", "warning");
+                      showAppleAlert("Only images are allowed for Image(s) mode. Switch to Mixed Media to combine images and videos.", "warning");
                       e.target.value = "";
                       return;
                     }
@@ -148,28 +161,28 @@ export default function Step3Creative({
                     }
                   } else if (formSelections.adMediaType === "video") {
                     if (images.length > 0) {
-                      showAppleAlert("Only videos are allowed for this type.", "warning");
+                      showAppleAlert("Only videos are allowed for Video(s) mode. Switch to Mixed Media to combine images and videos.", "warning");
                       e.target.value = "";
                       return;
                     }
-                    if (videos.length > 1) {
-                      showAppleAlert("You can select only 1 video.", "warning");
+                    if (videos.length > 2) {
+                      showAppleAlert("You can upload at most 2 videos (up to 60 minutes each).", "warning");
                       e.target.value = "";
                       return;
                     }
                   } else if (formSelections.adMediaType === "mixed") {
-                    if (videos.length > 1) {
-                      showAppleAlert("You can select at most 1 video.", "warning");
+                    if (videos.length > 2) {
+                      showAppleAlert("You can upload at most 2 videos (up to 60 minutes each).", "warning");
                       e.target.value = "";
                       return;
                     }
                     if (images.length > 3) {
-                      showAppleAlert("You can select at most 3 images.", "warning");
+                      showAppleAlert("In Mixed Media mode, you can select at most 3 images (with 1 video) or 2 images (with 2 videos), up to 4 files total.", "warning");
                       e.target.value = "";
                       return;
                     }
                     if (images.length + videos.length > 4) {
-                      showAppleAlert("Total number of files cannot exceed 4.", "warning");
+                      showAppleAlert("Total number of media files cannot exceed 4 (e.g., 1 img + 2 vid, 2 img + 1 vid, 2 img + 2 vid, or 3 img + 1 vid).", "warning");
                       e.target.value = "";
                       return;
                     }
@@ -178,11 +191,9 @@ export default function Step3Creative({
                   const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500MB for up to 60-minute videos
                   const MAX_VIDEO_DURATION_SECONDS = 3600; // 60 minutes
 
-                  for (const file of fileArray) {
-                    const isImage =
-                      file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(file.name);
-                    const isVideo =
-                      file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
+                  for (const file of newlyPicked) {
+                    const isImage = isImageFile(file);
+                    const isVideo = isVideoFile(file);
 
                     if (isImage) {
                       if (file.size > 5 * 1024 * 1024) {
@@ -224,7 +235,7 @@ export default function Step3Creative({
                       }
 
                       if (!durationOk) {
-                        showAppleAlert(`Video ${file.name} must be less than or equal to 60 minutes.`, "warning");
+                        showAppleAlert(`Video ${file.name} must be 60 minutes or less.`, "warning");
                         e.target.value = "";
                         return;
                       }
@@ -233,14 +244,78 @@ export default function Step3Creative({
 
                   setFormSelections((prev) => ({
                     ...prev,
-                    adMediaFiles: fileArray,
+                    adMediaFiles: combinedFiles,
                   }));
+                  e.target.value = "";
                 }}
                 className={styles.inputBox}
               />
               {formSelections.adMediaFiles.length > 0 && (
-                <div className={styles.selectedFilesHint}>
-                  Selected: {formSelections.adMediaFiles.map((f) => f.name).join(", ")}
+                <div className={styles.selectedFilesHint} style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", marginTop: "8px" }}>
+                  {formSelections.adMediaFiles.map((f, idx) => {
+                    const isVid = f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name);
+                    return (
+                      <span
+                        key={`${f.name}-${idx}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          background: "var(--sidebar-bg)",
+                          border: "1px solid var(--card-border)",
+                          fontSize: "0.78rem",
+                          color: "var(--foreground)",
+                        }}
+                      >
+                        <strong>{isVid ? "🎬 Video:" : "🖼️ Image:"}</strong> {f.name}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormSelections((prev) => ({
+                              ...prev,
+                              adMediaFiles: prev.adMediaFiles.filter((_, i) => i !== idx),
+                            }))
+                          }
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            padding: "0 2px",
+                            fontSize: "0.85rem",
+                            lineHeight: 1,
+                          }}
+                          title="Remove file"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                  {formSelections.adMediaFiles.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormSelections((prev) => ({
+                          ...prev,
+                          adMediaFiles: [],
+                        }))
+                      }
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        fontSize: "0.75rem",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Clear all
+                    </button>
+                  )}
                 </div>
               )}
               {formSelections.existingMedia && formSelections.adMediaFiles.length === 0 && (

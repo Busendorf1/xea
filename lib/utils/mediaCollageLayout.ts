@@ -106,10 +106,9 @@ export function resolveMediaCollageLayout(
 
   // Decide whether this multi-media post should use Horizontal Left-to-Right Scroll
   // or a Bento Collage Grid:
-  // - Posts with 2+ videos always use horizontal scroll so videos aren't squeezed into tiny grid cells.
-  // - Otherwise 50% of 2, 3, 4, and 5+ item posts deterministically use Horizontal Scroll (seed % 2 === 1),
-  //   and 50% use the Static Asymmetric Bento Grid (seed % 2 === 0, showing a +N badge on cell 4 for 5+ items).
-  const useHorizontalScroll = videoCount >= 2 || seed % 2 === 1;
+  // - 50% of 2, 3, 4, and 5+ item posts (including 1–2 video combinations) deterministically use
+  //   Horizontal Scroll (seed % 2 === 1), and 50% use the Static Asymmetric Bento Grid (seed % 2 === 0).
+  const useHorizontalScroll = seed % 2 === 1;
 
   if (useHorizontalScroll) {
     const useAsymmetricScroll = ((seed >>> 1) % 2) === 0;

@@ -474,6 +474,28 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
       return false;
     }
 
+    if (formSelections.adMediaFiles.length > 0) {
+      const imagesCount = formSelections.adMediaFiles.filter(
+        (f) => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name)
+      ).length;
+      const videosCount = formSelections.adMediaFiles.filter(
+        (f) => f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name)
+      ).length;
+
+      if (formSelections.adMediaFiles.length > 4) {
+        setStepError("Total media files cannot exceed 4 combinations.");
+        return false;
+      }
+      if (videosCount > 2) {
+        setStepError("You can upload at most 2 videos (up to 60 minutes each).");
+        return false;
+      }
+      if (formSelections.adMediaType === "mixed" && (imagesCount === 0 || videosCount === 0)) {
+        setStepError("Mixed Media requires at least 1 image and 1 video (up to 4 files total, max 2 videos).");
+        return false;
+      }
+    }
+
     const hasPrimaryCta = Boolean(formSelections.productCtaLink?.trim()) || adType === "product_sales";
     const maxButtons = hasPrimaryCta ? 2 : 3;
     if (formSelections.adActionButtons.length > maxButtons) {
