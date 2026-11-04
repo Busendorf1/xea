@@ -10,6 +10,7 @@ import {
 export interface AsymmetricMediaGridProps {
   mediaUrls: string[];
   activeIndex?: number;
+  variant?: "feed" | "compact";
   getAspectRatio?: (url: string) => number | undefined;
   isVideoUrl?: (url: string) => boolean;
   onCellClick?: (index: number, e: React.MouseEvent) => void;
@@ -61,6 +62,7 @@ function getBentoCellPositionClass(mode: MediaCollageMode, idx: number): string 
 const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
   mediaUrls,
   activeIndex = 0,
+  variant = "feed",
   getAspectRatio,
   isVideoUrl,
   onCellClick,
@@ -73,6 +75,7 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
   renderCellContent,
   containerRef,
 }) => {
+  const isCompact = variant === "compact";
   const layout = useMemo(
     () =>
       resolveMediaCollageLayout(mediaUrls, {
@@ -105,7 +108,24 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
 
         <div
           ref={containerRef as React.RefObject<HTMLDivElement>}
-          className={`${styles.mediaRowContainer} ${styles.mediaRowContainerMulti}`}
+          className={`${styles.mediaRowContainer} ${
+            isCompact ? "" : styles.mediaRowContainerMulti
+          }`}
+          style={
+            isCompact
+              ? {
+                  width: "100%",
+                  height: "100%",
+                  flex: 1,
+                  minHeight: 0,
+                  margin: 0,
+                  padding: 0,
+                  scrollPaddingLeft: 0,
+                  scrollPaddingRight: 0,
+                  gap: "6px",
+                }
+              : undefined
+          }
           data-ratio-layout={layout.ratioLabel}
           onScroll={onScroll}
           onMouseDown={onMouseDown}
@@ -119,13 +139,20 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
               <div
                 key={`${cell.url}-${cell.index}`}
                 ref={(el) => cellRefCallback?.(cell.index, el)}
-                className={`${styles.mediaRowItem} ${styles.mediaRowItemMulti}`}
+                className={`${styles.mediaRowItem} ${
+                  isCompact ? "" : styles.mediaRowItemMulti
+                }`}
                 style={{
                   flex: `0 0 ${widthPct}%`,
                   width: `${widthPct}%`,
-                  minWidth: `${Math.max(165, Math.round(widthPct * 2.5))}px`,
-                  maxWidth: `${Math.min(360, Math.round(widthPct * 4.4))}px`,
-                  cursor: onCellClick ? "pointer" : undefined,
+                  height: isCompact ? "100%" : undefined,
+                  minWidth: isCompact
+                    ? `${Math.max(96, Math.round(widthPct * 1.45))}px`
+                    : `${Math.max(165, Math.round(widthPct * 2.5))}px`,
+                  maxWidth: isCompact
+                    ? `${Math.min(220, Math.round(widthPct * 2.4))}px`
+                    : `${Math.min(360, Math.round(widthPct * 4.4))}px`,
+                  cursor: onCellClick ? "zoom-in" : undefined,
                 }}
                 onClick={(e) => onCellClick?.(cell.index, e)}
               >
@@ -164,6 +191,18 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
     <div
       ref={containerRef as React.RefObject<HTMLDivElement>}
       className={getBentoGridClass(layout.mode)}
+      style={
+        isCompact
+          ? {
+              width: "100%",
+              height: "100%",
+              maxHeight: "100%",
+              aspectRatio: "unset",
+              flex: 1,
+              minHeight: 0,
+            }
+          : undefined
+      }
       data-ratio-layout={layout.ratioLabel}
     >
       {layout.cells.map((cell) => (
@@ -174,7 +213,7 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
             layout.mode,
             cell.index
           )}`}
-          style={{ cursor: onCellClick ? "pointer" : undefined }}
+          style={{ cursor: onCellClick ? "zoom-in" : undefined }}
           onClick={(e) => onCellClick?.(cell.index, e)}
         >
           {renderCellContent(cell)}

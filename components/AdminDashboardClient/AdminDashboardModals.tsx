@@ -1,44 +1,28 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { XCircle, Megaphone, ShieldAlert } from "lucide-react";
 import styles from "./page.module.css";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+import MultimediaCarousel from "@/components/MyAds/MultimediaCarousel";
 
 const formatCurrency = (amount: number | string, country?: string | null) =>
   globalFormatCurrency(amount, country);
 
 export function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const mediaUrls = adMedia ? adMedia.split(",").map((u) => u.trim()).filter(Boolean) : [];
+  const mediaUrls = adMedia
+    ? adMedia
+        .split(",")
+        .map((u) => u.trim())
+        .filter((s) => s.length > 0 && s.toLowerCase() !== "text" && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined")
+    : [];
   if (mediaUrls.length === 0) {
     return <div className={styles.adminCls_1}>Text Only Ad</div>;
   }
 
-  const currentUrl = mediaUrls[currentMediaIndex];
-  const isVideo = adMediaType === "video" || /\.(mp4|webm)$/i.test(currentUrl);
-
   return (
-    <div className={styles.adminCls_2}>
-      {isVideo ? (
-        <video key={currentUrl} src={currentUrl} controls className={styles.adminCls_3} />
-      ) : (
-        <img src={currentUrl} alt="Campaign cover" className={styles.adminCls_3} />
-      )}
-
-      {mediaUrls.length > 1 && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setCurrentMediaIndex((prev) => (prev + 1) % mediaUrls.length);
-          }}
-          className={styles.adminCls_4}
-          title="Next Media"
-        >
-          &gt;
-        </button>
-      )}
+    <div className={styles.adminCls_2} style={{ padding: "6px", boxSizing: "border-box" }}>
+      <MultimediaCarousel rawMedia={adMedia} adMediaType={adMediaType} />
     </div>
   );
 }

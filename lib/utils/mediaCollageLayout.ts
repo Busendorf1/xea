@@ -107,17 +107,17 @@ export function resolveMediaCollageLayout(
   // Decide whether this multi-media post should use Horizontal Left-to-Right Scroll
   // or a Bento Collage Grid:
   // - Posts with >4 items or 2+ videos always use horizontal scroll.
-  // - Otherwise ~45% of 2, 3, and 4-item posts deterministically use horizontal scroll.
+  // - Otherwise 50% of 2, 3, and 4-item posts deterministically use horizontal scroll (seed % 2 === 1).
   const useHorizontalScroll =
-    count > 4 || videoCount >= 2 || seed % 5 === 1 || seed % 5 === 3;
+    count > 4 || videoCount >= 2 || seed % 2 === 1;
 
   if (useHorizontalScroll) {
-    const useAsymmetricScroll = seed % 2 === 0;
+    const useAsymmetricScroll = ((seed >>> 1) % 2) === 0;
 
     if (count === 2) {
-      // 2 items horizontal scroll: either equal peek (74% : 74%) or 1:2 asymmetric (52% : 80%)
+      // 2 items horizontal scroll: either equal peek (74% : 74%) or 1:2 asymmetric (50% : 82%)
       const weights = useAsymmetricScroll ? [1, 2] : [1, 1];
-      const widths = useAsymmetricScroll ? [52, 80] : [74, 74];
+      const widths = useAsymmetricScroll ? [50, 82] : [74, 74];
       return {
         mode: useAsymmetricScroll ? "scroll_asymmetric" : "scroll_equal",
         isHorizontalScroll: true,
@@ -137,9 +137,18 @@ export function resolveMediaCollageLayout(
     }
 
     if (count === 3) {
-      // 3 items horizontal scroll: either equal (68% each) or 2:1:1 asymmetric (78%, 52%, 52%)
-      const weights = useAsymmetricScroll ? [2, 1, 1] : [1, 1, 1];
-      const widths = useAsymmetricScroll ? [78, 52, 52] : [68, 68, 68];
+      // 3 items horizontal scroll: either equal (68% each) or 1:1:2 / 2:1:1 asymmetric horizontal row
+      const leadWide = ((seed >>> 2) % 2) === 0;
+      const weights = useAsymmetricScroll
+        ? leadWide
+          ? [2, 1, 1]
+          : [1, 1, 2]
+        : [1, 1, 1];
+      const widths = useAsymmetricScroll
+        ? leadWide
+          ? [78, 50, 50]
+          : [50, 50, 78]
+        : [68, 68, 68];
       return {
         mode: useAsymmetricScroll ? "scroll_asymmetric" : "scroll_equal",
         isHorizontalScroll: true,
@@ -158,7 +167,7 @@ export function resolveMediaCollageLayout(
       };
     }
 
-    // 4+ items horizontal scroll: all items scrollable left-to-right, either equal (66%) or 2:1:1:1 asymmetric (76%, 50%, 50%, 50%)
+    // 4+ items horizontal scroll: all items scrollable left-to-right, either equal (66%) or 2:1:1:1 asymmetric (78%, 50%, 50%, 50%)
     return {
       mode: useAsymmetricScroll ? "scroll_asymmetric" : "scroll_equal",
       isHorizontalScroll: true,
@@ -170,7 +179,7 @@ export function resolveMediaCollageLayout(
         url,
         index,
         weight: useAsymmetricScroll && index === 0 ? 2 : 1,
-        scrollWidthPercent: useAsymmetricScroll ? (index === 0 ? 76 : 50) : 66,
+        scrollWidthPercent: useAsymmetricScroll ? (index === 0 ? 78 : 50) : 66,
         showMoreBadge: false,
         extraCount: 0,
       })),

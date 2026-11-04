@@ -4,6 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { createPortal } from "react-dom";
 import { Video, Image as ImageIcon, Megaphone, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import FullscreenVideoPlayer from "./FullscreenVideoPlayer";
+import AsymmetricMediaGrid from "@/components/ui/AsymmetricMediaGrid";
 import styles from "./page.module.css";
 
 interface MultimediaCarouselProps {
@@ -197,103 +198,102 @@ export default function MultimediaCarousel({ rawMedia, adMediaType }: Multimedia
     }
   };
 
+  const renderSlideMedia = (url: string, idx: number) => {
+    const isVid =
+      (adMediaType === "video" && mediaList.length === 1) ||
+      /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(url.split("?")[0]);
+    const isActiveSlide = idx === currentIndex && fullscreenIndex === null;
+
+    if (isVid) {
+      return (
+        <div
+          style={{ width: "100%", height: "100%", position: "relative", cursor: "zoom-in" }}
+        >
+          <video
+            ref={(el) => {
+              if (!el) return;
+              el.muted = true;
+              el.defaultMuted = true;
+              if (isActiveSlide) {
+                el.play().catch(() => {});
+              } else if (!el.paused) {
+                el.pause();
+              }
+            }}
+            src={url}
+            autoPlay={isActiveSlide}
+            loop
+            muted
+            playsInline
+            controls={false}
+            preload="metadata"
+            className={styles.mediaVideo}
+            style={{ pointerEvents: "none", width: "100%", height: "100%", objectFit: "cover" }}
+            onError={() => setImgError(true)}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <img
+        src={url}
+        alt={`Slide ${idx + 1}`}
+        className={styles.adImgElement}
+        draggable={false}
+        style={{ cursor: "zoom-in", userSelect: "none", width: "100%", height: "100%", objectFit: "cover" }}
+        onError={() => setImgError(true)}
+      />
+    );
+  };
+
   return (
     <>
-      <div className={styles.carouselContainer}>
-        {mediaList.length > 1 && (
-          <div
-            className={styles.topLineIndicators}
-            aria-label={`Slide ${currentIndex + 1} of ${mediaList.length}`}
-          >
-            {mediaList.map((_: string, idx: number) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={(e) => scrollToInlineSlide(idx, e)}
-                className={`${styles.topLineSegment} ${
-                  idx === currentIndex ? styles.topLineSegmentActive : ""
-                }`}
-                aria-label={`Slide ${idx + 1} of ${mediaList.length}`}
-              />
-            ))}
-          </div>
-        )}
-
-        <div className={styles.carouselWrapper}>
-          <div
-            ref={inlineContainerRef}
-            className={styles.carouselTrack}
-            onScroll={mediaList.length > 1 ? handleInlineScroll : undefined}
+      <div className={styles.carouselContainer} style={{ position: "relative" }}>
+        {mediaList.length > 1 ? (
+          <AsymmetricMediaGrid
+            variant="compact"
+            mediaUrls={mediaList}
+            activeIndex={currentIndex}
+            containerRef={inlineContainerRef}
+            isVideoUrl={(u) => /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(u.split("?")[0])}
+            onScroll={handleInlineScroll}
             onMouseDown={handleInlineMouseDown}
             onMouseMove={handleInlineMouseMove}
-            onMouseUp={handleInlineMouseUpOrLeave}
-            onMouseLeave={handleInlineMouseUpOrLeave}
-          >
-            {mediaList.map((url: string, idx: number) => {
-              const isVid = adMediaType === "video" || /\.(mp4|webm|mov|avi|mkv|3gp|m3u8)$/i.test(url);
-              const isActiveSlide = idx === currentIndex && fullscreenIndex === null;
-              return (
-                <div
-                  key={idx}
-                  ref={(el) => {
-                    inlineSlideRefs.current[idx] = el;
-                  }}
-                  className={`${styles.carouselSlide} ${
-                    mediaList.length > 1 ? styles.carouselSlideMulti : styles.carouselSlideSingle
-                  }`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (inlineDraggedRef.current) {
-                      return;
-                    }
-                    openFullscreen(idx);
-                  }}
-                  style={{ cursor: "zoom-in" }}
-                  title="Click to view full screen"
-                >
-                  {isVid ? (
-                    <div
-                      style={{ width: "100%", height: "100%", position: "relative", cursor: "zoom-in" }}
-                    >
-                      <video
-                        ref={(el) => {
-                          if (!el) return;
-                          el.muted = true;
-                          el.defaultMuted = true;
-                          if (isActiveSlide) {
-                            el.play().catch(() => {});
-                          } else if (!el.paused) {
-                            el.pause();
-                          }
-                        }}
-                        src={url}
-                        autoPlay={isActiveSlide}
-                        loop
-                        muted
-                        playsInline
-                        controls={false}
-                        preload="metadata"
-                        className={styles.mediaVideo}
-                        style={{ pointerEvents: "none", width: "100%", height: "100%", objectFit: "cover" }}
-                        onError={() => setImgError(true)}
-                      />
-                    </div>
-                  ) : (
-                    <img
-                      src={url}
-                      alt={`Slide ${idx + 1}`}
-                      className={styles.adImgElement}
-                      draggable={false}
-                      style={{ cursor: "zoom-in", userSelect: "none" }}
-                      onError={() => setImgError(true)}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            onMouseUpOrLeave={handleInlineMouseUpOrLeave}
+            onScrollToSlide={scrollToInlineSlide}
+            cellRefCallback={(idx, el) => {
+              inlineSlideRefs.current[idx] = el;
+            }}
+            onCellClick={(idx, e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (inlineDraggedRef.current) return;
+              openFullscreen(idx);
+            }}
+            renderCellContent={(cell) => renderSlideMedia(cell.url, cell.index)}
+          />
+        ) : (
+          <div className={styles.carouselWrapper}>
+            <div ref={inlineContainerRef} className={styles.carouselTrack}>
+              <div
+                ref={(el) => {
+                  inlineSlideRefs.current[0] = el;
+                }}
+                className={`${styles.carouselSlide} ${styles.carouselSlideSingle}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openFullscreen(0);
+                }}
+                style={{ cursor: "zoom-in" }}
+                title="Click to view full screen"
+              >
+                {renderSlideMedia(mediaList[0], 0)}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Fullscreen Media Modal: Modal on Desktop, Full-Screen on Mobile, NO CTAs at the bottom */}
