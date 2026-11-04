@@ -67,9 +67,7 @@ export default function ProofOfLocationModal({
         localStorage.getItem(`${PROOF_OF_LOCATION_KEY_PREFIX}active`);
 
       if (!rawAttestation) {
-        if (user?.country || user?.state || user?.location) {
-          setVisible(true);
-        }
+        setVisible(true);
         return;
       }
 

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import {
+  encryptSensitiveField,
+  hashPassphraseOneWay,
+  blindHashPII,
+  coarsenDobToBirthYear,
+} from "@/lib/security/piiCrypto";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -131,12 +137,16 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
-        sanitizedDob = parsedDate.toISOString().split("T")[0];
+        sanitizedDob = coarsenDobToBirthYear(parsedDate.toISOString().split("T")[0]);
       }
     }
 
-    const { encryptSensitiveField } = await import("@/lib/security/piiCrypto");
-    const encryptedPassphrase = updateData.passphrase ? encryptSensitiveField(updateData.passphrase) : null;
+    const encryptedPassphrase = updateData.passphrase
+      ? hashPassphraseOneWay(updateData.passphrase)
+      : null;
+    const encryptedPhone = updateData.phone
+      ? encryptSensitiveField(String(updateData.phone).trim())
+      : null;
 
     const { error } = await supabaseAdmin.rpc("update_user_profile", {
       p_email: email,
@@ -145,7 +155,7 @@ export async function POST(req: NextRequest) {
       p_country: updateData.country || null,
       p_state: updateData.state || null,
       p_location: updateData.location || null,
-      p_phone: updateData.phone || null,
+      p_phone: encryptedPhone,
       p_passphrase: encryptedPassphrase,
       p_industry: updateData.industry || null,
       p_interest: updateData.interest || null,
@@ -167,15 +177,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Persist firstName / lastName if provided
-    if (updateData.firstName !== undefined || updateData.lastName !== undefined) {
-      const namePatch: Record<string, any> = {};
-      if (updateData.firstName !== undefined) namePatch.firstName = String(updateData.firstName).trim();
-      if (updateData.lastName !== undefined) namePatch.lastName = String(updateData.lastName).trim();
-      try {
-        await supabaseAdmin.from("users").update(namePatch).ilike("email", emailLower);
-      } catch {}
+    // Persist encrypted firstName / lastName and HMAC blind hashes if provided
+    const piiPatch: Record<string, any> = {
+      email_hash: blindHashPII(emailLower),
+    };
+    if (updateData.phone) {
+      piiPatch.phone_hash = blindHashPII(String(updateData.phone).replace(/\D/g, ""));
     }
+    if (updateData.firstName !== undefined) {
+      piiPatch.firstName = encryptSensitiveField(String(updateData.firstName).trim());
+    }
+    if (updateData.lastName !== undefined) {
+      piiPatch.lastName = encryptSensitiveField(String(updateData.lastName).trim());
+    }
+    try {
+      await supabaseAdmin.from("users").update(piiPatch).ilike("email", emailLower);
+    } catch {}
 
     // Invalidate cached profile and feed targeting caches in L1 & L2 Redis
     await invalidateCachedProfile(emailLower);

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { env } from "../env";
 
 const ENCRYPTION_PREFIX = "enc:v1:";
+const ONE_WAY_HASH_PREFIX = "hash:v1:";
 
 /**
  * Derives a deterministic 32-byte (256-bit) AES key from the platform's master secret.
@@ -39,7 +40,7 @@ export function encryptSensitiveField(plaintext: string | null | undefined): str
   if (plaintext === null || plaintext === undefined) return null;
   const trimmed = String(plaintext).trim();
   if (!trimmed) return "";
-  if (trimmed.startsWith(ENCRYPTION_PREFIX)) return trimmed;
+  if (trimmed.startsWith(ENCRYPTION_PREFIX) || trimmed.startsWith("PLACEHOLDER")) return trimmed;
 
   const key = getMasterEncryptionKey();
   const iv = crypto.randomBytes(12); // 96-bit IV recommended by NIST for AES-GCM
@@ -79,14 +80,63 @@ export function decryptSensitiveField(value: string | null | undefined): string 
 }
 
 /**
+ * Irreversible one-way HMAC-SHA256 hash for security passphrases and tokens.
+ * Cannot be decrypted even with the master key.
+ */
+export function hashPassphraseOneWay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith(ONE_WAY_HASH_PREFIX) || trimmed.startsWith(ENCRYPTION_PREFIX)) {
+    return trimmed;
+  }
+  const key = getMasterEncryptionKey();
+  const digest = crypto.createHmac("sha256", key).update(`passphrase:${trimmed}`).digest("hex");
+  return `${ONE_WAY_HASH_PREFIX}${digest}`;
+}
+
+/**
  * Generates an HMAC-SHA256 blind index for O(1) equality lookups without exposing plaintext PII.
  */
 export function blindHashPII(value: string | null | undefined): string {
   if (!value) return "";
   const normalized = String(value).trim().toLowerCase();
-  if (!normalized) return "";
+  if (!normalized || normalized.startsWith("placeholder")) return "";
   const key = getMasterEncryptionKey();
   return crypto.createHmac("sha256", key).update(normalized).digest("hex");
+}
+
+/**
+ * Coarsens a verified 18+ date of birth to birth-year-only (`YYYY-01-01`)
+ * so exact calendar birthdays (month/day) are never stored in the database,
+ * while preserving age-bracket targeting compatibility.
+ */
+export function coarsenDobToBirthYear(dobStr: string | null | undefined): string | null {
+  if (!dobStr) return null;
+  const parsed = new Date(dobStr);
+  if (isNaN(parsed.getTime())) return null;
+  const year = parsed.getUTCFullYear();
+  if (year < 1900 || year > new Date().getUTCFullYear()) return null;
+  return `${year}-01-01`;
+}
+
+/**
+ * Transparently decrypts encrypted PII fields on a user profile row before returning to the authenticated owner.
+ */
+export function decryptProfilePII<T extends Record<string, any>>(user: T | null): T | null {
+  if (!user) return null;
+  const copy: Record<string, any> = { ...user };
+  if (typeof copy.phone === "string" && copy.phone.startsWith(ENCRYPTION_PREFIX)) {
+    copy.phone = decryptSensitiveField(copy.phone) || "";
+  }
+  if (typeof copy.firstName === "string" && copy.firstName.startsWith(ENCRYPTION_PREFIX)) {
+    copy.firstName = decryptSensitiveField(copy.firstName) || "";
+  }
+  if (typeof copy.lastName === "string" && copy.lastName.startsWith(ENCRYPTION_PREFIX)) {
+    copy.lastName = decryptSensitiveField(copy.lastName) || "";
+  }
+  delete copy.passphrase;
+  return copy as T;
 }
 
 /**

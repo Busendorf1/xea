@@ -73,7 +73,8 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     balance,
     withdrawal,
     monetization_clicks,
-    last_active_at
+    last_active_at,
+    has_updated_profile
   `;
 
   const PROFILE_COLUMNS = `
@@ -107,6 +108,7 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     withdrawal,
     monetization_clicks,
     last_active_at,
+    has_updated_profile,
     referral_code,
     referral_downloads_count,
     atw_tier

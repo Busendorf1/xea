@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
+import { decryptProfilePII } from "@/lib/security/piiCrypto";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,7 @@ let useBaselineProfileColumnsUntil = 0;
 
 function sanitizeProfileResponse(rawUser: Record<string, any> | null) {
   if (!rawUser) return null;
-  const sanitized = { ...rawUser };
-  delete sanitized.passphrase;
-  return sanitized;
+  return decryptProfilePII(rawUser);
 }
 
 export async function GET(req: NextRequest) {

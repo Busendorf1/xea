@@ -53,16 +53,16 @@ export default function PolicyPage() {
 
         {/* SECTION 3 */}
         <section id="encryption">
-          <h2 className={styles.heading}>III. Advanced Security &amp; Application Layer Encryption</h2>
+          <h2 className={styles.heading}>III. Advanced Security, Irreversible Hashing &amp; Application-Layer Encryption</h2>
           <p>
-            Paayh implements multi layered, military-grade data security:
+            In strict compliance with <strong>Section 24(1)(f) and Section 39 of the Nigeria Data Protection Act (NDPA 2023)</strong> and <strong>Articles 25 and 32 of the GDPR (Data Protection by Design and by Default)</strong>, Paayh implements multi-layered cryptographic security so that even in the event of unauthorized infrastructure access, personal data is mathematically unreadable:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Application Layer Field Encryption (AES-256-GCM):</strong> Highly sensitive personal attributes (including settlement details, bank identifiers, and security credentials) are encrypted at the application layer prior to storage using authenticated AES-256-GCM. In the unlikely event of underlying infrastructure access, stored ciphertext remains mathematically unreadable.
+              <strong>Truly Irreversible One-Way Hashing &amp; Discarded Attributes (HMAC-SHA256 / SHA-256):</strong> Security passphrases (`hash:v1:...`), cryptographic blind lookup indexes (`email_hash`, `phone_hash`), and device/telemetry verification signatures are processed through one-way peppered cryptographic hashing (`HMAC-SHA256` / `SHA-256`) that is never decrypted in application code. Furthermore, when you submit your date of birth to verify `18+` age eligibility, Paayh immediately coarsens the record to your birth year only (`YYYY-01-01`) and permanently discards your exact calendar month and day of birth.
             </li>
             <li className={styles.listItem}>
-              <strong>Cryptographic HMAC Blind Indexing:</strong> Searchable sensitive fields use keyed HMAC-SHA256 blind indexing, permitting verified query lookups without ever decrypting raw databases or exposing plaintext indexes.
+              <strong>Authenticated Application-Layer Encryption at Rest (AES-256-GCM):</strong> Operational profile fields that must be displayed back to you in your private settings or transmitted to licensed payment processors during a payout (such as your contact phone number and legal first/last name) are encrypted at the application layer prior to database storage using 256-bit `AES-256-GCM` with unique 96-bit initialization vectors (`enc:v1:...`). In the event of unauthorized database table access, stored ciphertext remains unreadable without the isolated application-tier cryptographic key, while your authenticated session can still display your profile and process peer-to-peer wallet transfers seamlessly.
             </li>
             <li className={styles.listItem}>
               <strong>Encrypted Network Transmission:</strong> All data in transit is protected using modern Transport Layer Security (TLS 1.3) protocols.
@@ -107,12 +107,17 @@ export default function PolicyPage() {
 
         {/* SECTION 6 */}
         <section id="user-rights">
-          <h2 className={styles.heading}>VI. User Privacy Rights (NDPA 2023 &amp; GDPR)</h2>
-          <p>Under the Nigeria Data Protection Act 2023 and applicable international regulations, you possess the right to:</p>
+          <h2 className={styles.heading}>VI. User Privacy Rights &amp; Data Access Limitations (NDPA 2023 &amp; GDPR Art. 11)</h2>
+          <p>Under the Nigeria Data Protection Act 2023 and applicable international regulations (including GDPR), you possess statutory privacy rights subject to technical cryptographic safeguards:</p>
           <ul className={styles.list}>
-            <li className={styles.listItem}><strong>Right of Access:</strong> Review the personal data held on your profile.</li>
-            <li className={styles.listItem}><strong>Right to Rectification:</strong> Update inaccurate account or contact information.</li>
-            <li className={styles.listItem}><strong>Right to Erasure (Account Deletion):</strong> Request the permanent deletion of your account and associated personal data via your dashboard or our Help Center.</li>
+            <li className={styles.listItem}>
+              <strong>Why Raw Hashed Data Cannot Be Retrieved Upon Request (GDPR Article 11 &amp; NDPA Section 39):</strong> Because Paayh hashes personal identifiers, security credentials, and verification tokens using one-way cryptographic functions (`HMAC-SHA256` / `SHA-256`) and discards exact calendar birthdays upon `18+` verification to protect you against data breaches, <strong>requesting a raw, unhashed reconstruction of one-way hashed data, security passphrases, historical GPS coordinates, or de-identified impression logs is technically and mathematically impossible</strong>. Pursuant to <strong>GDPR Article 11 (Processing which does not require identification)</strong> and <strong>NDPA 2023 data minimization mandates</strong>, Paayh is not obligated to maintain, acquire, or retain unhashed raw personal identifiers solely to fulfill a data export request.
+            </li>
+            <li className={styles.listItem}>
+              <strong>What Is Obtainable (Right of Access):</strong> You can access and review all obtainable operational profile data directly inside your authenticated Paayh dashboard or by submitting a verified request to <code>privacy@paayh.com</code>. Obtainable records consist of: (a) your public display handle (`@username`) and business name, (b) your selected demographic and interest categories, (c) your coarsened birth year (`YYYY`), and (d) your current wallet balance and masked transaction reference history.
+            </li>
+            <li className={styles.listItem}><strong>Right to Rectification:</strong> Update inaccurate account preferences or contact information via your profile settings (subject to platform anti-fraud cooldown intervals).</li>
+            <li className={styles.listItem}><strong>Right to Erasure (Account Deletion):</strong> Request the permanent deletion of your account and associated cryptographic hash records via your dashboard or our Help Center.</li>
             <li className={styles.listItem}><strong>Right to Revoke OAuth Permissions:</strong> Revoke Paayh&apos;s access to your Google account at any time via your Google Account Security Settings.</li>
             <li className={styles.listItem}><strong>Sovereignty of Engagement &amp; Voluntary Participation:</strong> You retain complete freedom over whether to engage with or patronize any commercial advertiser. You are never obligated to make purchases, and any transaction entered into with an advertiser is solely between you and that third party.</li>
           </ul>

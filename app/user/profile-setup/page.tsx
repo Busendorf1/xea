@@ -226,14 +226,6 @@ interface ProfileFormData {
       return false;
     }
 
-    // Location is required, GPS toggle must be enabled and detected
-    if (!formData.country || !formData.state || !formData.location) {
-      const msg = "Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.";
-      setErrorMessage(msg);
-      setFieldErrors({ country: "Required", state: "Required", location: "Required" });
-      return false;
-    }
-
     const result = profileSetupStep1Schema.safeParse(formData);
     if (!result.success) {
       const errs: Record<string, string> = {};
@@ -630,6 +622,28 @@ interface ProfileFormData {
                       cityLabel="City/Location details"
                       gpsEnforced={true}
                     />
+                    {(!formData.country || !formData.state || !formData.location) && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "8px",
+                          marginTop: "8px",
+                          padding: "10px 12px",
+                          borderRadius: "10px",
+                          background: "rgba(245, 158, 11, 0.1)",
+                          border: "1px solid rgba(245, 158, 11, 0.28)",
+                          color: "#d97706",
+                          fontSize: "0.78rem",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        <AlertCircle size={15} style={{ flexShrink: 0, marginTop: "2px" }} />
+                        <span>
+                          <strong>Optional at Setup:</strong> You can continue without enabling GPS auto-detect right now. However, location verification is important for localized campaigns, and you may not be able to earn or use Paayh Pay until verified via the Proof of Location prompt in the app.
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className={styles.inputGroupFull}>

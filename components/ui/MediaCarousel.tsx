@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Volume2, VolumeX } from "lucide-react";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import styles from "./AdCard.module.css";
 import VideoControlBar from "./VideoControlBar";
+import AsymmetricMediaGrid from "./AsymmetricMediaGrid";
 
 const HlsVideoPlayer = dynamic(() => import("./HlsVideoPlayer"), {
   ssr: false,
@@ -427,197 +428,200 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   const isMulti = mediaUrls.length > 1;
 
+  const renderMediaNode = (url: string, index: number) => {
+    const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
+    const itemHlsSrc = url.includes(".m3u8")
+      ? url
+      : index === 0 && hlsUrl
+      ? hlsUrl
+      : undefined;
+    const shouldEagerLoad = index < 2;
+
+    if (isVideo) {
+      return (
+        <div
+          className={styles.webVideoContainer}
+          style={{ cursor: onMediaClick ? "pointer" : undefined }}
+        >
+          <HlsVideoPlayer
+            ref={(el) => {
+              if (el) {
+                videoRefs.current[index] = el;
+              } else {
+                delete videoRefs.current[index];
+              }
+            }}
+            key={url}
+            src={url}
+            hlsSrc={itemHlsSrc}
+            loop
+            playsInline
+            autoPlay={isCardVisible && index === activeIndex}
+            preload={isPreloadWarm && shouldEagerLoad ? "auto" : "metadata"}
+            muted={isMuted}
+            controls={false}
+            className={styles.mediaVideo}
+            onPlay={() => {
+              setPlayingStates((prev) => ({ ...prev, [index]: true }));
+              if (isFullscreen) showControlsTemporarily(index);
+            }}
+            onPause={() => {
+              setPlayingStates((prev) => ({ ...prev, [index]: false }));
+              if (isFullscreen)
+                setControlsVisible((prev) => ({ ...prev, [index]: true }));
+            }}
+            onTimeUpdate={(e) => {
+              if (!isFullscreen) return;
+              const cur = e.currentTarget.currentTime || 0;
+              setVideoCurrentTimes((prev) => {
+                if (Math.abs((prev[index] || 0) - cur) >= 0.5) {
+                  return { ...prev, [index]: cur };
+                }
+                return prev;
+              });
+            }}
+            onLoadedMetadata={(e) => {
+              const v = e.currentTarget;
+              if (v.duration && !isNaN(v.duration)) {
+                setVideoDurations((prev) => ({ ...prev, [index]: v.duration }));
+              }
+              if (v.videoWidth && v.videoHeight) {
+                const rawRatio = v.videoWidth / v.videoHeight;
+                const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
+                saveRatioToCache(url, clamped);
+                if (index === 0) {
+                  setBaseAspectRatio((prev) =>
+                    mediaAspectRatioCache.has(firstUrl) ? prev : clamped
+                  );
+                }
+              }
+            }}
+            onDurationChange={(e) => {
+              const d = e.currentTarget.duration;
+              if (d && !isNaN(d)) {
+                setVideoDurations((prev) => ({ ...prev, [index]: d }));
+              }
+            }}
+          />
+
+          {!isFullscreen ? (
+            <button
+              type="button"
+              className={styles.feedVideoMuteBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const video = videoRefs.current[index];
+                const nextMuted = !isMuted;
+                if (video) {
+                  video.muted = nextMuted;
+                  video.defaultMuted = nextMuted;
+                  if (!nextMuted && video.paused && isCardVisible) {
+                    video.play().catch(() => {});
+                  }
+                }
+                onToggleMute();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              title={isMuted ? "Unmute sound" : "Mute sound"}
+              aria-label={isMuted ? "Unmute sound" : "Mute sound"}
+            >
+              {isMuted ? (
+                <VolumeX size={15} strokeWidth={2.2} />
+              ) : (
+                <Volume2 size={15} strokeWidth={2.2} />
+              )}
+            </button>
+          ) : (
+            <VideoControlBar
+              index={index}
+              isPlaying={
+                playingStates[index] ?? (isCardVisible && index === activeIndex)
+              }
+              isMuted={isMuted}
+              isFullscreen={isFullscreen}
+              showControls={controlsVisible[index] ?? true}
+              videoDuration={videoDurations[index] || 0}
+              videoCurrentTime={videoCurrentTimes[index] || 0}
+              onTogglePlay={() => togglePlayVideo(index)}
+              onToggleMute={onToggleMute}
+              onToggleFullscreen={toggleFullscreen}
+              formatVideoTime={formatVideoTime}
+            />
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <img
+        ref={index === 0 ? firstImgRef : undefined}
+        src={url}
+        alt={`Ad media ${index + 1} of ${mediaUrls.length}`}
+        className={styles.adImgElement}
+        style={{ cursor: onMediaClick ? "zoom-in" : undefined }}
+        draggable={false}
+        loading={shouldEagerLoad ? "eager" : "lazy"}
+        decoding="async"
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          if (img.naturalWidth && img.naturalHeight) {
+            const rawRatio = img.naturalWidth / img.naturalHeight;
+            const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
+            saveRatioToCache(url, clamped);
+            if (index === 0) {
+              setBaseAspectRatio(clamped);
+            }
+          }
+        }}
+        onError={() => {
+          if (mediaUrls.length === 1) setMediaError(true);
+        }}
+      />
+    );
+  };
+
   return (
     <div className={styles.carouselOuterWrapper}>
-      {isMulti && (
-        <div
-          className={styles.topLineIndicators}
-          aria-label={`Slide ${activeIndex + 1} of ${mediaUrls.length}`}
-        >
-          {mediaUrls.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              className={`${styles.topLineSegment} ${
-                idx === activeIndex ? styles.topLineSegmentActive : ""
-              }`}
-              onClick={(e) => scrollToSlide(idx, e)}
-              aria-label={`Slide ${idx + 1} of ${mediaUrls.length}`}
-            />
-          ))}
+      {isMulti ? (
+        <AsymmetricMediaGrid
+          containerRef={containerRef}
+          mediaUrls={mediaUrls}
+          activeIndex={activeIndex}
+          getAspectRatio={(url) => mediaAspectRatioCache.get(url)}
+          isVideoUrl={isVideoUrl}
+          onCellClick={handleItemActivate}
+          onScroll={handleCarouselScroll}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUpOrLeave={handleMouseUpOrLeave}
+          onScrollToSlide={scrollToSlide}
+          cellRefCallback={(idx, el) => {
+            slideRefs.current[idx] = el;
+          }}
+          renderCellContent={(cell) => renderMediaNode(cell.url, cell.index)}
+        />
+      ) : (
+        <div ref={containerRef} className={styles.mediaRowContainer}>
+          <div
+            ref={(el) => {
+              slideRefs.current[0] = el;
+            }}
+            className={`${styles.mediaRowItem} ${styles.mediaRowItemSingle}`}
+            style={
+              {
+                "--single-media-ratio": baseAspectRatio,
+                aspectRatio: `${baseAspectRatio}`,
+                cursor: onMediaClick ? "pointer" : undefined,
+              } as React.CSSProperties
+            }
+            onClick={(e) => handleItemActivate(0, e)}
+          >
+            {renderMediaNode(mediaUrls[0], 0)}
+          </div>
         </div>
       )}
-
-      <div
-        ref={containerRef}
-        className={`${styles.mediaRowContainer} ${isMulti ? styles.mediaRowContainerMulti : ""}`}
-        onScroll={isMulti ? handleCarouselScroll : undefined}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUpOrLeave}
-        onMouseLeave={handleMouseUpOrLeave}
-      >
-        {mediaUrls.map((url, index) => {
-          const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
-          const itemHlsSrc = url.includes(".m3u8") ? url : (index === 0 && hlsUrl ? hlsUrl : undefined);
-          const shouldEagerLoad = index === 0 || index === activeIndex || index === activeIndex + 1;
-
-          return (
-            <div
-              key={`${url}-${index}`}
-              ref={(el) => {
-                slideRefs.current[index] = el;
-              }}
-              className={`${styles.mediaRowItem} ${mediaUrls.length === 1 ? styles.mediaRowItemSingle : styles.mediaRowItemMulti}`}
-              style={
-                mediaUrls.length === 1
-                  ? ({
-                      "--single-media-ratio": baseAspectRatio,
-                      aspectRatio: `${baseAspectRatio}`,
-                      cursor: onMediaClick ? "pointer" : undefined,
-                    } as React.CSSProperties)
-                  : {
-                      cursor: onMediaClick ? "pointer" : undefined,
-                    }
-              }
-              onClick={(e) => handleItemActivate(index, e)}
-            >
-              {isVideo ? (
-                <div
-                  className={styles.webVideoContainer}
-                  style={{ cursor: onMediaClick ? "pointer" : undefined }}
-                >
-                  <HlsVideoPlayer
-                    ref={(el) => {
-                      if (el) {
-                        videoRefs.current[index] = el;
-                      } else {
-                        delete videoRefs.current[index];
-                      }
-                    }}
-                    key={url}
-                    src={url}
-                    hlsSrc={itemHlsSrc}
-                    loop
-                    playsInline
-                    autoPlay={isCardVisible && index === activeIndex}
-                    preload={isPreloadWarm && shouldEagerLoad ? "auto" : "metadata"}
-                    muted={isMuted}
-                    controls={false}
-                    className={styles.mediaVideo}
-                    onPlay={() => {
-                      setPlayingStates((prev) => ({ ...prev, [index]: true }));
-                      if (isFullscreen) showControlsTemporarily(index);
-                    }}
-                    onPause={() => {
-                      setPlayingStates((prev) => ({ ...prev, [index]: false }));
-                      if (isFullscreen) setControlsVisible((prev) => ({ ...prev, [index]: true }));
-                    }}
-                    onTimeUpdate={(e) => {
-                      if (!isFullscreen) return;
-                      const cur = e.currentTarget.currentTime || 0;
-                      setVideoCurrentTimes((prev) => {
-                        if (Math.abs((prev[index] || 0) - cur) >= 0.5) {
-                          return { ...prev, [index]: cur };
-                        }
-                        return prev;
-                      });
-                    }}
-                    onLoadedMetadata={(e) => {
-                      const v = e.currentTarget;
-                      if (v.duration && !isNaN(v.duration)) {
-                        setVideoDurations((prev) => ({ ...prev, [index]: v.duration }));
-                      }
-                      if (index === 0 && v.videoWidth && v.videoHeight) {
-                        const rawRatio = v.videoWidth / v.videoHeight;
-                        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
-                        if (firstUrl) saveRatioToCache(firstUrl, clamped);
-                        setBaseAspectRatio((prev) => (mediaAspectRatioCache.has(firstUrl) ? prev : clamped));
-                      }
-                    }}
-                    onDurationChange={(e) => {
-                      const d = e.currentTarget.duration;
-                      if (d && !isNaN(d)) {
-                        setVideoDurations((prev) => ({ ...prev, [index]: d }));
-                      }
-                    }}
-                  />
-
-                  {!isFullscreen ? (
-                    <button
-                      type="button"
-                      className={styles.feedVideoMuteBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        const video = videoRefs.current[index];
-                        const nextMuted = !isMuted;
-                        if (video) {
-                          video.muted = nextMuted;
-                          video.defaultMuted = nextMuted;
-                          if (!nextMuted && video.paused && isCardVisible) {
-                            video.play().catch(() => {});
-                          }
-                        }
-                        onToggleMute();
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onTouchStart={(e) => e.stopPropagation()}
-                      title={isMuted ? "Unmute sound" : "Mute sound"}
-                      aria-label={isMuted ? "Unmute sound" : "Mute sound"}
-                    >
-                      {isMuted ? (
-                        <VolumeX size={15} strokeWidth={2.2} />
-                      ) : (
-                        <Volume2 size={15} strokeWidth={2.2} />
-                      )}
-                    </button>
-                  ) : (
-                    <VideoControlBar
-                      index={index}
-                      isPlaying={playingStates[index] ?? (isCardVisible && index === activeIndex)}
-                      isMuted={isMuted}
-                      isFullscreen={isFullscreen}
-                      showControls={controlsVisible[index] ?? true}
-                      videoDuration={videoDurations[index] || 0}
-                      videoCurrentTime={videoCurrentTimes[index] || 0}
-                      onTogglePlay={() => togglePlayVideo(index)}
-                      onToggleMute={onToggleMute}
-                      onToggleFullscreen={toggleFullscreen}
-                      formatVideoTime={formatVideoTime}
-                    />
-                  )}
-                </div>
-              ) : (
-                <img
-                  ref={index === 0 ? firstImgRef : undefined}
-                  src={url}
-                  alt={`Ad media ${index + 1} of ${mediaUrls.length}`}
-                  className={styles.adImgElement}
-                  style={{ cursor: onMediaClick ? "zoom-in" : undefined }}
-                  draggable={false}
-                  loading={shouldEagerLoad ? "eager" : "lazy"}
-                  decoding="async"
-                  onLoad={(e) => {
-                    if (index === 0 && firstUrl && !mediaAspectRatioCache.has(firstUrl)) {
-                      const img = e.currentTarget;
-                      if (img.naturalWidth && img.naturalHeight) {
-                        const rawRatio = img.naturalWidth / img.naturalHeight;
-                        const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
-                        saveRatioToCache(firstUrl, clamped);
-                        setBaseAspectRatio(clamped);
-                      }
-                    }
-                  }}
-                  onError={() => {
-                    if (mediaUrls.length === 1) setMediaError(true);
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 };

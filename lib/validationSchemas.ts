@@ -58,9 +58,9 @@ export const profileSetupStep1Schema = z.object({
 
   gender:     z.string().min(1, "Select a gender"),
   employment: z.string().min(1, "Select an employment status"),
-  country:    z.string().min(1, "Select a country"),
-  state:      z.string().min(1, "Select a state / region"),
-  location:   z.string().min(1, "Select a city / location"),
+  country:    z.string().optional().or(z.literal("")),
+  state:      z.string().optional().or(z.literal("")),
+  location:   z.string().optional().or(z.literal("")),
 
   businessName: z.string().max(25, "Business name must be 25 characters or fewer").optional().or(z.literal("")),
   bio:          z.string().max(90, "Bio must be 90 characters or fewer").optional().or(z.literal("")),

@@ -80,6 +80,12 @@ export const flowNodes: Record<string, FlowNode> = {
         action: 'auth_google',
         href: '/auth/login?connection=google-oauth2',
       },
+      {
+        id: 'c_hw_apple',
+        text: 'Continue with Apple',
+        action: 'auth_apple',
+        href: '/auth/login?connection=apple',
+      },
     ],
   },
 

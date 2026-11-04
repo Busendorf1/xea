@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { auth0 } from "./lib/auth0";
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search, hostname } = request.nextUrl;
+
+  // Canonicalize www.paayh.com -> paayh.com so Auth0 __txn_ state cookies are never split across subdomains
+  if (hostname === "www.paayh.com") {
+    const canonicalUrl = new URL(`https://paayh.com${pathname}${search}`);
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
 
   // For public static or informative pages, bypass Auth0 middleware to eliminate discovery timeouts
   const isPublicPage = 
@@ -22,8 +28,6 @@ export async function middleware(request: NextRequest) {
     pathname === "/cookies" ||
     pathname === "/careers" ||
     pathname === "/join" ||
-    pathname.startsWith("/auth/login") ||
-    pathname.startsWith("/auth/logout") ||
     pathname.startsWith("/api/feed") ||
     pathname === "/api/health" ||
     pathname.startsWith("/api/highlights");
