@@ -52,10 +52,10 @@ export function BecomeAgentPage({ formatCurrency }: { formatCurrency?: (val: num
 
         <ul className={styles.agentLinesList}>
           <li>
-            Invite people with your link and earn <strong>2%</strong> from their account lifetime earnings.
+            Invite people with your link and earn <strong>1%</strong> from their account lifetime earnings.
           </li>
           <li>
-            When someone you invited becomes an Agent, you earn <strong>4%</strong> from their earnings.
+            When someone you invited becomes an Agent, you earn <strong>2%</strong> from their earnings.
           </li>
           <li>
             An asterisk (<strong>*</strong>) is used to identify Agents.

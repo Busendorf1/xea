@@ -396,9 +396,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   }
 
   return (
-    <main className={styles.pageWapper}>
-      <div className={styles.pageWrapper}>
-        <div className={styles.adFormContainer}>
+    <div className={styles.pageWrapper}>
+      <div className={styles.adFormContainer}>
           <FormStepProgress
             steps={steps}
             currentStep={step}
@@ -531,8 +530,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             )}
           </div>
         </div>
+        <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />
       </div>
-      <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />
-    </main>
-  );
-}
+    );
+  }

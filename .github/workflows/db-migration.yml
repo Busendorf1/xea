@@ -16,6 +16,9 @@ jobs:
     name: Validate & Deploy Supabase Migrations
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_YES: "true"
 
     steps:
       - name: Checkout Repository
@@ -32,15 +35,13 @@ jobs:
           ls -la supabase/migrations/
 
       - name: Deploy Migrations to Production Supabase
-        if: ${{ secrets.SUPABASE_DB_URL != '' }}
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        if: env.SUPABASE_DB_URL != ''
         run: |
           echo "Deploying pending migrations to production database..."
-          supabase db push --db-url "$SUPABASE_DB_URL"
+          supabase db push --remote "$SUPABASE_DB_URL" --include-all --yes
 
       - name: Migration Notice (If Secret Not Configured)
-        if: ${{ secrets.SUPABASE_DB_URL == '' }}
+        if: env.SUPABASE_DB_URL == ''
         run: |
           echo "Notice: SUPABASE_DB_URL secret is not configured in GitHub repository secrets."
           echo "Migrations were verified locally. To enable automatic deployment on merge:"

@@ -9,10 +9,10 @@
 }
 
 .pageWrapper {
-  max-width: 880px;
+  max-width: 860px;
   margin: 0 auto;
   background-color: transparent;
-  padding: 1.5rem 1.5rem 4rem 1.5rem;
+  padding: 1.5rem 1.25rem 4rem 1.25rem;
   border-radius: 0;
   box-shadow: none !important;
   border: none;
@@ -270,34 +270,38 @@
 
 /* Modern Section Card Architecture */
 .modernSectionCard {
-  border-radius: 12px;
-  border: 1px solid var(--card-border);
-  background-color: var(--card-bg);
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  background-color: transparent;
+  background: transparent;
   overflow: visible;
   position: relative;
-  margin-bottom: 1.15rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  box-shadow: none !important;
+  transition: none;
 }
 
 .modernSectionCard:hover {
-  border-color: var(--card-border-hover);
+  border-color: var(--card-border);
 }
 
 .modernSectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.85rem 1.15rem;
-  background-color: var(--card-bg);
-  border-bottom: 1px solid var(--card-border);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
+  padding: 0.25rem 0 0.75rem 0;
+  background-color: transparent;
+  background: transparent;
+  border-bottom: none;
+  border-radius: 0;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 
 .modernSectionTitle {
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--foreground);
   display: inline-flex;
@@ -310,21 +314,21 @@
   font-size: 0.75rem;
   padding: 2px 9px;
   border-radius: 10px;
-  background-color: rgba(59, 130, 246, 0.15);
-  color: var(--primary, #60a5fa);
+  background-color: var(--primary-glow);
+  color: var(--foreground);
   font-weight: 600;
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  border: 1px solid var(--card-border);
   white-space: nowrap;
 }
 
 .modernSectionBody {
-  padding: 1.15rem;
+  padding: 0.25rem 0 0 0;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  background-color: var(--card-bg);
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
+  background-color: transparent;
+  background: transparent;
+  border-radius: 0;
   overflow: visible;
   position: relative;
 }
@@ -516,7 +520,7 @@
   .pageWrapper {
     padding: 1.25rem 1rem;
     margin: 0.5rem auto 1rem auto;
-    border-radius: 12px;
+    border-radius: 0 !important;
     border: none;
     box-shadow: none;
     box-sizing: border-box;
@@ -535,10 +539,13 @@
 .summarySection {
   display: flex;
   flex-direction: column;
-  background-color: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  padding: 1.35rem;
+  background-color: transparent;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 1.25rem 0;
   gap: 1.25rem;
 }
 
@@ -583,11 +590,13 @@
 
 /* Cost receipt card (Stripe style) */
 .costCard {
-  background-color: var(--sidebar-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  padding: 1.35rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  background-color: transparent;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  padding: 1.25rem 0;
+  box-shadow: none !important;
 }
 
 .costCardTitle {
@@ -665,12 +674,15 @@
 
 /* Stripe/Apple Payment Selector Card */
 .paymentSection {
-  background-color: var(--sidebar-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  padding: 1.25rem;
+  background-color: transparent;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  padding: 1.25rem 0;
   margin-top: 1.5rem;
   margin-bottom: 1.5rem;
+  box-shadow: none !important;
 }
 
 .paymentTitle {
@@ -719,7 +731,7 @@
   .pageWrapper {
     padding: 0.4rem 0.5rem !important;
     margin: 0.25rem auto 0.5rem auto !important;
-    border-radius: 12px;
+    border-radius: 0 !important;
     border: none;
     box-shadow: none;
   }
@@ -777,13 +789,15 @@
 /* ── Ad Account Suspended / Error Page ── */
 .suspendedCard {
   max-width: 620px;
-  margin: 4rem auto;
-  padding: 2.25rem 1.75rem;
-  background-color: var(--card-bg);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 4px;
+  margin: 3rem auto;
+  padding: 2rem 1.25rem;
+  background-color: transparent;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
   text-align: center;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
 }
 
 .suspendedIconWrap {
@@ -1174,16 +1188,20 @@
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--sidebar-bg);
   color: var(--foreground);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
+.targetAllBtn:hover {
+  border-color: var(--primary);
+}
+
 .targetAllBtnActive {
-  background: rgba(59, 130, 246, 0.25) !important;
-  color: #93c5fd !important;
-  border-color: rgba(59, 130, 246, 0.4) !important;
+  background: var(--primary) !important;
+  color: var(--background) !important;
+  border-color: var(--primary) !important;
 }
 
 .categoryGridBody {
@@ -1595,12 +1613,12 @@
 
 .genderSegmentBtn:hover {
   border-color: var(--primary);
-  background: rgba(234, 179, 8, 0.08);
+  background: var(--primary-glow);
 }
 
 .genderSegmentBtnActive {
   border-color: var(--primary);
-  background: rgba(234, 179, 8, 0.18);
+  background: var(--primary-glow);
   color: var(--primary);
   box-shadow: 0 0 0 1px var(--primary);
 }
@@ -1727,7 +1745,7 @@
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: #ffffff;
+  background-color: var(--background);
   transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -1777,44 +1795,88 @@
   gap: 8px;
 }
 
-/* ── Strong Obsidian Dark Black Theme Enforcement ── */
-:global([data-theme='dark']) .pageWrapper,
-:global([data-theme='dark']) .pageWapper,
-:global([data-theme='dark']) .modernSectionCard,
-:global([data-theme='dark']) .modernSectionHeader,
-:global([data-theme='dark']) .modernSectionBody,
-:global([data-theme='dark']) .dropdownContainer summary,
-:global([data-theme='dark']) .dropdownContainer details[open] summary,
+/* ── Theme Compliance (Dark, White & Light) ── */
 :global([data-theme='dark']) .adTypeCard,
-:global([data-theme='dark']) .summarySection,
-:global([data-theme='dark']) .costCard,
-:global([data-theme='dark']) .paymentSection,
-:global([data-theme='dark']) .paymentOptionCard,
+:global([data-theme='dark']) .mediaTypeCard,
+:global([data-theme='dark']) .actionCard,
 :global([data-theme='dark']) .inputBox,
 :global([data-theme='dark']) .textareaAutoResize,
 :global([data-theme='dark']) .checkboxGroup,
-:global([data-theme='dark']) .mutualLabel {
-  background-color: #000000 !important;
+:global([data-theme='dark']) .mutualLabel,
+:global([data-theme='dark']) .genderSegmentBtn {
+  background-color: var(--input-bg, var(--card-bg));
+  color: var(--foreground);
+  border-color: var(--card-border);
+}
+
+:global([data-theme='dark']) .adTypeCardActive,
+:global([data-theme='dark']) .mediaTypeCardActive,
+:global([data-theme='dark']) .actionCardActive {
+  background-color: var(--primary-glow) !important;
+  border-color: var(--primary) !important;
+}
+
+:global([data-theme='white']) .adTypeCard,
+:global([data-theme='light']) .adTypeCard,
+:global([data-theme='white']) .mediaTypeCard,
+:global([data-theme='light']) .mediaTypeCard,
+:global([data-theme='white']) .actionCard,
+:global([data-theme='light']) .actionCard,
+:global([data-theme='white']) .inputBox,
+:global([data-theme='light']) .inputBox,
+:global([data-theme='white']) .textareaAutoResize,
+:global([data-theme='light']) .textareaAutoResize,
+:global([data-theme='white']) .checkboxGroup,
+:global([data-theme='light']) .checkboxGroup,
+:global([data-theme='white']) .mutualLabel,
+:global([data-theme='light']) .mutualLabel,
+:global([data-theme='white']) .genderSegmentBtn,
+:global([data-theme='light']) .genderSegmentBtn {
+  background-color: var(--input-bg, var(--card-bg));
+  color: var(--foreground);
+  border-color: var(--card-border);
+}
+
+:global([data-theme='white']) .adTypeCardActive,
+:global([data-theme='light']) .adTypeCardActive,
+:global([data-theme='white']) .mediaTypeCardActive,
+:global([data-theme='light']) .mediaTypeCardActive,
+:global([data-theme='white']) .actionCardActive,
+:global([data-theme='light']) .actionCardActive {
+  background-color: var(--primary-glow) !important;
+  border-color: var(--primary) !important;
+}
+
+:global([data-theme='white']) .pageWrapper,
+:global([data-theme='light']) .pageWrapper,
+:global([data-theme='white']) .pageWapper,
+:global([data-theme='light']) .pageWapper,
+:global([data-theme='dark']) .pageWrapper,
+:global([data-theme='dark']) .pageWapper,
+:global([data-theme='white']) .modernSectionCard,
+:global([data-theme='light']) .modernSectionCard,
+:global([data-theme='dark']) .modernSectionCard,
+:global([data-theme='white']) .modernSectionHeader,
+:global([data-theme='light']) .modernSectionHeader,
+:global([data-theme='dark']) .modernSectionHeader,
+:global([data-theme='white']) .modernSectionBody,
+:global([data-theme='light']) .modernSectionBody,
+:global([data-theme='dark']) .modernSectionBody {
+  background-color: transparent !important;
+  color: var(--foreground);
 }
 
 @media (prefers-color-scheme: dark) {
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .pageWrapper,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .pageWapper,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .modernSectionCard,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .modernSectionHeader,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .modernSectionBody,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .dropdownContainer summary,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .dropdownContainer details[open] summary,
   :global(:root:not([data-theme='white']):not([data-theme='light'])) .adTypeCard,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .summarySection,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .costCard,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .paymentSection,
-  :global(:root:not([data-theme='white']):not([data-theme='light'])) .paymentOptionCard,
+  :global(:root:not([data-theme='white']):not([data-theme='light'])) .mediaTypeCard,
+  :global(:root:not([data-theme='white']):not([data-theme='light'])) .actionCard,
   :global(:root:not([data-theme='white']):not([data-theme='light'])) .inputBox,
   :global(:root:not([data-theme='white']):not([data-theme='light'])) .textareaAutoResize,
   :global(:root:not([data-theme='white']):not([data-theme='light'])) .checkboxGroup,
   :global(:root:not([data-theme='white']):not([data-theme='light'])) .mutualLabel {
-    background-color: #000000 !important;
+    background-color: var(--input-bg, var(--card-bg));
+    color: var(--foreground);
+    border-color: var(--card-border);
   }
 }
 

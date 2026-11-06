@@ -415,7 +415,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 0.75rem 1.15rem;
+  padding: 0.75rem 1.15rem max(0.75rem, env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--card-border);
   background: var(--card-bg);
 }
@@ -551,7 +551,7 @@
     width: 100%;
     max-width: 100%;
     height: 100dvh;
-    min-height: 100vh;
+    min-height: 100dvh;
     max-height: 100dvh;
     background: var(--background);
     border: none;
@@ -560,10 +560,10 @@
   }
 
   /* Safe area & Safari floating search bar clearance:
-     Lifts footer by ~85px so Safari's bottom address bar never obscures the button */
+     Lifts footer by ~115px so Safari's bottom address bar / search input box never obscures the button */
   .modalFooter {
     background: var(--background);
-    padding: 0.75rem 1.15rem calc(env(safe-area-inset-bottom, 20px) + 3.8rem);
+    padding: 0.85rem 1.15rem calc(env(safe-area-inset-bottom, 24px) + 5.5rem);
     position: sticky;
     bottom: 0;
     z-index: 25;
@@ -581,7 +581,7 @@
   /* Deep bottom scrolling clearance so the last follower/mutual in the list
      can scroll all the way into view past the elevated footer */
   .modalBody {
-    padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 6.5rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 24px) + 8.5rem);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
   }

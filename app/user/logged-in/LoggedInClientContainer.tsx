@@ -424,7 +424,7 @@ export default function LoggedInClientContainer({
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-white">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}>
       <ProofOfLocationModal
         email={email || session?.user?.email}
         user={user}

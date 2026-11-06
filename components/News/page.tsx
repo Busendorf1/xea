@@ -594,9 +594,8 @@ export default function News({ session }: NewsProps) {
   };
 
   return (
-    <div className={styles.pageWapper}>
-        <div className={styles.pageWrapper}>
-          {/* Progress Step Tracker */}
+    <div className={styles.pageWrapper}>
+      {/* Progress Step Tracker */}
           <FormStepProgress
             steps={steps}
             currentStep={step}
@@ -889,7 +888,6 @@ export default function News({ session }: NewsProps) {
             )}
           </AnimatePresence>
         </div>
-      </div>
       <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />
     </div>
   );
