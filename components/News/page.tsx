@@ -7,7 +7,7 @@ import styles from "../News/page.module.css";
 import LocationSelector from "../LocationSelector";
 import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
-import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag, Info, Award } from "lucide-react";
+import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag, Info, Award, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import RollingCounter from "@/components/ui/RollingCounter";
 import CustomSelect from "@/components/ui/CustomSelect";
@@ -73,6 +73,35 @@ export default function News({ session }: NewsProps) {
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
   const [stepError, setStepError] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [pendingLimitReached, setPendingLimitReached] = useState(false);
+
+  useEffect(() => {
+    if (editingId) return;
+    fetch("/api/campaigns")
+      .then((res) => res.json())
+      .then((data) => {
+        const queueList = data?.highlightsQueue;
+        if (queueList && Array.isArray(queueList)) {
+          const approvedUnpaidCount = queueList.filter((hl: any) => {
+            if (hl.admin_statement?.startsWith("APPROVED:")) {
+              const parts = hl.admin_statement.split("APPROVED:");
+              if (parts[1]) {
+                const approvedTime = new Date(parts[1].trim()).getTime();
+                if (!isNaN(approvedTime) && Date.now() - approvedTime > 72 * 60 * 60 * 1000) {
+                  return false;
+                }
+              }
+              return true;
+            }
+            return false;
+          }).length;
+          if (approvedUnpaidCount >= 2) {
+            setPendingLimitReached(true);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [editingId]);
 
   const loadHighlightForEdit = async (targetId: string) => {
     if (!targetId) return;
@@ -455,6 +484,7 @@ export default function News({ session }: NewsProps) {
         setIsSubmitting(false);
         const errMsg = submitData.error || "Failed to submit highlight for review.";
         if (submitData.limitReached) {
+          setPendingLimitReached(true);
           setStepError(""); // Avoid duplicate message at the bottom
           showAppleAlert(errMsg, "warning");
         } else {
@@ -597,6 +627,50 @@ export default function News({ session }: NewsProps) {
               </button>
             )}
           </div>
+
+          {pendingLimitReached && !editingId && (
+            <div
+              style={{
+                background: "var(--card-bg)",
+                border: "1px solid var(--card-border)",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                marginBottom: "16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
+                <div>
+                  <strong style={{ color: "var(--foreground)", fontSize: "0.88rem" }}>
+                    Pending Payment Limit Reached (2/2)
+                  </strong>
+                  <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                    You have 2 approved highlights awaiting payment. Make payment or delete an existing highlight in My Ads to submit a new one.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="/logged-in?view=myads&tab=highlights"
+                style={{
+                  padding: "6px 14px",
+                  background: "var(--primary)",
+                  color: "var(--background)",
+                  borderRadius: "8px",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Go to My Ads &rarr;
+              </a>
+            </div>
+          )}
 
           {stepError && (
             <div className={styles.errorAlert}>

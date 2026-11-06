@@ -73,9 +73,29 @@ export async function recordCoalescedAdSeen(
 ): Promise<void> {
   const nowIso = new Date().toISOString();
 
-  // If this adId is currently in an active 1.5s burst window, record per-user ad_impressions
-  // and coalesce the hot addsactive counter increment in O(1) RAM:
-  if (l1ActiveSeenFlushers.has(adId)) {
+  // 1. Try atomic RPC first
+  try {
+    const { data: seenRpcRes, error: seenRpcErr } = await supabaseAdmin.rpc("record_ad_seen", {
+      p_ad_id: adId,
+      p_user_email: emailKey,
+    });
+
+    if (!seenRpcErr && seenRpcRes) {
+      // Synchronize mirror counter to public.adds table asynchronously
+      supabaseAdmin.from("adds").select("impression_count").eq("id", adId).maybeSingle().then(({ data }) => {
+        if (data) {
+          supabaseAdmin.from("adds").update({ impression_count: Number(data.impression_count || 0) + 1 }).eq("id", adId).then(() => {}, () => {});
+        }
+      }, () => {});
+      if (meta.adOwnerEmail) {
+        invalidateCachedUserCampaigns(meta.adOwnerEmail).catch(() => {});
+      }
+      return;
+    }
+  } catch {}
+
+  // 2. Fallback: User impression table tracking + atomic counter increment
+  try {
     const { data: existingImp } = await supabaseAdmin
       .from("ad_impressions")
       .select("id, view_count")
@@ -84,90 +104,22 @@ export async function recordCoalescedAdSeen(
       .maybeSingle();
 
     const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
-    if (existingViews >= meta.userCap) return;
-
-    if (existingImp) {
-      await supabaseAdmin
-        .from("ad_impressions")
-        .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
-        .eq("id", existingImp.id);
-    } else {
-      await supabaseAdmin
-        .from("ad_impressions")
-        .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
-    }
-
-    const pending = l1PendingSeen.get(adId) || {
-      delta: 0,
-      adOwnerEmail: meta.adOwnerEmail,
-      isPlatformPost: meta.isPlatformPost,
-    };
-    pending.delta += 1;
-    if (!pending.adOwnerEmail && meta.adOwnerEmail) {
-      pending.adOwnerEmail = meta.adOwnerEmail;
-    }
-    l1PendingSeen.set(adId, pending);
-    return;
-  }
-
-  // First view on an idle ad: open the 1.5s hot-row shield and execute immediately
-  l1ActiveSeenFlushers.add(adId);
-  try {
-    const { data: seenRpcRes, error: seenRpcErr } = await supabaseAdmin.rpc("record_ad_seen", {
-      p_ad_id: adId,
-      p_user_email: emailKey,
-    });
-
-    const rpcFailedOrMissing =
-      Boolean(seenRpcErr) ||
-      (seenRpcRes &&
-        typeof seenRpcRes === "object" &&
-        seenRpcRes.success === false &&
-        seenRpcRes.reason !== "frequency_cap_reached");
-
-    if (rpcFailedOrMissing) {
-      const { data: existingImp } = await supabaseAdmin
-        .from("ad_impressions")
-        .select("id, view_count")
-        .eq("ad_id", adId)
-        .ilike("user_email", emailKey)
-        .maybeSingle();
-
-      const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
-      if (existingViews < meta.userCap) {
-        if (existingImp) {
-          await supabaseAdmin
-            .from("ad_impressions")
-            .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
-            .eq("id", existingImp.id);
-        } else {
-          await supabaseAdmin
-            .from("ad_impressions")
-            .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
-        }
-
-        await applyBatchedSeenDeltaToAd(adId, 1, meta.isPlatformPost, meta.adOwnerEmail);
+    if (existingViews < meta.userCap) {
+      if (existingImp) {
+        await supabaseAdmin
+          .from("ad_impressions")
+          .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
+          .eq("id", existingImp.id);
+      } else {
+        await supabaseAdmin
+          .from("ad_impressions")
+          .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
       }
-    }
 
-    setTimeout(async () => {
-      try {
-        const batch = l1PendingSeen.get(adId);
-        if (batch && batch.delta > 0) {
-          l1PendingSeen.delete(adId);
-          await applyBatchedSeenDeltaToAd(
-            adId,
-            batch.delta,
-            Boolean(batch.isPlatformPost),
-            batch.adOwnerEmail
-          );
-        }
-      } finally {
-        l1ActiveSeenFlushers.delete(adId);
-      }
-    }, COALESCE_WINDOW_MS);
-  } catch {
-    l1ActiveSeenFlushers.delete(adId);
+      await applyBatchedSeenDeltaToAd(adId, 1, meta.isPlatformPost, meta.adOwnerEmail);
+    }
+  } catch (err) {
+    console.warn("⚠️ Fallback seen record error:", err);
   }
 }
 
@@ -180,23 +132,41 @@ async function applyBatchedSeenDeltaToAd(
   if (delta <= 0) return;
   const nowIso = new Date().toISOString();
 
+  let targetTable = "addsactive";
+  let targetRow: any = null;
+
   const { data: liveAd } = await supabaseAdmin
     .from("addsactive")
     .select("impressions, impression_count, user_email")
     .eq("id", adId)
     .maybeSingle();
 
-  if (!liveAd) return;
+  if (liveAd) {
+    targetRow = liveAd;
+    targetTable = "addsactive";
+  } else {
+    const { data: addsRow } = await supabaseAdmin
+      .from("adds")
+      .select("impressions, impression_count, user_email")
+      .eq("id", adId)
+      .maybeSingle();
+    if (addsRow) {
+      targetRow = addsRow;
+      targetTable = "adds";
+    }
+  }
 
-  const currentImpCount = Number(liveAd.impression_count || 0);
-  const targetImps = Number(liveAd.impressions || 0);
-  const resolvedOwner = adOwnerEmail || liveAd.user_email || null;
+  if (!targetRow) return;
+
+  const currentImpCount = Number(targetRow.impression_count || 0);
+  const targetImps = Number(targetRow.impressions || 0);
+  const resolvedOwner = adOwnerEmail || targetRow.user_email || null;
   const nextImpCount = currentImpCount + delta;
   const isNowExhausted = !isPlatformPost && targetImps > 0 && nextImpCount >= targetImps;
   const completedIso = isNowExhausted ? nowIso : null;
 
   const { data: updatedAdRow } = await supabaseAdmin
-    .from("addsactive")
+    .from(targetTable)
     .update({
       impression_count: nextImpCount,
       ...(completedIso ? { completed_at: completedIso } : {}),
@@ -204,6 +174,11 @@ async function applyBatchedSeenDeltaToAd(
     .eq("id", adId)
     .select("*")
     .maybeSingle();
+
+  // If active ad, also synchronize counter to public.adds for unified reporting
+  if (targetTable === "addsactive") {
+    supabaseAdmin.from("adds").update({ impression_count: nextImpCount }).eq("id", adId).then(() => {}, () => {});
+  }
 
   if (isNowExhausted) {
     if (updatedAdRow) {

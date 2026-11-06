@@ -78,6 +78,7 @@ const AdminDirectPostTab = dynamic(() => import("./AdminDirectPostTab"), { ssr: 
 const AdminSendNotificationsTab = dynamic(() => import("./AdminSendNotificationsTab"), { ssr: false });
 const AdminQueuesTab = dynamic(() => import("./AdminQueuesTab"), { ssr: false });
 const AdminBrandSubscribersTab = dynamic(() => import("./AdminBrandSubscribersTab"), { ssr: false });
+import AdminAgentsNetworkTab from "./AdminAgentsNetworkTab";
 
 interface AdminDashboardClientProps {
   session: {
@@ -90,13 +91,14 @@ interface AdminDashboardClientProps {
   adminEmails: string[];
 }
 
-type Tab = "overview" | "accounts" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues" | "payout-management" | "master-statement" | "reconciliation" | "brand-subscribers";
+type Tab = "overview" | "accounts" | "agents-network" | "ad-approvals" | "highlight-approvals" | "active-ads" | "active-highlights" | "direct-post" | "help-center" | "send-notifications" | "reported-ads" | "queues" | "payout-management" | "master-statement" | "reconciliation" | "brand-subscribers";
 
 import { AdminAdMediaBox, AdminDashboardModals } from "./AdminDashboardModals";
 import { AdminAdCard, AdminHighlightCard } from "./AdminCampaignCards";
 import { AdminAccountsTab, AdminHelpCenterTab, AdminReportedAdsTab } from "./AdminCoreTabs";
 import { AdminHeader, AdminSidebar, AdminCampaignQueueOrActiveSection } from "./AdminLayoutAndCampaignTabs";
 import { useAdminCampaignAndUserActions } from "./useAdminCampaignAndUserActions";
+import { useAdminDialog } from "@/components/ui/AdminDialog";
 import { useAdminDataAndSupport } from "./useAdminDataAndSupport";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 
@@ -107,17 +109,20 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
+    try {
+      const cached = sessionStorage.getItem("admin_quick_stats");
+      if (cached) setStats(JSON.parse(cached));
+    } catch {}
+    try {
+      const savedBalance = localStorage.getItem("admin_show_balance");
+      if (savedBalance !== null) setShowAdminBalance(savedBalance === "true");
+    } catch {}
   }, []);
 
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   
-  const [showAdminBalance, setShowAdminBalance] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("admin_show_balance");
-      if (saved !== null) return saved === "true";
-    }
-    return true;
-  });
+  const [showAdminBalance, setShowAdminBalance] = useState(true);
+  const { alertDialog, confirmDialog } = useAdminDialog();
 
   const toggleAdminBalance = () => {
     setShowAdminBalance((prev) => {
@@ -187,6 +192,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
 
   // Search Filters
   const [searchQuery, setSearchQuery] = useState("");
+  const [usersFilter, setUsersFilter] = useState("");
 
   // Modal / Detail States
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
@@ -302,6 +308,7 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
     setUsersPage,
     usersLimit,
     setUsersCount,
+    usersFilter,
     pendingAds,
     setPendingAds,
     pendingAdsPage,
@@ -363,9 +370,19 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
   const handleExecuteAdBan = async () => {
     if (!banModalUser) return;
     if (banModalStatus !== "active" && !banModalReason.trim()) {
-      alert("Please provide a reason for this ad account restriction.");
+      await alertDialog("Please provide a reason for this ad account restriction.", "Validation Error");
       return;
     }
+
+    const confirmed = await confirmDialog(
+      banModalStatus === "active"
+        ? `Are you sure you want to restore full advertiser access for ${banModalUser.email}?`
+        : `Are you sure you want to apply ${banModalStatus.toUpperCase()} to advertiser ${banModalUser.email}?\n\nReason: "${banModalReason.trim()}"`,
+      "Confirm Advertiser Restriction",
+      banModalStatus !== "active"
+    );
+    if (!confirmed) return;
+
     setBanSubmitting(true);
     try {
       const res = await fetch("/api/admin/users", {
@@ -385,22 +402,32 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         const err = await res.json();
         throw new Error(err.error || "Failed to update ad account status");
       }
-      alert(`Ad account status updated for ${banModalUser.email}`);
+      await alertDialog(`Ad account status updated for ${banModalUser.email}`, "Access Updated");
       setBanModalUser(null);
       setBanModalReason("");
       fetchUsersTab(usersPage, searchQuery);
     } catch (e: any) {
-      alert(e.message || "Error updating ad account status");
+      await alertDialog(e.message || "Error updating ad account status", "Error");
     } finally {
       setBanSubmitting(false);
     }
   };
 
   const {
+    activeActionId,
     handleToggleMonetization,
     handleSuspendUser,
     handleAdjustBalance,
     handleDeleteUser,
+    handleUpdateUserProfile,
+    handleUpdateSpecialRoles,
+    handleToggleAgent,
+    handleBanAgent,
+    handleRemoveFollower,
+    handleRemoveAllFollowers,
+    handleDetachUplineAgent,
+    handleDeactivateAccount,
+    handleResetClicks,
     handleApproveAd,
     handleRejectAd,
     handleTogglePauseAd,
@@ -634,9 +661,28 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
               renderPagination={renderPagination}
               setSelectedUser={setSelectedUser}
               handleToggleMonetization={handleToggleMonetization}
+              handleToggleAgent={handleToggleAgent}
+              userActionSubmitting={userActionSubmitting}
+              activeActionId={activeActionId}
+              usersFilter={usersFilter}
+              setUsersFilter={setUsersFilter}
               setBanModalUser={setBanModalUser}
               setBanModalStatus={setBanModalStatus}
               setBanModalReason={setBanModalReason}
+            />
+          )}
+
+          {/* AGENTS & FOLLOWERS NETWORK TAB */}
+          {activeTab === "agents-network" && (
+            <AdminAgentsNetworkTab
+              setSelectedUser={setSelectedUser}
+              handleToggleAgent={handleToggleAgent}
+              handleBanAgent={handleBanAgent}
+              handleRemoveFollower={handleRemoveFollower}
+              handleRemoveAllFollowers={handleRemoveAllFollowers}
+              handleUpdateSpecialRoles={handleUpdateSpecialRoles}
+              userActionSubmitting={userActionSubmitting}
+              activeActionId={activeActionId}
             />
           )}
 
@@ -826,9 +872,20 @@ export default function AdminDashboardClient({ session, adminEmails }: AdminDash
         selectedUser={selectedUser}
         setSelectedUser={setSelectedUser}
         userActionSubmitting={userActionSubmitting}
+        activeActionId={activeActionId}
         handleAdjustBalance={handleAdjustBalance}
         handleSuspendUser={handleSuspendUser}
         handleDeleteUser={handleDeleteUser}
+        handleToggleMonetization={handleToggleMonetization}
+        handleUpdateUserProfile={handleUpdateUserProfile}
+        handleUpdateSpecialRoles={handleUpdateSpecialRoles}
+        handleToggleAgent={handleToggleAgent}
+        handleBanAgent={handleBanAgent}
+        handleRemoveFollower={handleRemoveFollower}
+        handleRemoveAllFollowers={handleRemoveAllFollowers}
+        handleDetachUplineAgent={handleDetachUplineAgent}
+        handleDeactivateAccount={handleDeactivateAccount}
+        handleResetClicks={handleResetClicks}
         editAdData={editAdData}
         setEditAdData={setEditAdData}
         handleSaveAdEdit={handleSaveAdEdit}

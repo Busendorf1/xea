@@ -56,6 +56,7 @@ export default function SidebarMenu() {
           <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("news")}>Create Highlight</Link>
           <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("adPage")}>Create Ad</Link>
           <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("monetize")}>Monetization</Link>
+          <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("agent")}>Become an Agent</Link>
           <Link href="/logged-in" className={styles.menuButton} onClick={() => selectTab("statement")}>Statement</Link>
           <Link href="/user/logout" className={styles.menuButton} onClick={() => setShowMenu(false)}>Logout</Link>
           <Link href="/logged-in" className={styles.menuButtonDanger} onClick={() => selectTab("deactivate")}>Deactivate Account</Link>

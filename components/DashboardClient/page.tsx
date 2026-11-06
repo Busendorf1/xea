@@ -10,6 +10,7 @@ import {
   Compass,
   FileText,
   UserCheck,
+  Users,
   Wallet,
   LogOut,
   Trash2,
@@ -26,6 +27,7 @@ import Collapsible from "../ui/Collapsible";
 import Footer from "../Footers/page";
 import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 
 import { UserProfile, DashboardClientProps, parseToArray } from "./types";
 import DashboardHeader from "./DashboardHeader";
@@ -505,6 +507,10 @@ export default function DashboardClient({
         <UserCheck size={20} strokeWidth={2} />
         <span>Monetization</span>
       </Link>
+      <Link href="/logged-in" onClick={() => selectTab("agent")} className={styles.menuButton}>
+        <Users size={20} strokeWidth={2} />
+        <span>Become an Agent</span>
+      </Link>
       <Link href="/logged-in" onClick={() => selectTab("statement")} className={styles.menuButton}>
         <Wallet size={20} strokeWidth={2} />
         <span>Statement</span>
@@ -558,7 +564,7 @@ export default function DashboardClient({
       <div className={`${styles.dashboardContainer} ${showHeader ? "" : styles.dashboardContainerHeaderHidden}`}>
         {/* 30-Day Inactive Account Warning Modal */}
         {(() => {
-          if (inactivityDismissed) return null;
+          if (inactivityDismissed || isExemptFromBarriersAndInactivity(user?.email, user)) return null;
           const daysInactive =
             user.daysInactive ??
             (user.last_active_at
@@ -657,7 +663,7 @@ export default function DashboardClient({
           <div className={styles.sidebarContent}>
             <DashboardProfileCard user={user} formatCurrency={formatCurrency} onSelectTab={selectTab} />
 
-            <InviteLink username={user.username} />
+            <InviteLink username={user.username} referralCode={user.referral_code} />
 
             <DashboardWalletCard
               user={user}

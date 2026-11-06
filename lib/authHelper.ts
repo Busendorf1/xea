@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { auth0 } from "./auth0";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 
-const auth0Domain = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER_BASE_URL || "dev-43c1fflhle3lv7jj.us.auth0.com";
+const auth0Domain = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER_BASE_URL || "auth.paayh.com";
 const cleanDomain = auth0Domain.replace(/^https?:\/\//, "");
 
 // Local bounded cache for validated access tokens to prevent redundant userinfo HTTP calls

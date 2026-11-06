@@ -293,20 +293,7 @@ export default function WithdrawalModal({
               </div>
 
               {(user.balance ?? 0) < 10000 && (
-                <div
-                  style={{
-                    background: "rgba(239, 68, 68, 0.1)",
-                    border: "1px solid rgba(239, 68, 68, 0.25)",
-                    borderRadius: "10px",
-                    padding: "10px 14px",
-                    fontSize: "12px",
-                    color: "#ef4444",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    marginBottom: "12px",
-                  }}
-                >
+                <div className={styles.balanceWarningBox}>
                   <AlertCircle size={15} />
                   <span>
                     Your wallet balance is below the minimum required limit of {formatCurrency(10000)}.
@@ -319,38 +306,18 @@ export default function WithdrawalModal({
                 const estFee = amt <= 5000 ? 10.75 : amt <= 50000 ? 26.88 : 53.75;
                 const netReceive = Math.max(0, amt - estFee);
                 return (
-                  <div
-                    style={{
-                      background: "var(--sidebar-bg)",
-                      border: "1px solid var(--card-border)",
-                      borderRadius: "12px",
-                      padding: "12px 14px",
-                      fontSize: "13px",
-                      color: "var(--text-muted)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <div className={styles.feeSummaryCard}>
+                    <div className={styles.feeSummaryRow}>
                       <span>Gateway Transfer Fee:</span>
-                      <span style={{ color: "var(--foreground)", fontWeight: 600 }}>₦{estFee.toFixed(2)}</span>
+                      <span className={styles.feeSummaryValBold}>₦{estFee.toFixed(2)}</span>
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <div className={styles.feeSummaryRow}>
                       <span>Disbursement Schedule:</span>
-                      <span style={{ color: "var(--foreground)" }}>Instant / Payout Window</span>
+                      <span className={styles.feeSummaryVal}>Instant / Payout Window</span>
                     </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        borderTop: "1px solid var(--card-border)",
-                        paddingTop: "8px",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: "var(--foreground)" }}>You will receive:</span>
-                      <span style={{ fontWeight: 700, color: "#10b981" }}>
+                    <div className={styles.feeSummaryTotalRow}>
+                      <span className={styles.receiveLabel}>You will receive:</span>
+                      <span className={styles.receiveAmount}>
                         {formatCurrency(netReceive)}
                       </span>
                     </div>

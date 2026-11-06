@@ -385,7 +385,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                   </>
                 ) : (
                   <>
-                    You have reached the highest tier (<strong>ATW3 • ₦90,000 wallet holding cap</strong>). Every <strong>Earn+</strong> click continues crediting 60% of the ad CPI directly to your wallet.
+                    You have reached the highest tier (<strong>ATW3 • ₦90,000 wallet holding cap</strong>). Every <strong>Earn+</strong> click continues crediting 50% of the ad CPI directly to your wallet.
                   </>
                 )}
               </p>

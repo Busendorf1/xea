@@ -2,22 +2,23 @@
 .pageWrapper,
 .pageWapper {
   font-family: var(--font-geist-sans), "Geist", "Inter", sans-serif !important;
-  background-color: var(--sidebar-bg);
+  background-color: transparent;
   min-height: auto;
-  padding: 1rem;
+  padding: 0;
   color: var(--foreground);
 }
 
 .pageWrapper {
   max-width: 880px;
-  margin: 0.75rem auto 1.5rem auto;
-  background-color: var(--card-bg);
-  padding: 1.5rem 1.75rem;
-  border-radius: var(--radius-card, 22px);
-  box-shadow: var(--shadow-surface);
-  border: 1px solid var(--card-border);
+  margin: 0 auto;
+  background-color: transparent;
+  padding: 1.5rem 1.5rem 4rem 1.5rem;
+  border-radius: 0;
   box-shadow: none !important;
+  border: none;
   color: var(--foreground);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Enforce Geist Font Across All Controls */
@@ -1815,4 +1816,51 @@
   :global(:root:not([data-theme='white']):not([data-theme='light'])) .mutualLabel {
     background-color: #000000 !important;
   }
+}
+
+
+/* Pending Payment Limit Banner */
+.pendingLimitBanner {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pendingLimitBannerContent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pendingLimitIcon {
+  flex-shrink: 0;
+}
+
+.pendingLimitTitle {
+  color: var(--foreground);
+  font-size: 0.88rem;
+}
+
+.pendingLimitText {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.pendingLimitActionBtn {
+  padding: 6px 14px;
+  background: var(--primary);
+  color: var(--background);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
 }

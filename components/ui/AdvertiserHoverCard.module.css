@@ -10,28 +10,27 @@
 }
 
 .hoverCardPopover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 290px;
-  max-width: 90vw;
+  position: fixed;
+  width: 236px;
+  max-width: calc(100vw - 20px);
   background-color: var(--card-bg, #0f172a);
   border: 1px solid var(--card-border, rgba(255, 255, 255, 0.12));
-  border-radius: var(--radius-card, 22px);
-  padding: 14px;
-  box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.25);
-  z-index: 999999;
+  border-radius: 16px;
+  padding: 11px 12px;
+  box-shadow: 0 16px 38px -10px rgba(0, 0, 0, 0.28);
+  z-index: 1000020;
   cursor: default;
-  animation: popoverFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: popoverFadeIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
   backdrop-filter: blur(12px);
   color: var(--foreground, #f8fafc);
   text-align: left;
+  box-sizing: border-box;
 }
 
 @keyframes popoverFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.97);
+    transform: translateY(-3px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -41,19 +40,20 @@
 
 .popoverHeader {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 9px;
+  margin-bottom: 8px;
 }
 
 .popoverAvatar {
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
-  max-width: 48px;
-  max-height: 48px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 36px;
+  max-height: 36px;
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   overflow: hidden;
@@ -61,11 +61,27 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  cursor: zoom-in;
+  will-change: width, height;
+  transition: width 0.16s cubic-bezier(0.16, 1, 0.3, 1), height 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.16s ease;
+}
+
+.popoverAvatarZoomed {
+  width: 88px;
+  height: 88px;
+  min-width: 88px;
+  min-height: 88px;
+  max-width: 88px;
+  max-height: 88px;
+  border-radius: 12px;
+  cursor: zoom-out;
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.35);
 }
 
 .popoverNames {
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 
 .popoverDisplayNameRow {
@@ -75,7 +91,7 @@
 }
 
 .popoverDisplayName {
-  font-size: 0.95rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--foreground, #f8fafc);
   white-space: nowrap;
@@ -92,7 +108,7 @@
 }
 
 .popoverHandle {
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   color: var(--text-muted, #94a3b8);
   white-space: nowrap;
   overflow: hidden;
@@ -101,29 +117,33 @@
 }
 
 .popoverBio {
-  font-size: 0.825rem;
-  line-height: 1.45;
+  font-size: 0.76rem;
+  line-height: 1.4;
   color: var(--foreground, #e2e8f0);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   word-break: break-word;
   white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .emptyBio {
   color: var(--text-muted, #94a3b8);
   font-style: italic;
-  font-size: 0.78rem;
+  font-size: 0.73rem;
 }
 
 .popoverMetaRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  font-size: 0.75rem;
+  gap: 10px;
+  font-size: 0.7rem;
   color: var(--text-muted, #94a3b8);
   border-top: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .metaItem {

@@ -5,6 +5,8 @@ import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { calculateAtwTier } from "@/lib/referralEngine";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { flushPendingAffiliateYield } from "@/lib/affiliateEngine";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +41,14 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. High-Scale Parallel Direct Query + Redis Live Clicks Read (~5-10ms)
+    if (isExemptFromBarriersAndInactivity(emailLower)) {
+      await flushPendingAffiliateYield(emailLower).catch(() => {});
+    }
+
     const [{ data: uData, error: uErr }, rawLiveClicks] = await Promise.all([
       supabaseReadOnly
         .from("users")
-        .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, has_cancelled_monetization")
+        .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, has_cancelled_monetization, is_affiliate, is_career")
         .eq("email", emailLower)
         .maybeSingle(),
       isRedisReady()
@@ -60,42 +66,45 @@ export async function GET(req: NextRequest) {
       });
 
       const row = statusData?.[0];
-      const clicksCount = Math.max(Number(row?.monetization_clicks || 0), liveClicksDelta);
-      const isMonetized = !!row?.monetized || clicksCount >= 300;
+      const isExempt = isExemptFromBarriersAndInactivity(emailLower);
+      const clicksCount = Math.max(Number(row?.monetization_clicks || 0), liveClicksDelta, isExempt ? 300 : 0);
+      const isMonetized = isExempt || !!row?.monetized || clicksCount >= 300;
 
       payload = {
         success: true,
         isMonetized,
         clicksCount,
-        clicksRemaining: Math.max(0, 300 - clicksCount),
+        clicksRemaining: isExempt ? 0 : Math.max(0, 300 - clicksCount),
         targetClicks: 300,
         atwTier: row?.atw_tier || "ATW1",
-        daysInactive: Number(row?.days_inactive || 0),
-        statusMessage: row?.status_message || null,
+        daysInactive: isExempt ? 0 : Number(row?.days_inactive || 0),
+        statusMessage: isExempt ? null : row?.status_message || null,
       };
     } else {
+      const isExempt = isExemptFromBarriersAndInactivity(emailLower, uData as any);
       const dbClicks = uData.monetization_clicks ?? 0;
       const clicks = Math.max(dbClicks, liveClicksDelta);
       const isMonetized = !!(
+        isExempt ||
         uData.monetized === "true" ||
         uData.monetized === "yes" ||
         uData.monetized === true ||
         clicks >= 300
       );
 
-      // Fast in-memory calculation of inactive days
+      // Fast in-memory calculation of inactive days (Exempt accounts never accrue inactivity penalties)
       let daysInactive = 0;
-      if (uData.last_active_at) {
+      if (!isExempt && uData.last_active_at) {
         const lastActive = new Date(uData.last_active_at).getTime();
         const now = Date.now();
         daysInactive = Math.max(0, Math.floor((now - lastActive) / (1000 * 60 * 60 * 24)));
       }
 
       let effectiveMonetized = isMonetized;
-      let effectiveClicks = clicks;
+      let effectiveClicks = isExempt ? Math.max(clicks, 300) : clicks;
 
-      // Immediately enforce 7-day inactivity reset if threshold reached
-      if (daysInactive >= 7 && (isMonetized || clicks > 0)) {
+      // Immediately enforce 7-day inactivity reset if threshold reached (skip for exempt accounts)
+      if (!isExempt && daysInactive >= 7 && (isMonetized || clicks > 0)) {
         await supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower });
         if (isRedisReady()) {
           await redisConnection.del(`user:live_clicks:${emailLower}`).catch(() => {});

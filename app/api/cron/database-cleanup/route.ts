@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
 import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { flushPendingAffiliateYield } from "@/lib/affiliateEngine";
 
 export async function GET(req: NextRequest) {
   return handleCron(req);
@@ -16,13 +18,21 @@ async function handleCron(req: NextRequest) {
     // 1. Authenticate the request
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    
-    if ((process.env.NODE_ENV === "production" && !cronSecret) || (cronSecret && authHeader !== `Bearer ${cronSecret}`)) {
+
+    if (
+      (process.env.NODE_ENV === "production" && !cronSecret) ||
+      (cronSecret && authHeader !== `Bearer ${cronSecret}`)
+    ) {
       console.warn("⚠️ Unauthorized cron database-cleanup attempt.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     console.log("🧹 Cron: Starting database-cleanup task...");
+
+    // Flush any buffered/sharded affiliate yield
+    try {
+      await flushPendingAffiliateYield();
+    } catch {}
 
     // Purge approved campaigns not published after 3 days
     try {
@@ -53,10 +63,8 @@ async function handleCron(req: NextRequest) {
       if (errAds) {
         console.warn("⚠️ Cron: RPC delete_expired_completed_ads failed, executing direct fallback:", errAds.message);
       }
-      // Direct cleanup fallback: delete from completed_ads, addsactive, and adds where completed_at is older than 48 hours
       const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
-      // Purge storage media for expired completed ads
       const { data: expiredAds } = await supabaseAdmin
         .from("adds")
         .select("ad_media, ad_media_url")
@@ -75,7 +83,7 @@ async function handleCron(req: NextRequest) {
       await Promise.all([
         supabaseAdmin.from("addsactive").delete().not("completed_at", "is", null).lt("completed_at", fortyEightHoursAgo),
         supabaseAdmin.from("adds").delete().not("completed_at", "is", null).lt("completed_at", fortyEightHoursAgo),
-        supabaseAdmin.from("completed_ads").delete().lt("completed_at", fortyEightHoursAgo)
+        supabaseAdmin.from("completed_ads").delete().lt("completed_at", fortyEightHoursAgo),
       ]);
       console.log("✅ Cron: Completed ads purged successfully.");
     } catch (err: any) {
@@ -88,10 +96,8 @@ async function handleCron(req: NextRequest) {
       const { error: errNews } = await supabaseAdmin.rpc("delete_expired_news");
       if (errNews) {
         console.warn("⚠️ Cron: RPC delete_expired_news failed, executing direct fallback deletion:", errNews.message);
-        // Fallback: direct delete for highlights older than 24 hours
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-        // Purge storage media for expired highlights
         const { data: expiredNews } = await supabaseAdmin
           .from("newsactive")
           .select("image_url")
@@ -138,7 +144,7 @@ async function handleCron(req: NextRequest) {
         const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
         await Promise.all([
           supabaseAdmin.from("notifications").delete().lt("created_at", fifteenDaysAgo),
-          supabaseAdmin.from("global_announcements").delete().lt("created_at", fifteenDaysAgo)
+          supabaseAdmin.from("global_announcements").delete().lt("created_at", fifteenDaysAgo),
         ]);
       } else {
         console.log("✅ Cron: Expired notifications purged successfully.");
@@ -147,18 +153,30 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error purging notifications:", err.message || err);
     }
 
-    // 7. Reset 7-day inactive monetized users
+    // 7. Reset 7-day inactive monetized users (Exempts Admin, Career, and Affiliate accounts)
     try {
       console.log("🧹 Cron: Resetting 7-day inactive monetized users...");
       const { data: resetCnt, error: errReset } = await supabaseAdmin.rpc("reset_inactive_monetized_users");
       if (errReset) {
         console.warn("⚠️ Cron: RPC reset_inactive_monetized_users failed, executing direct fallback:", errReset.message);
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        await supabaseAdmin
+        const { data: candidates } = await supabaseAdmin
           .from("users")
-          .update({ monetized: "false", monetization_clicks: 0 })
+          .select("id, email, is_affiliate, is_career")
           .lt("last_active_at", sevenDaysAgo)
-          .or("monetized.eq.true,monetized.eq.yes,monetization_clicks.gt.0");
+          .or("monetized.eq.true,monetized.eq.yes,monetization_clicks.gt.0")
+          .limit(500);
+
+        const resetIds = (candidates || [])
+          .filter((u: any) => !isExemptFromBarriersAndInactivity(u.email, u))
+          .map((u: any) => u.id);
+
+        if (resetIds.length > 0) {
+          await supabaseAdmin
+            .from("users")
+            .update({ monetized: "false", monetization_clicks: 0 })
+            .in("id", resetIds);
+        }
       } else {
         console.log(`✅ Cron: 7-day inactive monetized users reset successfully (Count: ${resetCnt ?? 0}).`);
       }
@@ -166,7 +184,7 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error resetting inactive users:", err.message || err);
     }
 
-    // 8. Auto-partition inspector (Triggers automatic partitioning as soon as ad_impressions hits 1 Million rows)
+    // 8. Auto-partition inspector
     try {
       console.log("🧹 Cron: Inspecting ad_impressions row count for 1M-row auto-partitioning...");
       const { data: isPartitioned, error: errPartition } = await supabaseAdmin.rpc("check_and_auto_partition_at_1m");
@@ -179,18 +197,32 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error inspecting auto-partitioning threshold:", err.message || err);
     }
 
-    // 9. Forfeit balances of accounts inactive for 60+ days (last_active_at < 60 days ago)
+    // 9. Forfeit balances of accounts inactive for 60+ days (Exempts Admin, Career, and Affiliate accounts)
     try {
       console.log("🧹 Cron: Checking for 60-day inactive accounts with unclaimed balances...");
       const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: forfeitedUsers } = await supabaseAdmin
+      const { data: candidateUsers } = await supabaseAdmin
         .from("users")
-        .update({ balance: 0 })
+        .select("id, email, balance, is_affiliate, is_career")
         .lt("last_active_at", sixtyDaysAgo)
         .gt("balance", 0)
-        .select("email, balance");
+        .limit(500);
 
-      if (forfeitedUsers && forfeitedUsers.length > 0) {
+      const eligibleIds = (candidateUsers || [])
+        .filter((u: any) => !isExemptFromBarriersAndInactivity(u.email, u))
+        .map((u: any) => u.id);
+
+      let forfeitedUsers: any[] = [];
+      if (eligibleIds.length > 0) {
+        const { data: updatedRows } = await supabaseAdmin
+          .from("users")
+          .update({ balance: 0 })
+          .in("id", eligibleIds)
+          .select("email, balance");
+        forfeitedUsers = updatedRows || [];
+      }
+
+      if (forfeitedUsers.length > 0) {
         console.log(`⚠️ Cron: Forfeited unclaimed balances for ${forfeitedUsers.length} account(s) inactive for 60+ days.`);
       }
     } catch (err: any) {

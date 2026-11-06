@@ -63,6 +63,13 @@ export default function ModalLandingPage() {
   // If ModalLandingPage renders on a fresh document load, the server confirmed there is no active Auth0 session,
   // so clear any stale paayh_active_tab cookie to prevent a / <-> /logged-in reload loop.
   useEffect(() => {
+    try {
+      const refParam = new URLSearchParams(window.location.search).get("ref")?.trim();
+      if (refParam) {
+        localStorage.setItem("paayh_ref_code", refParam);
+        document.cookie = `paayh_ref_code=${encodeURIComponent(refParam)}; path=/; max-age=2592000; SameSite=Lax`;
+      }
+    } catch {}
     if (typeof document !== "undefined" && document.cookie.includes("paayh_active_tab=")) {
       document.cookie = "paayh_active_tab=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     }

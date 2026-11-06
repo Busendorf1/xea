@@ -60,17 +60,18 @@
 .contentGrid {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0;
 }
 
 .statusCard {
-  border-radius: var(--radius-card, 22px);
-  box-shadow: var(--shadow-surface);
-  padding: 22px 26px;
-  border: 1px solid var(--card-border);
-  background: var(--sidebar-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1.5rem 1.25rem 1.75rem 1.25rem;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: all 0.2s ease;
 }
 
@@ -190,15 +191,15 @@
 }
 
 .progressCard {
-  background: var(--sidebar-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-card, 22px);
-  box-shadow: var(--shadow-surface);
-  padding: 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 1.75rem 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: none !important;
 }
 
 .titleIconBox {
@@ -362,13 +363,13 @@
 }
 
 .policyCard {
-  background: var(--sidebar-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-card, 22px);
-  padding: 20px 24px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 1.75rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .policyHeader {

@@ -1,6 +1,7 @@
 import redisConnection, { isRedisReady } from "../redis";
 import supabaseAdmin from "./dbAdmin";
 import { invalidateCachedProfile } from "./cache";
+import { isExemptFromBarriersAndInactivity } from "../adminHelper";
 
 const ACTIVITY_THROTTLE_TTL_SECONDS = 86400; // 24 Hours
 const ACTIVITY_THROTTLE_MS = ACTIVITY_THROTTLE_TTL_SECONDS * 1000;
@@ -50,13 +51,15 @@ export async function touchUserActivity(
       daysInactive = Math.max(0, Math.floor((nowMs - lastActiveMs) / (1000 * 60 * 60 * 24)));
 
       // 7-Day Inactivity Rule: If inactive >= 7 days and account was monetized or has progress clicks
+      // Exempt Admin, Career, and Affiliate accounts completely from inactivity resets
+      const isExempt = isExemptFromBarriersAndInactivity(emailLower, userProfile as any);
       const wasMonetized =
         userProfile.monetized === "yes" ||
         userProfile.monetized === "true" ||
         userProfile.monetized === true;
       const hadClicks = Number(userProfile.monetization_clicks || 0) > 0;
 
-      if (daysInactive >= 7 && (wasMonetized || hadClicks)) {
+      if (!isExempt && daysInactive >= 7 && (wasMonetized || hadClicks)) {
         console.warn(` User ${emailLower} inactive for ${daysInactive} days. Revoking monetization & resetting clicks...`);
         await supabaseAdmin.rpc("check_and_update_monetization_status", {
           p_email: emailLower,

@@ -75,11 +75,17 @@ export async function POST(req: NextRequest) {
     }
     const { bankCode, bankName, accountNumber, amount: withdrawAmount, phone } = parsed.data;
 
-    // 1. Fetch user's current profile details using indexed .eq lookup
+    // 1. Flush any buffered/sharded affiliate yield first and fetch user's profile
     const emailLower = email.toLowerCase().trim();
+    const { isExemptFromBarriersAndInactivity } = await import("@/lib/adminHelper");
+    const { flushPendingAffiliateYield } = await import("@/lib/affiliateEngine");
+    if (isExemptFromBarriersAndInactivity(emailLower)) {
+      await flushPendingAffiliateYield(emailLower).catch(() => {});
+    }
+
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier")
+      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career")
       .eq("email", emailLower)
       .maybeSingle();
 
@@ -91,7 +97,7 @@ export async function POST(req: NextRequest) {
     const currentBalance = parseFloat(user.balance || 0);
     const currentWithdrawal = parseFloat(user.withdrawal || 0);
 
-    const isAdmin = isAdminEmail(email);
+    const isAdmin = isAdminEmail(email) || isExemptFromBarriersAndInactivity(emailLower, user as any);
 
     // Rule 1: Minimum balance requirement (Bypassed for Admins)
     if (!isAdmin && currentBalance < MIN_WITHDRAWAL_AMOUNT) {

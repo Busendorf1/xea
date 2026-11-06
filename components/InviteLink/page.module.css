@@ -1,9 +1,10 @@
 .inviteCard {
-  background: var(--card-bg);
-  padding: 1.15rem 1.25rem;
-  border-radius: var(--radius-card, 12px);
-  border: 1px solid var(--card-border);
-  box-shadow: var(--shadow-surface), var(--card-rim);
+  background: transparent;
+  padding: 1.2rem 1.15rem;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   width: 100%;

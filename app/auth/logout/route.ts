@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const rawDomain =
     process.env.AUTH0_DOMAIN ||
     process.env.AUTH0_ISSUER_BASE_URL ||
-    "dev-43c1fflhle3lv7jj.us.auth0.com";
+    "auth.paayh.com";
   const cleanDomain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const clientId = process.env.AUTH0_CLIENT_ID || "";
   const baseUrl =

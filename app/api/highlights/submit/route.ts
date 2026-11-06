@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing highlight data." }, { status: 400 });
     }
 
-    // Enforce 2-Campaign Pending Limit
+    // Enforce 2-Campaign Approved Payment Limit
+    // Count highlights approved by admin for payment, excluding newly submitted highlights still awaiting review
     if (!editingId) {
       const { data: userPendingNews, error: pendingErr } = await supabaseAdmin
         .from("news")
@@ -59,8 +60,7 @@ export async function POST(req: NextRequest) {
         .eq("user_email", emailLower);
 
       if (!pendingErr && userPendingNews) {
-        const pendingCount = userPendingNews.filter((hl) => {
-          if (hl.admin_statement?.startsWith("REJECTED:")) return false;
+        const approvedUnpaidCount = userPendingNews.filter((hl) => {
           if (hl.admin_statement?.startsWith("APPROVED:")) {
             const parts = hl.admin_statement.split("APPROVED:");
             if (parts[1]) {
@@ -69,20 +69,18 @@ export async function POST(req: NextRequest) {
                 return false; // Expired approved highlight waiting to be purged
               }
             }
+            return true;
           }
-          if (!hl.admin_statement) return true;
-          if (hl.admin_statement.startsWith("Status: Pending review")) return true;
-          if (hl.admin_statement.startsWith("APPROVED:")) return true;
           return false;
         }).length;
 
-        if (pendingCount >= 2) {
+        if (approvedUnpaidCount >= 2) {
           return NextResponse.json(
             {
               error:
-                "You have reached the limit of 2 highlights awaiting review or publication. Please publish or delete an existing highlight before submitting another.",
+                "You have reached the limit of 2 approved highlights awaiting payment. Please make payment or delete an existing approved highlight in My Ads before submitting another.",
               limitReached: true,
-              pendingCount,
+              pendingCount: approvedUnpaidCount,
             },
             { status: 400 }
           );

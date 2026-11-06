@@ -13,7 +13,7 @@ export const faqs: FaqItem[] = [
   {
     question: "What is Paayh and how does it work?",
     answer:
-      "Paayh is an attention exchange and digital content platform that rewards users with promotional incentive rewards in exchange for genuine human attention. Advertisers achieve an industry leading target deliverability of up to 99.99% to real active users, and monetized users can earn a dynamic share ranging up to 60% of net advertising revenue generated from confirmed human impressions."
+      "Paayh is an attention exchange and digital content platform that rewards users with promotional incentive rewards in exchange for genuine human attention. Advertisers achieve an industry leading target deliverability of up to 99.99% to real active users, and monetized users can earn a dynamic share ranging up to 50% of net advertising revenue generated from confirmed human impressions."
   },
   {
     question: "Can I post both Ads and Highlights?",
@@ -48,7 +48,7 @@ export const faqs: FaqItem[] = [
   {
     question: "What happens to inactive accounts?",
     answer:
-      "If you do not use Paayh for 7 consecutive days, your monetization status will be automatically revoked and you will need to requalify. Ads are always redirected to active users to ensure delivery. If an account remains completely dormant with zero activity for 60 consecutive days, unclaimed incentive balances are forfeited to cover ledger maintenance."
+      "If you do not use Paayh for 7 consecutive days, your monetization status is automatically revoked and click progress resets (you can requalify at any time, and your existing wallet balance remains untouched). However, if an account remains completely dormant with zero login or activity for 60 consecutive days, all unclaimed incentive balances, including accumulated Follower and Agent earnings, are permanently forfeited to the platform to cover ledger maintenance."
   },
   {
     question: "When can I withdraw my earnings?",
@@ -66,9 +66,9 @@ export const faqs: FaqItem[] = [
       "No. In strict compliance with Nigerian Anti Money Laundering regulations (Money Laundering (Prevention and Prohibition) Act 2022) and to prevent financial fraud, all payments for campaigns and Highlights represent consumable infrastructure fees and are strictly non refundable under any circumstance. Users are encouraged to test campaigns with modest budgets."
   },
   {
-    question: "Is referral allowed?",
+    question: "How does the Followers, Invites & Agent program work, and is anything deducted from my earnings?",
     answer:
-      "Yes, you are welcome to invite others to join Paayh. However, there are currently no referral bonuses or incentives attached to this feature."
+      "The program is a voluntary follower reward sharing system designed to maximize user earnings. When you become an Agent for free and share your invite link, people who join through your link appear in your Followers list under Invites, and you appear in their Following tab. Once a follower is monetized, 1% of their promotional earnings is deducted and credited to the Agent who invited them (leaving 99% to the follower). If that follower also becomes an Agent, which allows them to invite others and earn from their own followers too, the deduction for the Agent who brought them becomes 2% (marked with an asterisk * beside their earnings, e.g., ₦0.00*). Participation is completely voluntary: if you do not want 1% or 2% deducted for the person who invited you, you can request to Unfollow them (with their permission) or click Opt Out to immediately disconnect, though opting out removes both your referrer and any followers you invited. As long as you remain active and do not violate our platform rules or 7 day or 60 day inactivity policy, your followers' earnings will continue filling your wallet automatically."
   },
   {
     question: "How old do I have to be to use Paayh?",

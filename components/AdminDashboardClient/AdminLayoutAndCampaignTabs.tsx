@@ -23,12 +23,14 @@ import {
   Building2,
   RefreshCw,
   CheckCircle,
+  Network,
 } from "lucide-react";
 import styles from "./page.module.css";
 
 export type AdminTab =
   | "overview"
   | "accounts"
+  | "agents-network"
   | "ad-approvals"
   | "highlight-approvals"
   | "active-ads"
@@ -119,27 +121,32 @@ export const AdminSidebar = React.memo(function AdminSidebar({
 
       <button onClick={() => handleTabChange("accounts")} className={`${styles.tabButton} ${activeTab === "accounts" ? styles.tabButtonActive : ""}`}>
         <Users size={18} />
-        <span>User Accounts ({stats.totalUsers})</span>
+        <span suppressHydrationWarning>User Accounts & Bans ({stats.totalUsers})</span>
+      </button>
+
+      <button onClick={() => handleTabChange("agents-network")} className={`${styles.tabButton} ${activeTab === "agents-network" ? styles.tabButtonActive : ""}`}>
+        <Network size={18} />
+        <span>Agents &amp; Affiliates</span>
       </button>
 
       <button onClick={() => handleTabChange("ad-approvals")} className={`${styles.tabButton} ${activeTab === "ad-approvals" ? styles.tabButtonActive : ""}`}>
         <FileCheck2 size={18} />
-        <span>Ad Approvals ({stats.pendingAdsCount})</span>
+        <span suppressHydrationWarning>Ad Approvals ({stats.pendingAdsCount})</span>
       </button>
 
       <button onClick={() => handleTabChange("highlight-approvals")} className={`${styles.tabButton} ${activeTab === "highlight-approvals" ? styles.tabButtonActive : ""}`}>
         <Sparkles size={18} />
-        <span>Highlight Approvals ({stats.pendingHighlightsCount})</span>
+        <span suppressHydrationWarning>Highlight Approvals ({stats.pendingHighlightsCount})</span>
       </button>
 
       <button onClick={() => handleTabChange("active-ads")} className={`${styles.tabButton} ${activeTab === "active-ads" ? styles.tabButtonActive : ""}`}>
         <TrendingUp size={18} />
-        <span>Active Ads ({stats.activeAdsCount})</span>
+        <span suppressHydrationWarning>Active Ads ({stats.activeAdsCount})</span>
       </button>
 
       <button onClick={() => handleTabChange("active-highlights")} className={`${styles.tabButton} ${activeTab === "active-highlights" ? styles.tabButtonActive : ""}`}>
         <Compass size={18} />
-        <span>Active Highlights ({stats.activeHighlightsCount})</span>
+        <span suppressHydrationWarning>Active Highlights ({stats.activeHighlightsCount})</span>
       </button>
 
       <button onClick={() => handleTabChange("direct-post")} className={`${styles.tabButton} ${activeTab === "direct-post" ? styles.tabButtonActive : ""}`}>
@@ -149,7 +156,7 @@ export const AdminSidebar = React.memo(function AdminSidebar({
 
       <button onClick={() => handleTabChange("help-center")} className={`${styles.tabButton} ${activeTab === "help-center" ? styles.tabButtonActive : ""}`}>
         <MessageCircle size={18} />
-        <span>Help Center ({helpTicketsCount})</span>
+        <span suppressHydrationWarning>Help Center ({helpTicketsCount})</span>
       </button>
 
       <button onClick={() => handleTabChange("send-notifications")} className={`${styles.tabButton} ${activeTab === "send-notifications" ? styles.tabButtonActive : ""}`}>
@@ -159,7 +166,7 @@ export const AdminSidebar = React.memo(function AdminSidebar({
 
       <button onClick={() => handleTabChange("reported-ads")} className={`${styles.tabButton} ${activeTab === "reported-ads" ? styles.tabButtonActive : ""}`}>
         <ShieldAlert size={18} />
-        <span>Ad Guard / Reports ({reportedAdsCount})</span>
+        <span suppressHydrationWarning>Ad Guard / Reports ({reportedAdsCount})</span>
       </button>
 
       <button onClick={() => handleTabChange("queues")} className={`${styles.tabButton} ${activeTab === "queues" ? styles.tabButtonActive : ""}`}>
@@ -184,7 +191,7 @@ export const AdminSidebar = React.memo(function AdminSidebar({
 
       <button onClick={() => handleTabChange("brand-subscribers")} className={`${styles.tabButton} ${activeTab === "brand-subscribers" ? styles.tabButtonActive : ""}`}>
         <Building2 size={18} />
-        <span>Brand Subscribers {pendingSubscribersCount > 0 ? `(${pendingSubscribersCount})` : ""}</span>
+        <span suppressHydrationWarning>Brand Subscribers {pendingSubscribersCount > 0 ? `(${pendingSubscribersCount})` : ""}</span>
       </button>
 
       <div className={styles.adminCls_39}>

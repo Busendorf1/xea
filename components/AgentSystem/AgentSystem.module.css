@@ -1,0 +1,543 @@
+/* ============================================================================
+   PAAYH INVITES & FOLLOWERS SYSTEM STYLES
+   Minimalist, borderless flowing list adhering strictly to Paayh color tokens.
+   ============================================================================ */
+
+.statButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: none;
+  padding: 0.15rem 0.3rem;
+  margin: -0.15rem -0.3rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.82rem;
+  transition: opacity 0.15s ease;
+}
+
+.statButton:hover {
+  opacity: 0.75;
+}
+
+.statValue {
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.statLabel {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.statDot {
+  color: var(--text-muted);
+  margin: 0 0.15rem;
+  user-select: none;
+}
+
+.pendingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--foreground);
+  display: inline-block;
+  margin-left: 2px;
+}
+
+/* Modal Backdrop & Card */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modalCard {
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  background: var(--card-bg);
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card, 22px);
+  box-shadow: var(--shadow-surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.modalTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.modalTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.modalSubtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.closeBtn:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+/* Tabs */
+.tabsRow {
+  display: flex;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.tabBtn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0.68rem 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.tabBtn:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.tabBtnActive {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.tabBtnActive::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 25%;
+  right: 25%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--foreground);
+}
+
+/* Summary Strip — Money in Black / Foreground */
+.summaryBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.15rem;
+  border-bottom: 1px solid var(--card-border);
+  font-size: 0.75rem;
+}
+
+.summaryLabel {
+  color: var(--text-muted);
+}
+
+.summaryAmount {
+  font-weight: 700;
+  color: var(--foreground);
+  font-size: 0.82rem;
+}
+
+/* Flowing Borderless List (Millions of Followers Scale) */
+.modalBody {
+  padding: 0.5rem 1.15rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 2rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.emptyStateText {
+  margin: 0;
+}
+
+/* Borderless & Background-free Flowing Row */
+.userRow {
+  display: flex;
+  flex-direction: column;
+  padding: 0.42rem 0;
+  background: transparent;
+  border: none;
+}
+
+.userRowMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.userInfoLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.avatarTrigger {
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.nameWithBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.selectableNameBtn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: inherit;
+}
+
+.selectableNameBtn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.selectableNameActive {
+  font-weight: 700;
+}
+
+.earnedRightCol {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Money in Black / Foreground */
+.earnedAmount {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+/* Compact Inline Action Tray when a User Name is Selected */
+.inlineActionTray {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.35rem 0 0.25rem 2.15rem;
+}
+
+.optOutActionsRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.promptText {
+  margin: 0;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
+.btnPrimarySmall {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--background);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btnSecondarySmall {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btnSpinnerSmall {
+  width: 11px !important;
+  height: 11px !important;
+  border-width: 1.8px !important;
+}
+
+.btnSpinnerInline {
+  width: 13px !important;
+  height: 13px !important;
+  border-width: 2px !important;
+}
+
+.btnSecondarySmall:hover:not(:disabled) {
+  border-color: var(--foreground);
+}
+
+.btnPrimarySmall:disabled,
+.btnSecondarySmall:disabled,
+.primaryAgentBtn:disabled,
+.secondaryAgentBtn:disabled,
+.selectableNameBtn:disabled,
+.tabBtn:disabled,
+.closeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Brand Info Notice (matches NewsletterForm privacy notice icon) */
+.infoNoticeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.infoNoticeIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.feedbackBanner {
+  padding: 0.4rem 0;
+  color: var(--text-muted);
+  font-size: 0.73rem;
+}
+
+.modalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.75rem 1.15rem;
+  border-top: 1px solid var(--card-border);
+  background: var(--card-bg);
+}
+
+.agentOptOutConfirmBox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--card-border);
+}
+
+/* ============================================================================
+   BECOME AN AGENT PAGE (Concise, Few Lines)
+   ============================================================================ */
+.agentPageContainer {
+  max-width: 680px;
+  margin: 1.5rem auto 4rem auto;
+  padding: 1.5rem 1.25rem;
+}
+
+.agentCard {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: none;
+}
+
+.agentHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 1rem;
+}
+
+.agentTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.activeAgentPill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+}
+
+.agentLinesList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 1.5rem;
+}
+
+.agentLinesList strong {
+  color: var(--foreground);
+}
+
+.agentActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.25rem;
+}
+
+.primaryAgentBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  padding: 0.55rem 1.15rem;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--background);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryAgentBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryAgentBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondaryAgentBtn:hover:not(:disabled) {
+  border-color: var(--foreground);
+}
+
+/* Mobile Device Screen View: Full-page Invites view & plain borderless Become an Agent page */
+@media (max-width: 768px) {
+  .modalBackdrop {
+    padding: 0;
+    background: var(--background);
+    backdrop-filter: none;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .modalCard {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    min-height: 100vh;
+    max-height: 100dvh;
+    background: var(--background);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .modalFooter {
+    background: var(--background);
+  }
+
+  .agentPageContainer {
+    margin: 1rem auto;
+    padding: 0 1rem;
+  }
+
+  .agentCard {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0.25rem 0;
+  }
+}

@@ -6,6 +6,7 @@ import {
   adminTicketReplySchema,
 } from "@/lib/validationSchemas";
 import type { AdminTab } from "./AdminLayoutAndCampaignTabs";
+import { useAdminDialog } from "@/components/ui/AdminDialog";
 
 export function useAdminDataAndSupport(params: {
   activeTab: AdminTab;
@@ -20,6 +21,7 @@ export function useAdminDataAndSupport(params: {
   setUsersPage: (p: number) => void;
   usersLimit: number;
   setUsersCount: (c: number) => void;
+  usersFilter?: string;
   pendingAds: any[];
   setPendingAds: (a: any[]) => void;
   pendingAdsPage: number;
@@ -90,6 +92,7 @@ export function useAdminDataAndSupport(params: {
     setUsersPage,
     usersLimit,
     setUsersCount,
+    usersFilter = "",
     pendingAds,
     setPendingAds,
     pendingAdsPage,
@@ -148,6 +151,8 @@ export function useAdminDataAndSupport(params: {
     setNotificationErrorMsg,
   } = params;
 
+  const { alertDialog, confirmDialog } = useAdminDialog();
+
   const fetchOverviewStats = async (fresh = false) => {
     try {
       const [res, subRes] = await Promise.all([
@@ -193,15 +198,18 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchUsersTab = async (page: number, search: string, limit: number = usersLimit, fresh = false) => {
+  const fetchUsersTab = async (page: number, search: string, limit: number = usersLimit, fresh = false, filter = usersFilter) => {
     if (users.length === 0) setLoading(true);
     try {
       const res = await fetch(
         `/api/admin/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search || "")}${
-          fresh ? "&fresh=true" : ""
-        }`
+          filter ? `&filter=${encodeURIComponent(filter)}` : ""
+        }${fresh ? "&fresh=true" : ""}`
       );
-      if (!res.ok) throw new Error("Failed to fetch admin users");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || `Failed to fetch admin users (${res.status})`);
+      }
       const { users: resolvedUsers, count } = await res.json();
 
       setUsersCount(count || 0);
@@ -326,7 +334,13 @@ export function useAdminDataAndSupport(params: {
 
   const handleDeactivateReportedAd = async (adId: string, reportId: string) => {
     if (adActionLoading) return;
-    if (!confirm(`Are you sure you want to deactivate ad ${adId} for all users?`)) return;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to deactivate ad ${adId} for all users?`,
+      "Deactivate Reported Ad",
+      true
+    );
+    if (!confirmed) return;
+
     const statement = prompt(
       "Reason for deactivating this ad (visible to advertiser):",
       "Deactivated by Admin due to user content reports"
@@ -347,10 +361,10 @@ export function useAdminDataAndSupport(params: {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
-      alert(json.message || "Ad campaign deactivated successfully for all users!");
+      await alertDialog(json.message || "Ad campaign deactivated successfully for all users!", "Campaign Deactivated");
       fetchReportedAds(reportedAdsPage, searchQuery, true);
     } catch (e: any) {
-      alert("Failed to deactivate ad: " + e.message);
+      await alertDialog("Failed to deactivate ad: " + e.message, "Error");
     } finally {
       setAdActionLoading(null);
     }
@@ -358,13 +372,18 @@ export function useAdminDataAndSupport(params: {
 
   const handleBlockReportedAdvertiser = async (advertiserEmail: string, reportId: string) => {
     if (adActionLoading) return;
-    if (!advertiserEmail) return alert("No advertiser email associated with this report.");
-    if (
-      !confirm(
-        `Are you sure you want to deactivate all active ads created by advertiser ${advertiserEmail} and permanently ban this advertiser account?`
-      )
-    )
+    if (!advertiserEmail) {
+      await alertDialog("No advertiser email associated with this report.", "Error");
       return;
+    }
+
+    const confirmed = await confirmDialog(
+      `Are you sure you want to deactivate all active ads created by advertiser ${advertiserEmail} and permanently ban this advertiser account?`,
+      "Block Advertiser & Deactivate Ads",
+      true
+    );
+    if (!confirmed) return;
+
     const statement = prompt(
       "Reason for banning advertiser and deactivating campaigns (visible to advertiser):",
       "Account suspended by Admin due to multiple content safety reports"
@@ -385,13 +404,14 @@ export function useAdminDataAndSupport(params: {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
-      alert(
+      await alertDialog(
         json.message ||
-          `All ads created by advertiser ${advertiserEmail} have been deactivated and the account has been banned.`
+          `All ads created by advertiser ${advertiserEmail} have been deactivated and the account has been banned.`,
+        "Advertiser Blocked"
       );
       fetchReportedAds(reportedAdsPage, searchQuery, true);
     } catch (e: any) {
-      alert("Failed to block advertiser: " + e.message);
+      await alertDialog("Failed to block advertiser: " + e.message, "Error");
     } finally {
       setAdActionLoading(null);
     }
@@ -399,6 +419,13 @@ export function useAdminDataAndSupport(params: {
 
   const handleDismissReport = async (reportId: string) => {
     if (adActionLoading) return;
+    const confirmed = await confirmDialog(
+      "Are you sure you want to dismiss this report? The ad will remain active.",
+      "Dismiss Report",
+      false
+    );
+    if (!confirmed) return;
+
     setAdActionLoading(`dismiss-${reportId}`);
     try {
       const res = await fetch("/api/admin/reports", {
@@ -411,10 +438,10 @@ export function useAdminDataAndSupport(params: {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
-      alert("Report dismissed successfully.");
+      await alertDialog("Report dismissed successfully.", "Report Dismissed");
       fetchReportedAds(reportedAdsPage, searchQuery, true);
     } catch (e: any) {
-      alert("Failed to dismiss report: " + e.message);
+      await alertDialog("Failed to dismiss report: " + e.message, "Error");
     } finally {
       setAdActionLoading(null);
     }
@@ -470,7 +497,8 @@ export function useAdminDataAndSupport(params: {
   };
 
   const handleClearDlqAll = async () => {
-    if (!confirm("Are you sure you want to clear all DLQ records?")) return;
+    const confirmed = await confirmDialog("Are you sure you want to clear all DLQ records?", "Clear Dead-Letter Queue", true);
+    if (!confirmed) return;
     try {
       const res = await fetch("/api/admin/queues", {
         method: "POST",
@@ -524,7 +552,7 @@ export function useAdminDataAndSupport(params: {
       if (activeTab === "overview") {
         fetchOverviewStats();
       } else if (activeTab === "accounts") {
-        fetchUsersTab(usersPage, searchQuery, usersLimit);
+        fetchUsersTab(usersPage, searchQuery, usersLimit, false, usersFilter);
       } else if (activeTab === "ad-approvals") {
         fetchPendingAdsTab(pendingAdsPage);
       } else if (activeTab === "active-ads") {
@@ -552,6 +580,7 @@ export function useAdminDataAndSupport(params: {
     activeTab,
     usersPage,
     usersLimit,
+    usersFilter,
     pendingAdsPage,
     activeAdsPage,
     pendingHighlightsPage,
@@ -610,7 +639,7 @@ export function useAdminDataAndSupport(params: {
   const handleReplyTicket = async (ticketId: string) => {
     const validation = adminTicketReplySchema.safeParse({ ticketId, replyText });
     if (!validation.success) {
-      alert(validation.error.issues[0]?.message || "Invalid ticket reply text.");
+      await alertDialog(validation.error.issues[0]?.message || "Invalid ticket reply text.", "Validation Error");
       return;
     }
     setReplyLoading(true);
@@ -623,12 +652,12 @@ export function useAdminDataAndSupport(params: {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Failed to send reply");
 
-      alert("Reply sent successfully!");
+      await alertDialog("Reply sent successfully!", "Support Reply Sent");
       setReplyingTicket(null);
       setReplyText("");
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     } catch (e: any) {
-      alert("Failed to send reply: " + e.message);
+      await alertDialog("Failed to send reply: " + e.message, "Error");
     } finally {
       setReplyLoading(false);
     }
@@ -636,6 +665,13 @@ export function useAdminDataAndSupport(params: {
 
   const handleCloseTicket = async (ticket: any) => {
     const ticketId = typeof ticket === "string" ? ticket : ticket.id;
+    const confirmed = await confirmDialog(
+      "Are you sure you want to mark this support ticket as CLOSED? The user will be notified and the ticket will auto-delete in 24 hours.",
+      "Close Support Ticket",
+      false
+    );
+    if (!confirmed) return;
+
     const now = new Date().toISOString();
 
     setHelpTickets((prev) =>
@@ -651,16 +687,22 @@ export function useAdminDataAndSupport(params: {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Failed to close ticket");
 
-      alert("Ticket marked as CLOSED! Notification sent to user. Ticket will auto-delete in 24 hours.");
+      await alertDialog("Ticket marked as CLOSED! Notification sent to user. Ticket will auto-delete in 24 hours.", "Ticket Closed");
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     } catch (e: any) {
-      alert("Failed to close ticket: " + e.message);
+      await alertDialog("Failed to close ticket: " + e.message, "Error");
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     }
   };
 
   const handleDeleteTicket = async (ticketId: string) => {
-    if (!confirm("Delete this ticket permanently?")) return;
+    const confirmed = await confirmDialog(
+      "Are you sure you want to PERMANENTLY delete this support ticket?",
+      "Delete Support Ticket",
+      true
+    );
+    if (!confirmed) return;
+
     try {
       const res = await fetch("/api/admin/help-tickets", {
         method: "POST",
@@ -671,10 +713,10 @@ export function useAdminDataAndSupport(params: {
       if (!res.ok || data.error) throw new Error(data.error || "Failed to delete ticket");
 
       setHelpTickets((prev) => prev.filter((t) => t.id !== ticketId));
-      alert("Ticket deleted successfully.");
+      await alertDialog("Ticket deleted successfully.", "Ticket Deleted");
       fetchHelpTickets(helpTicketsPage, helpTicketSearch);
     } catch (e: any) {
-      alert("Failed to delete ticket: " + e.message);
+      await alertDialog("Failed to delete ticket: " + e.message, "Error");
     }
   };
 

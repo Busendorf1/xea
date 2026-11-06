@@ -425,7 +425,7 @@ export default function DashboardWalletCard({
     <div className={styles.walletCard}>
       <div className={styles.walletTopRow}>
         <div className={styles.walletHeaderWrap}>
-          <h4 className={styles.walletHeader} style={{ margin: 0 }}>
+          <h4 className={`${styles.walletHeader} ${styles.walletHeaderMarginZero}`}>
             Wallet Balance
           </h4>
           {!showBalance && (
@@ -469,7 +469,7 @@ export default function DashboardWalletCard({
         ) : (
           <span
             onClick={() => openPinPrompt("none")}
-            style={{ letterSpacing: "2px", fontWeight: 700, cursor: "pointer" }}
+            className={styles.pinCodePlaceholder}
             title="Click to enter 4-digit PIN"
           >
             ₦••••••••

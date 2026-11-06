@@ -142,6 +142,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
               <li> Active Advertisements</li>
               <li> Highlights and Campaigns</li>
               <li> Account Monetization Progress</li>
+              <li> Followers, Invites and Agent Network</li>
               <li> Wallet Balance and Payment Records</li>
               <li> User Profile and Demographics</li>
             </ul>

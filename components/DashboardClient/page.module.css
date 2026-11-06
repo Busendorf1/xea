@@ -256,6 +256,11 @@
   gap: 1.5rem;
 }
 
+.rightSidebar .sidebarContent {
+  padding: 0;
+  gap: 0;
+}
+
 /* Tablet Toggle Btn */
 .tabletToggleBtn {
   background-color: var(--sidebar-bg);
@@ -495,11 +500,13 @@
 .profileCard,
 .profileSectionCard {
   border: none !important;
-  border-radius: var(--radius-card, 22px);
-  background-color: var(--sidebar-bg);
+  border-radius: 0 !important;
+  background-color: transparent !important;
   overflow: hidden;
   box-shadow: none !important;
   outline: none !important;
+  border-bottom: 1px solid var(--card-border) !important;
+  padding-bottom: 0.5rem;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -883,11 +890,12 @@ img.profileImg {
 
 /* Wallet Card */
 .walletCard {
-  background: var(--card-bg);
-  padding: 1.15rem 1.25rem;
-  border-radius: var(--radius-card, 22px);
-  border: 1px solid var(--card-border);
-  box-shadow: var(--shadow-surface), var(--card-rim);
+  background: transparent;
+  padding: 1.25rem 1.15rem;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
 }
@@ -2652,13 +2660,14 @@ select.formInput option {
 
 /* ── PersonaDrawer Segmented Targeting Tray ── */
 .personaCard {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-card, 22px);
-  padding: 0.95rem 1.25rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  padding: 1.15rem 1.15rem;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-surface), var(--card-rim);
+  box-shadow: none;
   transition: all 0.25s ease;
 }
 
@@ -2783,4 +2792,89 @@ select.formInput option {
   color: var(--text-muted);
   font-style: italic;
   padding: 4px 0;
-}
+}
+
+/* State Colors for ATW */
+.stateColorNormal {
+  color: var(--foreground);
+}
+
+.stateColorWarn {
+  color: var(--text-muted);
+}
+
+.stateColorDanger {
+  color: #ef4444;
+}
+
+/* Wallet Card Clean Classes */
+.walletHeaderMarginZero {
+  margin: 0;
+}
+
+.pinCodePlaceholder {
+  letter-spacing: 2px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Withdrawal Modal Clean Classes */
+.balanceWarningBox {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.feeSummaryCard {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.feeSummaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.feeSummaryValBold {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.feeSummaryVal {
+  color: var(--foreground);
+}
+
+.feeSummaryTotalRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--card-border);
+  padding-top: 8px;
+}
+
+.receiveLabel {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.receiveAmount {
+  font-weight: 700;
+  color: #10b981;
+}
+

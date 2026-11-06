@@ -144,9 +144,9 @@ export function useFeedActions({
       setProcessingAds((prev) => [...prev, ad.id]);
 
       const rawCpi = ad.cost_per_impression && Number(ad.cost_per_impression) > 0 ? Number(ad.cost_per_impression) : 25;
-      const expectedRate = Math.round(rawCpi * 0.60 * 100) / 100;
+      const expectedRate = Math.round(rawCpi * 0.50 * 100) / 100;
 
-      console.log(`🟢 [EARN CLICKED] Ad: ${ad.id}, Base CPI: ₦${rawCpi}, crediting 60% (₦${expectedRate}) immediately to balance...`);
+      console.log(`🟢 [EARN CLICKED] Ad: ${ad.id}, Base CPI: ₦${rawCpi}, crediting 50% (₦${expectedRate}) immediately to balance...`);
 
       // 1. INSTANT OPTIMISTIC UI: Trigger balance & click progress update immediately (0ms delay)
       if (expectedRate > 0) {

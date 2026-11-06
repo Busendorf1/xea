@@ -37,6 +37,9 @@ export interface UserProfile {
   attention_worth_score?: number | null;
   daysInactive?: number;
   has_wallet_pin?: boolean;
+  is_career?: boolean;
+  is_affiliate?: boolean;
+  affiliate_role?: string | null;
 }
 
 export interface DashboardClientProps {

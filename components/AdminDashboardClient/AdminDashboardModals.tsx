@@ -1,31 +1,19 @@
 "use client";
 
 import React from "react";
-import { XCircle, Megaphone, ShieldAlert } from "lucide-react";
+import { XCircle, Megaphone, ShieldAlert, User, Wallet, Shield, Users, Edit2, Check, RefreshCw, AlertTriangle, Download, ExternalLink, Sparkles, Globe } from "lucide-react";
 import styles from "./page.module.css";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 import MultimediaCarousel from "@/components/MyAds/MultimediaCarousel";
+import { useAdminDialog } from "@/components/ui/AdminDialog";
+import RoleStarBadges from "@/components/ui/RoleStarBadges";
 
 const formatCurrency = (amount: number | string, country?: string | null) =>
   globalFormatCurrency(amount, country);
 
-export function AdminAdMediaBox({ adMedia, adMediaType }: { adMedia: string; adMediaType?: string }) {
-  const mediaUrls = adMedia
-    ? adMedia
-        .split(",")
-        .map((u) => u.trim())
-        .filter((s) => s.length > 0 && s.toLowerCase() !== "text" && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined")
-    : [];
-  if (mediaUrls.length === 0) {
-    return <div className={styles.adminCls_1}>Text Only Ad</div>;
-  }
-
-  return (
-    <div className={styles.adminCls_2} style={{ padding: "6px", boxSizing: "border-box" }}>
-      <MultimediaCarousel rawMedia={adMedia} adMediaType={adMediaType} />
-    </div>
-  );
-}
+import { AdminAdMediaBox } from "./AdminAdMediaBox";
+import { AdminUserOperationsSuiteModal } from "./AdminUserOperationsSuiteModal";
+export { AdminAdMediaBox, AdminUserOperationsSuiteModal };
 
 export interface AdminDashboardModalsProps {
   selectedUser: any;
@@ -34,6 +22,25 @@ export interface AdminDashboardModalsProps {
   handleAdjustBalance: (user: any, amount: number) => void;
   handleSuspendUser: (user: any, hours: number) => void;
   handleDeleteUser: (user: any) => void;
+  handleToggleMonetization?: (user: any) => void;
+  handleUpdateUserProfile?: (user: any, updatedFields: Record<string, any>) => Promise<boolean>;
+  handleUpdateSpecialRoles?: (user: any, roles: { isCareer: boolean; isAffiliate: boolean; affiliateRole?: string | null }) => void;
+  handleToggleAgent?: (user: any, makeAgent: boolean) => void;
+  handleBanAgent?: (
+    user: any,
+    options: {
+      banType: "temp" | "perm" | "unban";
+      days?: number;
+      customUntil?: string;
+      reason: string;
+      detachFollowers?: boolean;
+    }
+  ) => void;
+  handleRemoveFollower?: (user: any, refereeEmail: string, followerLabel?: string) => void;
+  handleRemoveAllFollowers?: (user: any) => void;
+  handleDetachUplineAgent?: (user: any, uplineLabel?: string) => void;
+  handleDeactivateAccount?: (user: any, deactivated: boolean) => void;
+  handleResetClicks?: (user: any, clicks: number) => void;
   editAdData: any;
   setEditAdData: (d: any) => void;
   handleSaveAdEdit: (e: React.FormEvent) => void;
@@ -60,6 +67,7 @@ export interface AdminDashboardModalsProps {
   setBanModalReason: (r: string) => void;
   banSubmitting: boolean;
   handleExecuteAdBan: () => void;
+  activeActionId?: string | null;
 }
 
 export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.memo(function AdminDashboardModals({
@@ -69,6 +77,16 @@ export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.m
   handleAdjustBalance,
   handleSuspendUser,
   handleDeleteUser,
+  handleToggleMonetization,
+  handleUpdateUserProfile,
+  handleUpdateSpecialRoles,
+  handleToggleAgent,
+  handleBanAgent,
+  handleRemoveFollower,
+  handleRemoveAllFollowers,
+  handleDetachUplineAgent,
+  handleDeactivateAccount,
+  handleResetClicks,
   editAdData,
   setEditAdData,
   handleSaveAdEdit,
@@ -95,131 +113,33 @@ export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.m
   setBanModalReason,
   banSubmitting,
   handleExecuteAdBan,
-}) {
+  activeActionId,
+}: AdminDashboardModalsProps) {
   return (
     <>
-      {/* MODAL: USER DETAILED PROFILE OPERATIONS */}
-      {selectedUser && (
-        <div role="presentation" className={styles.modalOverlay} onClick={() => setSelectedUser(null)}>
-          <div className={`${styles.modalContent} ${styles.adminCls_159}`} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div className={styles.adminCls_160}>
-                <div className={styles.adminCls_161}>
-                  {selectedUser.firstName ? selectedUser.firstName.slice(0, 2).toUpperCase() : "US"}
-                </div>
-                <div>
-                  <h3 className={`${styles.modalTitle} ${styles.mZero}`}>
-                    {selectedUser.business_name || `${selectedUser.firstName} ${selectedUser.lastName}`}
-                  </h3>
-                  <div className={styles.adminCls_162}>
-                    @{selectedUser.username.split("@")[0]} &bull; {selectedUser.email}
-                  </div>
-                </div>
-              </div>
-              <button onClick={() => setSelectedUser(null)} className={styles.btnClose}>
-                <XCircle size={22} />
-              </button>
-            </div>
-
-            <div className={styles.modalBody}>
-              <div className={styles.modalSectionCard}>
-                <h4 className={styles.modalSectionTitle}>Account and Contact Details</h4>
-                <div className={styles.gridTwoCol}>
-                  <div className={styles.fieldGroup}>
-                    <span className={styles.fieldLabel}>Full Name</span>
-                    <span className={styles.fieldValue}>{selectedUser.firstName} {selectedUser.lastName}</span>
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <span className={styles.fieldLabel}>Business / Rep Name</span>
-                    <span className={styles.fieldValue}>{selectedUser.business_name || "N/A"}</span>
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <span className={styles.fieldLabel}>Country and State</span>
-                    <span className={styles.fieldValue}>{selectedUser.state ? `${selectedUser.state}, ` : ""}{selectedUser.country || "Not set"}</span>
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <span className={styles.fieldLabel}>Phone Number</span>
-                    <span className={styles.fieldValue}>{selectedUser.phone || "Not set"}</span>
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <span className={styles.fieldLabel}>Registration Date and Time</span>
-                    <span className={styles.fieldValue}>
-                      {selectedUser.created_at
-                        ? new Date(selectedUser.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                        : "Not recorded"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.modalSectionCard}>
-                <h4 className={styles.modalSectionTitle}>Wallet and Balance Adjustments</h4>
-                <div className={`${styles.gridTwoCol} ${styles.adminCls_163}`}>
-                  <div className={styles.metricCard}>
-                    <span className={styles.metricLabel}>Available Balance</span>
-                    <span className={`${styles.metricValue} ${styles.textSuccess}`}>{formatCurrency(selectedUser.balance || 0)}</span>
-                  </div>
-                  <div className={styles.metricCard}>
-                    <span className={styles.metricLabel}>Pending Withdrawal</span>
-                    <span className={`${styles.metricValue} ${styles.textInfo}`}>{formatCurrency(selectedUser.withdrawal || 0)}</span>
-                  </div>
-                </div>
-
-                <div className={styles.quickAdjustRow}>
-                  <button disabled={userActionSubmitting} onClick={() => handleAdjustBalance(selectedUser, 1000)} className={`${styles.btnAction} ${styles.btnSuccess}`}>+₦1,000</button>
-                  <button disabled={userActionSubmitting} onClick={() => handleAdjustBalance(selectedUser, 5000)} className={`${styles.btnAction} ${styles.btnSuccess}`}>+₦5,000</button>
-                  <button disabled={userActionSubmitting} onClick={() => handleAdjustBalance(selectedUser, -1000)} className={`${styles.btnAction} ${styles.btnDanger}`}>-₦1,000</button>
-                  <button
-                    disabled={userActionSubmitting}
-                    onClick={() => {
-                      const customAmt = parseFloat(prompt("Enter amount to add (positive) or subtract (negative):") || "0");
-                      if (!isNaN(customAmt) && customAmt !== 0) {
-                        handleAdjustBalance(selectedUser, customAmt);
-                      }
-                    }}
-                    className={styles.btnAction}
-                  >
-                    Custom Adjustment
-                  </button>
-                </div>
-              </div>
-
-              <div className={`${styles.modalSectionCard} ${styles.adminCls_164}`}>
-                <h4 className={`${styles.modalSectionTitle} ${styles.adminCls_165}`}>User Account Suspension Controls</h4>
-
-                {selectedUser.suspended_until && new Date(selectedUser.suspended_until) > new Date() ? (
-                  <div className={styles.statusAlertDanger}>
-                    Account currently locked until: <strong>{new Date(selectedUser.suspended_until).toLocaleString()}</strong>
-                  </div>
-                ) : (
-                  <div className={styles.statusAlertSuccess}>
-                    Account status is active and unsuspended.
-                  </div>
-                )}
-
-                <div className={styles.suspensionButtonGroup}>
-                  <button disabled={userActionSubmitting} onClick={() => handleSuspendUser(selectedUser, 2)} className={`${styles.btnAction} ${styles.btnDanger}`}>Suspend 2 Hrs</button>
-                  <button disabled={userActionSubmitting} onClick={() => handleSuspendUser(selectedUser, 24)} className={`${styles.btnAction} ${styles.btnDanger}`}>Suspend 24 Hrs</button>
-                  <button disabled={userActionSubmitting} onClick={() => handleSuspendUser(selectedUser, 168)} className={`${styles.btnAction} ${styles.btnDanger}`}>Suspend 7 Days</button>
-                  <button disabled={userActionSubmitting} onClick={() => handleSuspendUser(selectedUser, -1)} className={`${styles.btnAction} ${styles.btnDanger}`}>PERMANENT BAN</button>
-                  {selectedUser.suspended_until && (
-                    <button disabled={userActionSubmitting} onClick={() => handleSuspendUser(selectedUser, 0)} className={`${styles.btnAction} ${styles.btnSuccess}`}>Remove Suspension</button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.modalFooter}>
-              <button disabled={userActionSubmitting} onClick={() => handleDeleteUser(selectedUser)} className={`${styles.btnAction} ${styles.btnDanger} ${styles.adminCls_166}`}>
-                {userActionSubmitting ? "Processing..." : "Delete Account Permanently"}
-              </button>
-              <button onClick={() => setSelectedUser(null)} className={styles.btnAction}>
-                Close Panel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL: USER OPERATIONS SUITE (PROFILE, STATEMENTS, FOLLOWERS/AGENT, SECURITY) */}
+      <AdminUserOperationsSuiteModal
+        selectedUser={selectedUser}
+        setSelectedUser={setSelectedUser}
+        userActionSubmitting={userActionSubmitting}
+        activeActionId={activeActionId}
+        handleAdjustBalance={handleAdjustBalance}
+        handleSuspendUser={handleSuspendUser}
+        handleDeleteUser={handleDeleteUser}
+        handleToggleMonetization={handleToggleMonetization}
+        handleUpdateUserProfile={handleUpdateUserProfile}
+        handleUpdateSpecialRoles={handleUpdateSpecialRoles}
+        handleToggleAgent={handleToggleAgent}
+        handleBanAgent={handleBanAgent}
+        handleRemoveFollower={handleRemoveFollower}
+        handleRemoveAllFollowers={handleRemoveAllFollowers}
+        handleDetachUplineAgent={handleDetachUplineAgent}
+        handleDeactivateAccount={handleDeactivateAccount}
+        handleResetClicks={handleResetClicks}
+        setBanModalUser={setBanModalUser}
+        setBanModalStatus={setBanModalStatus}
+        setBanModalReason={setBanModalReason}
+      />
 
       {/* MODAL: EDIT ACTIVE AD */}
       {editAdData && (
@@ -592,3 +512,4 @@ export const AdminDashboardModals: React.FC<AdminDashboardModalsProps> = React.m
     </>
   );
 });
+

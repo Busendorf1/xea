@@ -7,6 +7,7 @@ import type { HighlightItem } from "@/components/MyNews/types";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import crypto from "crypto";
 import { isAdminEmail } from "@/lib/authHelper";
+import { getSpecialRoleProfile } from "@/lib/adminHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
 import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
 import { signAdImpressionToken, evaluateAdTargeting } from "@/lib/targetingEngine";
@@ -114,7 +115,10 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     referral_downloads_count,
     atw_tier,
     wallet_pin_hash,
-    suspended_until
+    suspended_until,
+    is_career,
+    is_affiliate,
+    affiliate_role
   `;
 
   let dbError: any = null;
@@ -437,9 +441,13 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
 
   // Strip sensitive credentials and decrypt PII from RSC client payload
   const decrypted = decryptProfilePII(user) || user;
+  const specialRole = getSpecialRoleProfile(email, decrypted);
   const sanitizedUser = {
     ...decrypted,
     passphrase: "",
+    is_career: specialRole.isCareer,
+    is_affiliate: specialRole.isAffiliate,
+    affiliate_role: specialRole.affiliateRole,
   };
 
   return {

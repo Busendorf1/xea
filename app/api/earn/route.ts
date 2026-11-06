@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { creditAffiliatePlatformShare } from "@/lib/affiliateEngine";
 import crypto from "crypto";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { env } from "@/lib/env";
@@ -302,7 +304,9 @@ export async function POST(request: NextRequest) {
           getCachedProfile<any>(emailKey).catch(() => null),
         ]);
 
-        if (cachedProf?.suspended_until && new Date(cachedProf.suspended_until).getTime() > now) {
+        const isExemptAccount = isExemptFromBarriersAndInactivity(emailKey, cachedProf);
+
+        if (!isExemptAccount && cachedProf?.suspended_until && new Date(cachedProf.suspended_until).getTime() > now) {
           return NextResponse.json(
             {
               success: false,
@@ -315,7 +319,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        if (cachedCooldownRaw) {
+        if (!isExemptAccount && cachedCooldownRaw) {
           const { cooldownUntil, cooldownType } = JSON.parse(cachedCooldownRaw);
           if (new Date(cooldownUntil).getTime() > now) {
             return NextResponse.json({
@@ -328,7 +332,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (type === "earn") {
+        if (type === "earn" && !isExemptAccount) {
           const lastEarnTimestamps = (historyListRaw || [])
             .map((t) => parseInt(t, 10))
             .filter((n) => !isNaN(n))
@@ -410,9 +414,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    let earnedRateNumber = Math.round(rawCpi * 0.60 * 100) / 100;
+    let earnedRateNumber = Math.round(rawCpi * 0.50 * 100) / 100;
     if (earnedRateNumber <= 0) {
-      earnedRateNumber = 15.00;
+      earnedRateNumber = 12.50;
     }
 
     let updatedBalance: number | null = null;
@@ -444,7 +448,7 @@ export async function POST(request: NextRequest) {
         adIdToUnlock = adId;
       }
 
-      logToTerminal(`\n========================================================================\n🟢 [EARN CLAIM INITIATED]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   📊 Base CPI   : ₦${rawCpi.toFixed(2)}\n   💰 60% Rate   : ₦${earnedRateNumber.toFixed(2)}\n========================================================================\n`);
+      logToTerminal(`\n========================================================================\n🟢 [EARN CLAIM INITIATED]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   📊 Base CPI   : ₦${rawCpi.toFixed(2)}\n   💰 50% Rate   : ₦${earnedRateNumber.toFixed(2)}\n========================================================================\n`);
 
       // 6. Authoritative Atomic Transaction in PostgreSQL (Single ACID RPC)
       atomicViews = 1;
@@ -473,7 +477,7 @@ export async function POST(request: NextRequest) {
         // Fallback gracefully to direct verification if RPC is not yet executed in database
         const { data: dbUser, error: userFetchErr } = await supabaseAdmin
           .from("users")
-          .select("balance, monetization_clicks, monetized, referral_downloads_count, suspended_until, atw_tier")
+          .select("balance, monetization_clicks, monetized, referral_downloads_count, suspended_until, atw_tier, is_affiliate, is_career")
           .ilike("email", emailKey)
           .maybeSingle();
 
@@ -481,7 +485,9 @@ export async function POST(request: NextRequest) {
           console.error("❌ DB fallback error fetching user:", userFetchErr);
         }
 
-        if (dbUser?.suspended_until && new Date(dbUser.suspended_until).getTime() > now) {
+        const isExemptDbUser = isExemptFromBarriersAndInactivity(emailKey, dbUser as any);
+
+        if (!isExemptDbUser && dbUser?.suspended_until && new Date(dbUser.suspended_until).getTime() > now) {
           return NextResponse.json({
             success: false,
             code: "USER_SUSPENDED",
@@ -493,6 +499,7 @@ export async function POST(request: NextRequest) {
         const currentClicks = Number(dbUser?.monetization_clicks) || 0;
         const currentInvites = Number(dbUser?.referral_downloads_count) || 0;
         const isMonetized = Boolean(
+          isExemptDbUser ||
           dbUser?.monetized === true ||
           dbUser?.monetized === "true" ||
           dbUser?.monetized === "yes" ||
@@ -590,15 +597,16 @@ export async function POST(request: NextRequest) {
           }, { status: 400 });
         }
 
-        const rateToApply = isMonetized ? Math.round(adCpi * 0.60 * 100) / 100 : 0;
+        const rateToApply = isMonetized ? Math.round(adCpi * 0.50 * 100) / 100 : 0;
         const { getAtwBalanceLimit } = await import("@/lib/attentionTierEngine");
-        const atwCap = getAtwBalanceLimit(dbUser?.atw_tier, isAdminEmail(emailKey));
+        const atwCap = getAtwBalanceLimit(dbUser?.atw_tier, isExemptDbUser);
         const uncappedBalance = Math.round((currentBal + rateToApply) * 100) / 100;
         updatedBalance = isMonetized ? Math.min(atwCap, uncappedBalance) : currentBal;
         liveClicks = currentClicks + 1;
         earnedRateNumber = rateToApply;
+        rawCpi = adCpi;
 
-        console.log(`📊 [POST /api/earn] Fallback DB calculation: 60PctRate=${rateToApply} (CPI=${adCpi}), prevBal=${currentBal}, newBalance=${updatedBalance} (ATW Cap=${atwCap}), newClicks=${liveClicks}, views=${existingViews + 1}/${userFreqCap}`);
+        console.log(`📊 [POST /api/earn] Fallback DB calculation: 50PctRate=${rateToApply} (CPI=${adCpi}), prevBal=${currentBal}, newBalance=${updatedBalance} (ATW Cap=${atwCap}), newClicks=${liveClicks}, views=${existingViews + 1}/${userFreqCap}`);
 
         if (existingImp) {
           await supabaseAdmin
@@ -665,8 +673,11 @@ export async function POST(request: NextRequest) {
         if (userUpdateErr) {
           console.error("❌ DB fallback error updating user balance:", userUpdateErr);
         } else {
-          logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Direct Fallback)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 60% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n========================================================================\n`);
+          logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Direct Fallback)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 50% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n========================================================================\n`);
         }
+
+        // Credit 10% of ad CPI to each active Affiliate from the Platform's 50% share
+        await creditAffiliatePlatformShare(adCpi, adId, emailKey).catch(() => {});
       } else if (atomicResult && !atomicResult.success) {
         console.warn("⚠️ [POST /api/earn] Atomic DB claim rejected:", atomicResult);
         if (atomicResult.code === "ALREADY_EARNED" && isRedisReady()) {
@@ -680,14 +691,21 @@ export async function POST(request: NextRequest) {
           cap: atomicResult.cap,
         }, { status: 400 });
       } else if (atomicResult && atomicResult.success) {
-        updatedBalance = Number(atomicResult.balance);
-        liveClicks = Number(atomicResult.clicks);
-        earnedRateNumber = Number(atomicResult.amount);
-        atomicViews = Number(atomicResult.views || 1);
+        updatedBalance = Number(atomicResult.balance ?? atomicResult.new_balance);
+        liveClicks = Number(atomicResult.clicks ?? atomicResult.new_clicks);
+        earnedRateNumber = Number(atomicResult.amount ?? atomicResult.earned_amount);
+        atomicViews = Number(atomicResult.views ?? atomicResult.ad_views ?? 1);
+        if (atomicResult.raw_cpi && Number(atomicResult.raw_cpi) > 0) {
+          rawCpi = Number(atomicResult.raw_cpi);
+        }
         if (atomicResult.cap) {
           atomicCap = Number(atomicResult.cap);
         }
-        logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Atomic RPC)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 60% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n   👁️ View Cap   : ${atomicViews}/${atomicCap}\n========================================================================\n`);
+        // If legacy claim_ad_earning_atomic RPC was executed without affiliate_credited flag, ensure affiliates are credited
+        if (!atomicResult.affiliate_credited) {
+          await creditAffiliatePlatformShare(rawCpi, adId, emailKey).catch(() => {});
+        }
+        logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Atomic RPC)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 50% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n   👁️ View Cap   : ${atomicViews}/${atomicCap}\n========================================================================\n`);
 
         // Stream earned impression directly to ClickHouse Cloud (high-throughput non-blocking)
         const ua = request.headers.get("user-agent") || "";
@@ -707,6 +725,29 @@ export async function POST(request: NextRequest) {
             country: geoCountry,
           },
         ]).catch(() => {});
+      }
+
+      // 6.5 Paayh Agents 1% / 2% Earning Deduction & Upline Commission Credit
+      // Unmonetized accounts have not yet started earning, so they generate 0 commission for their Agent.
+      const isEarnerNowMonetized = Boolean(
+        (atomicResult && atomicResult.monetized) || liveClicks >= 300
+      );
+      if (isEarnerNowMonetized && earnedRateNumber > 0 && updatedBalance !== null && !isNaN(updatedBalance)) {
+        try {
+          const { applyAgentCommissionOnEarning } = await import("@/lib/agentSystem");
+          const agentSplit = await applyAgentCommissionOnEarning({
+            earnerEmail: emailKey,
+            grossEarnedAmount: earnedRateNumber,
+            currentEarnerBalance: updatedBalance,
+            adId,
+          });
+          if (agentSplit.deductedAmount > 0) {
+            earnedRateNumber = agentSplit.netEarnerAmount;
+            updatedBalance = agentSplit.adjustedEarnerBalance;
+          }
+        } catch (agentSplitErr) {
+          console.warn("⚠️ Agent earning split warning in /api/earn:", agentSplitErr);
+        }
       }
 
       // 7. Sync to Redis RAM Cache & Evict from candidate sets ONLY if frequency cap reached
@@ -853,7 +894,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (type === "earn") {
-      logToTerminal(`🎉 [POST /api/earn 200 OK] Enforced 60%: ₦${earnedRateNumber.toFixed(2)} sent to DB for ${emailKey} | New DB Balance: ₦${Number(updatedBalance).toFixed(2)}\n`);
+      logToTerminal(`🎉 [POST /api/earn 200 OK] Enforced 50%: ₦${earnedRateNumber.toFixed(2)} sent to DB for ${emailKey} | New DB Balance: ₦${Number(updatedBalance).toFixed(2)}\n`);
     }
 
     return NextResponse.json({

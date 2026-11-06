@@ -8,7 +8,7 @@ export default function CookiesPage() {
       <main className={styles.main}>
         <h1 className={styles.title}>Paayh Cookie Policy</h1>
         <p className={styles.updatedDate}>
-          <em>Last Updated: September 12, 2026 | Effective Date: September 12, 2026</em>
+          <em>Last Updated: November 5, 2026 | Effective Date: November 5, 2026</em>
         </p>
 
         <div className={styles.noticeBox}>
@@ -35,7 +35,7 @@ export default function CookiesPage() {
           <h2 className={styles.heading}>1. What Are Cookies and Local Storage?</h2>
           <p>
             Cookies are small text files placed on your computer or mobile device when you access websites. Local
-            storage and session storage are modern browser-based storage mechanisms that allow web applications to store
+            storage and session storage are modern browser based storage mechanisms that allow web applications to store
             data locally within your browser. Paayh uses these technologies to maintain secure sessions, remember
             preferences, prevent fraud, and verify human attention.
           </p>
@@ -51,28 +51,28 @@ export default function CookiesPage() {
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Auth0 &amp; Session Tokens:</strong> Cryptographically signed HTTP-only cookies used to identify
-              your authenticated account session and protect against Cross-Site Request Forgery (CSRF).
+              <strong>Auth0 &amp; Session Tokens:</strong> Cryptographically signed HTTP only cookies used to identify
+              your authenticated account session and protect against Cross Site Request Forgery (CSRF).
             </li>
             <li className={styles.listItem}>
               <strong>Security Tokens:</strong> Session cookies that authenticate API requests and prevent automated
               bot injection.
             </li>
             <li className={styles.listItem}>
-              <strong>Real-Time Telemetry &amp; Server-Sent Events (SSE):</strong> Persistent, multiplexed HTTP streaming
+              <strong>Real Time Telemetry &amp; Server Sent Events (SSE):</strong> Persistent, multiplexed HTTP streaming
               connections that securely broadcast wallet balance adjustments and notification updates
-              in real time without third-party tracking cookies.
+              in real time without third party tracking cookies.
             </li>
           </ul>
 
           <h3 className={styles.subheading}>B. Impression Tracking, Verification &amp; Geographic Tokens</h3>
           <p>
-            Because Paayh operates an attention-based digital ecosystem, we utilize lightweight, encrypted browser tokens
+            Because Paayh operates an attention based digital ecosystem, we utilize lightweight, encrypted browser tokens
             to accurately measure engagement and calibrate localized delivery:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Single-Impression Deduplication:</strong> Tracks whether an ad has been delivered or marked as
+              <strong>Single Impression Deduplication:</strong> Tracks whether an ad has been delivered or marked as
               &quot;Seen&quot; to prevent repeat deliveries and advance your feed queue.
             </li>
             <li className={styles.listItem}>
@@ -80,9 +80,9 @@ export default function CookiesPage() {
               (such as swipe, hold, or tap) before unlocking monetization rewards.
             </li>
             <li className={styles.listItem}>
-              <strong>Geo-Locality Caching Tokens (`paayh_location_calibrated`):</strong> Session-level browser tokens that
+              <strong>Geo Locality Caching Tokens (`paayh_location_calibrated`):</strong> Session level browser tokens that
               record when device GPS/IP location has been checked for the active session, preventing redundant background
-              re-queries on page transitions and conserving your mobile device battery and network bandwidth.
+              requeries on page transitions and conserving your mobile device battery and network bandwidth.
             </li>
           </ul>
 
@@ -98,15 +98,23 @@ export default function CookiesPage() {
             <li className={styles.listItem}>
               <strong>Sidebar State:</strong> Remembers active dashboard tab selections.
             </li>
+            <li className={styles.listItem}>
+              <strong>First Party Invite Attribution &amp; Followers Cache (`paayh_ref_code` / `paayh_agent_net_v1`):</strong>{" "}
+              When you arrive on Paayh through an Agent&apos;s invite link (<code>?ref=CODE</code>), a first party cookie
+              and local storage key temporarily preserve the referral code during sign up and profile setup so your
+              account is accurately connected to your referrer&apos;s <strong>Followers</strong> list. Short lived
+              session storage also caches your <strong>Invites</strong> (Followers, Following, and Mutuals) summary for
+              instant dashboard rendering without redundant server requests.
+            </li>
           </ul>
         </section>
 
         <section>
           <h2 className={styles.heading}>3. What We Do NOT Do</h2>
           <div className={styles.noticeBox}>
-            <strong>NO THIRD-PARTY DATA BROKER TRACKING:</strong> Paayh does NOT use third-party behavioral advertising
+            <strong>NO THIRD PARTY DATA BROKER TRACKING:</strong> Paayh does NOT use third party behavioral advertising
             cookies that track you across external websites. We do not sell your browsing history, clicks, or device
-            identifiers to third-party ad networks, telemetry trackers, or data brokers.
+            identifiers to third party ad networks, telemetry trackers, or data brokers.
           </div>
         </section>
 

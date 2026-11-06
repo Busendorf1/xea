@@ -244,15 +244,15 @@ export const flushBatch = async (): Promise<void> => {
       try {
         const { data: userData } = await supabaseAdmin
           .from("users")
-          .select("balance, atw_tier")
+          .select("balance, atw_tier, is_affiliate, is_career")
           .ilike("email", userEmail)
           .maybeSingle();
 
         const currentBal = parseFloat(userData?.balance || "0");
         const { getAtwBalanceLimit } = await import("./attentionTierEngine");
-        const { isAdminEmail } = await import("./authHelper");
-        const isAdmin = isAdminEmail(userEmail);
-        const balanceCap = getAtwBalanceLimit(userData?.atw_tier, isAdmin);
+        const { isExemptFromBarriersAndInactivity } = await import("./adminHelper");
+        const isExempt = isExemptFromBarriersAndInactivity(userEmail, userData as any);
+        const balanceCap = getAtwBalanceLimit(userData?.atw_tier, isExempt);
         const formattedCap = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(balanceCap);
 
         // 1. Increment user 300-clicks monetization progress only if not already incremented in API route

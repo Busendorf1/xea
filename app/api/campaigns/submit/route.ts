@@ -53,9 +53,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing campaign data." }, { status: 400 });
     }
 
-    // 3. Enforce 2-Campaign Pending Limit
-    // "not more than two ad or highlight will be pending publish for users so we dont bloat db...
-    // if a user have more than one or exactly two ad approved and pending review they wont be able to submit another ad"
+    // 3. Enforce 2-Campaign Approved Payment Limit
+    // Count campaigns approved by admin for payment, excluding newly submitted campaigns still awaiting review
     if (!editingId) {
       const { data: userPendingAds, error: pendingErr } = await supabaseAdmin
         .from("adds")
@@ -64,9 +63,7 @@ export async function POST(req: NextRequest) {
         .is("completed_at", null);
 
       if (!pendingErr && userPendingAds) {
-        // Filter active pending or approved-to-publish ads (excluding completed, rejected, or expired >72h)
-        const pendingCount = userPendingAds.filter((ad) => {
-          if (ad.admin_statement?.startsWith("REJECTED:")) return false;
+        const approvedUnpaidCount = userPendingAds.filter((ad) => {
           if (ad.admin_statement?.startsWith("APPROVED:")) {
             const parts = ad.admin_statement.split("APPROVED:");
             if (parts[1]) {
@@ -77,19 +74,16 @@ export async function POST(req: NextRequest) {
             }
             return true;
           }
-          if (!ad.admin_statement) return true; // Newly submitted
-          if (ad.admin_statement.startsWith("Status: Pending review")) return true;
-          if (ad.admin_statement.startsWith("Approved:")) return true;
           return false;
         }).length;
 
-        if (pendingCount >= 2) {
+        if (approvedUnpaidCount >= 2) {
           return NextResponse.json(
             {
               error:
-                "You have reached the limit of 2 campaigns awaiting review or publication. Please publish or delete an existing campaign before submitting a new one.",
+                "You have reached the limit of 2 approved campaigns awaiting payment. Please make payment or delete an existing approved campaign in My Ads before submitting a new one.",
               limitReached: true,
-              pendingCount,
+              pendingCount: approvedUnpaidCount,
             },
             { status: 400 }
           );

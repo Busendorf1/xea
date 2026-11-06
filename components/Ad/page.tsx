@@ -1,24 +1,15 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
-import {
-  Edit3,
-  Rocket,
-  ShieldAlert,
-  AlertCircle,
-} from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { AlertCircle } from "lucide-react";
 import styles from "./page.module.css";
 import FormStepProgress from "@/components/ui/FormStepProgress";
-import { v4 as uuidv4 } from "uuid";
-import supabase from "@/lib/utils/db";
 import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/lib/categoryTargetingMap";
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
-import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
-import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+import NoticeModal from "@/components/MyAds/NoticeModal";
 
 import {
   Session,
@@ -26,7 +17,6 @@ import {
   adRates,
   steps,
   Category,
-  AdFormSelections,
 } from "./types";
 import Step0Category from "./Step0Category";
 import Step1Targeting from "./Step1Targeting";
@@ -34,7 +24,10 @@ import Step2Budget from "./Step2Budget";
 import Step3Creative from "./Step3Creative";
 import Step4Summary from "./Step4Summary";
 import Step5Launch from "./Step5Launch";
-import NoticeModal, { NoticeModalData } from "@/components/MyAds/NoticeModal";
+import AdAccountSuspendedCard from "./AdAccountSuspendedCard";
+import AdPendingLimitBanner from "./AdPendingLimitBanner";
+import { useAdFormDraftAndEdit } from "./useAdFormDraftAndEdit";
+import { useAdSubmission } from "./useAdSubmission";
 
 export type { Session, MultiStepAdFormProps };
 
@@ -42,42 +35,32 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   const isAdmin = useMemo(() => {
     return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(session?.user?.email));
   }, [session?.user]);
-  const searchParams = useSearchParams();
-  const editAdId = searchParams ? searchParams.get("id") : null;
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [isDeliveringActive, setIsDeliveringActive] = useState<boolean>(false);
-  const [originalTotalCost, setOriginalTotalCost] = useState<number>(0);
-  const [noticeModal, setNoticeModal] = useState<NoticeModalData | null>(null);
 
-  const [step, setStep] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingLimitReached, setPendingLimitReached] = useState(false);
+  const {
+    editingId,
+    setEditingId,
+    isDeliveringActive,
+    setIsDeliveringActive,
+    originalTotalCost,
+    setOriginalTotalCost,
+    step,
+    setStep,
+    adType,
+    setAdType,
+    isBiddingEnabled,
+    setIsBiddingEnabled,
+    bidPrice,
+    setBidPrice,
+    isAiContent,
+    setIsAiContent,
+    formSelections,
+    setFormSelections,
+    resetForm,
+  } = useAdFormDraftAndEdit();
 
-  useEffect(() => {
-    if (editingId) return;
-    fetch("/api/campaigns")
-      .then((res) => res.json())
-      .then((data) => {
-        const queueList = data?.adsQueue || data?.reviewAds;
-        if (queueList && Array.isArray(queueList)) {
-          const pendingCount = queueList.filter((ad: any) => {
-            if (ad.admin_statement?.startsWith("REJECTED:")) return false;
-            return true;
-          }).length;
-          if (pendingCount >= 2) {
-            setPendingLimitReached(true);
-          }
-        }
-      })
-      .catch(() => {});
-  }, [editingId]);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
-  const [isAiContent, setIsAiContent] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "wallet">("card");
-  const [adType, setAdType] = useState("politics");
-  const [isBiddingEnabled, setIsBiddingEnabled] = useState(false);
-  const [bidPrice, setBidPrice] = useState(0);
 
   // Derive targeting options from selected ad category
   const optionsMap = useMemo(
@@ -90,48 +73,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     [optionsMap]
   );
 
-  const [formSelections, setFormSelections] = useState<AdFormSelections>({
-    industry: [],
-    interest: [],
-    lifestyle: [],
-    behavior: [],
-    personality: [],
-    ageRange: [18, 65],
-    targetingAll: false,
-    impressions: 1000,
-    campaignDays: 5,
-    userFrequencyCap: 1,
-    country: "",
-    state: "",
-    province: "",
-    targetLocations: [],
-    gender: "",
-    employmentStatus: [],
-    adMediaType: "",
-    adContent: "",
-    adMediaFiles: [],
-    existingMedia: "",
-    adActionButtons: [],
-    actionDetails: {
-      phone: "",
-      whatsapp: "",
-      website: "",
-      email: "",
-      ios: "",
-      android: "",
-      watch_now: "",
-    },
-    displayMutualButton: false,
-    productName: "",
-    productPrice: "",
-    productCtaType: "Buy",
-    productCtaLink: "",
-    customSponsorName: "",
-    customSponsorHandle: "",
-    customSponsorLogo: "",
-  });
-
-  const [stepError, setStepError] = useState("");
   const [userProfile, setUserProfile] = useState<{
     mutual_count: number;
     mutuals: string[];
@@ -140,131 +81,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   } | null>(null);
 
   const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, formSelections.country);
-
-  // Restore saved draft state on mount
-  useEffect(() => {
-    if (editingId) return;
-    try {
-      const saved = localStorage.getItem("paayh_draft_ad_v1");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.step === "number") setStep(parsed.step);
-        if (parsed.adType) setAdType(parsed.adType);
-        if (typeof parsed.isBiddingEnabled === "boolean") setIsBiddingEnabled(parsed.isBiddingEnabled);
-        if (parsed.bidPrice) setBidPrice(parsed.bidPrice);
-        if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
-        if (parsed.formSelections) {
-          setFormSelections((prev) => ({
-            ...prev,
-            ...parsed.formSelections,
-            adMediaFiles: [],
-          }));
-        }
-      }
-    } catch {}
-  }, [editingId]);
-
-  // Autosave draft state on changes (debounced 400ms to prevent main-thread INP jank on keystrokes)
-  useEffect(() => {
-    if (editingId) return;
-    const timer = setTimeout(() => {
-      try {
-        const { adMediaFiles, ...restSelections } = formSelections;
-        const draft = {
-          step,
-          adType,
-          isBiddingEnabled,
-          bidPrice,
-          isAiContent,
-          formSelections: restSelections,
-        };
-        localStorage.setItem("paayh_draft_ad_v1", JSON.stringify(draft));
-      } catch {}
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [step, adType, isBiddingEnabled, bidPrice, isAiContent, formSelections, editingId]);
-
-  const loadAdForEdit = async (targetId: string) => {
-    if (!targetId) return;
-    try {
-      setEditingId(targetId);
-      setStep(0);
-      const res = await fetch(`/api/campaigns/details?id=${targetId}`);
-      const data = await res.json();
-      if (data.success && data.ad) {
-        const ad = data.ad;
-        setIsDeliveringActive(!!data.isDeliveringActive);
-        setOriginalTotalCost(Number(data.originalTotalCost || ad.total_cost || 0));
-        if (ad.ad_type) setAdType(ad.ad_type);
-        setFormSelections((prev) => ({
-          ...prev,
-          industry: Array.isArray(ad.industry) ? ad.industry : ad.industry ? [ad.industry] : [],
-          interest: Array.isArray(ad.interest) ? ad.interest : ad.interest ? [ad.interest] : [],
-          lifestyle: Array.isArray(ad.lifestyle) ? ad.lifestyle : ad.lifestyle ? [ad.lifestyle] : [],
-          behavior: Array.isArray(ad.behavior) ? ad.behavior : ad.behavior ? [ad.behavior] : [],
-          personality: Array.isArray(ad.personality) ? ad.personality : ad.personality ? [ad.personality] : [],
-          ageRange: ad.age_range || [18, 65],
-          targetingAll: !!ad.targeting_all,
-          impressions: ad.impressions || 1000,
-          campaignDays: ad.campaign_days || 5,
-          userFrequencyCap: ad.user_frequency_cap || 1,
-          country: ad.country || "",
-          state: ad.state || "",
-          province: ad.province || "",
-          targetLocations: ad.province ? ad.province.split("; ") : [],
-          gender: ad.gender || "",
-          employmentStatus: ad.employment_status ? ad.employment_status.split(", ") : [],
-          adMediaType: ad.ad_media_type || "text",
-          adContent: ad.ad_content || "",
-          adMediaFiles: [],
-          existingMedia: ad.ad_media && ad.ad_media !== "text" ? ad.ad_media : "",
-          adActionButtons: ad.ad_action_buttons || [],
-          actionDetails: {
-            phone: ad.action_phone || "",
-            whatsapp: ad.action_whatsapp || "",
-            website: ad.action_website || "",
-            email: ad.action_email || "",
-            ios: ad.action_ios || "",
-            android: ad.action_android || "",
-            watch_now: ad.action_watch_now || "",
-          },
-          displayMutualButton: !!ad.display_mutual_button,
-          productName: ad.product_name || "",
-          productPrice: ad.product_price ? String(ad.product_price) : "",
-          productCtaType: ad.product_cta_type || "Buy",
-          productCtaLink: ad.product_cta_link || "",
-          customSponsorName: ad.custom_sponsor_name || "",
-          customSponsorHandle: ad.custom_sponsor_handle || "",
-        }));
-      }
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("paayh_edit_ad_id");
-      }
-    } catch (err) {
-      console.error("Error fetching ad details for edit:", err);
-    }
-  };
-
-  useEffect(() => {
-    const searchId = editAdId;
-    const storedEditId = typeof window !== "undefined" ? sessionStorage.getItem("paayh_edit_ad_id") : null;
-    const targetId = searchId || storedEditId;
-    if (targetId) {
-      loadAdForEdit(targetId);
-    }
-
-    const handleEditAdEvent = (e: any) => {
-      const adId = e.detail?.adId;
-      if (adId) {
-        loadAdForEdit(adId);
-      }
-    };
-
-    window.addEventListener("paayh_edit_ad", handleEditAdEvent);
-    return () => {
-      window.removeEventListener("paayh_edit_ad", handleEditAdEvent);
-    };
-  }, [editAdId]);
 
   const [adAccountRestriction, setAdAccountRestriction] = useState<{
     restricted: boolean;
@@ -310,22 +126,6 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     };
     fetchUserProfile();
   }, [session]);
-
-  // Clear targeting selections ONLY whenever user switches ad type
-  const prevAdTypeRef = useRef<string>(adType);
-  useEffect(() => {
-    if (prevAdTypeRef.current !== adType) {
-      prevAdTypeRef.current = adType;
-      setFormSelections((prev) => ({
-        ...prev,
-        industry: [],
-        interest: [],
-        lifestyle: [],
-        behavior: [],
-        personality: [],
-      }));
-    }
-  }, [adType]);
 
   const toggleSelection = (type: Category, value: string) => {
     setFormSelections((prev) => {
@@ -441,6 +241,63 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     return calculateTotalCostPerImpression() * formSelections.impressions;
   };
 
+  const {
+    isSubmitting,
+    stepError,
+    setStepError,
+    noticeModal,
+    setNoticeModal,
+    pendingLimitReached,
+    setPendingLimitReached,
+    handleInitiateSubmit,
+    submitAd,
+  } = useAdSubmission({
+    session,
+    isAdmin,
+    editingId,
+    isDeliveringActive,
+    originalTotalCost,
+    formSelections,
+    adType,
+    isBiddingEnabled,
+    bidPrice,
+    isAiContent,
+    paymentMethod,
+    userProfile,
+    agreedToPolicy,
+    calculateTotalCost,
+    calculateTotalCostPerImpression,
+    formatCurrency,
+  });
+
+  useEffect(() => {
+    if (editingId) return;
+    fetch("/api/campaigns")
+      .then((res) => res.json())
+      .then((data) => {
+        const queueList = data?.adsQueue || data?.reviewAds;
+        if (queueList && Array.isArray(queueList)) {
+          const approvedUnpaidCount = queueList.filter((ad: any) => {
+            if (ad.admin_statement?.startsWith("APPROVED:")) {
+              const parts = ad.admin_statement.split("APPROVED:");
+              if (parts[1]) {
+                const approvedTime = new Date(parts[1].trim()).getTime();
+                if (!isNaN(approvedTime) && Date.now() - approvedTime > 72 * 60 * 60 * 1000) {
+                  return false;
+                }
+              }
+              return true;
+            }
+            return false;
+          }).length;
+          if (approvedUnpaidCount >= 2) {
+            setPendingLimitReached(true);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [editingId, setPendingLimitReached]);
+
   /** Step 2 — audience / budget validation */
   const validateStep2 = (): boolean => {
     setStepError("");
@@ -534,241 +391,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     return true;
   };
 
-    const handleInitiateSubmit = () => {
-    if (isSubmitting) return;
-    setStepError("");
-    if (!session || !session.user?.email) {
-      setStepError("User not authenticated. Please log in.");
-      return;
-    }
-
-    if (!agreedToPolicy) {
-      setStepError("Please confirm your agreement to Paayh's Advertising Guidelines and Terms of Service.");
-      return;
-    }
-
-    const currentTotalCost = calculateTotalCost();
-    if (isDeliveringActive && currentTotalCost < originalTotalCost) {
-      setNoticeModal({
-        title: "Budget Reduction Notice",
-        message: `You are reducing your campaign budget from ${formatCurrency(originalTotalCost)} to ${formatCurrency(currentTotalCost)}. Because advertising payments are strictly non-refundable, reducing your budget will not result in a refund of previously paid funds. Your campaign will continue delivering under the updated settings until complete, after which it will be archived.`,
-        confirmText: "Proceed",
-        cancelText: "Not Now",
-        onConfirm: async () => {
-          setNoticeModal(null);
-          await submitAd();
-        },
-      });
-      return;
-    }
-
-    submitAd();
-  };
-
-  const submitAd = async () => {
-    if (isSubmitting) return;
-    setStepError("");
-    if (!session || !session.user?.email) {
-      setStepError("User not authenticated. Please log in.");
-      return;
-    }
-
-    const adId = editingId || uuidv4();
-    const costPerImpression = calculateTotalCostPerImpression();
-    const totalCost = calculateTotalCost();
-
-    if (!isAdmin && paymentMethod === "wallet" && userProfile && userProfile.balance < totalCost) {
-      setStepError(
-        `Insufficient wallet balance. Your balance is ${formatCurrency(userProfile.balance)} but this campaign costs ${formatCurrency(totalCost)}.`
-      );
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      let mediaUrlString: string | null = formSelections.existingMedia || null;
-
-      if (formSelections.adMediaFiles && formSelections.adMediaFiles.length > 0) {
-        const uploadPromises = formSelections.adMediaFiles.map(async (file, i) => {
-          const sanitizedFileName = file.name.replace(/[^\w.-]/g, "_");
-          const uniqueFileName = `${adId}_${i}_${sanitizedFileName}`;
-          const isVid = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(file.name);
-
-          let optimizedFile: File | Blob = file;
-          if (!isVid && file instanceof File) {
-            try {
-              optimizedFile = await resizeImageToMax1080p(file);
-            } catch (optErr) {
-              console.warn("Image 1080p optimization notice:", optErr);
-            }
-          }
-
-          let fileData: Blob | File = optimizedFile;
-          try {
-            const buffer = await optimizedFile.arrayBuffer();
-            fileData = new Blob([buffer], { type: file.type || (isVid ? "video/mp4" : "image/jpeg") });
-          } catch (e) {
-            console.warn("ArrayBuffer fallback, using raw file:", e);
-          }
-
-          const { error: uploadError } = await supabase.storage
-            .from("ad-media")
-            .upload(uniqueFileName, fileData, {
-              cacheControl: "3600",
-              upsert: false,
-              contentType: file.type || (isVid ? "video/mp4" : "image/jpeg"),
-            });
-
-          if (uploadError) throw uploadError;
-
-          const { data: publicUrlData } = supabase.storage.from("ad-media").getPublicUrl(uniqueFileName);
-
-          return publicUrlData?.publicUrl || null;
-        });
-
-        const uploadedUrls = await Promise.all(uploadPromises);
-        mediaUrlString = uploadedUrls.filter(Boolean).join(",");
-      }
-
-      const submitResponse = await fetch("/api/campaigns/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          editingId,
-          adData: {
-            id: adId,
-            adType,
-            industry: formSelections.industry,
-            interest: formSelections.interest,
-            lifestyle: formSelections.lifestyle,
-            behavior: formSelections.behavior,
-            personality: formSelections.personality,
-            ageRange: formSelections.ageRange,
-            targetingAll: formSelections.targetingAll ?? false,
-            impressions: formSelections.impressions,
-            campaignDays: formSelections.campaignDays,
-            userFrequencyCap: formSelections.userFrequencyCap,
-            country: formSelections.country || null,
-            state: formSelections.state || null,
-            province: formSelections.province || null,
-            gender: formSelections.gender || null,
-            employmentStatus: Array.isArray(formSelections.employmentStatus)
-              ? formSelections.employmentStatus.join(", ")
-              : formSelections.employmentStatus || null,
-            adMediaType: formSelections.adMediaType,
-            adMedia: mediaUrlString,
-            ad_media: mediaUrlString,
-            adContent: formSelections.adContent,
-            adActionButtons: formSelections.adActionButtons,
-            actionPhone: formSelections.actionDetails.phone || null,
-            actionWhatsapp: formSelections.actionDetails.whatsapp || null,
-            actionWebsite: formSelections.actionDetails.website || null,
-            actionEmail: formSelections.actionDetails.email || null,
-            actionIos: formSelections.actionDetails.ios || null,
-            actionAndroid: formSelections.actionDetails.android || null,
-            actionWatchNow: formSelections.actionDetails.watch_now || null,
-            displayMutualButton: formSelections.displayMutualButton ?? true,
-            costPerImpression,
-            totalCost,
-            isBidded: isBiddingEnabled,
-            bidPrice: isBiddingEnabled ? bidPrice : null,
-            isAdminPost: isAdmin,
-            customSponsorName: formSelections.customSponsorName || null,
-            customSponsorHandle: formSelections.customSponsorHandle || null,
-            productName: adType === "product_sales" ? formSelections.productName : null,
-            productPrice: adType === "product_sales" ? parseFloat(formSelections.productPrice) : null,
-            productCtaType: formSelections.productCtaLink ? formSelections.productCtaType : null,
-            productCtaLink: formSelections.productCtaLink || null,
-            isAiContent: isAiContent,
-            is_ai_content: isAiContent,
-          },
-        }),
-      });
-
-      const submitData = await submitResponse.json();
-      if (!submitResponse.ok || submitData.error) {
-        setIsSubmitting(false);
-        const errMsg = submitData.error || "Failed to submit campaign for review.";
-        if (submitData.limitReached) {
-          setPendingLimitReached(true);
-          setStepError("");
-        } else {
-          setStepError(errMsg);
-        }
-        showAppleAlert(errMsg, "warning");
-        return;
-      }
-
-      clearUserCampaignsCache(session?.user?.email || "");
-      try {
-        localStorage.removeItem("paayh_draft_ad_v1");
-      } catch {}
-
-      sessionStorage.setItem("paayh_active_tab", "myads");
-      document.cookie = "paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax";
-      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "myads" } }));
-
-      showAppleAlert(
-        editingId
-          ? "Campaign updated and re-submitted for moderation review!"
-          : "Campaign submitted for review! You will be notified once approved to publish it from My Ads.",
-        "success"
-      );
-
-      setTimeout(() => {
-        window.location.href = "/logged-in?view=myads";
-      }, 1200);
-      setIsSubmitting(false);
-    } catch (err: any) {
-      console.error("Submit error details:", err);
-      showAppleAlert(err?.message || "An unexpected error occurred during submission. Please try again.", "error");
-      setIsSubmitting(false);
-    }
-  };
-
   if (adAccountRestriction.restricted) {
-    const getCountdownStr = (untilStr: string | null) => {
-      if (!untilStr) return "";
-      const diffMs = new Date(untilStr).getTime() - Date.now();
-      if (diffMs <= 0) return "Expired";
-      const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
-      return `${days} day${days > 1 ? "s" : ""}`;
-    };
-
-    return (
-      <div className={styles.suspendedCard}>
-        <div className={styles.suspendedIconWrap}>
-          <ShieldAlert size={32} />
-        </div>
-        <h2 className={styles.suspendedTitle}>Advertising and Highlight Account Disabled</h2>
-        <p className={styles.suspendedBody}>
-          {adAccountRestriction.status === "temp_banned" ? (
-            <>
-              Your advertising account is temporarily suspended for{" "}
-              <strong>{getCountdownStr(adAccountRestriction.until)}</strong>.
-            </>
-          ) : adAccountRestriction.status === "perm_banned" ? (
-            <>Your advertising account has been permanently suspended due to policy violations.</>
-          ) : (
-            <>Your advertising account has been deactivated by administration.</>
-          )}
-        </p>
-        {adAccountRestriction.reason && (
-          <div className={styles.suspendedReasonBox}>
-            <strong>Reason for decision:</strong> {adAccountRestriction.reason}
-          </div>
-        )}
-        <p className={styles.suspendedNote}>
-          If you believe this restriction is an error, you may submit an appeal to our Help Center support team.
-        </p>
-        <a
-          href="/help?category=Suspended%20Account&subject=Appeal%20Ad%20Account%20Suspension"
-          className={styles.appealBtn}
-        >
-          Appeal via Help Center
-        </a>
-      </div>
-    );
+    return <AdAccountSuspendedCard adAccountRestriction={adAccountRestriction} />;
   }
 
   return (
@@ -795,52 +419,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             <div className={styles.editingSwitchWrapper}>
               <button
                 type="button"
-                onClick={() => {
-                  setEditingId(null);
-                  setIsDeliveringActive(false);
-                  setOriginalTotalCost(0);
-                  setStep(0);
-                  setFormSelections({
-                    industry: [],
-                    interest: [],
-                    lifestyle: [],
-                    behavior: [],
-                    personality: [],
-                    ageRange: [18, 65],
-                    targetingAll: false,
-                    impressions: 1000,
-                    campaignDays: 5,
-                    userFrequencyCap: 1,
-                    country: "",
-                    state: "",
-                    province: "",
-                    targetLocations: [],
-                    gender: "",
-                    employmentStatus: [],
-                    adMediaType: "",
-                    adContent: "",
-                    adMediaFiles: [],
-                    existingMedia: "",
-                    adActionButtons: [],
-                    actionDetails: {
-                      phone: "",
-                      whatsapp: "",
-                      website: "",
-                      email: "",
-                      ios: "",
-                      android: "",
-                      watch_now: "",
-                    },
-                    displayMutualButton: false,
-                    productName: "",
-                    productPrice: "",
-                    productCtaType: "Buy",
-                    productCtaLink: "",
-                    customSponsorName: "",
-                    customSponsorHandle: "",
-                    customSponsorLogo: "",
-                  });
-                }}
+                onClick={resetForm}
                 className={styles.switchCampaignBtn}
               >
                 Switch to Create New Campaign
@@ -848,49 +427,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             </div>
           )}
 
-          {pendingLimitReached && !editingId && (
-            <div
-              style={{
-                background: "var(--card-bg)",
-                border: "1px solid var(--card-border)",
-                borderRadius: "12px",
-                padding: "12px 16px",
-                marginBottom: "16px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
-                <div>
-                  <strong style={{ color: "var(--foreground)", fontSize: "0.88rem" }}>
-                    Pending Campaign Limit Reached (2/2)
-                  </strong>
-                  <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                    You have 2 campaigns awaiting review or publication. Publish or delete an existing campaign in My Ads to submit a new one.
-                  </p>
-                </div>
-              </div>
-              <a
-                href="/logged-in?view=myads"
-                style={{
-                  padding: "6px 14px",
-                  background: "#1d9bf0",
-                  color: "#ffffff",
-                  borderRadius: "8px",
-                  fontSize: "0.82rem",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Go to My Ads &rarr;
-              </a>
-            </div>
-          )}
+          <AdPendingLimitBanner pendingLimitReached={pendingLimitReached} editingId={editingId} />
 
           <h2 className={`${styles.summaryTitle} ${styles.stepTitle}`}>{steps[step]}</h2>
 

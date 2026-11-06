@@ -1,0 +1,89 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.starItem {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  line-height: 1;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.starItem:hover {
+  transform: scale(1.18);
+}
+
+.tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(18, 18, 18, 0.96);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: opacity 0.15s ease, visibility 0.15s ease, transform 0.15s ease;
+}
+
+.tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: rgba(18, 18, 18, 0.96) transparent transparent transparent;
+}
+
+.starItem:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.starPurple {
+  fill: #a855f7 !important;
+  stroke: #7e22ce !important;
+  stroke-width: 1.5 !important;
+  filter: drop-shadow(0 1px 2px rgba(168, 85, 247, 0.3));
+}
+
+.starGold {
+  fill: #eab308 !important;
+  stroke: #b45309 !important;
+  stroke-width: 1.5 !important;
+  filter: drop-shadow(0 1px 2px rgba(234, 179, 8, 0.35));
+}
+
+.labelPurple {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9333ea;
+  margin-left: 4px;
+}
+
+.labelGold {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ca8a04;
+  margin-left: 4px;
+}

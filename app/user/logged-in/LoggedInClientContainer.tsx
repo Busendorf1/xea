@@ -58,12 +58,18 @@ const StatementPageContent = dynamic(() => import("@/components/Statement/page")
   ssr: false,
 });
 
+const BecomeAgentPage = dynamic(() => import("@/components/AgentSystem/AgentSystem"), {
+  loading: () => <SimpleLoader />,
+  ssr: false,
+});
+
 import DashboardClient from "@/components/DashboardClient/page";
 
 export type TabKey = 
   | "feed"
   | "adPage" 
   | "monetize" 
+  | "agent"
   | "myads" 
   | "profile" 
   | "statement" 
@@ -84,7 +90,7 @@ interface Props {
   initialHighlights?: any[];
 }
 
-const VALID_TABS: TabKey[] = ["feed", "adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
+const VALID_TABS: TabKey[] = ["feed", "adPage", "monetize", "agent", "myads", "profile", "statement", "news", "deactivate"];
 
 export default function LoggedInClientContainer({ 
   session, 
@@ -441,6 +447,12 @@ export default function LoggedInClientContainer({
               initialClicks={initialClicks}
               initialAtwTier={initialAtwTier}
             />
+          </div>
+        )}
+
+        {activeTab === "agent" && (
+          <div className="py-4">
+            <BecomeAgentPage />
           </div>
         )}
 

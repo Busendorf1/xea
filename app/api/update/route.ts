@@ -199,6 +199,18 @@ export async function POST(req: NextRequest) {
     // Invalidate cached profile and feed targeting caches in L1 & L2 Redis
     await invalidateCachedProfile(emailLower);
 
+    // Auto-bind referral code if present in cookie or payload
+    try {
+      const refCode = data.referralCode || req.cookies.get("paayh_ref_code")?.value;
+      if (refCode && String(refCode).trim()) {
+        const { bindUserToAgentByCode } = await import("@/lib/agentSystem");
+        await bindUserToAgentByCode({
+          refereeEmail: emailLower,
+          referralCode: String(refCode).trim(),
+        }).catch(() => {});
+      }
+    } catch {}
+
     try {
       const redis = (await import("@/lib/redis")).default;
       const { isRedisReady } = await import("@/lib/redis");

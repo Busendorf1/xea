@@ -6,7 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, Clock } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import RoleStarBadges from "@/components/ui/RoleStarBadges";
+import { AgentProfileStats } from "@/components/AgentSystem/AgentSystem";
 import { resolveAtwTier, getAtwBalanceLimit } from "@/lib/attentionTierEngine";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { UserProfile } from "./types";
 import styles from "./page.module.css";
 
@@ -49,16 +52,22 @@ export default function DashboardProfileCard({
   // ATW Tier calculations
   const score = Number(user.attention_worth_score ?? 0);
   const tier = resolveAtwTier(score);
-  const balanceCap = getAtwBalanceLimit(tier.code);
+  const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
+  const balanceCap = getAtwBalanceLimit(tier.code, isExempt);
   const currentBal = Number(user.balance ?? 0);
-  const ratio = Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
-  const pct = Math.round(ratio * 100);
+  const ratio = isExempt ? 0 : Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
+  const pct = isExempt ? 0 : Math.round(ratio * 100);
 
   let stateColor = "var(--foreground)";
-  if (ratio >= 0.9) {
-    stateColor = "#ef4444";
-  } else if (ratio >= 0.6) {
-    stateColor = "var(--text-muted)";
+  let stateColorClass = styles.stateColorNormal;
+  if (!isExempt) {
+    if (ratio >= 0.9) {
+      stateColor = "#ef4444";
+      stateColorClass = styles.stateColorDanger;
+    } else if (ratio >= 0.6) {
+      stateColor = "var(--text-muted)";
+      stateColorClass = styles.stateColorWarn;
+    }
   }
 
   // Circular gauge geometry
@@ -86,14 +95,21 @@ export default function DashboardProfileCard({
       </div>
 
       <div className={styles.profileInfo}>
-        <h4 className={styles.profileName}>
-          <span>
-            {user.business_name && user.business_name.trim() !== ""
-              ? user.business_name
-              : `${user.firstName} ${user.lastName}`}
-          </span>
-          {isMonetized && <VerifiedBadge size={20} title="Verified Partner" />}
-        </h4>
+          <h4 className={styles.profileName}>
+            <span>
+              {user.business_name && user.business_name.trim() !== ""
+                ? user.business_name
+                : `${user.firstName} ${user.lastName}`}
+            </span>
+            {isMonetized && <VerifiedBadge size={19} title="Verified Partner" />}
+            <RoleStarBadges
+              email={user.email}
+              isCareer={user.is_career}
+              isAffiliate={user.is_affiliate}
+              affiliateRole={user.affiliate_role}
+              size={17}
+            />
+          </h4>
         <p className={styles.usernameText}>@{user.username.split("@")[0]}</p>
 
         {user.business_name && user.business_name.trim() !== "" && (
@@ -121,12 +137,13 @@ export default function DashboardProfileCard({
           </div>
         </div>
 
-        {/* X / Bluesky Bold Social Stats & Badges Row (Mutuals · ATW Tier Gauge · Monetized) */}
+        {/* X / Bluesky Bold Social Stats & Badges Row (Mutuals · Invites · Agent · ATW Tier Gauge · Monetized) */}
         <div className={styles.profileStatsRow}>
-          <div className={styles.profileStatItem}>
-            <strong className={styles.profileStatValue}>{user.mutual_count}</strong>
-            <span className={styles.profileStatLabel}>/ 50 Mutuals</span>
-          </div>
+          <AgentProfileStats
+            mutualCount={user.mutual_count}
+            formatCurrency={formatCurrency}
+            onSelectTab={onSelectTab}
+          />
 
           <span className={styles.profileStatDot}>·</span>
 
@@ -181,14 +198,14 @@ export default function DashboardProfileCard({
               >
                 <div className={styles.atwTooltipHeader}>
                   <span>ATW Holding Capacity</span>
-                  <span className={styles.atwPct} style={{ color: stateColor }}>
+                  <span className={`${styles.atwPct} ${stateColorClass}`}>
                     {pct}%
                   </span>
                 </div>
                 <p className={styles.atwTooltipText}>
                   Holding limit: {formatCurrency(balanceCap)} ({tier.code}).
                 </p>
-                <span className={styles.atwTooltipHint} style={{ color: stateColor }}>
+                <span className={`${styles.atwTooltipHint} ${stateColorClass}`}>
                   {ratio >= 0.9
                     ? "Max holding reached! Please withdraw your funds."
                     : ratio >= 0.6

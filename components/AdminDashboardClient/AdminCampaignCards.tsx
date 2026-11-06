@@ -299,7 +299,7 @@ export const AdminAdCard = React.memo(function AdminAdCard({
                   className={styles.btnSubmit}
                   style={{ padding: "0.45rem 1.25rem", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "6px", opacity: campaignActionLoading ? 0.7 : 1 }}
                 >
-                  {campaignActionLoading === `approve-ad-${ad.id}` && <span className="btnSpinner" />}
+                  {campaignActionLoading === `approve-ad-${ad.id}` && <span className={styles.btnSpinner} />}
                   <span>{campaignActionLoading === `approve-ad-${ad.id}` ? "Approving..." : "Approve Campaign"}</span>
                 </button>
               )}
@@ -310,7 +310,7 @@ export const AdminAdCard = React.memo(function AdminAdCard({
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 1rem", fontSize: "0.82rem", opacity: campaignActionLoading ? 0.7 : 1 }}
                 title="Reject ad with feedback reason for advertiser to adjust"
               >
-                {campaignActionLoading === `reject-ad-${ad.id}` && <span className="btnSpinner" />}
+                {campaignActionLoading === `reject-ad-${ad.id}` && <span className={styles.btnSpinner} />}
                 <span>{campaignActionLoading === `reject-ad-${ad.id}` ? "Rejecting..." : "Reject"}</span>
               </button>
               <button
@@ -320,6 +320,7 @@ export const AdminAdCard = React.memo(function AdminAdCard({
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 1rem", fontSize: "0.82rem", opacity: campaignActionLoading ? 0.7 : 1 }}
                 title="Permanently delete ad"
               >
+                {campaignActionLoading === `delete-ad-${ad.id}` && <span className={styles.btnSpinner} />}
                 <Trash2 size={14} />
                 <span>{campaignActionLoading === `delete-ad-${ad.id}` ? "Deleting..." : "Delete"}</span>
               </button>
@@ -332,6 +333,7 @@ export const AdminAdCard = React.memo(function AdminAdCard({
                 className={styles.btnAction}
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem", opacity: isCompleted || campaignActionLoading ? 0.7 : 1 }}
               >
+                {campaignActionLoading === `pause-ad-${ad.id}` && <span className={styles.btnSpinner} />}
                 {ad.is_paused ? <Play size={14} /> : <Pause size={14} />}
                 <span>{campaignActionLoading === `pause-ad-${ad.id}` ? "Updating..." : ad.is_paused ? "Resume" : "Pause"}</span>
               </button>
@@ -343,6 +345,7 @@ export const AdminAdCard = React.memo(function AdminAdCard({
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem", backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)", opacity: isCompleted || campaignActionLoading ? 0.7 : 1 }}
                 title="Deactivate campaign and set statement for advertiser"
               >
+                {campaignActionLoading === `deactivate-ad-${ad.id}` && <span className={styles.btnSpinner} />}
                 <AlertCircle size={14} />
                 <span>{campaignActionLoading === `deactivate-ad-${ad.id}` ? "Deactivating..." : "Deactivate Ad"}</span>
               </button>
@@ -359,6 +362,7 @@ export const AdminAdCard = React.memo(function AdminAdCard({
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.45rem 0.85rem", fontSize: "0.82rem", opacity: campaignActionLoading ? 0.7 : 1 }}
                 title="Permanently delete campaign"
               >
+                {campaignActionLoading === `delete-ad-${ad.id}` && <span className={styles.btnSpinner} />}
                 <Trash2 size={14} />
                 <span>{campaignActionLoading === `delete-ad-${ad.id}` ? "Deleting..." : "Delete"}</span>
               </button>
@@ -502,7 +506,7 @@ export const AdminHighlightCard = React.memo(function AdminHighlightCard({
                 className={styles.btnSubmit}
                 style={{ flex: 1, padding: "0.5rem", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px", opacity: campaignActionLoading ? 0.7 : 1 }}
               >
-                {campaignActionLoading === `approve-hl-${highlight.id}` && <span className="btnSpinner" />}
+                {campaignActionLoading === `approve-hl-${highlight.id}` && <span className={styles.btnSpinner} />}
                 <span>{campaignActionLoading === `approve-hl-${highlight.id}` ? "Approving..." : "Approve Highlight"}</span>
               </button>
             )}
@@ -513,7 +517,7 @@ export const AdminHighlightCard = React.memo(function AdminHighlightCard({
               style={{ padding: "0.5rem 0.9rem", display: "inline-flex", alignItems: "center", gap: "4px", opacity: campaignActionLoading ? 0.7 : 1 }}
               title="Reject highlight with feedback reason for advertiser to adjust"
             >
-              {campaignActionLoading === `reject-hl-${highlight.id}` && <span className="btnSpinner" />}
+              {campaignActionLoading === `reject-hl-${highlight.id}` && <span className={styles.btnSpinner} />}
               <span>{campaignActionLoading === `reject-hl-${highlight.id}` ? "Rejecting..." : "Reject"}</span>
             </button>
             <button
@@ -523,6 +527,7 @@ export const AdminHighlightCard = React.memo(function AdminHighlightCard({
               style={{ padding: "0.5rem 0.9rem", display: "inline-flex", alignItems: "center", gap: "4px", opacity: campaignActionLoading ? 0.7 : 1 }}
               title="Permanently delete highlight"
             >
+              {campaignActionLoading === `delete-hl-${highlight.id}` && <span className={styles.btnSpinner} />}
               <Trash2 size={14} />
               <span>{campaignActionLoading === `delete-hl-${highlight.id}` ? "Deleting..." : "Delete"}</span>
             </button>
@@ -535,6 +540,7 @@ export const AdminHighlightCard = React.memo(function AdminHighlightCard({
               className={styles.btnAction}
               style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem", opacity: campaignActionLoading ? 0.7 : 1 }}
             >
+              {campaignActionLoading === `pause-hl-${highlight.id}` && <span className={styles.btnSpinner} />}
               {highlight.is_paused ? <Play size={14} /> : <Pause size={14} />}
               <span>{campaignActionLoading === `pause-hl-${highlight.id}` ? "Updating..." : highlight.is_paused ? "Resume" : "Pause"}</span>
             </button>
@@ -548,6 +554,7 @@ export const AdminHighlightCard = React.memo(function AdminHighlightCard({
               style={{ padding: "0.5rem", opacity: campaignActionLoading ? 0.7 : 1 }}
               title="Delete highlight"
             >
+              {campaignActionLoading === `delete-hl-${highlight.id}` && <span className={styles.btnSpinner} />}
               <Trash2 size={14} />
             </button>
           </>

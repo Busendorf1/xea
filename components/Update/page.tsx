@@ -4,33 +4,32 @@ import React, { useEffect, useState } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
-import LocationSelector from "../LocationSelector";
 import AppleSpinner from "@/components/ui/AppleSpinner";
-import { CheckCircle2, AlertCircle, Info, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
+import { CheckCircle2, AlertCircle, ShieldCheck, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import CustomSelect from "@/components/ui/CustomSelect";
-import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import FormStepProgress from "@/components/ui/FormStepProgress";
 import FairAttentionModal from "@/components/ui/FairAttentionModal";
 import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
 import { MANUAL_LOCATION_PENDING_KEY } from "@/lib/utils/locationHelper";
-
-import {
-  ALL_INDUSTRIES as industries,
-  ALL_INTERESTS as interests,
-  ALL_BEHAVIORS as behaviors,
-  ALL_LIFESTYLES as lifestyles,
-  ALL_PERSONALITY_TRAITS as personalityTraits,
-} from "@/lib/categoryTargetingMap";
 import { isAdminEmail } from "@/lib/adminHelper";
-import { hasManualAvatar } from "@/lib/utils/avatar";
 
+import UpdatePersonalStep from "./UpdatePersonalStep";
+import UpdateDemographicsStep from "./UpdateDemographicsStep";
+import UpdateTargetingStep from "./UpdateTargetingStep";
+import UpdateReviewStep from "./UpdateReviewStep";
+
+export {
+  UpdatePersonalStep,
+  UpdateDemographicsStep,
+  UpdateTargetingStep,
+  UpdateReviewStep,
+};
 
 interface Props {
   email: string;
 }
 
-interface UserProfileData {
+export interface UserProfileData {
   id: string;
   email: string;
   username: string;
@@ -315,7 +314,6 @@ export default function Update({ email }: Props) {
       return;
     }
 
-
     setLoading(true);
     setStatus("Checking update eligibility...");
 
@@ -449,85 +447,6 @@ export default function Update({ email }: Props) {
     setFormData((prev) => ({ ...prev, [name]: [] }));
   };
 
-  const renderDropdown = (
-    label: string,
-    name: "industry" | "interest" | "behavior" | "lifestyle" | "personality",
-    options: string[]
-  ) => {
-    const selectedArr = formData[name] || [];
-    const isAllSelected = options.length > 0 && selectedArr.length === options.length;
-    return (
-      <div className={styles.dropdownContainer}>
-        <div
-          className={styles.dropdownHeader}
-          onClick={() => toggleDropdown(name)}
-        >
-          <span>{selectedArr.length > 0 ? `${selectedArr.length} ${label} selected` : `Select ${label}`}</span>
-          <span>{openDropdowns[name] ? "▲" : "▼"}</span>
-        </div>
-        <AnimatePresence>
-          {openDropdowns[name] && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className={styles.checkboxGroup}
-            >
-              <div className={styles.dropdownActionsBar}>
-                <button
-                  type="button"
-                  className={styles.quickActionBtn}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isAllSelected) {
-                      handleClearAll(name);
-                    } else {
-                      handleSelectAll(name, options);
-                    }
-                  }}
-                  disabled={timeRemaining !== null && timeRemaining > 0}
-                >
-                  {isAllSelected ? "Deselect All" : "Select All"}
-                </button>
-                {selectedArr.length > 0 && (
-                  <button
-                    type="button"
-                    className={styles.quickActionBtn}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleClearAll(name);
-                    }}
-                    disabled={timeRemaining !== null && timeRemaining > 0}
-                  >
-                    Clear ({selectedArr.length})
-                  </button>
-                )}
-              </div>
-              {options.map((opt) => (
-                <motion.label 
-                  key={opt}
-                  whileHover={{ x: 2 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <input
-                    type="checkbox"
-                    name={name}
-                    value={opt}
-                    checked={formData[name]?.includes(opt) || false}
-                    onChange={handleChange}
-                    disabled={timeRemaining !== null && timeRemaining > 0}
-                  />
-                  <span>{opt}</span>
-                </motion.label>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
       <div className={styles.loadingContainer}>
@@ -600,337 +519,53 @@ export default function Update({ email }: Props) {
 
       {/* STEP 0: Personal & Location Details */}
       {currentStep === 0 && (
-        <div className={styles.formSection}>
-          <div className={styles.formGrid}>
-            <div className={`${styles.formGroup} ${styles.colSpanFull}`}>
-              <label>Username / Handle</label>
-              <input
-                name="username"
-                placeholder={dbProfile.username || "e.g. alex_dev or user@example.com"}
-                value={formData.username || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
-              />
-              <div className={styles.privacyNoticeBox}>
-                <Info size={15} color="#6366f1" className={styles.privacyNoticeIcon} />
-                <span>
-                  <strong>Public Handle vs. Private Email:</strong> Your <code>@username</code> is publicly visible across the platform and not encrypted, whereas your account email remains private (used only for login, notifications, and wallet routing) and is never displayed on the feed.
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>First Name</label>
-              <input
-                name="firstName"
-                placeholder={dbProfile.firstName || "First Name"}
-                value={formData.firstName || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Last Name</label>
-              <input
-                name="lastName"
-                placeholder={dbProfile.lastName || "Last Name"}
-                value={formData.lastName || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Date of Birth</label>
-              <input
-                type="date"
-                name="dob"
-                value={formData.dob || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Phone Number</label>
-              <input
-                name="phone"
-                type="tel"
-                placeholder={dbProfile.phone || "Phone"}
-                value={formData.phone || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Email Address</label>
-              <input
-                name="email"
-                type="email"
-                placeholder={dbProfile.email || "Email"}
-                value={dbProfile.email || formData.email || ""}
-                readOnly
-                disabled
-                title="Account email address cannot be modified"
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Business Name (Optional)</label>
-              <input
-                name="business_name"
-                placeholder={dbProfile.business_name || "Business Name"}
-                maxLength={25}
-                value={formData.business_name || ""}
-                onChange={handleChange}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.colSpanFull}>
-              <LocationSelector
-                country={formData.country !== undefined ? formData.country : (dbProfile.country || "")}
-                state={formData.state !== undefined ? formData.state : (dbProfile.state || "")}
-                location={formData.location !== undefined ? formData.location : (dbProfile.location || "")}
-                onChange={({ country, state, location }) =>
-                  setFormData((prev) => ({ ...prev, country, state, location }))
-                }
-                showLabels={true}
-                groupClass={styles.formGroup}
-                cityGroupClass={styles.formGroup}
-                cityLabel="City/Location"
-                disabled={isFormDisabled}
-                gpsEnforced={true}
-              />
-            </div>
-          </div>
-        </div>
+        <UpdatePersonalStep
+          dbProfile={dbProfile}
+          formData={formData}
+          handleChange={handleChange}
+          setFormData={setFormData}
+          isFormDisabled={isFormDisabled}
+        />
       )}
 
       {/* STEP 1: Demographics & Lifestyle */}
       {currentStep === 1 && (
-        <div className={styles.formSection}>
-          <div className={styles.formGrid}>
-            <div className={styles.formGroup}>
-              <label>Gender</label>
-              <CustomSelect
-                value={formData.gender || ""}
-                onChange={(val) => setFormData((prev) => ({ ...prev, gender: val }))}
-                options={[
-                  { value: "male", label: "Male" },
-                  { value: "female", label: "Female" },
-                ]}
-                placeholder="Select Gender"
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Employment Status</label>
-              <CustomSelect
-                value={formData.employment || ""}
-                onChange={(val) => setFormData((prev) => ({ ...prev, employment: val }))}
-                options={[
-                  { value: "employed", label: "Employed" },
-                  { value: "student", label: "Student" },
-                  { value: "unemployed", label: "Unemployed" },
-                  { value: "freelancer", label: "Freelancer" },
-                  { value: "entrepreneur", label: "Entrepreneur" },
-                  { value: "retired", label: "Retired" },
-                ]}
-                placeholder="Select Employment"
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>International Traveller?</label>
-              <CustomSelect
-                value={formData.intlTravel || "no"}
-                onChange={(val) => setFormData((prev) => ({ ...prev, intlTravel: val }))}
-                options={[
-                  { value: "no", label: "No" },
-                  { value: "yes", label: "Yes" },
-                ]}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Local Traveller by Air?</label>
-              <CustomSelect
-                value={formData.localTravel || "no"}
-                onChange={(val) => setFormData((prev) => ({ ...prev, localTravel: val }))}
-                options={[
-                  { value: "no", label: "No" },
-                  { value: "yes", label: "Yes" },
-                ]}
-                disabled={isFormDisabled}
-              />
-            </div>
-
-            <div className={`${styles.formGroup} ${styles.colSpanFull}`}>
-              <label>Profile Picture / Brand Logo <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(Optional)</span></label>
-              <label className={`${styles.fileUpload} ${isFormDisabled ? styles.fileUploadDisabled : ""}`}>
-                {imageFile ? `Selected: ${imageFile.name}` : "Choose Profile Picture or Brand Logo (Optional)"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) setImageFile(file);
-                  }}
-                  disabled={isFormDisabled}
-                />
-              </label>
-              {hasManualAvatar(dbProfile.profileImage) ? (
-                <p className={styles.uploadHelperText}>
-                  Choose profile photo/logo.
-                </p>
-              ) : (
-                <p className={styles.uploadHelperText}>
-                  Optional. If no photo or logo is uploaded, a default silhouette avatar will be displayed.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <UpdateDemographicsStep
+          dbProfile={dbProfile}
+          formData={formData}
+          setFormData={setFormData}
+          isFormDisabled={isFormDisabled}
+          imageFile={imageFile}
+          setImageFile={setImageFile}
+        />
       )}
 
       {/* STEP 2: Categories, Interests & Bio */}
       {currentStep === 2 && (
-        <div className={styles.formSection}>
-          <p className={styles.stepSectionIntro}>
-            Select your relevant industries and interests to receive targeted ads and business highlights.
-          </p>
-
-          {renderDropdown("Industries (Required)", "industry", industries)}
-          {renderDropdown("Interests (Required)", "interest", interests)}
-          {renderDropdown("Behaviors", "behavior", behaviors)}
-          {renderDropdown("Lifestyles", "lifestyle", lifestyles)}
-          {renderDropdown("Personality Traits", "personality", personalityTraits)}
-
-          <div className={styles.bioGroup}>
-            <label className={styles.bioLabel}>
-              Bio / Tagline
-            </label>
-            <textarea
-              name="bio"
-              placeholder={dbProfile.bio || "Short Bio (max 90 characters)"}
-              maxLength={90}
-              value={formData.bio || ""}
-              onChange={handleChange}
-              disabled={isFormDisabled}
-              className={styles.textbo}
-            />
-          </div>
-        </div>
+        <UpdateTargetingStep
+          dbProfile={dbProfile}
+          formData={formData}
+          handleChange={handleChange}
+          openDropdowns={openDropdowns}
+          toggleDropdown={toggleDropdown}
+          handleSelectAll={handleSelectAll}
+          handleClearAll={handleClearAll}
+          isFormDisabled={isFormDisabled}
+          timeRemaining={timeRemaining}
+        />
       )}
 
       {/* STEP 3: Review & Submit */}
       {currentStep === 3 && (
-        <div className={styles.formSection}>
-          <p className={styles.stepSectionIntro}>
-            Please review your updated profile information before saving.
-          </p>
-
-          <div className={styles.reviewGrid}>
-            <div className={styles.reviewCard}>
-              <div className={styles.reviewCardTitle}>Personal</div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Username:</span>
-                <span className={styles.reviewValue}>{formData.username || dbProfile.username || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Name:</span>
-                <span className={styles.reviewValue}>{`${formData.firstName || dbProfile.firstName || ""} ${formData.lastName || dbProfile.lastName || ""}`.trim() || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Email:</span>
-                <span className={styles.reviewValue}>{formData.email || dbProfile.email || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Phone:</span>
-                <span className={styles.reviewValue}>{formData.phone || dbProfile.phone || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Location:</span>
-                <span className={styles.reviewValue}>{formData.location || dbProfile.location ? `${formData.location || dbProfile.location}, ${formData.state || dbProfile.state}, ${formData.country || dbProfile.country}` : "None"}</span>
-              </div>
-            </div>
-
-            <div className={styles.reviewCard}>
-              <div className={styles.reviewCardTitle}>Demographics</div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Gender:</span>
-                <span className={styles.reviewValue}>{formData.gender || dbProfile.gender || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Employment:</span>
-                <span className={styles.reviewValue}>{formData.employment || dbProfile.employment || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Intl Traveller:</span>
-                <span className={styles.reviewValue}>{formData.intlTravel || "no"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Local Flight Traveller:</span>
-                <span className={styles.reviewValue}>{formData.localTravel || "no"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Profile Picture:</span>
-                <span className={styles.reviewValue}>{imageFile ? `New file (${imageFile.name})` : hasManualAvatar(dbProfile.profileImage) ? "Active" : "None"}</span>
-              </div>
-            </div>
-
-            <div className={`${styles.reviewCard} ${styles.colSpanFull}`}>
-              <div className={styles.reviewCardTitle}>Selected Targeting</div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Industries:</span>
-                <span className={styles.reviewValue}>{(formData.industry?.length ? formData.industry : dbProfile.industry || []).join(", ") || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Interests:</span>
-                <span className={styles.reviewValue}>{(formData.interest?.length ? formData.interest : dbProfile.interest || []).join(", ") || "None"}</span>
-              </div>
-              <div className={styles.reviewItem}>
-                <span className={styles.reviewLabel}>Bio:</span>
-                <span className={styles.reviewValue}>{formData.bio || dbProfile.bio || "None"}</span>
-              </div>
-            </div>
-          </div>
-
-          {dbProfile && !dbProfile.has_updated_profile && (
-            <p className={styles.cooldownWarningNote}>
-              <Clock size={15} className={styles.flexShrink0} />
-              <span>Note: Once confirmed, you can only update your profile once every 30 days.</span>
-            </p>
-          )}
-        </div>
-      )}
-
-      {currentStep === steps.length - 1 && (
-        <TermsAgreementCheckbox
-          id="profile-update-terms"
-          checked={goodwillAgreed}
-          onChange={(checked) => {
-            setGoodwillAgreed(checked);
-            if (checked) {
-              setTermsError(null);
-              setStatus(null);
-            }
-          }}
-          instruction="Please read and review the terms and policies below, and tick the box if you accept:"
-          terms={[
-            { label: "Terms of Service", href: "/terms" },
-            { label: "Privacy Policy", href: "/privacy" },
-            { label: "Good Will & Community Guidelines", href: "/terms" },
-          ]}
-          checkboxLabel="I confirm that I have read, reviewed, and accept the Terms of Service & Privacy Policy, and pledge to participate in good will."
-          errorMessage={termsError}
-          required
+        <UpdateReviewStep
+          dbProfile={dbProfile}
+          formData={formData}
+          imageFile={imageFile}
+          goodwillAgreed={goodwillAgreed}
+          setGoodwillAgreed={setGoodwillAgreed}
+          termsError={termsError}
+          setTermsError={setTermsError}
+          setStatus={setStatus}
         />
       )}
 
@@ -973,7 +608,7 @@ export default function Update({ email }: Props) {
             disabled={loading || isFormDisabled}
           >
             {loading ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span className={styles.savingSpinnerWrap}>
                 <span className="btnSpinner" aria-hidden="true" />
                 <span>Saving Profile...</span>
               </span>

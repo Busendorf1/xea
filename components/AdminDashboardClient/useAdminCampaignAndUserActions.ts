@@ -7,6 +7,7 @@ import { adminDirectAdSchema } from "@/lib/validationSchemas";
 import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 import type { AdminTab } from "./AdminLayoutAndCampaignTabs";
+import { useAdminDialog } from "@/components/ui/AdminDialog";
 
 const formatCurrency = (amount: number | string, country?: string | null) =>
   globalFormatCurrency(amount, country);
@@ -76,10 +77,22 @@ export function useAdminCampaignAndUserActions(params: {
     handleTabChange,
   } = params;
 
+  const { alertDialog, confirmDialog } = useAdminDialog();
+  const [activeActionId, setActiveActionId] = React.useState<string | null>(null);
+
   const handleToggleMonetization = async (user: any) => {
     if (userActionSubmitting) return;
-    setUserActionSubmitting(true);
     const isCurrentlyMonetized = user.monetized === "yes" || user.monetized === true;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to ${isCurrentlyMonetized ? "DEACTIVATE" : "ACTIVATE"} monetization earnings for @${user.username || user.email}?`,
+      isCurrentlyMonetized ? "Deactivate Monetization" : "Activate Monetization",
+      isCurrentlyMonetized
+    );
+    if (!confirmed) return;
+
+    const actionId = `toggle-monetize-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
     const nextMonetizedVal = isCurrentlyMonetized ? "no" : "yes";
     const nextMonetizedType = null;
     const nextMonetizedUntil = null;
@@ -102,10 +115,11 @@ export function useAdminCampaignAndUserActions(params: {
 
       if (!response.ok) {
         const err = await response.json();
-        alert(`Failed to update monetization: ${err.error || "Server error"}`);
+        await alertDialog(`Failed to update monetization: ${err.error || "Server error"}`, "Error");
       } else {
-        alert(
-          `Successfully ${isCurrentlyMonetized ? "deactivated" : "activated"} monetization for @${user.username}`
+        await alertDialog(
+          `Successfully ${isCurrentlyMonetized ? "deactivated" : "activated"} monetization for @${user.username}`,
+          "Monetization Updated"
         );
         handleRefresh();
         if (selectedUser && selectedUser.id === user.id) {
@@ -119,14 +133,25 @@ export function useAdminCampaignAndUserActions(params: {
         }
       }
     } catch (e: any) {
-      alert(`Error updating monetization: ${e.message}`);
+      await alertDialog(`Error updating monetization: ${e.message}`, "Error");
     } finally {
       setUserActionSubmitting(false);
+      setActiveActionId(null);
     }
   };
 
   const handleSuspendUser = async (user: any, hours: number) => {
     if (userActionSubmitting) return;
+    const desc = hours === -1 ? "permanently suspend" : hours === 0 ? "lift the suspension for" : `temporarily suspend @${user.username} for ${hours} hours`;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to ${desc}?`,
+      hours === 0 ? "Lift Suspension" : "Account Suspension",
+      hours !== 0
+    );
+    if (!confirmed) return;
+
+    const actionId = `suspend-${user.id}-${hours}`;
+    setActiveActionId(actionId);
     setUserActionSubmitting(true);
     let suspendedUntil: string | null = null;
     if (hours > 0) {
@@ -148,19 +173,20 @@ export function useAdminCampaignAndUserActions(params: {
 
       if (!response.ok) {
         const err = await response.json();
-        alert(`Failed to suspend account: ${err.error || "Server error"}`);
+        await alertDialog(`Failed to suspend account: ${err.error || "Server error"}`, "Error");
       } else {
-        const desc = hours === -1 ? "permanently" : hours === 0 ? "unsuspended" : `for ${hours} hours`;
-        alert(`Successfully ${desc} user @${user.username}`);
+        const descApplied = hours === -1 ? "permanently suspended" : hours === 0 ? "unsuspended" : `suspended for ${hours} hours`;
+        await alertDialog(`Successfully ${descApplied} user @${user.username}`, "Suspension Updated");
         handleRefresh();
         if (selectedUser && selectedUser.id === user.id) {
           setSelectedUser({ ...selectedUser, suspended_until: suspendedUntil });
         }
       }
     } catch (e: any) {
-      alert(`Error setting suspension: ${e.message}`);
+      await alertDialog(`Error setting suspension: ${e.message}`, "Error");
     } finally {
       setUserActionSubmitting(false);
+      setActiveActionId(null);
     }
   };
 
@@ -172,8 +198,17 @@ export function useAdminCampaignAndUserActions(params: {
     );
     if (reason === null) return;
 
-    setUserActionSubmitting(true);
     const newBalance = Math.max(0, parseFloat(user.balance || 0) + amount);
+    const confirmed = await confirmDialog(
+      `Are you sure you want to adjust the wallet balance for @${user.username} by ${formatCurrency(amount)}?\n\nNew Balance: ${formatCurrency(newBalance)}\nReason: "${reason.trim()}"`,
+      "Confirm Wallet Adjustment",
+      amount < 0
+    );
+    if (!confirmed) return;
+
+    const actionId = `adjust-balance-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
 
     try {
       const response = await fetch("/api/admin/users", {
@@ -188,10 +223,11 @@ export function useAdminCampaignAndUserActions(params: {
 
       if (!response.ok) {
         const err = await response.json();
-        alert(`Failed to update balance: ${err.error || "Server error"}`);
+        await alertDialog(`Failed to update balance: ${err.error || "Server error"}`, "Error");
       } else {
-        alert(
-          `Wallet balance adjusted by ${formatCurrency(amount)}. New Balance: ${formatCurrency(newBalance)}`
+        await alertDialog(
+          `Wallet balance adjusted by ${formatCurrency(amount)}. New Balance: ${formatCurrency(newBalance)}`,
+          "Wallet Adjusted"
         );
         handleRefresh();
         if (selectedUser && selectedUser.id === user.id) {
@@ -199,18 +235,32 @@ export function useAdminCampaignAndUserActions(params: {
         }
       }
     } catch (e: any) {
-      alert(`Error adjusting wallet: ${e.message}`);
+      await alertDialog(`Error adjusting wallet: ${e.message}`, "Error");
     } finally {
       setUserActionSubmitting(false);
+      setActiveActionId(null);
     }
   };
 
   const handleDeleteUser = async (user: any) => {
     if (userActionSubmitting) return;
-    if (!confirm(`WARNING: Are you sure you want to delete @${user.username} (${user.email}) permanently?`)) {
+    const userHandle = user.username
+      ? `@${user.username}`
+      : user.email
+      ? `@${user.email.split("@")[0]}`
+      : "this user";
+
+    const confirmed = await confirmDialog(
+      `WARNING: Are you sure you want to delete ${userHandle} (${user.email}) permanently?\n\nThis action cannot be undone and will permanently wipe this account, active campaigns, and ledger records from the database.`,
+      "Delete Account Permanently",
+      true
+    );
+    if (!confirmed) {
       return;
     }
 
+    const actionId = `delete-user-${user.id}`;
+    setActiveActionId(actionId);
     setUserActionSubmitting(true);
     try {
       const response = await fetch("/api/admin/users", {
@@ -224,21 +274,423 @@ export function useAdminCampaignAndUserActions(params: {
 
       if (!response.ok) {
         const err = await response.json();
-        alert(`Failed to delete account: ${err.error || "Server error"}`);
+        await alertDialog(`Failed to delete account: ${err.error || "Server error"}`, "Error");
       } else {
-        alert(`Account for @${user.username} deleted permanently.`);
+        await alertDialog(`Account for ${userHandle} deleted permanently.`, "Account Deleted");
         setSelectedUser(null);
         handleRefresh();
       }
     } catch (e: any) {
-      alert(`Error deleting user: ${e.message}`);
+      await alertDialog(`Error deleting user: ${e.message}`, "Error");
     } finally {
       setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+
+  const handleUpdateUserProfile = async (user: any, updatedFields: Record<string, any>) => {
+    if (userActionSubmitting) return false;
+    const actionId = `update-profile-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_profile",
+          userId: user.id,
+          payload: updatedFields,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to update profile: ${err.error || "Server error"}`, "Error");
+        return false;
+      } else {
+        await alertDialog(`Profile for @${user.username} updated successfully.`, "Profile Saved");
+        handleRefresh();
+        if (selectedUser && selectedUser.id === user.id) {
+          setSelectedUser((prev: any) => ({ ...prev, ...updatedFields }));
+        }
+        return true;
+      }
+    } catch (e: any) {
+      await alertDialog(`Error updating profile: ${e.message}`, "Error");
+      return false;
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleToggleAgent = async (user: any, makeAgent: boolean) => {
+    if (userActionSubmitting) return;
+    const confirmed = await confirmDialog(
+      makeAgent
+        ? `Are you sure you want to grant official Agent status to @${user.username}?\n\nThis will generate an agent code, allow them to recruit followers, and earn commissions.`
+        : `Are you sure you want to REVOKE official Agent status from @${user.username}?\n\nThey will no longer earn agent commissions or register new followers.`,
+      makeAgent ? "Grant Agent Status" : "Revoke Agent Status",
+      !makeAgent
+    );
+    if (!confirmed) return;
+
+    const actionId = `toggle-agent-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle_agent",
+          userId: user.id,
+          payload: { makeAgent },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to update agent status: ${err.error || "Server error"}`, "Error");
+      } else {
+        await alertDialog(
+          `Successfully ${makeAgent ? "granted" : "revoked"} Agent status for @${user.username}`,
+          "Agent Status Updated"
+        );
+        handleRefresh();
+        if (selectedUser && selectedUser.id === user.id) {
+          setSelectedUser((prev: any) => ({ ...prev, is_agent: makeAgent }));
+        }
+      }
+    } catch (e: any) {
+      await alertDialog(`Error updating agent status: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleUpdateSpecialRoles = async (
+    user: any,
+    roles: { isCareer: boolean; isAffiliate: boolean; affiliateRole?: string | null }
+  ) => {
+    if (userActionSubmitting) return;
+    const actionId = `special-roles-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_special_roles",
+          userId: user.id,
+          payload: roles,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to update special roles: ${err.error || "Server error"}`, "Error");
+      } else {
+        await alertDialog(
+          `Successfully updated Career and Affiliate badges for @${user.username || user.email}`,
+          "Badges Updated"
+        );
+        handleRefresh();
+        if (selectedUser && selectedUser.id === user.id) {
+          setSelectedUser((prev: any) => ({
+            ...prev,
+            is_career: roles.isCareer,
+            is_affiliate: roles.isAffiliate,
+            affiliate_role: roles.isAffiliate ? roles.affiliateRole : null,
+          }));
+        }
+      }
+    } catch (e: any) {
+      await alertDialog(`Error updating special roles: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleBanAgent = async (
+    user: any,
+    options: {
+      banType: "temp" | "perm" | "unban";
+      days?: number;
+      customUntil?: string;
+      reason: string;
+      detachFollowers?: boolean;
+    }
+  ) => {
+    if (userActionSubmitting) return;
+    const isUnban = options.banType === "unban";
+    const confirmPrompt = isUnban
+      ? `Are you sure you want to lift the agency ban for @${user.username}? The user will be permitted to register as an agent again.`
+      : `Are you sure you want to ${options.banType === "perm" ? "PERMANENTLY ban" : `temporarily ban (for ${options.days || 30} days)`} @${user.username} from being an Agent?\n\nReason: "${options.reason}"${options.detachFollowers ? "\n\n⚠️ Also detaching all active followers from this agent." : ""}`;
+
+    const confirmed = await confirmDialog(confirmPrompt, isUnban ? "Lift Agency Ban" : "Confirm Agency Ban", !isUnban);
+    if (!confirmed) return;
+
+    const actionId = `ban-agent-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ban_agent",
+          userId: user.id,
+          payload: options,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to update agency ban: ${err.error || "Server error"}`, "Error");
+      } else {
+        await alertDialog(
+          isUnban
+            ? `Agency privileges successfully restored for @${user.username}.`
+            : `Agency privileges successfully banned for @${user.username}.`,
+          "Agency Status Updated"
+        );
+        handleRefresh();
+        if (selectedUser && selectedUser.id === user.id) {
+          setSelectedUser((prev: any) => ({
+            ...prev,
+            is_agent: false,
+            is_agent_banned: !isUnban,
+            agent_banned_until: options.banType === "perm" ? "2099-12-31T23:59:59.000Z" : options.customUntil || null,
+            agent_ban_reason: isUnban ? null : options.reason,
+          }));
+        }
+      }
+    } catch (e: any) {
+      await alertDialog(`Error updating agency ban: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleRemoveFollower = async (user: any, refereeEmail: string, followerLabel?: string) => {
+    if (userActionSubmitting) return;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to remove follower ${followerLabel || refereeEmail} from @${user.username}'s referral network?\n\nThis will sever the referral link immediately.`,
+      "Remove Specific Follower",
+      true
+    );
+    if (!confirmed) return;
+
+    const actionId = `remove-follower-${refereeEmail}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "remove_follower",
+          userId: user.id,
+          payload: { refereeEmail },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to remove follower: ${err.error || "Server error"}`, "Error");
+      } else {
+        await alertDialog(`Follower ${followerLabel || refereeEmail} detached from @${user.username}.`, "Follower Removed");
+        handleRefresh();
+      }
+    } catch (e: any) {
+      await alertDialog(`Error removing follower: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleRemoveAllFollowers = async (user: any) => {
+    if (userActionSubmitting) return;
+    const confirmed = await confirmDialog(
+      `WARNING: Are you sure you want to remove ALL followers from @${user.username}'s referral network?\n\nThis will immediately disconnect all downline referees.`,
+      "Remove All Followers",
+      true
+    );
+    if (!confirmed) return;
+
+    const actionId = `purge-followers-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "remove_all_followers",
+          userId: user.id,
+          payload: { reason: "Admin bulk follower detachment" },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to remove followers: ${err.error || "Server error"}`, "Error");
+      } else {
+        const data = await response.json();
+        await alertDialog(data.message || `All followers detached from @${user.username}.`, "Followers Purged");
+        handleRefresh();
+      }
+    } catch (e: any) {
+      await alertDialog(`Error removing all followers: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleDetachUplineAgent = async (user: any, uplineLabel?: string) => {
+    if (userActionSubmitting) return;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to detach upline agent ${uplineLabel || ""} from @${user.username}?\n\nThis user will no longer be referred by that agent, and no further commissions will be deducted.`,
+      "Detach Upline Agent",
+      true
+    );
+    if (!confirmed) return;
+
+    const actionId = `detach-upline-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "detach_upline_agent",
+          userId: user.id,
+          payload: { reason: "Admin detached upline agent on complaint or violation" },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to detach upline agent: ${err.error || "Server error"}`, "Error");
+      } else {
+        const data = await response.json();
+        await alertDialog(data.message || `Upline agent detached from @${user.username}.`, "Upline Agent Detached");
+        handleRefresh();
+      }
+    } catch (e: any) {
+      await alertDialog(`Error detaching upline agent: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleDeactivateAccount = async (user: any, deactivated: boolean) => {
+    if (userActionSubmitting) return;
+    const confirmMsg = deactivated
+      ? `Are you sure you want to DEACTIVATE the account for @${user.username}? The user will not be able to run ads or monetize.`
+      : `Reactivate account for @${user.username}?`;
+    const confirmed = await confirmDialog(confirmMsg, deactivated ? "Deactivate Account" : "Reactivate Account", deactivated);
+    if (!confirmed) return;
+
+    const actionId = `deactivate-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "deactivate_account",
+          userId: user.id,
+          payload: { deactivated },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to change account state: ${err.error || "Server error"}`, "Error");
+      } else {
+        await alertDialog(`Account for @${user.username} is now ${deactivated ? "deactivated" : "active"}.`, "Account Status Updated");
+        handleRefresh();
+        if (selectedUser && selectedUser.id === user.id) {
+          setSelectedUser((prev: any) => ({
+            ...prev,
+            ad_account_status: deactivated ? "deactivated" : "active",
+          }));
+        }
+      }
+    } catch (e: any) {
+      await alertDialog(`Error: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
+    }
+  };
+
+  const handleResetClicks = async (user: any, clicks: number) => {
+    if (userActionSubmitting) return;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to override monetization clicks for @${user.username} to ${clicks}?`,
+      "Override Ad Clicks",
+      false
+    );
+    if (!confirmed) return;
+
+    const actionId = `reset-clicks-${user.id}`;
+    setActiveActionId(actionId);
+    setUserActionSubmitting(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset_clicks",
+          userId: user.id,
+          payload: { clicks },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        await alertDialog(`Failed to set clicks: ${err.error || "Server error"}`, "Error");
+      } else {
+        await alertDialog(`Monetization ad clicks for @${user.username} set to ${clicks}.`, "Clicks Overridden");
+        handleRefresh();
+        if (selectedUser && selectedUser.id === user.id) {
+          setSelectedUser((prev: any) => ({
+            ...prev,
+            monetization_clicks: clicks,
+          }));
+        }
+      }
+    } catch (e: any) {
+      await alertDialog(`Error updating clicks: ${e.message}`, "Error");
+    } finally {
+      setUserActionSubmitting(false);
+      setActiveActionId(null);
     }
   };
 
   const handleApproveAd = async (ad: any) => {
     if (campaignActionLoading) return;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to APPROVE this Ad campaign ("${ad.headline || ad.ad_content?.slice(0, 40) || ad.id}")? It will go live immediately.`,
+      "Approve Ad Campaign",
+      false
+    );
+    if (!confirmed) return;
+
     setCampaignActionLoading(`approve-ad-${ad.id}`);
     try {
       const res = await fetch("/api/admin/campaigns", {
@@ -258,7 +710,7 @@ export function useAdminCampaignAndUserActions(params: {
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error approving ad: ${e.message}`);
+      await alertDialog(`Error approving ad: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -270,6 +722,13 @@ export function useAdminCampaignAndUserActions(params: {
       "Enter a reason or feedback for rejecting this Ad (the advertiser will see this to adjust their campaign):"
     );
     if (feedback === null) return;
+
+    const confirmed = await confirmDialog(
+      `Are you sure you want to REJECT this Ad campaign?\n\nReason to advertiser: "${feedback}"`,
+      "Reject Ad Campaign",
+      true
+    );
+    if (!confirmed) return;
 
     setCampaignActionLoading(`reject-ad-${ad.id}`);
     try {
@@ -292,7 +751,7 @@ export function useAdminCampaignAndUserActions(params: {
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error rejecting campaign: ${e.message}`);
+      await alertDialog(`Error rejecting campaign: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -306,6 +765,13 @@ export function useAdminCampaignAndUserActions(params: {
       statement = prompt("Enter a reason or statement for pausing this ad campaign (visible to the advertiser):");
       if (statement === null) return;
     }
+
+    const confirmed = await confirmDialog(
+      `Are you sure you want to ${targetState ? "PAUSE" : "RESUME"} this Ad campaign?`,
+      targetState ? "Pause Campaign" : "Resume Campaign",
+      targetState
+    );
+    if (!confirmed) return;
 
     setCampaignActionLoading(`pause-ad-${ad.id}`);
     try {
@@ -321,11 +787,11 @@ export function useAdminCampaignAndUserActions(params: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
 
-      alert(`Ad campaign successfully ${targetState ? "paused" : "resumed"}!`);
+      await alertDialog(`Ad campaign successfully ${targetState ? "paused" : "resumed"}!`, "Campaign Updated");
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error pausing/resuming campaign: ${e.message}`);
+      await alertDialog(`Error pausing/resuming campaign: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -337,6 +803,13 @@ export function useAdminCampaignAndUserActions(params: {
       "Enter a reason or statement for deactivating this ad campaign (visible to the advertiser):"
     );
     if (reason === null) return;
+
+    const confirmed = await confirmDialog(
+      `Are you sure you want to DEACTIVATE this Ad campaign? It will be stopped permanently.\n\nReason: "${reason}"`,
+      "Deactivate Campaign",
+      true
+    );
+    if (!confirmed) return;
 
     setCampaignActionLoading(`deactivate-ad-${ad.id}`);
     try {
@@ -352,11 +825,11 @@ export function useAdminCampaignAndUserActions(params: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Deactivation failed");
 
-      alert("Ad campaign deactivated successfully!");
+      await alertDialog("Ad campaign deactivated successfully!", "Campaign Deactivated");
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error deactivating campaign: ${e.message}`);
+      await alertDialog(`Error deactivating campaign: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -380,11 +853,11 @@ export function useAdminCampaignAndUserActions(params: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
 
-      alert("Ad campaign details updated successfully!");
+      await alertDialog("Ad campaign details updated successfully!", "Campaign Saved");
       setEditAdData(null);
       handleRefresh();
     } catch (e: any) {
-      alert(`Error updating campaign details: ${e.message}`);
+      await alertDialog(`Error updating campaign details: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -392,7 +865,8 @@ export function useAdminCampaignAndUserActions(params: {
 
   const handleDeleteAd = async (ad: any) => {
     if (campaignActionLoading) return;
-    if (!confirm("Are you sure you want to PERMANENTLY delete this Ad?")) {
+    const confirmed = await confirmDialog("Are you sure you want to PERMANENTLY delete this Ad?", "Delete Ad Campaign", true);
+    if (!confirmed) {
       return;
     }
 
@@ -411,10 +885,11 @@ export function useAdminCampaignAndUserActions(params: {
       setPendingAdsCount((c) => Math.max(0, c - 1));
       setActiveAdsCount((c) => Math.max(0, c - 1));
 
+      await alertDialog("Ad campaign deleted permanently.", "Ad Deleted");
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error deleting ad: ${e.message}`);
+      await alertDialog(`Error deleting ad: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -422,6 +897,13 @@ export function useAdminCampaignAndUserActions(params: {
 
   const handleApproveHighlight = async (highlight: any) => {
     if (campaignActionLoading) return;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to APPROVE this Highlight ("${highlight.title || highlight.id}")? It will go live immediately.`,
+      "Approve Highlight",
+      false
+    );
+    if (!confirmed) return;
+
     setCampaignActionLoading(`approve-hl-${highlight.id}`);
     try {
       const res = await fetch("/api/admin/campaigns", {
@@ -441,7 +923,7 @@ export function useAdminCampaignAndUserActions(params: {
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error approving highlight: ${e.message}`);
+      await alertDialog(`Error approving highlight: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -453,6 +935,13 @@ export function useAdminCampaignAndUserActions(params: {
       "Enter a reason or feedback for rejecting this Highlight (visible to the user to adjust):"
     );
     if (feedback === null) return;
+
+    const confirmed = await confirmDialog(
+      `Are you sure you want to REJECT this Highlight?\n\nReason to user: "${feedback}"`,
+      "Reject Highlight",
+      true
+    );
+    if (!confirmed) return;
 
     setCampaignActionLoading(`reject-hl-${highlight.id}`);
     try {
@@ -475,7 +964,7 @@ export function useAdminCampaignAndUserActions(params: {
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error rejecting highlight: ${e.message}`);
+      await alertDialog(`Error rejecting highlight: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -484,6 +973,13 @@ export function useAdminCampaignAndUserActions(params: {
   const handleTogglePauseHighlight = async (highlight: any) => {
     if (campaignActionLoading) return;
     const targetState = !highlight.is_paused;
+    const confirmed = await confirmDialog(
+      `Are you sure you want to ${targetState ? "PAUSE" : "RESUME"} this Highlight?`,
+      targetState ? "Pause Highlight" : "Resume Highlight",
+      targetState
+    );
+    if (!confirmed) return;
+
     setCampaignActionLoading(`pause-hl-${highlight.id}`);
     try {
       const res = await fetch("/api/admin/campaigns", {
@@ -497,11 +993,11 @@ export function useAdminCampaignAndUserActions(params: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Toggle failed");
 
-      alert(`Highlight successfully ${targetState ? "paused" : "resumed"}!`);
+      await alertDialog(`Highlight successfully ${targetState ? "paused" : "resumed"}!`, "Highlight Updated");
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error updating highlight: ${e.message}`);
+      await alertDialog(`Error updating highlight: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -525,11 +1021,11 @@ export function useAdminCampaignAndUserActions(params: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update highlight");
 
-      alert("Highlight details updated successfully!");
+      await alertDialog("Highlight details updated successfully!", "Highlight Saved");
       setEditHighlightData(null);
       handleRefresh();
     } catch (e: any) {
-      alert(`Error saving highlight: ${e.message}`);
+      await alertDialog(`Error saving highlight: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -537,7 +1033,8 @@ export function useAdminCampaignAndUserActions(params: {
 
   const handleDeleteHighlight = async (highlight: any) => {
     if (campaignActionLoading) return;
-    if (!confirm("Are you sure you want to PERMANENTLY delete this highlight?")) {
+    const confirmed = await confirmDialog("Are you sure you want to PERMANENTLY delete this highlight?", "Delete Highlight", true);
+    if (!confirmed) {
       return;
     }
 
@@ -559,10 +1056,11 @@ export function useAdminCampaignAndUserActions(params: {
       setPendingHighlightsCount((c) => Math.max(0, c - 1));
       setActiveHighlightsCount((c) => Math.max(0, c - 1));
 
+      await alertDialog("Highlight deleted permanently.", "Highlight Deleted");
       handleRefresh();
       fetchOverviewStats(true);
     } catch (e: any) {
-      alert(`Error deleting highlight: ${e.message}`);
+      await alertDialog(`Error deleting highlight: ${e.message}`, "Error");
     } finally {
       setCampaignActionLoading(null);
     }
@@ -784,10 +1282,20 @@ export function useAdminCampaignAndUserActions(params: {
   };
 
   return {
+    activeActionId,
     handleToggleMonetization,
     handleSuspendUser,
     handleAdjustBalance,
     handleDeleteUser,
+    handleUpdateUserProfile,
+    handleUpdateSpecialRoles,
+    handleToggleAgent,
+    handleBanAgent,
+    handleRemoveFollower,
+    handleRemoveAllFollowers,
+    handleDetachUplineAgent,
+    handleDeactivateAccount,
+    handleResetClicks,
     handleApproveAd,
     handleRejectAd,
     handleTogglePauseAd,

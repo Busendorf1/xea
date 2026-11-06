@@ -1,20 +1,25 @@
 .profileContainer {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  padding: 2.5rem;
-  max-width: 840px;
-  margin: auto;
-  margin-top: 1.5rem;
-  margin-bottom: 2rem;
-  border-radius: var(--radius-card, 22px);
-  box-shadow: var(--shadow-surface);
+  background: transparent;
+  border: none;
+  padding: 2.25rem 1.5rem 5rem 1.5rem;
+  max-width: 880px;
+  margin: 0 auto;
+  border-radius: 0;
+  box-shadow: none;
   color: var(--foreground);
-  font-family: var(--font-geist-sans), "Inter", sans-serif;
+  font-family: var(--font-geist-sans), 'Inter', sans-serif;
   box-sizing: border-box;
+  width: 100%;
+}
+
+.update {
+  font-size: 1.75rem;
+  font-weight: 800;
   color: var(--foreground);
-  font-family: var(--font-geist-sans), "Inter", sans-serif;
-  /* box-shadow: 0 20px 45px rgba(0, 0, 0, 0.15); */
-  box-sizing: border-box;
+  letter-spacing: -0.025em;
+  margin: 0.5rem 0 1.5rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--card-border);
 }
 
 .status {
@@ -26,7 +31,9 @@
 }
 
 .formSection {
-  margin-bottom: 2.25rem;
+  margin-bottom: 2.5rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--card-border);
 }
 
 .formSection h2 {
@@ -603,11 +610,11 @@
 /* Responsiveness */
 @media screen and (max-width: 768px) {
   .profileContainer {
-    padding: 1.75rem 1.25rem;
-    margin-top: 0.75rem;
-    margin-bottom: 1.25rem;
-    border-radius: var(--radius-card, 16px);
-    border: 1px solid var(--card-border);
+    padding: 1.25rem 1rem 3.5rem 1rem;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-radius: 0;
+    border: none;
     box-shadow: none;
   }
   
@@ -633,10 +640,10 @@
 
 @media screen and (max-width: 480px) {
   .profileContainer {
-    padding: 1.25rem 0.85rem;
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
-    border-radius: 14px;
+    padding: 1rem 0.75rem 2.5rem 0.75rem;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-radius: 0;
   }
 
   .formGrid {
@@ -795,4 +802,17 @@
   color: var(--background) !important;
   border: 1px solid var(--primary) !important;
   box-shadow: none !important;
+}
+
+
+/* Utility classes to eliminate inline styling */
+.optionalLabelText {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.savingSpinnerWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }

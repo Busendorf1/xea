@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, ReactNode } from "react";
+import React, { useState, useRef, useEffect, useCallback, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import styles from "./AdvertiserHoverCard.module.css";
 import Avatar from "./Avatar";
 import VerifiedBadge from "./VerifiedBadge";
@@ -41,14 +42,62 @@ export default function AdvertiserHoverCard({
   isPlatformPost = false,
 }: AdvertiserHoverCardProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isLogoZoomed, setIsLogoZoomed] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const zoomTimerRef = useRef<NodeJS.Timeout | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const handleAvatarMouseEnter = () => {
+    if (zoomTimerRef.current) {
+      clearTimeout(zoomTimerRef.current);
+      zoomTimerRef.current = null;
+    }
+    setIsLogoZoomed(true);
+  };
+
+  const handleAvatarMouseLeave = () => {
+    if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current);
+    zoomTimerRef.current = setTimeout(() => {
+      setIsLogoZoomed(false);
+    }, 90);
+  };
+
+  const updatePosition = useCallback(() => {
+    if (!wrapperRef.current || typeof window === "undefined") return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const popWidth = popoverRef.current?.offsetWidth || 236;
+    const popHeight = popoverRef.current?.offsetHeight || 145;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 10;
+
+    // Horizontal clamping so popover never overflows viewport
+    let left = rect.left;
+    if (left + popWidth > vw - margin) {
+      left = Math.max(margin, vw - popWidth - margin);
+    }
+    if (left < margin) {
+      left = margin;
+    }
+
+    // Vertical placement: prefer below, flip above if it would overflow bottom
+    let top = rect.bottom + 6;
+    if (top + popHeight > vh - margin) {
+      const aboveTop = rect.top - popHeight - 6;
+      top = aboveTop >= margin ? aboveTop : Math.max(margin, vh - popHeight - margin);
+    }
+
+    setCoords({ top, left });
+  }, []);
 
   const handleMouseEnter = () => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    updatePosition();
     setIsOpen(true);
   };
 
@@ -56,7 +105,8 @@ export default function AdvertiserHoverCard({
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       setIsOpen(false);
-    }, 200);
+      setIsLogoZoomed(false);
+    }, 180);
   };
 
   const handleClick = (e: React.MouseEvent) => {
@@ -65,21 +115,44 @@ export default function AdvertiserHoverCard({
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setIsOpen((prev) => !prev);
+    updatePosition();
+    setIsOpen((prev) => {
+      if (prev) setIsLogoZoomed(false);
+      return !prev;
+    });
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isOpen) return;
+    updatePosition();
+    const raf = requestAnimationFrame(updatePosition);
+
     const handleOutsideClick = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(target) &&
+        (!popoverRef.current || !popoverRef.current.contains(target))
+      ) {
         setIsOpen(false);
+        setIsLogoZoomed(false);
       }
     };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
+
+    const handleScrollOrResize = () => {
+      updatePosition();
     };
-  }, [isOpen]);
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [isOpen, updatePosition]);
 
   // Determine display values
   const displayName = (() => {
@@ -136,6 +209,89 @@ export default function AdvertiserHoverCard({
 
   const isVerified = isPlatformPost || !!profile?.monetized;
 
+  const popoverNode =
+    isOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={popoverRef}
+            className={styles.hoverCardPopover}
+            style={{ top: `${coords.top}px`, left: `${coords.left}px` }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with Expandable Logo inside the Modal (Hover on Desktop / Click on Mobile) */}
+            <div className={styles.popoverHeader}>
+              <div
+                className={`${styles.popoverAvatar} ${isLogoZoomed ? styles.popoverAvatarZoomed : ""}`}
+                onMouseEnter={handleAvatarMouseEnter}
+                onMouseLeave={handleAvatarMouseLeave}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (zoomTimerRef.current) {
+                    clearTimeout(zoomTimerRef.current);
+                    zoomTimerRef.current = null;
+                  }
+                  setIsLogoZoomed((prev) => !prev);
+                }}
+                title="View logo"
+                role="button"
+                tabIndex={0}
+              >
+                <Avatar
+                  src={avatarSrc}
+                  name={displayName}
+                  email={profile?.email}
+                  size={88}
+                  alt={displayName}
+                  gender={profile?.gender}
+                  shape="rounded-rect"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    minWidth: "100%",
+                    minHeight: "100%",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                  }}
+                />
+              </div>
+              <div className={styles.popoverNames}>
+                <div className={styles.popoverDisplayNameRow}>
+                  <span className={styles.popoverDisplayName}>{displayName}</span>
+                  {isVerified && <VerifiedBadge size={14} title="Verified Account" />}
+                </div>
+                <div className={styles.popoverHandle}>{handleText}</div>
+              </div>
+            </div>
+
+            {/* User Bio Section */}
+            <div className={styles.popoverBio}>
+              {bioText ? bioText : <span className={styles.emptyBio}>No bio provided.</span>}
+            </div>
+
+            {/* Metadata Footer */}
+            {(locationText || joinedText) && (
+              <div className={styles.popoverMetaRow}>
+                {locationText && (
+                  <div className={styles.metaItem}>
+                    <MapPin size={12} />
+                    <span>{locationText}</span>
+                  </div>
+                )}
+                {joinedText && (
+                  <div className={styles.metaItem}>
+                    <Calendar size={12} />
+                    <span>{joinedText}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div
       ref={wrapperRef}
@@ -145,62 +301,7 @@ export default function AdvertiserHoverCard({
       onClick={handleClick}
     >
       {children}
-
-      {isOpen && (
-        <div
-          className={styles.hoverCardPopover}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header with Avatar and Names */}
-          <div className={styles.popoverHeader}>
-            <div className={styles.popoverAvatar}>
-              <Avatar
-                src={avatarSrc}
-                name={displayName}
-                email={profile?.email}
-                size={48}
-                alt={displayName}
-                gender={profile?.gender}
-                shape="rounded-rect"
-              />
-            </div>
-            <div className={styles.popoverNames}>
-              <div className={styles.popoverDisplayNameRow}>
-                <span className={styles.popoverDisplayName}>{displayName}</span>
-                {isVerified && (
-                  <VerifiedBadge size={16} title="Verified Account" />
-                )}
-              </div>
-              <div className={styles.popoverHandle}>{handleText}</div>
-            </div>
-          </div>
-
-          {/* User Bio Section */}
-          <div className={styles.popoverBio}>
-            {bioText ? bioText : <span className={styles.emptyBio}>No bio provided.</span>}
-          </div>
-
-          {/* Metadata Footer */}
-          {(locationText || joinedText) && (
-            <div className={styles.popoverMetaRow}>
-              {locationText && (
-                <div className={styles.metaItem}>
-                  <MapPin size={13} />
-                  <span>{locationText}</span>
-                </div>
-              )}
-              {joinedText && (
-                <div className={styles.metaItem}>
-                  <Calendar size={13} />
-                  <span>{joinedText}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {popoverNode}
     </div>
   );
 }

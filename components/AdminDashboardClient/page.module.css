@@ -28,8 +28,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  max-width: 1400px;
-  margin: 0 auto;
+  max-width: 100% !important;
+  margin: 0;
 }
 
 .logoGroup {
@@ -111,12 +111,13 @@
 /* Dashboard Layout */
 .dashboardContent {
   flex: 1;
-  max-width: 1400px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 2rem;
+  max-width: 100% !important;
+  width: 100% !important;
+  margin: 0;
+  padding: 1.5rem 2rem 5rem 2rem;
   display: flex;
   gap: 2rem;
+  box-sizing: border-box;
 }
 
 .sidebar {
@@ -270,9 +271,11 @@
 }
 
 .tableContainer {
-  background-color: var(--sidebar-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 16px;
+  background-color: transparent !important;
+  border: none !important;
+  border-top: 1px solid var(--card-border) !important;
+  border-bottom: 1px solid var(--card-border) !important;
+  border-radius: 0 !important;
   overflow-x: auto;
 }
 
@@ -1277,6 +1280,19 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.btnSpinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  margin-right: 5px;
 }
 
 /* Extracted Inline Styles */
@@ -2736,4 +2752,839 @@
   color: var(--foreground);
   font-weight: 600;
 }
+
+
+
+/* ========================================================
+   ADMIN USER OPERATIONS SUITE & REGISTRY CLICKABLE ROWS
+   ======================================================== */
+.clickableRow {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.clickableRow:hover {
+  background-color: var(--card-border) !important;
+}
+
+.agentTableBadge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.45rem;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.25));
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+}
+
+.affiliateTableBadge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.25));
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.careerTableBadge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.25));
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #34d399;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.userSuiteModal {
+  max-width: 960px !important;
+  width: 95vw !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+  border-radius: 14px !important;
+}
+
+.userSuiteTabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--card-border);
+  padding: 0 1.75rem;
+  background-color: rgba(255, 255, 255, 0.015);
+  overflow-x: auto;
+}
+
+.userSuiteTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.userSuiteTab:hover {
+  color: var(--foreground);
+}
+
+.userSuiteTabActive {
+  color: var(--primary) !important;
+  border-bottom-color: var(--primary) !important;
+}
+
+.userSuiteContent {
+  padding: 1.5rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.suiteBadgesRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.suiteBadgeAgent {
+  padding: 0.2rem 0.55rem;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  color: #a78bfa;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.suiteBadgeMonetized {
+  padding: 0.2rem 0.55rem;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.suiteBadgeNeutral {
+  padding: 0.2rem 0.55rem;
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--text-muted);
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.suiteBadgeDanger {
+  padding: 0.2rem 0.55rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.profileInput {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.profileInput:focus {
+  border-color: var(--primary);
+}
+
+.profileTextarea {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 0.88rem;
+  outline: none;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s;
+}
+
+.profileTextarea:focus {
+  border-color: var(--primary);
+}
+
+.miniTableContainer {
+  max-height: 380px;
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background-color: var(--card-bg);
+}
+
+.miniTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.miniTable th {
+  position: sticky;
+  top: 0;
+  background-color: var(--sidebar-bg);
+  padding: 0.65rem 0.85rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--card-border);
+  z-index: 1;
+}
+
+.miniTable td {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--foreground);
+}
+
+.miniTable tr:last-child td {
+  border-bottom: none;
+}
+
+.miniTable tr:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+
+.clickableOverviewChip {
+  cursor: pointer;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clickableOverviewChip:hover {
+  border-color: var(--primary);
+  background-color: var(--sidebar-bg);
+  transform: translateY(-1px);
+}
+
+.customTimerRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+}
+
+.banTypeCard {
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  background-color: rgba(255, 255, 255, 0.015);
+  margin-bottom: 0.75rem;
+}
+
+.banTypeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-bottom: 0.35rem;
+}
+
+.clickableOverviewChipActive {
+  border-color: var(--primary) !important;
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* Modular extracted classes for Admin Tabs and Modals */
+.cursorPointer {
+  cursor: pointer;
+}
+
+.iconBtnSpacing {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.iconSmallSpacing {
+  margin-right: 4px;
+}
+
+.refCodeBold {
+  font-weight: 600;
+}
+
+.fontXs {
+  font-size: 0.72rem;
+}
+
+.fontSm {
+  font-size: 0.75rem;
+}
+
+.fontMd {
+  font-size: 0.85rem;
+}
+
+.reportTypeAdvertiser {
+  color: #ef4444;
+}
+
+.reportTypeConsumer {
+  color: #2563eb;
+}
+
+.agentHeaderFlex {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.subTabNavRow {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 0.5rem;
+}
+
+.subTabActionBtn {
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.activeAgentBadge {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.btnCompact {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
+.btnCompactSm {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+.agentFilterBanner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  margin-bottom: 1rem;
+}
+
+.agentFilterBannerText {
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+
+.commissionRateBadge {
+  font-weight: 700;
+}
+
+.ticketBadgeClosed {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 99px;
+  text-transform: uppercase;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.ticketBadgeReplied {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 99px;
+  text-transform: uppercase;
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+
+.ticketBadgePending {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 99px;
+  text-transform: uppercase;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.reportStatusActionTaken {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.reportStatusDismissed {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
+}
+
+.reportStatusPending {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.mtSm {
+  margin-top: 0.5rem;
+}
+
+.mtXs {
+  margin-top: 4px;
+}
+
+.flexBetweenCenter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.flexRowWrapGapSm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.flexGapSm {
+  display: flex;
+  gap: 6px;
+}
+
+.m0Bold {
+  margin: 0;
+  font-weight: 700;
+}
+
+.gap10 {
+  gap: 10px;
+}
+
+.roleEditorForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.roleCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.colSpanFull {
+  grid-column: span 2;
+}
+
+.bioParagraph {
+  margin: 0.35rem 0 0 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.closeViewBtn {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.campaignChipsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.campaignExpandedArea {
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--card-border);
+  padding-top: 0.85rem;
+}
+
+.campaignExpandedLabel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.campaignEmptyNote {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0;
+}
+
+.campaignMiniTableScroll {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.campaignInspectBtn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--primary, #10b981);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  line-height: 1.35;
+}
+
+.campaignMetaSubtext {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.statementDescTruncate {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mbSm {
+  margin-bottom: 0.75rem;
+}
+
+.fontSmBold {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.customDateInput {
+  width: auto;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.standardUserNotice {
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.2);
+}
+
+/* Reconciliation Tab Styles */
+.emergencyBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  padding: 1.25rem;
+  border-radius: 12px;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.emergencyBarPaused {
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.emergencyTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.emergencyTitlePaused {
+  color: #ef4444;
+}
+
+.emergencyBtn {
+  background-color: #ef4444;
+  color: #fff;
+  font-weight: 700;
+  padding: 0.6rem 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: opacity 0.15s ease;
+}
+
+.emergencyBtnPaused {
+  background-color: #10b981;
+}
+
+.scanBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: opacity 0.15s ease;
+}
+
+.reverseBtn {
+  background-color: #6366f1;
+  color: #fff;
+  font-weight: 700;
+  padding: 0.6rem 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: opacity 0.15s ease;
+}
+
+.btnDisabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.ledgerStatusDisplay {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ledgerHealthy {
+  color: #10b981;
+}
+
+.ledgerFlagged {
+  color: #ef4444;
+}
+
+.hideBalanceBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pendingForfeituresText {
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.pendingForfeituresTextActive {
+  color: #f59e0b;
+}
+
+.pendingForfeituresTextMuted {
+  color: var(--text-muted, #94a3b8);
+}
+
+.reconcileFilterBtn {
+  font-size: 0.8rem;
+  padding: 4px 12px;
+  background-color: transparent;
+  color: var(--foreground);
+  border-color: var(--card-border);
+}
+
+.reconcileFilterBtnPending {
+  background-color: #f59e0b;
+  color: #fff;
+  border-color: #f59e0b;
+}
+
+.reconcileFilterBtnApproved {
+  background-color: #10b981;
+  color: #fff;
+  border-color: #10b981;
+}
+
+.reconcileFilterBtnRejected {
+  background-color: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+
+.reconcileFilterBtnAll {
+  background-color: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.cardItemBorderPending {
+  border-left: 4px solid #f59e0b;
+}
+
+.cardItemBorderApproved {
+  border-left: 4px solid #10b981;
+}
+
+.cardItemBorderRejected {
+  border-left: 4px solid #ef4444;
+}
+
+.badgePending {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badgeApproved {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.badgeRejected {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.badgeHealthy {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badgeFlagged {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badgeResolvedLog {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.resolveBtnForfeiture {
+  background-color: #10b981;
+  color: #fff;
+  font-weight: 700;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.resolveBtnLog {
+  background-color: #3b82f6;
+  color: #fff;
+}
+
+.reverseModalSubmitBtn {
+  background-color: #6366f1;
+  color: #fff;
+  font-weight: 700;
+}
+
+
+
+
 

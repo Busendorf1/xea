@@ -1,34 +1,15 @@
 /* Page Background Wrapper */
 .pageWapper,
 .pageWrapper {
-  font-family: var(--font-geist-sans), "Geist", "Inter", sans-serif !important;
-  background-color: var(--background);
-  min-height: auto;
-  padding: 1.25rem 1.5rem;
-  box-sizing: border-box;
-  color: var(--foreground);
-}
-
-.pageWapper h1 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  text-align: center;
-  color: var(--foreground);
-  margin-top: 0.25rem;
-  margin-bottom: 1rem;
-  letter-spacing: -0.5px;
-}
-
-/* Main Form Card Wrapper */
-.pageWrapper {
-  max-width: 800px;
-  margin: 0.5rem auto 1.5rem auto;
-  background-color: var(--card-bg);
-  padding: 1.5rem 1.75rem;
-  border-radius: 4px;
-  border: 1px solid var(--card-border);
+  max-width: 820px;
+  margin: 0 auto;
+  background-color: transparent;
+  padding: 1.5rem 1.5rem 4rem 1.5rem;
+  border-radius: 0;
+  border: none;
   box-shadow: none !important;
   box-sizing: border-box;
+  width: 100%;
 }
 
 /* Enforce Geist Font Across All Controls */

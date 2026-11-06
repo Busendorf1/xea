@@ -26,7 +26,7 @@ export default function AboutPage() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>How It Works</h2>
         <p className={styles.sectionText}>
-          When you view ads tailored to your interests, you can earn a dynamic share of <strong>up to 60%</strong> of net ad revenue. The remaining portion supports platform growth, digital operations, and infrastructure. No subscriptions. No tricks. Just fair value for your time.
+          When you view ads tailored to your interests, you can earn a dynamic share of <strong>up to 50%</strong> of net ad revenue. The remaining portion supports platform growth, digital operations, and infrastructure. No subscriptions. No tricks. Just fair value for your time.
         </p>
       </section>
 
