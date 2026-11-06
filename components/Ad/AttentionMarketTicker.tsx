@@ -206,10 +206,10 @@ function AttentionMarketTicker({
                   </div>
                   <p className={styles.rankDescription}>
                     {rankStatus === "spotlight"
-                      ? "Your ad will hold exclusive #1 placement in the feed with ~4.5× faster delivery."
+                      ? "Exclusive #1 placement (~4.5× faster delivery)."
                       : rankStatus === "matched"
-                      ? "Sharing top-of-feed rotation with current top bidder."
-                      : "Placed in prioritized rotation. Increase bid above current top to claim #1 Spotlight."}
+                      ? "Top-of-feed rotation with highest bidder."
+                      : "Prioritized rotation. Increase bid to claim #1 Spotlight."}
                   </p>
                 </div>
               </div>
@@ -217,7 +217,7 @@ function AttentionMarketTicker({
 
             {/* Outbid Presets Chips */}
             <div className={styles.presetsSection}>
-              <span className={styles.sectionLabel}>Quick Outbid Presets</span>
+              <span className={styles.sectionLabel}>Quick Outbid</span>
               <div className={styles.presetChipsRow}>
                 <motion.button
                   type="button"

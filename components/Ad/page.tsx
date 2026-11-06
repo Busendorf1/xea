@@ -399,6 +399,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     <div className={styles.pageWrapper}>
       <div className={styles.adFormContainer}>
           <FormStepProgress
+            className={styles.adStepProgress}
             steps={steps}
             currentStep={step}
             onStepClick={(idx) => {
@@ -407,12 +408,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             }}
           />
 
-          <h1 className={`${styles.summaryTitle} ${styles.pageHeading}`}>
-            {editingId ? "Edit Campaign" : "New Campaign"}
-          </h1>
-          <p className={styles.pageSubtitle}>
-            {editingId ? "Update targeting, creative, or duration." : "Target verified audiences across the feed."}
-          </p>
+          <div className={styles.pageHeaderGroup}>
+            <h1 className={styles.pageHeading}>
+              {editingId ? "Edit Campaign" : "New Campaign"}
+            </h1>
+            <p className={styles.pageSubtitle}>
+              {editingId ? "Update targeting, creative, or duration." : "Target verified audiences across the feed."}
+            </p>
+          </div>
 
           {editingId && (
             <div className={styles.editingSwitchWrapper}>
@@ -428,7 +431,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
           <AdPendingLimitBanner pendingLimitReached={pendingLimitReached} editingId={editingId} />
 
-          <h2 className={`${styles.summaryTitle} ${styles.stepTitle}`}>{steps[step]}</h2>
+          
 
           {step === 0 && (
             <Step0Category adType={adType} setAdType={setAdType} formatCurrency={formatCurrency} />

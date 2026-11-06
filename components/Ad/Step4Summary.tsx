@@ -40,20 +40,17 @@ export default function Step4Summary({
   return (
     <div className={styles.summaryContainer}>
       <div className={styles.summaryHeader}>
-        <h2 className={styles.summaryTitle}>Campaign summary</h2>
-        <p className={styles.summarySubtitle}>
-          Verify parameters before preview.
-        </p>
+        <h2 className={styles.summaryTitle}>Campaign Summary</h2>
       </div>
 
       <div className={styles.summaryGrid}>
         {/* Left Column: Configuration details */}
         <div className={styles.summarySection}>
-          <h3 className={styles.sectionTitle}>Targeting details</h3>
+          <h3 className={styles.sectionTitle}>Targeting Details</h3>
           <div className={styles.detailsList}>
             <div className={styles.detailsRow}>
-              <span className={styles.detailsKey}>Audience type</span>
-              <span className={styles.detailsVal}>Custom targeted audience</span>
+              <span className={styles.detailsKey}>Audience</span>
+              <span className={styles.detailsVal}>Targeted</span>
             </div>
 
             {formSelections.gender && (
@@ -74,7 +71,7 @@ export default function Step4Summary({
             )}
             {(formSelections.country || formSelections.state || formSelections.province) && (
               <div className={styles.detailsRow}>
-                <span className={styles.detailsKey}>Target location</span>
+                <span className={styles.detailsKey}>Location</span>
                 <span className={styles.detailsVal}>
                   {[formSelections.province, formSelections.state, formSelections.country]
                     .filter(Boolean)
@@ -108,16 +105,16 @@ export default function Step4Summary({
             )}
             {formSelections.personality.length > 0 && (
               <div className={styles.detailsRow}>
-                <span className={styles.detailsKey}>Personality traits</span>
+                <span className={styles.detailsKey}>Traits</span>
                 <span className={styles.detailsVal}>{formSelections.personality.join(", ")}</span>
               </div>
             )}
           </div>
 
-          <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Delivery controls</h3>
+          <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Delivery Controls</h3>
           <div className={styles.detailsList}>
             <div className={styles.detailsRow}>
-              <span className={styles.detailsKey}>Campaign duration</span>
+              <span className={styles.detailsKey}>Duration</span>
               <span className={styles.detailsVal}>
                 {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
               </span>
@@ -125,11 +122,11 @@ export default function Step4Summary({
             <div className={styles.detailsRow}>
               <span className={styles.detailsKey}>Frequency cap</span>
               <span className={styles.detailsVal}>
-                {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""} per user
+                {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""} / user
               </span>
             </div>
             <div className={styles.detailsRow}>
-              <span className={styles.detailsKey}>Daily attention cap</span>
+              <span className={styles.detailsKey}>Daily pace</span>
               <span className={styles.detailsVal}>
                 ~
                 {Math.ceil(
@@ -137,14 +134,14 @@ export default function Step4Summary({
                     ? formSelections.impressions + userProfile.mutual_count
                     : formSelections.impressions) / formSelections.campaignDays
                 ).toLocaleString()}{" "}
-                attentions/day
+                views/day
               </span>
             </div>
           </div>
 
           {adType === "product_sales" ? (
             <>
-              <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Product details</h3>
+              <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Product Details</h3>
               <div className={styles.detailsList}>
                 <div className={styles.detailsRow}>
                   <span className={styles.detailsKey}>Product name</span>
@@ -168,14 +165,14 @@ export default function Step4Summary({
           ) : (
             formSelections.productCtaLink && (
               <>
-                <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Action &amp; Feedback CTA</h3>
+                <h3 className={`${styles.sectionTitle} ${styles.sectionTitleMt}`}>Call to Action</h3>
                 <div className={styles.detailsList}>
                   <div className={styles.detailsRow}>
-                    <span className={styles.detailsKey}>CTA button</span>
+                    <span className={styles.detailsKey}>Button</span>
                     <span className={styles.detailsVal}>{formSelections.productCtaType || "Comment"}</span>
                   </div>
                   <div className={styles.detailsRow}>
-                    <span className={styles.detailsKey}>Target link</span>
+                    <span className={styles.detailsKey}>Target URL</span>
                     <span className={styles.detailsVal}>
                       <span className={styles.ctaLinkMuted}>{formSelections.productCtaLink}</span>
                     </span>
@@ -188,20 +185,20 @@ export default function Step4Summary({
 
         {/* Right Column: Pricing breakdown (Stripe Invoice/Receipt Card) */}
         <div className={styles.costCard}>
-          <h3 className={styles.costCardTitle}>Pricing details</h3>
+          <h3 className={styles.costCardTitle}>Pricing</h3>
 
           <div className={styles.costRows}>
             <div className={styles.costRow}>
-              <span className={styles.costKey}>Paid attention</span>
+              <span className={styles.costKey}>Paid views</span>
               <span className={styles.costVal}>
-                {formSelections.impressions.toLocaleString()} views
+                {formSelections.impressions.toLocaleString()}
               </span>
             </div>
 
             {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
               <div className={`${styles.costRow} ${styles.costRowGreen}`}>
-                <span className={`${styles.costKey} ${styles.costKeyGreen}`}>Free mutual attention</span>
-                <span className={styles.costVal}>+{userProfile.mutual_count.toLocaleString()} views</span>
+                <span className={`${styles.costKey} ${styles.costKeyGreen}`}>Free mutuals</span>
+                <span className={styles.costVal}>+{userProfile.mutual_count.toLocaleString()}</span>
               </div>
             )}
 
@@ -213,13 +210,12 @@ export default function Step4Summary({
                 {(formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0
                   ? formSelections.impressions + userProfile.mutual_count
                   : formSelections.impressions
-                ).toLocaleString()}{" "}
-                views
+                ).toLocaleString()}
               </span>
             </div>
 
             <div className={styles.costRow}>
-              <span className={styles.costKey}>Cost per attention</span>
+              <span className={styles.costKey}>Rate / view</span>
               <span className={styles.costVal}>{formatCurrency(calculateTotalCostPerImpression())}</span>
             </div>
           </div>

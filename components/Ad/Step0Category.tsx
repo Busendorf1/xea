@@ -15,19 +15,18 @@ export default function Step0Category({
   setAdType,
   formatCurrency,
 }: Step0CategoryProps) {
+  const selectedName =
+    adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1);
+
   return (
     <div className={styles.modernSectionCard}>
       <div className={styles.modernSectionHeader}>
-        <span className={styles.modernSectionTitle}>Select Campaign Ad Category</span>
+        <span className={styles.modernSectionTitle}>Ad Category</span>
         <span className={styles.modernSectionBadge}>
-          {adType === "product_sales" ? "Product Sales" : adType.charAt(0).toUpperCase() + adType.slice(1)} ·{" "}
-          {formatCurrency(adRates[adType] || 0)}/attention
+          {selectedName} · {formatCurrency(adRates[adType] || 0)}/view
         </span>
       </div>
       <div className={styles.modernSectionBody}>
-        <p className={styles.categoryDescription}>
-          Select ad category.
-        </p>
         <div className={`${styles.adTypeGrid} ${styles.adTypeGridSpaced}`}>
           {Object.keys(adRates).map((key) => {
             const isSelected = adType === key;
@@ -41,7 +40,7 @@ export default function Step0Category({
                 onClick={() => setAdType(key)}
               >
                 <div className={styles.adTypeCardTitle}>{displayName}</div>
-                <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / attention</div>
+                <div className={styles.adTypeCardBadge}>{formatCurrency(rate)} / view</div>
               </div>
             );
           })}

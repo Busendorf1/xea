@@ -30,7 +30,7 @@ export default function Step2Budget({
       {/* Audience Demographics */}
       <div className={styles.modernSectionCard}>
         <div className={styles.modernSectionHeader}>
-          <span className={styles.modernSectionTitle}>Audience Demographics</span>
+          <span className={styles.modernSectionTitle}>Demographics</span>
           <span className={styles.modernSectionBadge}>
             {formSelections.ageRange[0]}–{formSelections.ageRange[1]} yrs ·{" "}
             {formSelections.gender
@@ -40,7 +40,7 @@ export default function Step2Budget({
         </div>
         <div className={styles.modernSectionBody}>
           <div className={styles.formGroup}>
-            <label className={styles.fieldLabelBold}>Target Gender:</label>
+            <label className={styles.fieldLabelBold}>Gender</label>
             <div className={styles.genderSegmentGroup}>
               {[
                 { value: "", label: "All Genders", icon: <Users size={14} /> },
@@ -70,7 +70,7 @@ export default function Step2Budget({
 
           <div className={styles.ageRangeRow}>
             <div className={styles.ageRangeField}>
-              <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Target Min Age</label>
+              <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Min Age</label>
               <CustomSelect
                 value={String(formSelections.ageRange[0])}
                 onChange={(val) => {
@@ -91,7 +91,7 @@ export default function Step2Budget({
               />
             </div>
             <div className={styles.ageRangeField}>
-              <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Target Max Age</label>
+              <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`}>Max Age</label>
               <CustomSelect
                 value={String(formSelections.ageRange[1])}
                 onChange={(val) => {
@@ -114,7 +114,7 @@ export default function Step2Budget({
           </div>
 
           <div className={styles.formGroup}>
-            <label className={styles.fieldLabelBold}>Employment Status (Select up to 4):</label>
+            <label className={styles.fieldLabelBold}>Employment Status (max 4)</label>
             <div className={styles.checkboxGroup}>
               {[
                 { value: "employed", label: "Employed" },
@@ -146,19 +146,18 @@ export default function Step2Budget({
         </div>
       </div>
 
-      {/* Attention Volume & Delivery Controls */}
+      {/* Budget & Delivery */}
       <div className={styles.modernSectionCard}>
         <div className={styles.modernSectionHeader}>
-          <span className={styles.modernSectionTitle}>Attention Volume &amp; Delivery Controls</span>
+          <span className={styles.modernSectionTitle}>Budget &amp; Delivery</span>
           <span className={styles.modernSectionBadge}>
-            {formSelections.impressions.toLocaleString()} views · {formSelections.campaignDays} day
-            {formSelections.campaignDays > 1 ? "s" : ""}
+            {formSelections.impressions.toLocaleString()} views · {formSelections.campaignDays}d
           </span>
         </div>
         <div className={styles.modernSectionBody}>
           <div className={styles.formGroup}>
             <label htmlFor="impression-input" className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
-              Audience or Real Human Attention
+              Target Views
             </label>
             <div className={styles.impressionStack}>
               <input
@@ -200,7 +199,7 @@ export default function Step2Budget({
 
           <div className={styles.formGroup}>
             <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
-              Campaign Duration: {formSelections.campaignDays} day{formSelections.campaignDays > 1 ? "s" : ""}
+              Duration (Days)
             </label>
             <input
               type="number"
@@ -218,16 +217,13 @@ export default function Step2Budget({
               placeholder="e.g. 5"
             />
             <p className={styles.hintText}>
-              Daily pace: ~
-              {Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()}{" "}
-              attentions/day
+              Daily pace: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} views/day
             </p>
           </div>
 
           <div className={styles.formGroup}>
             <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
-              Target Views Per User: {formSelections.userFrequencyCap} view
-              {formSelections.userFrequencyCap > 1 ? "s" : ""}
+              Frequency Cap
             </label>
             <input
               type="number"
@@ -245,20 +241,16 @@ export default function Step2Budget({
               placeholder="e.g. 3"
             />
             <p className={styles.hintText}>
-              Max {formSelections.userFrequencyCap} view
-              {formSelections.userFrequencyCap > 1 ? "s" : ""} per user.
-            </p>
-            <p className={styles.hintTextItalic}>
-              Recommended: 3–7 views per user for optimal retention.
+              Max views per user (recommended: 3–7).
             </p>
           </div>
         </div>
       </div>
 
-      {/* Mutual Features */}
+      {/* Mutual Network */}
       <div className={styles.modernSectionCard}>
         <div className={styles.modernSectionHeader}>
-          <span className={styles.modernSectionTitle}>Mutual Attention Network</span>
+          <span className={styles.modernSectionTitle}>Mutual Network</span>
           <span className={styles.modernSectionBadge}>
             {formSelections.displayMutualButton ? "Mutual+ Enabled" : "Optional"}
           </span>
@@ -275,33 +267,27 @@ export default function Step2Budget({
                 }))
               }
             />
-            <span>Display &quot;Mutual+&quot; button on this ad (allow viewers to add you as a mutual)</span>
+            <span>Enable &quot;Mutual+&quot; button on this ad (allow viewers to add you as mutual)</span>
           </label>
 
           {formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0 && (
             <div className={styles.mutualActivatedBox}>
-              <strong className={styles.mutualActivatedTitle}> Free Mutual Attention Activated!</strong>
-              <span>
-                Ticking this box will add your <strong>{userProfile.mutual_count} mutuals</strong> as free
-                attention to this campaign.
-              </span>
+              <strong className={styles.mutualActivatedTitle}>Free Mutuals Applied</strong>
               <span className={styles.mutualActivatedHint}>
-                Total target:{" "}
+                Includes <strong>{userProfile.mutual_count.toLocaleString()} mutuals</strong> free. Total target:{" "}
                 <strong>
                   {(formSelections.impressions + userProfile.mutual_count).toLocaleString()} views
-                </strong>{" "}
-                (You only pay for {formSelections.impressions.toLocaleString()} views). Your{" "}
-                {userProfile.mutual_count} mutuals will be targeted first, and your mutual count will be spent.
+                </strong>.
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Target Location & Geographies */}
+      {/* Target Location */}
       <div className={styles.modernSectionCard}>
         <div className={styles.modernSectionHeader}>
-          <span className={styles.modernSectionTitle}>Target Location &amp; Geographies</span>
+          <span className={styles.modernSectionTitle}>Target Location</span>
           <span className={styles.modernSectionBadge}>
             {formSelections.targetLocations && formSelections.targetLocations.length > 0
               ? `${formSelections.targetLocations.length} locations`

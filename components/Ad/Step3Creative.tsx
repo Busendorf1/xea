@@ -46,42 +46,42 @@ export default function Step3Creative({
     <>
       <div className={styles.modernSectionCard}>
         <div className={styles.modernSectionHeader}>
-          <span className={styles.modernSectionTitle}>Ad Media &amp; Visual Assets</span>
+          <span className={styles.modernSectionTitle}>Media Assets</span>
           <span className={styles.modernSectionBadge}>
             {formSelections.adMediaType ? formSelections.adMediaType.toUpperCase() : "Select Format"}
           </span>
         </div>
         <div className={styles.modernSectionBody}>
           <div className={styles.formGroup}>
-            <label className={styles.fieldLabelBold}>Ad Media Format &amp; Visual Asset Type</label>
+            {/* <label className={styles.fieldLabelBold}>Media Format</label> */}
             <div className={styles.mediaTypeGrid}>
               {[
                 {
                   value: "text",
                   title: "Text Only",
                   badge: "Up to 1,500 Words",
-                  desc: "Long-form copy & stories (up to 1,500 words) with full-screen reader.",
+                  desc: "Up to 1,500 words with full reader.",
                   icon: <FileText size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "image",
                   title: "Image(s)",
                   badge: "Up to 4 Photos",
-                  desc: "High-resolution photos & banners (1 to 4 images, JPG/PNG, max 5MB each).",
+                  desc: "1–4 photos (JPG, PNG · max 5MB).",
                   icon: <ImageIcon size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "video",
                   title: "Video(s)",
                   badge: "1–2 Videos (≤60m)",
-                  desc: "Upload 1 or 2 videos (MP4, MOV, up to 60 mins / 50MB each).",
+                  desc: "1–2 videos (MP4, MOV · max 50MB).",
                   icon: <Video size={15} color="var(--foreground)" />,
                 },
                 {
                   value: "mixed",
                   title: "Mixed Media",
                   badge: "Max 4 (≤2 Videos)",
-                  desc: "Combine up to 3 images and up to 2 videos (max 4 media files total, videos ≤60 mins / 50MB each).",
+                  desc: "Up to 4 files (max 2 videos).",
                   icon: <Layers size={15} color="var(--foreground)" />,
                 },
               ].map((format) => {
@@ -368,7 +368,7 @@ export default function Step3Creative({
         {adType === "product_sales" ? (
           <div className={styles.modernSectionCard}>
             <div className={styles.modernSectionHeader}>
-              <span className={styles.modernSectionTitle}>Product Offer &amp; Primary Action</span>
+              <span className={styles.modernSectionTitle}>Product Offer</span>
               <span className={styles.modernSectionBadge}>{formSelections.productCtaType || "Buy"}</span>
             </div>
             <div className={styles.modernSectionBody}>
@@ -411,7 +411,7 @@ export default function Step3Creative({
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.fieldLabelBold}>Primary CTA Button Text (Select 1 CTA)</label>
+                <label className={styles.fieldLabelBold}>Action Button</label>
                 <CustomSelect
                   value={formSelections.productCtaType || "Buy"}
                   onChange={(val) =>
@@ -439,7 +439,7 @@ export default function Step3Creative({
                   placeholder="Select Primary CTA"
                 />
                 <div className={styles.ctaPreviewRow}>
-                  <span className={styles.ctaPreviewLabel}>Live Feed Button:</span>
+                  <span className={styles.ctaPreviewLabel}>Preview:</span>
                   <span className={styles.ctaPreviewBtn}>
                     {getCtaIcon(formSelections.productCtaType || "Buy")}
                     <span>{formSelections.productCtaType || "Buy"}</span>
@@ -449,7 +449,7 @@ export default function Step3Creative({
 
               <div className={styles.formGroup}>
                 <div className={styles.ctaLabelRow}>
-                  <label className={styles.fieldLabelBold}>Primary CTA Link (Secure HTTPS)</label>
+                  <label className={styles.fieldLabelBold}>Target URL (https://)</label>
                   <Link href="/business/subscribe" className={styles.premiumLink}>
                     E-commerce platform? Become a Premium Subscriber
                   </Link>
@@ -472,7 +472,7 @@ export default function Step3Creative({
                 />
                 {formSelections.productCtaLink && isSubsidizedLink(formSelections.productCtaLink) && (
                   <div className={styles.subsidyBanner}>
-                    <span>Baggyt is a premium subscriber, 30% Off your ad cost applies.</span>
+                    <span>30% Baggyt discount applied.</span>
                   </div>
                 )}
                 {formSelections.productCtaLink && !formSelections.productCtaLink.startsWith("https://") && (
@@ -484,12 +484,12 @@ export default function Step3Creative({
         ) : (
           <div className={styles.modernSectionCard}>
             <div className={styles.modernSectionHeader}>
-              <span className={styles.modernSectionTitle}>Action &amp; Engagement CTA</span>
+              <span className={styles.modernSectionTitle}>Call to Action</span>
               <span className={styles.modernSectionBadge}>{formSelections.productCtaType || "Comment"}</span>
             </div>
             <div className={styles.modernSectionBody}>
               <div className={styles.formGroup}>
-                <label className={styles.fieldLabelBold}>Action &amp; Engagement CTA (Select 1 CTA)</label>
+                <label className={styles.fieldLabelBold}>Button Type</label>
                 <CustomSelect
                   value={formSelections.productCtaType || "Comment"}
                   onChange={(val) =>
@@ -520,7 +520,7 @@ export default function Step3Creative({
                   placeholder="Select Engagement Action"
                 />
                 <div className={styles.ctaPreviewRow}>
-                  <span className={styles.ctaPreviewLabel}>Live Feed Button:</span>
+                  <span className={styles.ctaPreviewLabel}>Preview:</span>
                   <span className={styles.ctaPreviewBtn}>
                     {getCtaIcon(formSelections.productCtaType || "Comment")}
                     <span>{formSelections.productCtaType || "Comment"}</span>
@@ -551,38 +551,7 @@ export default function Step3Creative({
                       : ""
                   }`}
                 />
-                <span className={styles.inputHelperText}>
-                  {(() => {
-                    const cta = formSelections.productCtaType || "Comment";
-                    switch (cta) {
-                      case "Comment":
-                        return "Directs viewers to drop opinions, comments, or leave feedback outside the app.";
-                      case "Vote":
-                        return "Directs viewers to voter registration, polling info, or campaign voting portals.";
-                      case "Donate":
-                        return "Directs viewers to contribute securely to your campaign or cause.";
-                      case "Volunteer":
-                        return "Directs viewers to sign up as a campaign volunteer, grassroots agent, or supporter.";
-                      case "Book":
-                        return "Directs viewers to book an appointment, session, ticket, or consultation outside the app.";
-                      case "Reserve":
-                        return "Directs viewers to make a reservation for a table, seat, or event outside the app.";
-                      case "Apply":
-                        return "Directs viewers to submit an application for a job, program, or offer outside the app.";
-                      case "Order":
-                        return "Directs viewers to place an order directly on your linked store, menu, or chat.";
-                      case "Buy":
-                      case "Shop":
-                        return "Directs viewers to purchase your product or service on your linked store.";
-                      case "Join":
-                        return "Directs viewers to join your community, channel, group, or membership.";
-                      case "Learn More":
-                      case "Visit Website":
-                      default:
-                        return "Directs viewers to your external link to explore, learn more, or connect.";
-                    }
-                  })()}
-                </span>
+                <span className={styles.inputHelperText}>Destination link for viewers who tap this button.</span>
                 {formSelections.productCtaLink &&
                   !formSelections.productCtaLink.startsWith("https://") &&
                   !formSelections.productCtaLink.startsWith("http://") &&
@@ -710,7 +679,7 @@ export default function Step3Creative({
             return (
               <>
                 <div className={styles.modernSectionHeader}>
-                  <span className={styles.modernSectionTitle}>Interactive Action Buttons</span>
+                  <span className={styles.modernSectionTitle}>Contact Buttons</span>
                   <span className={styles.modernSectionBadge}>
                     {formSelections.adActionButtons.length}/{maxButtons} active
                   </span>
@@ -762,7 +731,7 @@ export default function Step3Creative({
                       > = {
                         whatsapp: {
                           title: "WhatsApp Direct",
-                          subtitle: "Direct 1-tap chat with your WhatsApp number",
+                          subtitle: "Direct WhatsApp chat",
                           icon: <MessageCircle size={18} />,
                           previewLabel: "WhatsApp",
                           inputType: "tel",
@@ -770,7 +739,7 @@ export default function Step3Creative({
                         },
                         phone: {
                           title: "Direct Phone Call",
-                          subtitle: "Immediate phone dialer prompt on user device",
+                          subtitle: "Direct phone call",
                           icon: <Phone size={18} />,
                           previewLabel: "Call Now",
                           inputType: "tel",
@@ -778,7 +747,7 @@ export default function Step3Creative({
                         },
                         website: {
                           title: "External Website",
-                          subtitle: "Directs audience to your target web address",
+                          subtitle: "External website",
                           icon: <Globe size={18} />,
                           previewLabel: "Website",
                           inputType: "url",
@@ -786,7 +755,7 @@ export default function Step3Creative({
                         },
                         email: {
                           title: "Email Inquiry",
-                          subtitle: "Opens email composer with your recipient address",
+                          subtitle: "Direct email",
                           icon: <Mail size={18} />,
                           previewLabel: "Email Us",
                           inputType: "email",
@@ -794,7 +763,7 @@ export default function Step3Creative({
                         },
                         ios: {
                           title: "Install iOS App",
-                          subtitle: "App Store link for iPhone and iPad devices",
+                          subtitle: "Apple App Store",
                           icon: <Smartphone size={18} />,
                           previewLabel: "App Store",
                           inputType: "url",
@@ -802,7 +771,7 @@ export default function Step3Creative({
                         },
                         android: {
                           title: "Install Android App",
-                          subtitle: "Google Play Store listing link for Android users",
+                          subtitle: "Google Play Store",
                           icon: <Smartphone size={18} />,
                           previewLabel: "Play Store",
                           inputType: "url",
@@ -810,7 +779,7 @@ export default function Step3Creative({
                         },
                         watch_now: {
                           title: "Watch Video",
-                          subtitle: "Direct link to video premiere, stream, or channel",
+                          subtitle: "Watch video",
                           icon: <PlayCircle size={18} />,
                           previewLabel: "Watch Now",
                           inputType: "url",
@@ -818,7 +787,7 @@ export default function Step3Creative({
                         },
                         read_more: {
                           title: "Read More (Full-Screen Reader)",
-                          subtitle: "Unlocks up to 1,500 words of rich copy & full-screen reader modal",
+                          subtitle: "Full-screen reader",
                           icon: <BookOpen size={18} />,
                           previewLabel: "Read More",
                           inputType: "none",
@@ -942,7 +911,7 @@ export default function Step3Creative({
                                 )}
 
                                 <div className={styles.actionPreviewChip}>
-                                  <span>Feed Button Preview:</span>
+                                  <span>Preview:</span>
                                   <span className={styles.actionPreviewButton}>
                                     {meta.icon}
                                     <span>{meta.previewLabel}</span>

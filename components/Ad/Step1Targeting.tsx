@@ -23,13 +23,6 @@ export default function Step1Targeting({
 }: Step1TargetingProps) {
   return (
     <>
-      <p className={styles.targetingNote}>
-        <strong>
-          {adType === "product_sales" ? "Product Sales" :  adType.charAt(0).toUpperCase() + adType.slice(1)}
-        </strong>{" "}
-        ads. Switch category in Step 1 to see different options.
-      </p>
-
       {activeCategories.map((cat) => {
         const items = optionsMap[cat] || [];
         const selectedList = formSelections[cat] || [];
@@ -72,7 +65,7 @@ export default function Step1Targeting({
       })}
       {activeCategories.length === 0 && (
         <p className={styles.targetingNote}>
-          Individual ads reach broad audiences without granular filters.
+          Broad audience targeting without granular filters.
         </p>
       )}
     </>
