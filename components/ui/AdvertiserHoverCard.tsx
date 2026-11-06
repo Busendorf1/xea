@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import styles from "./AdvertiserHoverCard.module.css";
 import Avatar from "./Avatar";
 import VerifiedBadge from "./VerifiedBadge";
+import RoleStarBadges from "./RoleStarBadges";
 import { Calendar, MapPin } from "lucide-react";
 
 export interface AdvertiserProfileData {
@@ -20,6 +21,9 @@ export interface AdvertiserProfileData {
   monetized?: boolean;
   created_at?: string;
   gender?: string | null;
+  is_career?: boolean;
+  is_affiliate?: boolean;
+  affiliate_role?: string | null;
 }
 
 interface AdvertiserHoverCardProps {
@@ -50,6 +54,9 @@ export default function AdvertiserHoverCard({
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const handleAvatarMouseEnter = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches) {
+      return;
+    }
     if (zoomTimerRef.current) {
       clearTimeout(zoomTimerRef.current);
       zoomTimerRef.current = null;
@@ -58,6 +65,9 @@ export default function AdvertiserHoverCard({
   };
 
   const handleAvatarMouseLeave = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches) {
+      return;
+    }
     if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current);
     zoomTimerRef.current = setTimeout(() => {
       setIsLogoZoomed(false);
@@ -93,6 +103,9 @@ export default function AdvertiserHoverCard({
   }, []);
 
   const handleMouseEnter = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches) {
+      return;
+    }
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -102,6 +115,9 @@ export default function AdvertiserHoverCard({
   };
 
   const handleMouseLeave = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches) {
+      return;
+    }
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       setIsOpen(false);
@@ -127,7 +143,7 @@ export default function AdvertiserHoverCard({
     updatePosition();
     const raf = requestAnimationFrame(updatePosition);
 
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
       if (
         wrapperRef.current &&
@@ -144,11 +160,13 @@ export default function AdvertiserHoverCard({
     };
 
     document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handleOutsideClick, { passive: true });
     window.addEventListener("scroll", handleScrollOrResize, true);
     window.addEventListener("resize", handleScrollOrResize);
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
       window.removeEventListener("scroll", handleScrollOrResize, true);
       window.removeEventListener("resize", handleScrollOrResize);
     };
@@ -227,6 +245,7 @@ export default function AdvertiserHoverCard({
                 onMouseEnter={handleAvatarMouseEnter}
                 onMouseLeave={handleAvatarMouseLeave}
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   if (zoomTimerRef.current) {
                     clearTimeout(zoomTimerRef.current);
@@ -260,6 +279,14 @@ export default function AdvertiserHoverCard({
                 <div className={styles.popoverDisplayNameRow}>
                   <span className={styles.popoverDisplayName}>{displayName}</span>
                   {isVerified && <VerifiedBadge size={14} title="Verified Account" />}
+                  <RoleStarBadges
+                    email={profile?.email}
+                    isCareer={profile?.is_career}
+                    isAffiliate={profile?.is_affiliate}
+                    affiliateRole={profile?.affiliate_role}
+                    size={14}
+                    variant="compact"
+                  />
                 </div>
                 <div className={styles.popoverHandle}>{handleText}</div>
               </div>

@@ -20,8 +20,9 @@ import Avatar from "./Avatar";
 import HighlightCard from "./HighlightCard";
 import AdOptionsMenu from "./AdOptionsMenu";
 import MediaCarousel, { isVideoUrl } from "./MediaCarousel";
-import AdvertiserHoverCard from "./AdvertiserHoverCard";
+import AdvertiserHoverCard, { AdvertiserProfileData } from "./AdvertiserHoverCard";
 import VerifiedBadge from "./VerifiedBadge";
+import RoleStarBadges from "./RoleStarBadges";
 import { AdMediaLightboxModal, AdTextReaderModal } from "./AdCardModals";
 import { AdCardActionBar } from "./AdCardActionBar";
 
@@ -156,22 +157,7 @@ export interface Ad {
 interface AdCardProps {
   ad: Ad;
   userEmail: string;
-  advertiserProfiles: Record<
-    string,
-    {
-      business_name?: string;
-      firstName?: string;
-      lastName?: string;
-      profileImage?: string;
-      username?: string;
-      bio?: string;
-      location?: string;
-      country?: string;
-      monetized?: boolean;
-      created_at?: string;
-      gender?: string | null;
-    }
-  >;
+  advertiserProfiles: Record<string, AdvertiserProfileData>;
   viewerProfile: {
     balance: number;
     mutual_count: number;
@@ -663,6 +649,14 @@ function AdCard({
                 {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
                   <VerifiedBadge size={14} title="Verified Account" />
                 )}
+                <RoleStarBadges
+                  email={ad.user_email}
+                  isCareer={advertiserProfile?.is_career}
+                  isAffiliate={advertiserProfile?.is_affiliate}
+                  affiliateRole={advertiserProfile?.affiliate_role}
+                  size={14}
+                  variant="compact"
+                />
               </div>
             </AdvertiserHoverCard>
             <span className={styles.dot}></span>

@@ -4,6 +4,7 @@ import React from "react";
 import { Info } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import RoleStarBadges from "@/components/ui/RoleStarBadges";
 import AdvertiserHoverCard from "@/components/ui/AdvertiserHoverCard";
 import type { UplineAgentInfo } from "@/lib/agentSystem";
 import type { OptOutActionType } from "./useAgentNetwork";
@@ -78,6 +79,14 @@ export default function AgentFollowingTab({
             {uplineAgent.profile?.monetized && (
               <VerifiedBadge size={13} title="Monetized Account" />
             )}
+            <RoleStarBadges
+              email={uplineAgent.email || uplineAgent.referrerEmail}
+              isCareer={uplineAgent.profile?.is_career}
+              isAffiliate={uplineAgent.profile?.is_affiliate}
+              affiliateRole={uplineAgent.profile?.affiliate_role}
+              size={13}
+              variant="compact"
+            />
           </div>
         </div>
 

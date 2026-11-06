@@ -3,6 +3,7 @@
 import React from "react";
 import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import RoleStarBadges from "@/components/ui/RoleStarBadges";
 import AdvertiserHoverCard from "@/components/ui/AdvertiserHoverCard";
 import type { MutualUserItem } from "@/lib/agentSystem";
 import styles from "./AgentSystem.module.css";
@@ -43,6 +44,14 @@ export default function AgentMutualsTab({ mutualList }: AgentMutualsTabProps) {
                 {mutual.profile?.monetized && (
                   <VerifiedBadge size={13} title="Monetized Account" />
                 )}
+                <RoleStarBadges
+                  email={mutual.profile?.email}
+                  isCareer={mutual.profile?.is_career}
+                  isAffiliate={mutual.profile?.is_affiliate}
+                  affiliateRole={mutual.profile?.affiliate_role}
+                  size={13}
+                  variant="compact"
+                />
               </div>
             </div>
           </div>

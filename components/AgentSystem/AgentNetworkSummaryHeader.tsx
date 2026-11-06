@@ -15,6 +15,7 @@ export interface AgentNetworkSummaryHeaderProps {
   actionLoading: boolean;
   onClose: () => void;
   formatCurrency: (val: number | string) => string;
+  onBecomeAgent?: () => void;
 }
 
 export default function AgentNetworkSummaryHeader({
@@ -24,6 +25,7 @@ export default function AgentNetworkSummaryHeader({
   actionLoading,
   onClose,
   formatCurrency,
+  onBecomeAgent,
 }: AgentNetworkSummaryHeaderProps) {
   const mutualList = Array.isArray(data.mutuals) ? data.mutuals : [];
   const mutualTotal = typeof data.mutualsCount === "number" ? data.mutualsCount : mutualList.length;
@@ -32,7 +34,20 @@ export default function AgentNetworkSummaryHeader({
     <>
       <div className={styles.modalHeader}>
         <div className={styles.modalTitleWrap}>
-          <h3 className={styles.modalTitle}>Invites</h3>
+          <div className={styles.titleRow}>
+            <h3 className={styles.modalTitle}>Invites</h3>
+            {!data.isAgent && onBecomeAgent && (
+              <button
+                type="button"
+                disabled={actionLoading}
+                className={styles.headerAgentBtn}
+                onClick={onBecomeAgent}
+                title="Register as an official platform agent"
+              >
+                Become an Agent
+              </button>
+            )}
+          </div>
           <p className={styles.modalSubtitle}>Referral &amp; Followers</p>
         </div>
         <button

@@ -3,6 +3,7 @@
 import React from "react";
 import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import RoleStarBadges from "@/components/ui/RoleStarBadges";
 import AdvertiserHoverCard from "@/components/ui/AdvertiserHoverCard";
 import type { DownlineInviteItem } from "@/lib/agentSystem";
 import type { OptOutActionType } from "./useAgentNetwork";
@@ -89,6 +90,14 @@ export default function AgentFollowersTab({
                   {item.profile?.monetized && (
                     <VerifiedBadge size={13} title="Monetized Account" />
                   )}
+                  <RoleStarBadges
+                    email={item.email}
+                    isCareer={item.profile?.is_career}
+                    isAffiliate={item.profile?.is_affiliate}
+                    affiliateRole={item.profile?.affiliate_role}
+                    size={13}
+                    variant="compact"
+                  />
                 </div>
               </div>
 

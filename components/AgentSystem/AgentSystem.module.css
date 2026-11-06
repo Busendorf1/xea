@@ -89,6 +89,41 @@
   gap: 0.1rem;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.headerAgentBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: var(--background);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.22rem 0.6rem;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.headerAgentBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.headerAgentBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.headerAgentBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .modalTitle {
   font-size: 0.95rem;
   font-weight: 700;
@@ -524,8 +559,31 @@
     box-shadow: none;
   }
 
+  /* Safe area & Safari floating search bar clearance:
+     Lifts footer by ~85px so Safari's bottom address bar never obscures the button */
   .modalFooter {
     background: var(--background);
+    padding: 0.75rem 1.15rem calc(env(safe-area-inset-bottom, 20px) + 3.8rem);
+    position: sticky;
+    bottom: 0;
+    z-index: 25;
+    border-top: 1px solid var(--card-border);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+  }
+
+  .primaryAgentBtn {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.88rem;
+  }
+
+  /* Deep bottom scrolling clearance so the last follower/mutual in the list
+     can scroll all the way into view past the elevated footer */
+  .modalBody {
+    padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 6.5rem);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
   }
 
   .agentPageContainer {

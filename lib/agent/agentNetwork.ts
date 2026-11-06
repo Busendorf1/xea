@@ -214,7 +214,7 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
 
   try {
     const selectCols =
-      'email, username, "firstName", "lastName", business_name, "profileImage", bio, location, country, monetized, monetization_clicks, created_at, gender, is_agent';
+      'email, username, "firstName", "lastName", business_name, "profileImage", bio, location, country, monetized, monetization_clicks, created_at, gender, is_agent, is_career, is_affiliate, affiliate_role';
     const { data: rows, error } = await supabaseAdmin.from("users").select(selectCols).in("email", uniqueEmails);
 
     const finalRows =
@@ -224,7 +224,7 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
             await supabaseAdmin
               .from("users")
               .select(
-                'email, username, "firstName", "lastName", business_name, "profileImage", bio, location, country, monetized, monetization_clicks, created_at, gender'
+                'email, username, "firstName", "lastName", business_name, "profileImage", bio, location, country, monetized, monetization_clicks, created_at, gender, is_career, is_affiliate, affiliate_role'
               )
               .in("email", uniqueEmails)
           ).data || [];
@@ -270,6 +270,9 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
           monetized: isMonetized,
           created_at: r.created_at || undefined,
           gender: r.gender || null,
+          is_career: Boolean(r.is_career),
+          is_affiliate: Boolean(r.is_affiliate),
+          affiliate_role: r.affiliate_role || null,
         },
       };
     }

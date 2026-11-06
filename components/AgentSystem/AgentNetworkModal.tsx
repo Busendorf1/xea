@@ -87,6 +87,7 @@ export default function AgentNetworkModal({
           actionLoading={actionLoading}
           onClose={onClose}
           formatCurrency={formatCurrency}
+          onBecomeAgent={handleBecomeAgentClick}
         />
 
         <div className={styles.modalBody}>
