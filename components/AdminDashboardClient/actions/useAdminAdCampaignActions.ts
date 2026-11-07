@@ -149,11 +149,23 @@ export function useAdminAdCampaignActions(params: AdminAdCampaignParams) {
         body: JSON.stringify({
           action: targetState ? "pause_ad" : "resume_ad",
           id: ad.id,
-          payload: { statement },
+          payload: targetState ? { statement } : {},
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
+
+      const nextStatement = targetState ? (statement?.trim() || ad.admin_statement || null) : null;
+      setActiveAds((prev) =>
+        prev.map((a) =>
+          a.id === ad.id ? { ...a, is_paused: targetState, admin_statement: nextStatement } : a
+        )
+      );
+      setPendingAds((prev) =>
+        prev.map((a) =>
+          a.id === ad.id ? { ...a, is_paused: targetState, admin_statement: nextStatement } : a
+        )
+      );
 
       await alertDialog(`Ad campaign successfully ${targetState ? "paused" : "resumed"}!`, "Campaign Updated");
       handleRefresh();

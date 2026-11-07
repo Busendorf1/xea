@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Eye, Coins, UserPlus, Check, Lock, ShieldCheck, Loader2, ArrowRight, RefreshCw } from "lucide-react";
+import { Eye, Coins, UserPlus, Lock, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 import styles from "./AdCard.module.css";
 import EarningCooldownNotice from "./EarningCooldownNotice";
 
@@ -107,8 +107,6 @@ export default function AdInteractionHandler({
   onMarkSeen,
   onAdEarn,
   onAdMutual,
-  brandName,
-  targetLink,
   forceInView = false,
   externalSecondsLeft,
   onSecondsLeftChange,
@@ -242,14 +240,12 @@ export default function AdInteractionHandler({
     if (inView && tabVisible && secondsLeft > 0) {
       timer = setTimeout(() => {
         if (Date.now() - lastFastScrollTimestamp < 250) {
-          // User was actively fast-scrolling during this tick; hold countdown until scroll settles
           setSecondsLeft((prev) => prev);
           return;
         }
         setSecondsLeft((prev) => prev - 1);
       }, 1000);
     } else if (secondsLeft === 0) {
-      // Choose a random challenge type
       const types: ChallengeType[] = ["swipe", "hold", "tap"];
       const randomType = types[Math.floor(Math.random() * types.length)];
       setChallengeType(randomType);
@@ -270,7 +266,7 @@ export default function AdInteractionHandler({
     };
   }, [stage, challengeType]);
 
-  // For unpaid platform ads or ads without budget, do not show interactive buttons (earn, seen, mutual)
+  // Platform ads (from admin) do not show the interaction button — only their registered CTAs
   if (
     isPlatformPost ||
     ad.is_admin_post ||
@@ -279,21 +275,6 @@ export default function AdInteractionHandler({
     !ad.impressions ||
     Number(ad.impressions) <= 0
   ) {
-    if (targetLink && targetLink !== "#") {
-      return (
-        <div className={styles.fromBrandContainer}>
-          <a
-            href={targetLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.fromBrandBtn}
-            title={`Visit ${brandName}`}
-          >
-            Visit {brandName}
-          </a>
-        </div>
-      );
-    }
     return null;
   }
 
@@ -312,7 +293,6 @@ export default function AdInteractionHandler({
     kinematicsRef.current.reset();
     recordedTelemetryRef.current = [];
 
-    // Cycle or pick another challenge type
     const types: ChallengeType[] = ["swipe", "hold", "tap"];
     const otherTypes = types.filter((t) => t !== challengeType);
     const nextType = otherTypes[Math.floor(Math.random() * otherTypes.length)];
@@ -339,14 +319,13 @@ export default function AdInteractionHandler({
     kinematicsRef.current.record(clientX, clientY, force);
 
     const trackWidth = trackRef.current.clientWidth;
-    const handleWidth = 44;
-    const maxOffset = trackWidth - handleWidth;
-    
+    const handleWidth = 34;
+    const maxOffset = Math.max(0, trackWidth - handleWidth);
+
     let newOffset = clientX - startX.current;
     newOffset = Math.max(0, Math.min(newOffset, maxOffset));
     setSwipeOffset(newOffset);
 
-    // If dragged 90% of the way, complete the challenge
     if (newOffset >= maxOffset * 0.9) {
       isDragging.current = false;
       setSwipeOffset(maxOffset);
@@ -359,12 +338,10 @@ export default function AdInteractionHandler({
     if (!isDragging.current) return;
     isDragging.current = false;
     kinematicsRef.current.reset();
-    // Snap back to 0 if not completed
     setSwipeOffset(0);
   };
 
-  // 5. Challenge B: Hold Handlers (holdCoords ref is declared with the other refs, before any early return)
-
+  // 5. Challenge B: Hold Handlers
   const startHold = (e?: React.MouseEvent | React.TouchEvent) => {
     if (stage !== "challenge" || challengeType !== "hold") return;
     isHolding.current = true;
@@ -386,7 +363,7 @@ export default function AdInteractionHandler({
           handleChallengeSuccess();
           return 100;
         }
-        return prev + 5; // takes ~1.0 second to complete
+        return prev + 5;
       });
     }, 50);
   };
@@ -422,7 +399,6 @@ export default function AdInteractionHandler({
     if (lastTapTime.current > 0) {
       const diff = now - lastTapTime.current;
       if (diff < 100) {
-        // Prevent accidental synthetic double-trigger
         return;
       }
     }
@@ -438,12 +414,13 @@ export default function AdInteractionHandler({
     });
   };
 
-  // SVG Progress Ring calculations (Compact Sleek Scale)
-  const radius = 10;
+  const radius = 9;
   const stroke = 2;
   const circumference = 2 * Math.PI * radius;
   const percentage = ((16 - secondsLeft) / 16) * 100;
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  const isMonetizedUser = Boolean(viewerProfile?.monetized);
 
   return (
     <div ref={containerRef} className={styles.interactionContainer}>
@@ -471,7 +448,7 @@ export default function AdInteractionHandler({
               />
             </svg>
             <div className={styles.lockIconOverlay}>
-              <Lock size={10} className={styles.lockIcon} />
+              <Lock size={9} className={styles.lockIcon} />
             </div>
           </div>
           <span className={styles.countdownText}>
@@ -483,19 +460,19 @@ export default function AdInteractionHandler({
       {stage === "challenge" && (
         <div className={styles.challengeContainer}>
           {challengeType === "swipe" && (
-            <div 
-              ref={trackRef} 
+            <div
+              ref={trackRef}
               className={styles.swipeTrack}
               onMouseMove={handleSwipeMove}
               onTouchMove={handleSwipeMove}
             >
-              <div 
+              <div
                 style={{ transform: `translateX(${swipeOffset}px)` }}
                 className={styles.swipeHandle}
                 onMouseDown={handleSwipeStart}
                 onTouchStart={handleSwipeStart}
               >
-                <ArrowRight size={14} />
+                <ArrowRight size={13} />
               </div>
               <span className={styles.swipeText}>Swipe to Verify</span>
             </div>
@@ -513,9 +490,9 @@ export default function AdInteractionHandler({
               onMouseLeave={endHold}
               onTouchEnd={endHold}
             >
-              <div 
-                style={{ width: `${holdProgress}%` }} 
-                className={styles.holdProgressBar} 
+              <div
+                style={{ width: `${holdProgress}%` }}
+                className={styles.holdProgressBar}
               />
               <span className={styles.holdBtnText}>
                 {holdProgress > 0 ? "Holding..." : "Hold 2s to Verify"}
@@ -536,9 +513,9 @@ export default function AdInteractionHandler({
               </span>
               <div className={styles.tapIndicatorRow}>
                 {[1, 2, 3].map((num) => (
-                  <div 
-                    key={num} 
-                    className={`${styles.tapDot} ${tapCount >= num ? styles.tapDotActive : ""}`} 
+                  <div
+                    key={num}
+                    className={`${styles.tapDot} ${tapCount >= num ? styles.tapDotActive : ""}`}
                   />
                 ))}
               </div>
@@ -559,25 +536,14 @@ export default function AdInteractionHandler({
 
       {stage === "unlocked" && (
         <div className={styles.unlockedRow}>
-          {isPlatformPost ? (
-            ad.ad_type === "product_sales" ? null : (
-              <a
-                href={targetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.visitBrandBtn}
-              >
-                Visit {brandName}
-              </a>
-            )
-          ) : isCooldownActive ? (
+          {isCooldownActive ? (
             <EarningCooldownNotice
               cooldownUntil={activeCooldownUntil}
               cooldownType={activeCooldownType}
             />
           ) : (
             <>
-              {/* Seen / Dismiss Button */}
+              {/* Seen Button — visible to both unmonetized and monetized users */}
               <button
                 className={`${styles.seenBtn} ${successAction === "seen" ? styles.successBtn : ""}`}
                 type="button"
@@ -586,7 +552,7 @@ export default function AdInteractionHandler({
                   hasTakenAction.current = true;
                   handleAction("seen", () => onMarkSeen(ad));
                 }}
-                title="Dismiss this ad"
+                title="Mark ad as seen"
               >
                 {activeAction === "seen" ? (
                   <>
@@ -594,10 +560,7 @@ export default function AdInteractionHandler({
                     <span>Seen...</span>
                   </>
                 ) : successAction === "seen" ? (
-                  <>
-                    <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                    <span>Dismissed</span>
-                  </>
+                  <span>Seen</span>
                 ) : (
                   <>
                     <Eye size={11} strokeWidth={2} />
@@ -606,8 +569,8 @@ export default function AdInteractionHandler({
                 )}
               </button>
 
-              {/* Earn+ Button — only visible when monetized and NOT a mutual ad (mutual attention is unbudgeted free attention) */}
-              {viewerProfile?.monetized && !isMutualTarget && !isAlreadyMutual && (
+              {/* Earn+ Button — visible to monetized users on paid ads */}
+              {isMonetizedUser && !isMutualTarget && (
                 <button
                   className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
                   type="button"
@@ -632,10 +595,7 @@ export default function AdInteractionHandler({
                       <span>Earn...</span>
                     </>
                   ) : successAction === "earn" ? (
-                    <>
-                      <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                      <span>Earned</span>
-                    </>
+                    <span>Earned</span>
                   ) : (
                     <>
                       <Coins size={11} strokeWidth={2} />
@@ -645,8 +605,8 @@ export default function AdInteractionHandler({
                 </button>
               )}
 
-              {/* Mutual+ Button */}
-              {ad.display_mutual_button === true && !isAlreadyMutual && (
+              {/* Mutual+ Button — visible to monetized users when not explicitly disabled */}
+              {isMonetizedUser && ad.display_mutual_button !== false && !isAlreadyMutual && (
                 <button
                   className={
                     viewerProfile && viewerProfile.mutual_count >= 50
@@ -677,10 +637,7 @@ export default function AdInteractionHandler({
                       <span>Mutual...</span>
                     </>
                   ) : successAction === "mutual" ? (
-                    <>
-                      <Check size={11} strokeWidth={2} className={styles.tickIcon} />
-                      <span>Added</span>
-                    </>
+                    <span>Added</span>
                   ) : (
                     <>
                       <UserPlus size={11} strokeWidth={2} />

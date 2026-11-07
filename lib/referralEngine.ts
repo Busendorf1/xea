@@ -12,13 +12,25 @@ const IP_RATE_LIMIT_TTL_SECONDS = 86400; // 24 Hours
  * Level 2: 600 Clicks (₦60,000 cap / ~$40 USD)
  * Level 3: 900+ Clicks (₦90,000 cap / ~$60 USD - Maximum Cap)
  */
-export function calculateAtwTier(clicks = 0): {
+export function calculateAtwTier(
+  clicks = 0,
+  isAdmin = false
+): {
   tier: string;
   level: number;
   holdingLimit: number;
 } {
-  const levelFromClicks = clicks >= 300 ? 1 + Math.floor((clicks - 300) / 300) : 1;
-  const finalLevel = Math.min(3, Math.max(1, levelFromClicks));
+  const safeClicks = Math.max(0, Number(clicks) || 0);
+  const levelFromClicks = safeClicks >= 300 ? Math.floor(safeClicks / 300) : 1;
+  const finalLevel = Math.max(1, levelFromClicks);
+
+  if (isAdmin) {
+    return {
+      tier: "Unlimited",
+      level: finalLevel,
+      holdingLimit: Infinity,
+    };
+  }
 
   return {
     tier: `ATW${finalLevel}`,

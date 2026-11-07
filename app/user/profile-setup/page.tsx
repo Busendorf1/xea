@@ -518,7 +518,7 @@ interface ProfileFormData {
                     <div className={styles.privacyNotice}>
                       <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
                       <span>
-                        <strong>Public Handle vs. Private Email:</strong> Your <code>@username</code> is publicly visible across the platform and not encrypted, whereas your account email remains private and is never shown on the feed. Avoid using a private email address as your username.
+                        <strong>Public Handle Advisory:</strong> Your <code>@username</code> is what people see on the feed. Keep your email private and never use it as your username. Always set a username completely different from your email to keep your email hidden from databases and public feeds. Paayh is removed from all liability if you use your email or personal details as your username.
                       </span>
                     </div>
 

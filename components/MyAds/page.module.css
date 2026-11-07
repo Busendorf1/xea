@@ -2690,3 +2690,260 @@
   align-items: center;
   justify-content: center;
 }
+
+
+/* ═════════════════════════════════════════════════════════════════
+   Comprehensive Theme Compliance: Dark & Light / White Modes
+   ═════════════════════════════════════════════════════════════════ */
+
+[data-theme='dark'] .card,
+:global([data-theme='dark']) .card {
+  background: #111215;
+  border-color: #23252a;
+}
+
+[data-theme='dark'] .card:hover,
+:global([data-theme='dark']) .card:hover {
+  border-color: #3d414a;
+}
+
+[data-theme='dark'] .rowFooter,
+:global([data-theme='dark']) .rowFooter {
+  background: #0e0f12;
+  border-color: #202227;
+}
+
+[data-theme='dark'] .statsSection,
+:global([data-theme='dark']) .statsSection {
+  background-color: #0e0f12;
+  border-color: #202227;
+}
+
+[data-theme='dark'] .kpiCard,
+:global([data-theme='dark']) .kpiCard {
+  background: #111215;
+  border-color: #23252a;
+}
+
+[data-theme='dark'] .kpiCard:hover,
+:global([data-theme='dark']) .kpiCard:hover {
+  border-color: rgba(248, 250, 252, 0.35);
+}
+
+[data-theme='dark'] .commandBar,
+:global([data-theme='dark']) .commandBar {
+  background: #111215;
+  border-color: #23252a;
+}
+
+[data-theme='dark'] .tabsList,
+:global([data-theme='dark']) .tabsList {
+  background: #0e0f12;
+  border-color: #202227;
+}
+
+[data-theme='dark'] .tabTriggerActive,
+:global([data-theme='dark']) .tabTriggerActive {
+  background: #1e2025;
+  color: #f8fafc;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .searchInput,
+:global([data-theme='dark']) .searchInput {
+  background: #0e0f12;
+  border-color: #202227;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .searchInput:focus,
+:global([data-theme='dark']) .searchInput:focus {
+  border-color: #f8fafc;
+}
+
+[data-theme='dark'] .sortSelect,
+:global([data-theme='dark']) .sortSelect {
+  background: #0e0f12;
+  border-color: #202227;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .sortSelect:focus,
+:global([data-theme='dark']) .sortSelect:focus {
+  border-color: #f8fafc;
+}
+
+[data-theme='dark'] .paginationBar,
+:global([data-theme='dark']) .paginationBar {
+  background-color: #0e0f12;
+  border-color: #202227;
+}
+
+[data-theme='dark'] .pageBtn,
+:global([data-theme='dark']) .pageBtn {
+  background-color: #141518;
+  border-color: #23252a;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .pageBtn:hover:not(:disabled),
+:global([data-theme='dark']) .pageBtn:hover:not(:disabled) {
+  border-color: #3b82f6;
+  background-color: #1c1d22;
+}
+
+[data-theme='dark'] .emptyStateCard,
+:global([data-theme='dark']) .emptyStateCard {
+  background: #111215;
+  border-color: #23252a;
+}
+
+[data-theme='dark'] .targetingMatrixBox,
+:global([data-theme='dark']) .targetingMatrixBox {
+  background: #111215;
+  border-color: #23252a;
+}
+
+[data-theme='dark'] .targetingCard,
+:global([data-theme='dark']) .targetingCard {
+  background: #0e0f12;
+  border-color: #202227;
+}
+
+[data-theme='dark'] .targetingChip,
+:global([data-theme='dark']) .targetingChip {
+  background: #18191d;
+  border-color: #26282f;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .modalContent,
+:global([data-theme='dark']) .modalContent {
+  background: #111215;
+  border-color: #23252a;
+}
+
+[data-theme='dark'] .boosterInput,
+:global([data-theme='dark']) .boosterInput {
+  background: #0e0f12;
+  border-color: #202227;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .paymentSelectBtn,
+:global([data-theme='dark']) .paymentSelectBtn {
+  background: #0e0f12;
+  border-color: #202227;
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .paymentSelectBtnActive,
+:global([data-theme='dark']) .paymentSelectBtnActive {
+  border-color: #f8fafc;
+  background: rgba(248, 250, 252, 0.12);
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .boosterGenderBtn,
+:global([data-theme='dark']) .boosterGenderBtn {
+  background: #0e0f12;
+  border-color: #202227;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .badgeActive,
+:global([data-theme='dark']) .badgeActive {
+  background-color: rgba(248, 250, 252, 0.12);
+  color: #f8fafc;
+  border: 1px solid #f8fafc;
+}
+
+[data-theme='dark'] .badgeReview,
+:global([data-theme='dark']) .badgeReview {
+  background-color: #16171b;
+  color: #94a3b8;
+  border: 1px solid #282a30;
+}
+
+[data-theme='dark'] .badgePaused,
+:global([data-theme='dark']) .badgePaused {
+  background-color: #16171b;
+  color: #94a3b8;
+  border: 1px solid #282a30;
+}
+
+/* Light / White Theme Explicit Polish */
+[data-theme='white'] .card,
+[data-theme='light'] .card,
+:global([data-theme='white']) .card,
+:global([data-theme='light']) .card {
+  background: #ffffff;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .rowFooter,
+[data-theme='light'] .rowFooter,
+:global([data-theme='white']) .rowFooter,
+:global([data-theme='light']) .rowFooter {
+  background: #f8f9fa;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .statsSection,
+[data-theme='light'] .statsSection,
+:global([data-theme='white']) .statsSection,
+:global([data-theme='light']) .statsSection {
+  background-color: #f8f9fa;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .kpiCard,
+[data-theme='light'] .kpiCard,
+:global([data-theme='white']) .kpiCard,
+:global([data-theme='light']) .kpiCard {
+  background: #ffffff;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .commandBar,
+[data-theme='light'] .commandBar,
+:global([data-theme='white']) .commandBar,
+:global([data-theme='light']) .commandBar {
+  background: #ffffff;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .tabsList,
+[data-theme='light'] .tabsList,
+:global([data-theme='white']) .tabsList,
+:global([data-theme='light']) .tabsList {
+  background: #f4f4f2;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .tabTriggerActive,
+[data-theme='light'] .tabTriggerActive,
+:global([data-theme='white']) .tabTriggerActive,
+:global([data-theme='light']) .tabTriggerActive {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='white'] .searchInput,
+[data-theme='light'] .searchInput,
+:global([data-theme='white']) .searchInput,
+:global([data-theme='light']) .searchInput {
+  background: #ffffff;
+  border-color: #e6e5e1;
+  color: #000000;
+}
+
+[data-theme='white'] .sortSelect,
+[data-theme='light'] .sortSelect,
+:global([data-theme='white']) .sortSelect,
+:global([data-theme='light']) .sortSelect {
+  background: #ffffff;
+  border-color: #e6e5e1;
+  color: #000000;
+}

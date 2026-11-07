@@ -202,8 +202,8 @@ export async function POST(req: NextRequest) {
 
     const reference = `wallet_${uuidv4()}`;
 
-    // 4. Deduct user balance atomically (skip if admin)
-    if (!isAdmin) {
+    // 4. Deduct user balance atomically when amount > 0
+    if (amountNum > 0) {
       const spendRes = await spendWalletBalanceAtomic(
         emailLower,
         amountNum,
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
     const { error: insertPaymentError } = await supabaseAdmin.from("payments").insert({
       user_email: emailLower,
       reference,
-      amount: isAdmin ? 0 : amountNum,
+      amount: amountNum,
       status: "success",
       type,
       description: `payment for ${type} using Wallet Balance`,
@@ -291,7 +291,7 @@ export async function POST(req: NextRequest) {
 
       if (insertErr) {
         console.error("❌ Error activating ad in addsactive:", insertErr);
-        if (!isAdmin) {
+        if (amountNum > 0) {
           await refundWalletDeductionAtomic(emailLower, amountNum, "publish_ad_insert_failed", reference);
         }
         return NextResponse.json({ error: "Failed to publish ad. Balance has been restored." }, { status: 500 });
@@ -300,16 +300,16 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("adds").delete().eq("id", adId);
 
       const publishedAd = insertedRows?.[0] || activeAd;
-      const { dispatchFeedDropWebhook } = await import("@/lib/webhookDispatcher");
+      const { dispatchFeedDropWebhook, dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
       dispatchFeedDropWebhook(publishedAd).catch(() => {});
 
-      await supabaseAdmin.from("notifications").insert([
-        {
-          user_email: emailLower,
-          title: "Campaign Published & Live!",
-          message: "Your approved campaign has been paid and is now live in the active feed!",
-        },
-      ]);
+      const notifRow = {
+        user_email: emailLower,
+        title: "Ad Live",
+        message: "Payment confirmed! Your ad is now live in the feed.",
+      };
+      await supabaseAdmin.from("notifications").insert([notifRow]);
+      dispatchNotificationWebhook(notifRow).catch(() => {});
 
       const { invalidateCachedUserCampaigns, invalidateCachedProfile } = await import("@/lib/utils/cache");
       await Promise.all([
@@ -376,7 +376,7 @@ export async function POST(req: NextRequest) {
 
       if (insertErr) {
         console.error("❌ Error activating highlight in newsactive:", insertErr);
-        if (!isAdmin) {
+        if (amountNum > 0) {
           await refundWalletDeductionAtomic(emailLower, amountNum, "publish_highlight_insert_failed", reference);
         }
         return NextResponse.json({ error: "Failed to publish highlight. Balance has been restored." }, { status: 500 });
@@ -386,13 +386,14 @@ export async function POST(req: NextRequest) {
 
       const publishedHl = insertedHlRows?.[0] || activeHl;
 
-      await supabaseAdmin.from("notifications").insert([
-        {
-          user_email: emailLower,
-          title: "Highlight Published & Live!",
-          message: "Your approved highlight is now live in the active feed!",
-        },
-      ]);
+      const notifRow = {
+        user_email: emailLower,
+        title: "Highlight Live",
+        message: "Payment confirmed! Your highlight is now live in the feed.",
+      };
+      await supabaseAdmin.from("notifications").insert([notifRow]);
+      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      dispatchNotificationWebhook(notifRow).catch(() => {});
 
       const { invalidateCachedUserCampaigns, invalidateCachedProfile } = await import("@/lib/utils/cache");
       await Promise.all([
@@ -563,13 +564,12 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("addsactive").delete().eq("id", adData.id);
 
       if (isAdmin || adData.isAdminPost) {
-        await supabaseAdmin.from("adds").update({
-          is_admin_post: true,
-          custom_sponsor_name: adData.customSponsorName || null,
-          custom_sponsor_handle: adData.customSponsorHandle || null,
-          custom_sponsor_logo: adData.customSponsorLogo || null,
-          cost_per_impression: 0,
-        }).eq("id", adData.id);
+        try {
+          await supabaseAdmin.from("adds").update({
+            is_admin_post: true,
+            cost_per_impression: 0,
+          }).eq("id", adData.id);
+        } catch {}
       }
 
       if (adData.isAiContent || adData.is_ai_content) {

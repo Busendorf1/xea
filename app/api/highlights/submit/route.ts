@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
@@ -90,8 +90,17 @@ export async function POST(req: NextRequest) {
 
     const isBidded = !!highlightData.isBidded;
     const bidPrice = highlightData.bidPrice ? parseFloat(highlightData.bidPrice) : null;
-    const campaignDays = highlightData.campaignDays || 1;
+    const campaignDays = Math.max(1, Math.min(90, Number(highlightData.campaignDays || 1)));
     const finalImageUrl = highlightData.image_url || highlightData.imageUrl;
+
+    const rawScheduledStart = highlightData.scheduledStartAt || highlightData.scheduled_start_at || null;
+    let parsedScheduledStart: string | null = null;
+    if (rawScheduledStart && typeof rawScheduledStart === "string" && rawScheduledStart !== "immediate") {
+      const dt = new Date(rawScheduledStart);
+      if (!isNaN(dt.getTime())) {
+        parsedScheduledStart = dt.toISOString();
+      }
+    }
 
     if (!finalImageUrl) {
       return NextResponse.json({ error: "Highlight cover image is required." }, { status: 400 });
@@ -99,51 +108,6 @@ export async function POST(req: NextRequest) {
 
     const { isAdminEmail } = await import("@/lib/authHelper");
     const isAdmin = isAdminEmail(emailLower);
-
-    if (isAdmin) {
-      // Admin bypasses all review and payment - publish directly to active feed
-      const activeHl = {
-        ...(editingId ? { id: editingId } : {}),
-        title: highlightData.title,
-        content: highlightData.content,
-        image_url: finalImageUrl,
-        interest: highlightData.interest,
-        country: highlightData.country || null,
-        state: highlightData.state || null,
-        province: highlightData.province || null,
-        campaign_days: campaignDays,
-        is_bidded: isBidded,
-        bid_price: bidPrice,
-        custom_sponsor_name: highlightData.customSponsorName || null,
-        custom_sponsor_handle: highlightData.customSponsorHandle || null,
-        user_email: emailLower,
-        is_ai_content: !!highlightData.isAiContent,
-        is_admin_post: true,
-        is_paused: false,
-        created_at: new Date().toISOString(),
-      };
-
-      if (editingId) {
-        await supabaseAdmin.from("news").delete().eq("id", editingId);
-      }
-
-      const { data: insertedHl, error: insertErr } = await supabaseAdmin
-        .from("newsactive")
-        .upsert(activeHl)
-        .select("*");
-
-      if (insertErr) {
-        console.error("❌ Error activating admin highlight directly:", insertErr);
-        throw insertErr;
-      }
-
-      await invalidateCachedUserCampaigns(emailLower);
-      return NextResponse.json({
-        success: true,
-        message: "Admin highlight published directly to active feed!",
-        highlightId: insertedHl?.[0]?.id || editingId,
-      });
-    }
 
     if (editingId) {
       // Check if editing an active delivering highlight
@@ -163,85 +127,130 @@ export async function POST(req: NextRequest) {
         isBudgetIncreased = newCost > origCost;
       }
 
-      // Upsert into news so review draft is created or updated
+      // Upsert into news so review draft is created or updated and placed back in review
+      const baseHighlightRow = {
+        id: editingId,
+        title: highlightData.title,
+        content: highlightData.content,
+        image_url: finalImageUrl,
+        interest: highlightData.interest,
+        country: highlightData.country || null,
+        state: highlightData.state || null,
+        province: highlightData.province || null,
+        campaign_days: campaignDays,
+        is_bidded: isBidded,
+        bid_price: bidPrice,
+        custom_sponsor_name: highlightData.customSponsorName || null,
+        custom_sponsor_handle: highlightData.customSponsorHandle || null,
+        admin_statement: "Status: Pending review",
+        user_email: emailLower,
+        is_admin_post: isAdmin,
+        is_paused: false,
+      };
+
       const { error: upsertErr } = await supabaseAdmin
         .from("news")
         .upsert({
-          id: editingId,
-          title: highlightData.title,
-          content: highlightData.content,
-          image_url: finalImageUrl,
-          interest: highlightData.interest,
-          country: highlightData.country || null,
-          state: highlightData.state || null,
-          province: highlightData.province || null,
-          campaign_days: campaignDays,
-          is_bidded: isBidded,
-          bid_price: bidPrice,
-          custom_sponsor_name: highlightData.customSponsorName || null,
-          custom_sponsor_handle: highlightData.customSponsorHandle || null,
+          ...baseHighlightRow,
           is_ai_content: !!highlightData.isAiContent,
-          admin_statement: "Status: Pending review",
           status: "pending_review",
+          approved_at: null,
           payment_status: isDeliveringActive && !isBudgetIncreased ? "paid" : "unpaid",
-          user_email: emailLower,
-          is_admin_post: isAdmin,
-          is_paused: false,
+          ...(parsedScheduledStart ? { scheduled_start_at: parsedScheduledStart } : {}),
         });
 
-      if (upsertErr) throw upsertErr;
+      if (upsertErr) {
+        const { error: fallbackErr } = await supabaseAdmin.from("news").upsert(baseHighlightRow);
+        if (fallbackErr) throw fallbackErr;
+      }
+
+      if (!isDeliveringActive) {
+        await supabaseAdmin.from("newsactive").delete().eq("id", editingId);
+      }
+
+      const notifRow = {
+        user_email: emailLower,
+        title: "Highlight In Review",
+        message: `Your updated highlight "${highlightData.title}" is in review.`,
+      };
+      await supabaseAdmin.from("notifications").insert([notifRow]);
+      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      dispatchNotificationWebhook(notifRow).catch(() => {});
 
       await invalidateCachedUserCampaigns(emailLower);
       return NextResponse.json({
         success: true,
-        message: "Highlight updated and re-submitted for review!",
+        message: "Highlight updated and placed in review.",
         highlightId: editingId,
+        status: "pending_review",
+        admin_statement: "Status: Pending review",
       });
     }
 
-    const { data: inserted, error: insertErr } = await supabaseAdmin
+    const baseInsertRow: Record<string, any> = {
+      title: highlightData.title,
+      content: highlightData.content,
+      image_url: finalImageUrl,
+      interest: highlightData.interest,
+      country: highlightData.country || null,
+      state: highlightData.state || null,
+      province: highlightData.province || null,
+      campaign_days: campaignDays,
+      is_bidded: isBidded,
+      bid_price: bidPrice,
+      custom_sponsor_name: highlightData.customSponsorName || null,
+      custom_sponsor_handle: highlightData.customSponsorHandle || null,
+      user_email: emailLower,
+      is_admin_post: false,
+      is_ai_content: !!highlightData.isAiContent,
+      admin_statement: "Status: Pending review",
+      is_paused: false,
+    };
+
+    let { data: inserted, error: insertErr } = await supabaseAdmin
       .from("news")
       .insert([
         {
-          title: highlightData.title,
-          content: highlightData.content,
-          image_url: finalImageUrl,
-          interest: highlightData.interest,
-          country: highlightData.country || null,
-          state: highlightData.state || null,
-          province: highlightData.province || null,
-          campaign_days: campaignDays,
-          is_bidded: isBidded,
-          bid_price: bidPrice,
-          custom_sponsor_name: highlightData.customSponsorName || null,
-          custom_sponsor_handle: highlightData.customSponsorHandle || null,
-          user_email: emailLower,
-          is_admin_post: isAdmin,
-          is_ai_content: !!highlightData.isAiContent,
-          admin_statement: "Status: Pending review",
-          is_paused: false,
+          ...baseInsertRow,
+          ...(parsedScheduledStart ? { scheduled_start_at: parsedScheduledStart } : {}),
         },
       ])
       .select("id")
       .single();
 
+    if (insertErr && parsedScheduledStart) {
+      const fbInsert = await supabaseAdmin
+        .from("news")
+        .insert([baseInsertRow])
+        .select("id")
+        .single();
+      inserted = fbInsert.data;
+      insertErr = fbInsert.error;
+    }
+
     if (insertErr) throw insertErr;
 
-    // Send confirmation notification
-    await supabaseAdmin.from("notifications").insert([
-      {
-        user_email: emailLower,
-        title: "Highlight Submitted for Review",
-        message: `Your highlight "${highlightData.title}" has been submitted for admin moderation. You will be notified once approved to publish it.`,
-      },
-    ]);
+    if (inserted?.id) {
+      await supabaseAdmin.from("newsactive").delete().eq("id", inserted.id);
+    }
+
+    const notifRow = {
+      user_email: emailLower,
+      title: "Highlight Submitted",
+      message: `"${highlightData.title}" is in review. Pay in My Highlights once approved.`,
+    };
+    await supabaseAdmin.from("notifications").insert([notifRow]);
+    const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+    dispatchNotificationWebhook(notifRow).catch(() => {});
 
     await invalidateCachedUserCampaigns(emailLower);
 
     return NextResponse.json({
       success: true,
-      message: "Highlight submitted for review! Once approved, you can publish it from My Highlights.",
+      message: "Highlight submitted for review. Once approved, pay in My Highlights to go live.",
       highlightId: inserted?.id,
+      status: "pending_review",
+      admin_statement: "Status: Pending review",
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/highlights/submit:", err);

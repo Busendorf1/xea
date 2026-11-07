@@ -113,3 +113,32 @@
   font-weight: 500;
   color: var(--danger);
 }
+
+
+/* Dark Theme compliance for Publications Subtabs */
+[data-theme='dark'] .switchBar {
+  background: #0e0f12;
+  border-color: #202227;
+}
+
+[data-theme='dark'] .switchBtnActive {
+  background: #1e2025;
+  color: #f8fafc;
+  border-color: #2e3037;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Light / White Theme compliance for Publications Subtabs */
+[data-theme='white'] .switchBar,
+[data-theme='light'] .switchBar {
+  background: #f4f4f2;
+  border-color: #e6e5e1;
+}
+
+[data-theme='white'] .switchBtnActive,
+[data-theme='light'] .switchBtnActive {
+  background: #ffffff;
+  color: #000000;
+  border-color: #e6e5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}

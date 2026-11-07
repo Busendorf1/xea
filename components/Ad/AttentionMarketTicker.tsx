@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Zap, Crown, ChevronRight, Sparkles, CheckCircle2 } from "lucide-react";
+import { TrendingUp, ChevronRight, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import styles from "./AttentionMarketTicker.module.css";
 import RollingCounter from "@/components/ui/RollingCounter";
@@ -137,7 +137,7 @@ function AttentionMarketTicker({
       <div className={styles.headerBar}>
         <div className={styles.headerLeft}>
           <div className={styles.iconCircle}>
-            <Zap size={18} className={styles.zapIcon} />
+            <TrendingUp size={18} className={styles.zapIcon} />
           </div>
           <div className={styles.titleColumn}>
             <div className={styles.titleRow}>

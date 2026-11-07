@@ -16,6 +16,7 @@ export type Ad = {
   impression_count: number | null;
   impressions: number;
   campaign_days: number;
+  scheduled_start_at?: string | null;
   completed_at: string | null;
   user_frequency_cap?: number;
   country?: string | null;

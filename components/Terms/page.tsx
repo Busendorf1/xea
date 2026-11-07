@@ -40,7 +40,8 @@ export default function TermsPage() {
             (including Google OAuth via Auth0). Your registered account email address is kept strictly private for session
             authentication, peer to peer wallet routing, and settlement notifications, and is never publicly displayed to other
             users on the promotional feed. Conversely, your chosen <code>@username</code> and optional business name operate as
-            your public, unencrypted display handle visible across the platform. Sensitive profile fields (such as your phone
+            your public, unencrypted display handle visible across the platform. <strong>Your @username is what people see on the feed.
+            Keep your email private and never use it as your username.</strong> Sensitive profile fields (such as your phone
             number and legal first/last name) are encrypted at the application layer (`AES 256 GCM`), while your 4 digit Wallet
             PIN is irreversibly one way hashed. <strong>You must never share your 4 digit Wallet PIN, OAuth login credentials,
             or sensitive account recovery details (such as your registered email and phone number combination) with any third
@@ -50,6 +51,18 @@ export default function TermsPage() {
             zero liability for disbursements or actions executed through an authenticated session or resulting from your
             voluntary disclosure of sensitive account details or PINs.
           </p>
+          <div className={`${styles.noticeBox} ${styles.noticeBoxMargin}`}>
+            <strong>MANDATORY USERNAME ADVISORY &amp; TOTAL LIABILITY DISCLAIMER:</strong> Your <code>@username</code> is what people see on the feed.
+            Keep your email private and never use it as your username. It is strongly advised and a strict security requirement that all users choose a unique,
+            pseudonymous <code>@username</code> completely different and decoupled from their registered email address, legal name, or personal contact details.
+            Users are explicitly instructed to keep their email concealed and hidden from database records, public feeds, community interactions, and third-party
+            web indexes by avoiding any correlation between their public handle and their email address. If you choose a username that mirrors, contains, resembles,
+            or correlates with your email address or personal identity, or if your email is revealed or discovered through your chosen username or public actions,
+            <strong> Paayh, its parent entity East Sixties Limited, founders, officers, directors, employees, affiliates, and contractors are completely and
+            unconditionally removed and released from all liability, claims, damages, losses, or legal recourse of any kind</strong> (including but not limited to
+            spam, phishing, identity exposure, doxxing, harassment, cyber-attacks, account targeting, or unauthorized third-party disclosures). You assume full, sole,
+            and exclusive responsibility for your username selection and the confidentiality of your email.
+          </div>
           <p>
             <strong>1.3 Non Transferability:</strong> Accounts, credentials, and accrued incentive balances are personal
             and non transferable without Paayh&apos;s express prior written consent.
@@ -573,6 +586,14 @@ export default function TermsPage() {
             BY ACCESSING THE SERVICES, YOU EXPRESSLY AGREE THAT THIS LIQUIDATED DAMAGES CAP IS FAIR AND COMMERCIALLY
             REASONABLE, AND YOU IRREVOCABLY WAIVE AND FORFEIT ANY RIGHT TO CLAIM DAMAGES IN EXCESS OF THIS MAXIMUM
             AMOUNT. IF YOU DO NOT AGREE TO THIS LIMITATION, YOU MUST CEASE ALL ACCESS TO AND USE OF PAAYH IMMEDIATELY.
+            <br />
+            <br />
+            SPECIFIC DISCLAIMER REGARDING USERNAMES &amp; EMAIL PRIVACY: YOUR @USERNAME IS WHAT PEOPLE SEE ON THE FEED.
+            YOU ARE STRICTLY ADVISED TO CHOOSE A USERNAME ENTIRELY DIFFERENT FROM YOUR EMAIL ADDRESS TO SHIELD YOUR EMAIL
+            FROM DATABASE VISIBILITY, RECONNAISSANCE, AND PUBLIC CORRELATION. UNDER NO CIRCUMSTANCES SHALL PAAYH, ITS
+            FOUNDERS, DIRECTORS, OR OPERATORS BE LIABLE FOR ANY DAMAGES, IDENTITY EXPOSURE, PHISHING, DOXXING, HARASSMENT,
+            SECURITY COMPROMISE, OR THIRD-PARTY DISCLOSURE OCCASIONED BY OR RESULTING FROM A USER CHOOSING AN EMAIL OR
+            PERSONAL IDENTIFIER AS THEIR USERNAME, AND PAAYH IS COMPLETELY REMOVED FROM ALL LIABILITY RELATING THERETO.
           </div>
         </section>
 

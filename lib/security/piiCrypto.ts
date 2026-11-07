@@ -329,8 +329,10 @@ export function decryptProfilePII<T extends Record<string, any>>(user: T | null)
   if ("wallet_pin_hash" in copy || fallbackPassphrasePin) {
     const effectiveHash = copy.wallet_pin_hash || fallbackPassphrasePin;
     copy.has_wallet_pin = Boolean(effectiveHash && String(effectiveHash).trim() !== "");
-    delete copy.wallet_pin_hash;
+  } else if (typeof copy.has_wallet_pin !== "boolean") {
+    copy.has_wallet_pin = false;
   }
+  delete copy.wallet_pin_hash;
   delete copy.passphrase;
   return copy as T;
 }

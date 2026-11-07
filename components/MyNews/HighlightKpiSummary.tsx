@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Activity, Clock, CheckCircle2, Zap, Calendar } from "lucide-react";
+import { Activity, Clock, CheckCircle2, TrendingUp, Calendar } from "lucide-react";
 import styles from "../MyAds/page.module.css";
 
 interface HighlightKpiSummaryProps {
@@ -100,7 +100,7 @@ export default function HighlightKpiSummary({
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Spotlight Bidded</span>
           <span className={styles.kpiIconBox}>
-            <Zap size={15} />
+            <TrendingUp size={15} />
           </span>
         </div>
         <div className={styles.kpiValueGroup}>

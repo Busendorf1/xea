@@ -9,6 +9,7 @@ export interface TransferSuccessData {
  title?: string;
  amount: number;
  recipientEmail?: string;
+ recipientUsername?: string;
  bankName?: string;
  accountNumber?: string;
  accountName?: string;
@@ -128,11 +129,11 @@ export default function TransferSuccessModal({
  </>
  ) : (
  <>
- {data.recipientEmail && (
+ {(data.recipientUsername || data.recipientEmail) && (
  <div className={styles.receiptRow}>
  <span className={styles.receiptLabel}>Recipient</span>
- <span className={styles.receiptValue} title={data.recipientEmail}>
- {data.recipientEmail}
+ <span className={styles.receiptValue} title={data.recipientUsername || (data.recipientEmail?.includes("@") ? `@${data.recipientEmail.split("@")[0]}` : data.recipientEmail)}>
+ {data.recipientUsername || (data.recipientEmail?.includes("@") ? `@${data.recipientEmail.split("@")[0]}` : data.recipientEmail)}
  </span>
  </div>
  )}

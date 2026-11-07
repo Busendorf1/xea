@@ -125,11 +125,12 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
             );
           })}
 
-          <button
+            <button
             title="Share Ad"
             className={styles.iconButton}
             type="button"
             onClick={() => {
+              handleCtaClick("share");
               try {
                 const encodedId = btoa(ad.id.toString());
                 const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
@@ -149,26 +150,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
 
         {!isPlatformPost && (
           <div className={styles.productRightGroup}>
-            {isOwner ? (
-              <div className={styles.fromBrandContainer}>
-                {targetLink && targetLink !== "#" ? (
-                  <a
-                    href={targetLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.fromBrandBtn}
-                    title={`Visit ${brandName}`}
-                    onClick={() => handleCtaClick("brand_visit")}
-                  >
-                    Visit {brandName}
-                  </a>
-                ) : (
-                  <span className={styles.fromBrandText}>
-                    Visit {brandName}
-                  </span>
-                )}
-              </div>
-            ) : !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
+            {!seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
               <AdInteractionHandler
                 ad={ad}
                 userEmail={userEmail}
@@ -193,22 +175,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
               />
             ) : (
               <div className={styles.fromBrandContainer}>
-                {targetLink && targetLink !== "#" ? (
-                  <a
-                    href={targetLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.fromBrandBtn}
-                    title={`Visit ${brandName}`}
-                    onClick={() => handleCtaClick("brand_visit")}
-                  >
-                    Visit {brandName}
-                  </a>
-                ) : (
-                  <span className={styles.fromBrandText}>
-                    Visit {brandName}
-                  </span>
-                )}
+                <span className={styles.fromBrandText}>Seen</span>
               </div>
             )}
           </div>
@@ -233,7 +200,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
         )}
         {actionButtons.map((type) => {
           const isReadMore = type === "action_read_more";
-          if (!isReadMore && !isVerified) return null;
+          if (!isReadMore && !isVerified && !isPlatformPost) return null;
 
           if (isReadMore) {
             return (
@@ -272,6 +239,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
           className={styles.iconButton}
           type="button"
           onClick={() => {
+            handleCtaClick("share");
             try {
               const encodedId = btoa(ad.id.toString());
               const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
@@ -289,70 +257,38 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
         </button>
       </div>
 
-      <div className={styles.interactionButtonGroup}>
-        {isPlatformPost || isOwner ? (
-          <div className={styles.fromBrandContainer}>
-            {targetLink && targetLink !== "#" ? (
-              <a
-                href={targetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.fromBrandBtn}
-                title={`Visit ${brandName}`}
-                onClick={() => handleCtaClick("brand_visit")}
-              >
-                Visit {brandName}
-              </a>
-            ) : (
-              <span className={styles.fromBrandText}>
-                Visit {brandName}
-              </span>
-            )}
-          </div>
-        ) : !seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
-          <AdInteractionHandler
-            ad={ad}
-            userEmail={userEmail}
-            isPlatformPost={isPlatformPost}
-            isMutualTarget={isMutualTarget}
-            isAlreadyMutual={isAlreadyMutual}
-            viewerProfile={viewerProfile}
-            isProcessing={isProcessing}
-            isSuspended={isSuspended}
-            successAction={successAction}
-            activeAction={activeAction}
-            handleAction={handleAction}
-            onMarkSeen={onMarkSeen}
-            onAdEarn={onAdEarn}
-            onAdMutual={onAdMutual}
-            brandName={brandName}
-            targetLink={targetLink}
-            externalSecondsLeft={interactionSecondsLeft}
-            onSecondsLeftChange={setInteractionSecondsLeft}
-            externalStage={interactionStage}
-            onStageChange={setInteractionStage}
-          />
-        ) : (
-          <div className={styles.fromBrandContainer}>
-            {targetLink && targetLink !== "#" ? (
-              <a
-                href={targetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.fromBrandBtn}
-                title={`Visit ${brandName}`}
-                onClick={() => handleCtaClick("brand_visit")}
-              >
-                Visit {brandName}
-              </a>
-            ) : (
-              <span className={styles.fromBrandText}>
-                Visit {brandName}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      {!isPlatformPost && (
+        <div className={styles.interactionButtonGroup}>
+          {!seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
+            <AdInteractionHandler
+              ad={ad}
+              userEmail={userEmail}
+              isPlatformPost={isPlatformPost}
+              isMutualTarget={isMutualTarget}
+              isAlreadyMutual={isAlreadyMutual}
+              viewerProfile={viewerProfile}
+              isProcessing={isProcessing}
+              isSuspended={isSuspended}
+              successAction={successAction}
+              activeAction={activeAction}
+              handleAction={handleAction}
+              onMarkSeen={onMarkSeen}
+              onAdEarn={onAdEarn}
+              onAdMutual={onAdMutual}
+              brandName={brandName}
+              targetLink={targetLink}
+              externalSecondsLeft={interactionSecondsLeft}
+              onSecondsLeftChange={setInteractionSecondsLeft}
+              externalStage={interactionStage}
+              onStageChange={setInteractionStage}
+            />
+          ) : (
+            <div className={styles.fromBrandContainer}>
+              <span className={styles.fromBrandText}>Seen</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 });

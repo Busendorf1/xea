@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Info, AlertOctagon, XCircle, RotateCw } from "lucide-react";
+import { Info, AlertOctagon, XCircle, RotateCw, CheckCircle2 } from "lucide-react";
 import styles from "./page.module.css";
 
 export interface NoticeModalData {
@@ -36,6 +36,7 @@ export default function NoticeModal({ notice, onClose }: NoticeModalProps) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className={styles.modalOverlay}
+          style={{ zIndex: 12000 }}
           onClick={isConfirming ? undefined : onClose}
         >
           <motion.div
@@ -50,6 +51,8 @@ export default function NoticeModal({ notice, onClose }: NoticeModalProps) {
               <div className={styles.modalHeaderLeft}>
                 {notice.isDestructive ? (
                   <AlertOctagon size={22} color="#ef4444" />
+                ) : /boost|success|live|published|approved/i.test(notice.title) ? (
+                  <CheckCircle2 size={22} color="#10b981" />
                 ) : (
                   <Info size={22} color="var(--primary)" />
                 )}

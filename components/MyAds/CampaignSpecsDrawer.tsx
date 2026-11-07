@@ -124,7 +124,7 @@ export default function CampaignSpecsDrawer({
                   </span>
                 ) : (
                   <span className={`${styles.rolloverNormalBadge} ${styles.rolloverBadgeInner}`}>
-                    <CheckCircle2 size={12} color="#10b981" /> On Schedule ({daysInfo.remaining}d remaining)
+                    <CheckCircle2 size={12} color="#10b981" /> On Schedule ({daysInfo.remaining} {daysInfo.remaining === 1 ? "day" : "days"} remaining)
                   </span>
                 )}
               </div>

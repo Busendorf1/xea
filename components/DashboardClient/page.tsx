@@ -28,6 +28,7 @@ import Footer from "../Footers/page";
 import TransferSuccessModal, { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 
 import { UserProfile, DashboardClientProps, parseToArray } from "./types";
 import DashboardHeader from "./DashboardHeader";
@@ -150,13 +151,19 @@ export default function DashboardClient({
 
   const handleEarnSuccess = (earnedAmount?: number, newBalance?: number, newClicks?: number) => {
     if (typeof newBalance === "number" && !isNaN(newBalance)) {
-      setUser((prev) => ({
-        ...prev,
-        balance: newBalance,
-        monetization_clicks:
-          typeof newClicks === "number" ? Math.max(prev.monetization_clicks || 0, newClicks) : prev.monetization_clicks,
-        monetized: (typeof newClicks === "number" && newClicks >= 300) || prev.monetized,
-      }));
+      setUser((prev) => {
+        const updatedClicks =
+          typeof newClicks === "number" ? Math.max(prev.monetization_clicks || 0, newClicks) : prev.monetization_clicks || 0;
+        const isExempt = isExemptFromBarriersAndInactivity(prev.email, prev);
+        const tierDetails = computeAtwTierDetails(updatedClicks, prev.atw_tier, isExempt);
+        return {
+          ...prev,
+          balance: newBalance,
+          monetization_clicks: updatedClicks,
+          atw_tier: tierDetails.tierCode,
+          monetized: isExempt || (typeof newClicks === "number" && newClicks >= 300) || prev.monetized,
+        };
+      });
       return;
     }
 
@@ -226,24 +233,29 @@ export default function DashboardClient({
   useEffect(() => {
     if (typeof window !== "undefined" && user?.email) {
       try {
+        const clicks = Number(user.monetization_clicks ?? 0);
+        const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
+        const tierDetails = computeAtwTierDetails(clicks, user.atw_tier, isExempt);
         const isMon = Boolean(
-          user.monetized === true ||
+          isExempt ||
+            user.monetized === true ||
             user.monetized === "yes" ||
             user.monetized === "true" ||
-            (user.monetization_clicks ?? 0) >= 300
+            clicks >= 300
         );
         const cachePayload = JSON.stringify({
+          email: user.email.toLowerCase(),
           isMonetized: isMon,
-          clicksCount: user.monetization_clicks ?? 0,
-          clicksRemaining: Math.max(0, 300 - (user.monetization_clicks ?? 0)),
-          atwTier: (user as any)?.atw_tier || "ATW1",
+          clicksCount: clicks,
+          clicksRemaining: tierDetails.clicksRemaining,
+          atwTier: tierDetails.tierCode,
           daysInactive: 0,
         });
-        localStorage.setItem("paayh_monetize_cache", cachePayload);
-        sessionStorage.setItem("paayh_monetize_cache", cachePayload);
+        localStorage.setItem("paayh_monetize_cache_v2", cachePayload);
+        sessionStorage.setItem("paayh_monetize_cache_v2", cachePayload);
       } catch {}
     }
-  }, [user.monetized, user.monetization_clicks, user.email]);
+  }, [user.monetized, user.monetization_clicks, user.atw_tier, user.email]);
 
   // Supabase Real-Time Cross-Device Synchronization
   useEffect(() => {
@@ -278,6 +290,12 @@ export default function DashboardClient({
               const updatedMutualCount = !isNaN(newMutualCount)
                 ? Math.max(prev.mutual_count || 0, newMutualCount)
                 : prev.mutual_count || 0;
+              const isExempt = isExemptFromBarriersAndInactivity(prev.email, prev);
+              const tierDetails = computeAtwTierDetails(
+                updatedClicks,
+                newRow.atw_tier || prev.atw_tier,
+                isExempt
+              );
 
               if (updatedBalance > prevBal) {
                 triggerEarnFeedback();
@@ -287,8 +305,10 @@ export default function DashboardClient({
                 ...prev,
                 balance: updatedBalance,
                 monetization_clicks: updatedClicks,
+                atw_tier: tierDetails.tierCode,
                 mutual_count: updatedMutualCount,
                 monetized:
+                  isExempt ||
                   newRow.monetized === "yes" ||
                   newRow.monetized === "true" ||
                   newRow.monetized === true ||
@@ -313,14 +333,19 @@ export default function DashboardClient({
 
     const handleClickIncrement = (e: Event) => {
       const customEvent = e as CustomEvent;
+      const totalClicks = customEvent.detail?.totalClicks;
       const delta = customEvent.detail?.delta || 1;
       setUser((prev) => {
         const current = prev.monetization_clicks || 0;
-        const nextClicks = current + delta;
-        const nextMonetized = nextClicks >= 300 ? true : prev.monetized;
+        const nextClicks =
+          typeof totalClicks === "number" ? Math.max(current, totalClicks) : current + delta;
+        const isExempt = isExemptFromBarriersAndInactivity(prev.email, prev);
+        const tierDetails = computeAtwTierDetails(nextClicks, prev.atw_tier, isExempt);
+        const nextMonetized = isExempt || nextClicks >= 300 ? true : prev.monetized;
         return {
           ...prev,
           monetization_clicks: nextClicks,
+          atw_tier: tierDetails.tierCode,
           monetized: nextMonetized,
         };
       });
@@ -339,12 +364,18 @@ export default function DashboardClient({
           updatedBal = Math.max(0, Math.round(((prev.balance || 0) + earnedAmount) * 100) / 100);
         }
         const updatedClicks =
-          typeof clicks === "number" ? Math.max(prev.monetization_clicks || 0, clicks) : prev.monetization_clicks;
-        const updatedMonetized = (typeof clicks === "number" && clicks >= 300) || prev.monetized;
+          typeof clicks === "number"
+            ? Math.max(prev.monetization_clicks || 0, clicks)
+            : prev.monetization_clicks || 0;
+        const isExempt = isExemptFromBarriersAndInactivity(prev.email, prev);
+        const tierDetails = computeAtwTierDetails(updatedClicks, prev.atw_tier, isExempt);
+        const updatedMonetized =
+          isExempt || (typeof clicks === "number" && clicks >= 300) || prev.monetized;
         return {
           ...prev,
           balance: updatedBal,
           monetization_clicks: updatedClicks,
+          atw_tier: tierDetails.tierCode,
           monetized: updatedMonetized,
         };
       });

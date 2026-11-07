@@ -13,6 +13,7 @@ export type HighlightItem = {
   is_bidded?: boolean | null;
   bid_price?: number | null;
   campaign_days?: number | null;
+  scheduled_start_at?: string | null;
   is_ai_content?: boolean | null;
   is_admin_post?: boolean | null;
   impression_count?: number | null;
@@ -30,6 +31,7 @@ export interface Session {
 
 export interface HighlightScheduleInfo {
   scheduledDays: number;
+  remainingDays: number;
   totalHours: number;
   elapsedHours: number;
   remainingHours: number;
@@ -39,60 +41,53 @@ export interface HighlightScheduleInfo {
 }
 
 export function getHighlightScheduleInfo(item: HighlightItem, timeNow: number): HighlightScheduleInfo {
-  const isBidded = !!item.is_bidded || Number(item.bid_price || 0) > 1000;
-  const scheduledDays = isBidded
-    ? Math.max(1, Number(item.campaign_days || 1))
-    : Math.max(1, Number(item.campaign_days || 1));
-  const totalHours = isBidded ? scheduledDays * 24 : 24;
+  const scheduledDays = Math.max(1, Number(item.campaign_days || 1));
+  const totalHours = scheduledDays * 24;
 
   if (!item.created_at) {
     return {
       scheduledDays,
+      remainingDays: scheduledDays,
       totalHours,
       elapsedHours: 0,
       remainingHours: totalHours,
       elapsedPercent: 0,
       isExpired: false,
-      remainingText: `${scheduledDays}d window`,
+      remainingText: `${scheduledDays} ${scheduledDays === 1 ? "day" : "days"} remaining`,
     };
   }
 
   const createdMs = new Date(item.created_at).getTime();
-  if (isNaN(createdMs)) {
+  const scheduledStartMs = item.scheduled_start_at ? new Date(item.scheduled_start_at).getTime() : NaN;
+  const startMs = !isNaN(scheduledStartMs) && scheduledStartMs > 0 ? Math.max(createdMs, scheduledStartMs) : createdMs;
+  if (isNaN(startMs)) {
     return {
       scheduledDays,
+      remainingDays: scheduledDays,
       totalHours,
       elapsedHours: 0,
       remainingHours: totalHours,
       elapsedPercent: 0,
       isExpired: false,
-      remainingText: `${scheduledDays}d window`,
+      remainingText: `${scheduledDays} ${scheduledDays === 1 ? "day" : "days"} remaining`,
     };
   }
 
-  const elapsedMs = Math.max(0, timeNow - createdMs);
+  const elapsedMs = Math.max(0, timeNow - startMs);
   const elapsedHours = elapsedMs / (1000 * 60 * 60);
   const remainingHours = Math.max(0, totalHours - elapsedHours);
   const elapsedPercent = Math.min(100, Math.max(0, Math.round((elapsedHours / totalHours) * 100)));
   const isExpired = elapsedHours >= totalHours;
+  const remainingDays = isExpired ? 0 : Math.max(1, Math.ceil(remainingHours / 24));
 
   let remainingText = "Window ended";
   if (!isExpired) {
-    const wholeHours = Math.floor(remainingHours);
-    const mins = Math.floor((remainingHours - wholeHours) * 60);
-    if (wholeHours >= 24) {
-      const days = Math.floor(wholeHours / 24);
-      const remHrs = wholeHours % 24;
-      remainingText = `${days}d ${remHrs}h left`;
-    } else if (wholeHours > 0) {
-      remainingText = `${wholeHours}h ${mins}m left`;
-    } else {
-      remainingText = `${Math.max(1, mins)}m left`;
-    }
+    remainingText = `${remainingDays} ${remainingDays === 1 ? "day" : "days"} remaining`;
   }
 
   return {
     scheduledDays,
+    remainingDays,
     totalHours,
     elapsedHours,
     remainingHours,

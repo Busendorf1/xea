@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import styles from "./page.module.css";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
@@ -26,6 +26,8 @@ export interface NewsStepTargetingProps {
   setProvince: (v: string) => void;
   campaignDays: number;
   setCampaignDays: (v: number) => void;
+  scheduledStartAt: string;
+  setScheduledStartAt: (v: string) => void;
   isBiddingEnabled: boolean;
   setIsBiddingEnabled: (v: boolean) => void;
   bidPrice: number;
@@ -51,6 +53,8 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
   setProvince,
   campaignDays,
   setCampaignDays,
+  scheduledStartAt,
+  setScheduledStartAt,
   isBiddingEnabled,
   setIsBiddingEnabled,
   bidPrice,
@@ -155,7 +159,7 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
       {/* Duration Selector Card */}
       <div className={styles.modernSectionCard}>
         <div className={styles.modernSectionHeader}>
-          <span className={styles.modernSectionTitle}>Campaign Duration</span>
+          <span className={styles.modernSectionTitle}>Campaign Duration &amp; Start Schedule</span>
           <span className={styles.modernSectionBadge}>
             {campaignDays} {campaignDays === 1 ? "Day" : "Days"}
           </span>
@@ -174,6 +178,84 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
               </button>
             ))}
           </div>
+
+          <div className={styles.formGroup} style={{ marginTop: 14 }}>
+            <label className={styles.fieldLabel}>When Highlight Should Start</label>
+            <div className={styles.durationContainer} style={{ marginBottom: scheduledStartAt ? 10 : 0 }}>
+              <button
+                type="button"
+                onClick={() => setScheduledStartAt("")}
+                className={`${styles.durationBtn} ${!scheduledStartAt ? styles.durationBtnActive : ""}`}
+              >
+                Start Upon Approval
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultStart = new Date().toISOString().slice(0, 10);
+                  setScheduledStartAt(scheduledStartAt ? scheduledStartAt.slice(0, 10) : defaultStart);
+                }}
+                className={`${styles.durationBtn} ${Boolean(scheduledStartAt) ? styles.durationBtnActive : ""}`}
+              >
+                Pick Start Date (Calendar)
+              </button>
+            </div>
+            {scheduledStartAt && (
+              <div style={{ marginTop: 8 }}>
+                <label className={styles.fieldLabel} style={{ fontSize: "0.78rem" }}>Start Day</label>
+                <input
+                  type="date"
+                  value={scheduledStartAt.slice(0, 10)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setScheduledStartAt(e.target.value)}
+                  className={styles.inputBox}
+                />
+              </div>
+            )}
+            {(() => {
+              const daysCount = Math.max(1, Number(campaignDays) || 1);
+              const startBase = scheduledStartAt
+                ? new Date(`${scheduledStartAt.slice(0, 10)}T00:00:00`)
+                : new Date();
+              const validStart = isNaN(startBase.getTime()) ? new Date() : startBase;
+              const endDate = new Date(validStart.getTime() + daysCount * 86_400_000);
+              const fmt = (d: Date) =>
+                d.toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+              return (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "var(--card-bg)",
+                    border: "1px solid var(--card-border)",
+                    fontSize: "0.82rem",
+                    color: "var(--foreground)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div>
+                    <strong>Start Day:</strong>{" "}
+                    {scheduledStartAt ? fmt(validStart) : `${fmt(validStart)} (Upon Approval)`}
+                  </div>
+                  <div>
+                    <strong>Ends On:</strong>{" "}
+                    <span style={{ color: "var(--primary)", fontWeight: 700 }}>{fmt(endDate)}</span>{" "}
+                    <span style={{ color: "var(--text-muted)" }}>
+                      ({daysCount} {daysCount === 1 ? "day" : "days"} duration)
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </div>
       </div>
 
@@ -182,7 +264,7 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
         <div className={styles.modernSectionHeader}>
           <div className={styles.spotlightHeaderLeft}>
             <div className={styles.spotlightIconCircle}>
-              <Zap size={16} className={styles.spotlightZapIcon} />
+              <TrendingUp size={16} className={styles.spotlightZapIcon} />
             </div>
             <div className={styles.spotlightTitleCol}>
               <div className={styles.spotlightTitleRow}>

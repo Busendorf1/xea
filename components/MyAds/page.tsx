@@ -3,7 +3,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { RotateCw, Search, Plus, Megaphone, Sparkles } from "lucide-react";
+import { RotateCw, Search, Plus } from "lucide-react";
+import supabase from "@/lib/utils/db";
 import { Ad, Session } from "./types";
 import { fetchUserCampaignsShared, clearUserCampaignsCache, readUserCampaignsSyncCache } from "@/lib/campaignsClient";
 import CampaignKpiSummary from "./CampaignKpiSummary";
@@ -171,8 +172,89 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   };
 
   useEffect(() => {
-    if (session?.user?.email) fetchAds();
+    if (session?.user?.email) {
+      if (typeof window !== "undefined") {
+        const requestedFilter = sessionStorage.getItem("paayh_myads_filter_tab");
+        if (requestedFilter === "review" || requestedFilter === "all" || requestedFilter === "approved" || requestedFilter === "active") {
+          setActiveTab(requestedFilter as FilterTab);
+          sessionStorage.removeItem("paayh_myads_filter_tab");
+          fetchAds(true);
+          return;
+        }
+      }
+      fetchAds();
+    }
   }, [session]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResubmitted = (e: any) => {
+      const detail = e?.detail;
+      if (detail?.type && detail.type !== "ad") return;
+      const submittedId = detail?.id;
+      if (submittedId) {
+        setReviewAds((prev) =>
+          prev.map((item) =>
+            item.id === submittedId
+              ? {
+                  ...item,
+                  admin_statement: "Status: Pending review",
+                  status: "pending_review",
+                  is_paused: false,
+                }
+              : item
+          )
+        );
+      }
+      if (detail?.wasEditing) {
+        setActiveTab("review");
+      }
+      fetchAds(true);
+    };
+    window.addEventListener("paayh_campaign_resubmitted", handleResubmitted);
+    return () => window.removeEventListener("paayh_campaign_resubmitted", handleResubmitted);
+  }, [session?.user?.email]);
+
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    const channel = supabase
+      .channel("campaigns_realtime")
+      .on("broadcast", { event: "campaign_impression" }, (msg: any) => {
+        const p = msg?.payload;
+        if (!p?.adId) return;
+        setActiveAds((prev) =>
+          prev.map((ad) =>
+            String(ad.id) === String(p.adId)
+              ? {
+                  ...ad,
+                  impression_count:
+                    typeof p.impressionCount === "number"
+                      ? Math.max(Number(ad.impression_count || 0), p.impressionCount)
+                      : Number(ad.impression_count || 0) + 1,
+                }
+              : ad
+          )
+        );
+        setReviewAds((prev) =>
+          prev.map((ad) =>
+            String(ad.id) === String(p.adId)
+              ? {
+                  ...ad,
+                  impression_count:
+                    typeof p.impressionCount === "number"
+                      ? Math.max(Number(ad.impression_count || 0), p.impressionCount)
+                      : Number(ad.impression_count || 0) + 1,
+                }
+              : ad
+          )
+        );
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel).catch(() => {});
+    };
+  }, [session?.user?.email]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -221,10 +303,18 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
   }, [session?.user?.email]);
 
   const handleTogglePause = async (adId: string, currentPausedState: boolean, adminStatement?: string | null) => {
-    if (currentPausedState && adminStatement) {
+    const trimmedStmt = (adminStatement || "").trim();
+    const isActualAdminPauseNote =
+      Boolean(trimmedStmt) &&
+      !trimmedStmt.toUpperCase().startsWith("APPROVED:") &&
+      !trimmedStmt.toUpperCase().startsWith("REJECTED:") &&
+      !trimmedStmt.toUpperCase().startsWith("STATUS:") &&
+      trimmedStmt !== "pending_review";
+
+    if (currentPausedState && isActualAdminPauseNote) {
       setNoticeModal({
         title: "Campaign Notice",
-        message: `This ad is paused by administration: "${adminStatement}". Please follow the instruction provided.`,
+        message: `This ad is paused by administration: "${trimmedStmt}". Please follow the instruction provided.`,
       });
       return;
     }
@@ -939,10 +1029,11 @@ export default function MyAdsDashboard({ session }: MyAdsProps) {
         boosterAd={boosterAd}
         onClose={() => setBoosterAd(null)}
         reportsCount={boosterAd ? reportsMap[boosterAd.id] || 0 : 0}
+        userBalance={userWalletBalance}
         onSuccess={(msg) => {
           setNoticeModal({
-            title: "Campaign Boosted",
-            message: msg || "Your campaign has been boosted successfully!",
+            title: "Campaign Boosted!",
+            message: msg || "Your campaign has been boosted successfully and priority feed placement is now active!",
           });
           clearUserCampaignsCache(session?.user?.email || "");
           fetchAds(true);

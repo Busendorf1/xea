@@ -8,6 +8,7 @@ import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 import { initiateWithdrawalApiSchema } from "@/lib/validationSchemas";
+import { decryptSensitiveField } from "@/lib/security/piiCrypto";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
 const l1WithdrawalMutex = new Map<string, number>();
@@ -120,14 +121,15 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Rule C: Phone matching user profile (Normalized comparison of last 10 digits)
+    // Rule C: Phone matching user profile (Normalized comparison of last 10 digits, decrypting stored phone first)
     const normalizePhone = (num: string) => {
       const cleaned = num.replace(/\D/g, "");
       return cleaned.slice(-10);
     };
 
-    if (!user.phone || normalizePhone(user.phone) !== normalizePhone(phone)) {
-      console.warn(`❌ Security Block: Phone mismatch. Input: "${phone}", Profile: "${user.phone}"`);
+    const decryptedProfilePhone = user.phone ? decryptSensitiveField(String(user.phone)) : "";
+    if (!decryptedProfilePhone || normalizePhone(decryptedProfilePhone) !== normalizePhone(phone)) {
+      console.warn(`❌ Security Block: Phone mismatch for ${emailLower}`);
       return NextResponse.json({ error: "Verification failed. Phone number must match your registered account phone number." }, { status: 400 });
     }
 

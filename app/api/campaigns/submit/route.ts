@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const adId = editingId || adData.id;
+    const adId = editingId || adData.id || crypto.randomUUID();
     const isBidded = !!adData.isBidded;
     const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
     const CATEGORY_FLOOR_RATES: Record<string, number> = {
@@ -110,77 +110,6 @@ export async function POST(req: NextRequest) {
     const effectiveRate = Math.max(floorRate, rawEffectiveRate);
     const impressionsCount = Math.max(100, Number(adData.impressions || 1000));
     const computedTotalCost = Math.round(effectiveRate * impressionsCount);
-
-    const { isAdminEmail } = await import("@/lib/authHelper");
-    const isAdmin = isAdminEmail(emailLower) || !!adData.isAdminPost;
-
-    if (isAdmin) {
-      // Admin bypasses all review queues and payment - publish directly to live active feed
-      const activeAd = {
-        id: adId,
-        ad_type: adData.adType || "business",
-        industry: adData.industry || [],
-        interest: adData.interest || [],
-        lifestyle: adData.lifestyle || [],
-        behavior: adData.behavior || [],
-        personality: adData.personality || [],
-        age_range: adData.ageRange || [18, 65],
-        targeting_all: adData.targetingAll ?? false,
-        impressions: adData.impressions || 1000,
-        campaign_days: adData.campaignDays || 1,
-        user_frequency_cap: adData.userFrequencyCap || 1,
-        country: adData.country || null,
-        state: adData.state || null,
-        province: adData.province || null,
-        gender: adData.gender || null,
-        employment_status: adData.employmentStatus || null,
-        ad_media_type: adData.adMediaType || "image",
-        ad_content: adData.adContent || "",
-        ad_action_buttons: adData.adActionButtons || [],
-        action_phone: adData.actionPhone || null,
-        action_whatsapp: adData.actionWhatsapp || null,
-        action_website: adData.actionWebsite || null,
-        action_email: adData.actionEmail || null,
-        action_ios: adData.actionIos || null,
-        action_android: adData.actionAndroid || null,
-        action_watch_now: adData.actionWatchNow || null,
-        display_mutual_button: adData.displayMutualButton ?? true,
-        cost_per_impression: 0,
-        total_cost: 0,
-        user_email: emailLower,
-        ad_media: adData.adMedia || adData.ad_media || null,
-        product_name: adData.productName || null,
-        product_price: adData.productPrice || null,
-        product_cta_type: adData.productCtaType || null,
-        product_cta_link: adData.productCtaLink || null,
-        is_ai_content: !!adData.isAiContent,
-        is_admin_post: true,
-        is_paused: false,
-        created_at: new Date().toISOString(),
-      };
-
-      await supabaseAdmin.from("adds").delete().eq("id", adId);
-      const { data: insertedRows, error: insertErr } = await supabaseAdmin
-        .from("addsactive")
-        .upsert(activeAd)
-        .select("*");
-
-      if (insertErr) {
-        console.error("❌ Error activating admin ad directly:", insertErr);
-        throw insertErr;
-      }
-
-      const publishedAd = insertedRows?.[0] || activeAd;
-      const { dispatchFeedDropWebhook } = await import("@/lib/webhookDispatcher");
-      dispatchFeedDropWebhook(publishedAd).catch(() => {});
-
-      await invalidateCachedUserCampaigns(emailLower);
-      return NextResponse.json({
-        success: true,
-        message: "Admin campaign published directly to live feed!",
-        adId,
-      });
-    }
 
     // Check if editing an active delivering campaign
     let isDeliveringActive = false;
@@ -201,88 +130,104 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("adds").delete().eq("id", adId);
     }
 
-    // 4. Submit to 'adds' table (Pending Moderation Queue) via RPC
-    const { error: rpcError } = await supabaseAdmin.rpc("submit_ad_campaign", {
-      p_id: adId,
-      p_ad_type: adData.adType || "business",
-      p_industry: adData.industry || [],
-      p_interest: adData.interest || [],
-      p_lifestyle: adData.lifestyle || [],
-      p_behavior: adData.behavior || [],
-      p_personality: adData.personality || [],
-      p_age_range: adData.ageRange || [18, 65],
-      p_targeting_all: adData.targetingAll ?? false,
-      p_impressions: impressionsCount,
-      p_campaign_days: adData.campaignDays || 1,
-      p_user_frequency_cap: adData.userFrequencyCap || 1,
-      p_country: adData.country || null,
-      p_state: adData.state || null,
-      p_province: adData.province || null,
-      p_gender: adData.gender || null,
-      p_employment_status: adData.employmentStatus || null,
-      p_ad_media_type: adData.adMediaType || "image",
-      p_ad_content: adData.adContent || "",
-      p_ad_action_buttons: adData.adActionButtons || [],
-      p_action_phone: adData.actionPhone || null,
-      p_action_whatsapp: adData.actionWhatsapp || null,
-      p_action_website: adData.actionWebsite || null,
-      p_action_email: adData.actionEmail || null,
-      p_cost_per_impression: effectiveRate,
-      p_total_cost: computedTotalCost,
-      p_user_email: emailLower,
-      p_ad_media: adData.adMedia || adData.ad_media || null,
-      p_display_mutual_button: adData.displayMutualButton ?? true,
-      p_product_price: adData.productPrice || null,
-      p_product_name: adData.productName || null,
-      p_product_cta_type: adData.productCtaType || null,
-      p_product_cta_link: adData.productCtaLink || null,
-      p_action_ios: adData.actionIos || null,
-      p_action_android: adData.actionAndroid || null,
-      p_action_watch_now: adData.actionWatchNow || null,
-    });
+    // 4. Submit directly to 'adds' table (Pending Moderation Queue) — never auto-insert into addsactive!
+    const baseAdRow: Record<string, any> = {
+      id: adId,
+      ad_type: adData.adType || "business",
+      industry: adData.industry || [],
+      interest: adData.interest || [],
+      lifestyle: adData.lifestyle || [],
+      behavior: adData.behavior || [],
+      personality: adData.personality || [],
+      age_range: adData.ageRange || [18, 65],
+      targeting_all: adData.targetingAll ?? false,
+      impressions: impressionsCount,
+      campaign_days: adData.campaignDays || 1,
+      user_frequency_cap: adData.userFrequencyCap || 1,
+      country: adData.country || null,
+      state: adData.state || null,
+      province: adData.province || null,
+      gender: adData.gender || null,
+      employment_status: adData.employmentStatus || null,
+      ad_media_type: adData.adMediaType || "image",
+      ad_content: adData.adContent || "",
+      ad_action_buttons: adData.adActionButtons || [],
+      action_phone: adData.actionPhone || null,
+      action_whatsapp: adData.actionWhatsapp || null,
+      action_website: adData.actionWebsite || null,
+      action_email: adData.actionEmail || null,
+      cost_per_impression: effectiveRate,
+      total_cost: computedTotalCost,
+      user_email: emailLower,
+      ad_media: adData.adMedia || adData.ad_media || null,
+      display_mutual_button: adData.displayMutualButton ?? true,
+      product_price: adData.productPrice || null,
+      product_name: adData.productName || null,
+      product_cta_type: adData.productCtaType || null,
+      product_cta_link: adData.productCtaLink || null,
+      action_ios: adData.actionIos || null,
+      action_android: adData.actionAndroid || null,
+      action_watch_now: adData.actionWatchNow || null,
+      admin_statement: "Status: Pending review",
+      is_paused: false,
+      is_admin_post: false,
+    };
 
-    if (rpcError) {
-      console.error("❌ RPC submit_ad_campaign failed:", rpcError);
-      return NextResponse.json(
-        { error: "Failed to submit campaign for review: " + rpcError.message },
-        { status: 500 }
-      );
+    const rawScheduledStart = adData.scheduledStartAt || adData.scheduled_start_at || null;
+    let parsedScheduledStart: string | null = null;
+    if (rawScheduledStart && typeof rawScheduledStart === "string" && rawScheduledStart !== "immediate") {
+      const dt = new Date(rawScheduledStart);
+      if (!isNaN(dt.getTime())) {
+        parsedScheduledStart = dt.toISOString();
+      }
     }
 
-    // Set initial moderation status to pending_review
-    await supabaseAdmin
-      .from("adds")
-      .update({
-        admin_statement: "Status: Pending review",
-        status: "pending_review",
-        payment_status: isDeliveringActive && !isBudgetIncreased ? "paid" : "unpaid",
-        is_paused: false,
-        is_ai_content: !!adData.isAiContent,
-      })
-      .eq("id", adId);
+    const { error: upsertErr } = await supabaseAdmin.from("adds").upsert({
+      ...baseAdRow,
+      status: "pending_review",
+      approved_at: null,
+      payment_status: isDeliveringActive && !isBudgetIncreased ? "paid" : "unpaid",
+      is_ai_content: !!adData.isAiContent,
+      ...(parsedScheduledStart ? { scheduled_start_at: parsedScheduledStart } : {}),
+    });
 
-    // If NOT an active delivering ad, ensure it's not in active feed
+    if (upsertErr) {
+      const { error: fallbackErr } = await supabaseAdmin.from("adds").upsert(baseAdRow);
+      if (fallbackErr) {
+        console.error("❌ Direct insert to adds failed:", fallbackErr);
+        return NextResponse.json(
+          { error: "Failed to submit campaign for review: " + fallbackErr.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // If NOT an active delivering ad, guarantee it is removed from active feed
     if (!isDeliveringActive) {
       await supabaseAdmin.from("addsactive").delete().eq("id", adId);
     }
 
-    // Create user notification
-    await supabaseAdmin.from("notifications").insert([
-      {
-        user_email: emailLower,
-        title: editingId ? "Campaign Adjusted & Re-submitted" : "Campaign Submitted for Review",
-        message: isDeliveringActive
-          ? `Your active campaign updates have been submitted to admin for moderation review. Your current campaign continues delivering live.`
-          : `Your campaign "${adData.adContent?.slice(0, 30) || "Ad"}..." has been submitted to admin for moderation review. Once approved, you can publish it from My Ads.`,
-      },
-    ]);
+    const notifRow = {
+      user_email: emailLower,
+      title: editingId ? "Ad In Review" : "Ad Submitted",
+      message: editingId
+        ? "Your updated ad is in review. Pay to publish once approved."
+        : "Your ad is in review. Once approved, pay in My Ads to go live.",
+    };
+    await supabaseAdmin.from("notifications").insert([notifRow]);
+    const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+    dispatchNotificationWebhook(notifRow).catch(() => {});
 
     await invalidateCachedUserCampaigns(emailLower);
 
     return NextResponse.json({
       success: true,
-      message: "Campaign submitted for review! You will be notified once approved.",
+      message: editingId
+        ? "Ad updated and placed in review. You will be notified once approved."
+        : "Ad submitted for review. Once approved, complete payment in My Ads to go live.",
       adId,
+      status: "pending_review",
+      admin_statement: "Status: Pending review",
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/campaigns/submit:", err);

@@ -33,18 +33,96 @@ export function getScoreIncrementForStars(stars: number): number {
   return STAR_RATING_INCREMENTS[validStars] || 0.01;
 }
 
+export interface ComputedAtwTierDetails {
+  tierCode: string;
+  level: number;
+  isUnlimited: boolean;
+  holdingCap: number;
+  holdingCapFormatted: string;
+  currentMilestoneTarget: number;
+  clicksRemaining: number;
+  clicksPercent: number;
+  nextTierCode: string;
+  nextAtwLevel: number;
+  nextHoldingCap: number;
+}
+
 /**
- * Computes maximum wallet balance holding limit based on user's ATW tier level.
- * NB: ATW is exclusively for wallet balance holding caps; users should always maintain low balances.
- * Level 1 (ATW1) = ₦30,000 (~$20 USD)
- * Level 2 (ATW2) = ₦60,000 (~$40 USD)
- * Level 3 (ATW3) = ₦90,000 (~$60 USD) [Maximum Cap].
+ * Computes ATW tier progression from live seen/click count (300 clicks per step:
+ * 300 -> ATW1, 600 -> ATW2, 900 -> ATW3, 1200 -> ATW4, etc.) and holding balance cap
+ * (₦30,000 per ATW step, or Unlimited for Admin / Exempt accounts).
  */
-export function getAtwBalanceLimit(atwTier?: string | null, isAdmin?: boolean): number {
-  if (isAdmin) return Infinity;
-  if (!atwTier) return 30000;
-  const match = atwTier.match(/\d+/);
+export function computeAtwTierDetails(
+  clicks: number,
+  existingTier?: string | null,
+  isAdminOrExempt?: boolean
+): ComputedAtwTierDetails {
+  const safeClicks = Math.max(0, Number(clicks) || 0);
+  const currentMilestoneTarget =
+    safeClicks < 300 ? 300 : (Math.floor(safeClicks / 300) + 1) * 300;
+  const clicksRemaining = Math.max(0, currentMilestoneTarget - safeClicks);
+  const stepBase = safeClicks < 300 ? 0 : Math.floor(safeClicks / 300) * 300;
+  const clicksPercent = Math.min(
+    100,
+    Math.max(0, Math.round(((safeClicks - stepBase) / 300) * 100))
+  );
+
+  const levelFromClicks = safeClicks >= 300 ? Math.floor(safeClicks / 300) : 1;
+  const parsedTierMatch = String(existingTier || "").match(/\d+/);
+  const parsedTierLevel = parsedTierMatch ? parseInt(parsedTierMatch[0], 10) : 1;
+  const level = Math.max(1, parsedTierLevel, levelFromClicks);
+  const nextAtwLevel = safeClicks < 300 ? 1 : level + 1;
+  const nextHoldingCap = nextAtwLevel * 30000;
+
+  const isUnlimited = Boolean(
+    isAdminOrExempt ||
+      String(existingTier || "").toLowerCase() === "unlimited" ||
+      String(existingTier || "").toLowerCase() === "atw unlimited"
+  );
+
+  const holdingCap = isUnlimited ? Infinity : level * 30000;
+  const holdingCapFormatted = isUnlimited
+    ? "Unlimited"
+    : `₦${holdingCap.toLocaleString()}`;
+  const tierCode = isUnlimited ? "Unlimited" : `ATW${level}`;
+  const nextTierCode = isUnlimited ? "Unlimited" : `ATW${nextAtwLevel}`;
+
+  return {
+    tierCode,
+    level,
+    isUnlimited,
+    holdingCap,
+    holdingCapFormatted,
+    currentMilestoneTarget,
+    clicksRemaining,
+    clicksPercent,
+    nextTierCode,
+    nextAtwLevel,
+    nextHoldingCap,
+  };
+}
+
+/**
+ * Computes maximum wallet balance holding limit based on user's ATW tier level & clicks.
+ * Every 300 clicks advances the tier by 1 step (+₦30,000 holding cap per step).
+ * Admins / Exempt accounts have an Unlimited holding balance cap (Infinity).
+ */
+export function getAtwBalanceLimit(
+  atwTier?: string | null,
+  isAdmin?: boolean,
+  clicks?: number
+): number {
+  if (
+    isAdmin ||
+    String(atwTier || "").toLowerCase() === "unlimited" ||
+    String(atwTier || "").toLowerCase() === "atw unlimited"
+  ) {
+    return Infinity;
+  }
+  const safeClicks = Math.max(0, Number(clicks) || 0);
+  const levelFromClicks = safeClicks >= 300 ? Math.floor(safeClicks / 300) : 1;
+  const match = String(atwTier || "").match(/\d+/);
   const levelNum = match ? parseInt(match[0], 10) : 1;
-  const safeLevel = Math.min(3, Math.max(1, levelNum));
+  const safeLevel = Math.max(1, levelNum, levelFromClicks);
   return safeLevel * 30000;
 }

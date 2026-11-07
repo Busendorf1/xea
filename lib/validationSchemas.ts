@@ -302,7 +302,7 @@ export const boostSchema = z.object({
   adId: z.string().min(1, "Ad ID is required"),
   bidAmount: z
     .number()
-    .min(100, "Minimum bid amount is ₦100")
+    .min(15, "Minimum bid amount is ₦15")
     .max(1_000_000, "Maximum bid amount per boost is ₦1,000,000"),
   paymentMethod: z.enum(["card", "wallet"]),
 });

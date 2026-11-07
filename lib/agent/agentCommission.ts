@@ -258,42 +258,11 @@ export async function applyAgentCommissionOnEarning({
       };
     }
 
-    const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc("apply_agent_commission_atomic", {
-      p_earner_email: cleanEarner,
-      p_gross_amount: grossEarnedAmount,
-      p_ad_id: adId || null,
-    });
-
-    if (!rpcErr && rpcRes && rpcRes.applied) {
-      const deductedAmount = Number(rpcRes.deducted) || 0;
-      const netEarnerAmount =
-        Number(rpcRes.net_earner_amount) || Math.round((grossEarnedAmount - deductedAmount) * 100) / 100;
-      const adjustedEarnerBalance = Number(
-        rpcRes.earner_new_balance ?? Math.max(0, currentEarnerBalance - deductedAmount)
-      );
-      const agent1Email = String(rpcRes.agent1_email || meta.uplineEmail);
-
-      await invalidateAgentCaches([cleanEarner, agent1Email]);
-      if (rpcRes.agent1_new_balance !== undefined && rpcRes.agent1_new_balance !== null) {
-        publishLiveBalanceUpdate(agent1Email, {
-          delta: Number(rpcRes.agent1_credit) || deductedAmount,
-          newBalance: Number(rpcRes.agent1_new_balance),
-        }).catch(() => {});
-      }
-
-      return {
-        netEarnerAmount,
-        deductedAmount,
-        adjustedEarnerBalance,
-        uplineAgentEmail: agent1Email,
-      };
-    }
-
     const uplineEmail = meta.uplineEmail;
     const rate = meta.rate;
-    const deductedAmount = Math.round(grossEarnedAmount * rate * 100) / 100;
+    const commissionAmount = Math.round(grossEarnedAmount * rate * 100) / 100;
 
-    if (deductedAmount <= 0) {
+    if (commissionAmount <= 0) {
       return {
         netEarnerAmount: grossEarnedAmount,
         deductedAmount: 0,
@@ -302,16 +271,20 @@ export async function applyAgentCommissionOnEarning({
       };
     }
 
-    const netEarnerAmount = Math.round((grossEarnedAmount - deductedAmount) * 100) / 100;
-    const adjustedEarnerBalance = Math.max(0, Math.round((currentEarnerBalance - deductedAmount) * 100) / 100);
+    const netEarnerAmount = Math.max(0, Math.round((grossEarnedAmount - commissionAmount) * 100) / 100);
+    const adjustedEarnerBalance = Math.max(0, Math.round((currentEarnerBalance - commissionAmount) * 100) / 100);
 
+    // Deduct agency commission from the earner's 50% share and credit the upline agent's wallet
     await Promise.all([
-      supabaseAdmin.from("users").update({ balance: adjustedEarnerBalance }).ilike("email", cleanEarner),
+      supabaseAdmin
+        .from("users")
+        .update({ balance: adjustedEarnerBalance })
+        .ilike("email", cleanEarner),
       creditAgentWalletAndEdge({
         agentEmail: uplineEmail,
         refereeEmail: cleanEarner,
-        creditToWallet: deductedAmount,
-        grossCommissionFromReferee: deductedAmount,
+        creditToWallet: commissionAmount,
+        grossCommissionFromReferee: commissionAmount,
         rate,
       }),
     ]);
@@ -320,7 +293,7 @@ export async function applyAgentCommissionOnEarning({
 
     return {
       netEarnerAmount,
-      deductedAmount,
+      deductedAmount: commissionAmount,
       adjustedEarnerBalance,
       uplineAgentEmail: uplineEmail,
     };

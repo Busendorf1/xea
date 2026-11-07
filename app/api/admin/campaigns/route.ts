@@ -61,6 +61,10 @@ async function invalidateAdminCampaignCache(
         const pipeline = redisConnection.pipeline();
         pipeline.del("admin:overview:stats");
         pipeline.del("admin:overview_stats");
+        pipeline.del(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}active-ads:0:10:`);
+        pipeline.del(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}ad-approvals:0:10:`);
+        pipeline.del(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}active-highlights:0:10:`);
+        pipeline.del(`${ADMIN_CAMPAIGNS_CACHE_PREFIX}highlight-approvals:0:10:`);
         if (targetId) {
           pipeline.del(`ad:detail:${targetId}`);
         }
@@ -83,10 +87,10 @@ async function invalidateAdminCampaignCache(
     })());
   }
 
-  // Allow up to 80ms for critical in-memory evictions, then release response immediately
+  // Allow up to 450ms for critical Redis + user campaign cache evictions before releasing response
   await Promise.race([
     Promise.all(tasks),
-    new Promise((resolve) => setTimeout(resolve, 80)),
+    new Promise((resolve) => setTimeout(resolve, 450)),
   ]);
 }
 
@@ -123,17 +127,18 @@ export async function GET(req: NextRequest) {
     const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
     const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10), 1), 50);
     const search = (searchParams.get("search") || "").trim();
+    const fresh = searchParams.get("fresh") === "true";
 
     const cacheKey = `${ADMIN_CAMPAIGNS_CACHE_PREFIX}${tab}:${page}:${limit}:${search.toLowerCase()}`;
 
-    // 1. Check Redis Cache for ultra-fast response (<2ms)
-    if (isRedisReady()) {
+    // 1. Check Redis Cache for ultra-fast response (<2ms) unless fresh=true
+    if (!fresh && isRedisReady()) {
       try {
         const cached = await redisConnection.get(cacheKey);
         if (cached) {
           return NextResponse.json({ ...JSON.parse(cached), cached: true }, {
             headers: {
-              "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
+              "Cache-Control": "no-store, no-cache, must-revalidate",
               "X-Cache": "HIT",
             },
           });
@@ -143,7 +148,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 2. Execute query on Read Replica Database with exact pagination range
+    // 2. Execute query on Primary DB when fresh=true (zero replication lag after mutations), otherwise Read Replica
     let targetTable = "addsactive";
     let isHighlight = false;
 
@@ -161,7 +166,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: `Invalid tab parameter: ${tab}` }, { status: 400 });
     }
 
-    let query = supabaseReadOnly.from(targetTable).select("*", { count: "exact" });
+    const dbClient = fresh ? supabaseAdmin : supabaseReadOnly;
+    let query = dbClient.from(targetTable).select("*", { count: "exact" });
 
     // Apply search filters efficiently
     if (search) {
@@ -239,7 +245,11 @@ export async function GET(req: NextRequest) {
       redisConnection.set(cacheKey, JSON.stringify(responseData), "EX", CACHE_TTL_SECONDS).catch(() => {});
     }
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    });
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/admin/campaigns:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
@@ -290,30 +300,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // If admin post, publish directly (100% free)
-      if (pendingAd.is_admin_post || isAdminEmail(pendingAd.user_email) || Number(pendingAd.total_cost || 0) <= 0) {
-        const { approved_at: _, ...cleanPendingAd } = pendingAd;
-        const activeAd = {
-          ...cleanPendingAd,
-          is_paused: false,
-          created_at: now,
-        };
-
-        const { data: insertedRows, error: insertErr } = await supabaseAdmin
-          .from("addsactive")
-          .insert([activeAd])
-          .select("*");
-        if (insertErr) throw insertErr;
-
-        await supabaseAdmin.from("adds").delete().eq("id", id);
-
-        const publishedAd = insertedRows?.[0] || activeAd;
-        dispatchFeedDropWebhook(publishedAd).catch(() => {});
-
-        await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
-        return NextResponse.json({ success: true, message: "Admin ad approved and published to active feed!" });
-      }
-
       // Check if this ad exists in addsactive (an active delivering campaign edit)
       const { data: activeAd } = await supabaseAdmin
         .from("addsactive")
@@ -347,14 +333,14 @@ export async function POST(req: NextRequest) {
         // Clean up review draft from adds
         await supabaseAdmin.from("adds").delete().eq("id", id);
 
-        // Notify advertiser
-        await supabaseAdmin.from("notifications").insert([
-          {
-            user_email: pendingAd.user_email,
-            title: "Campaign Edit Approved & Live!",
-            message: "Your campaign updates have been reviewed, approved, and applied directly to your live delivering ad with no additional payment required.",
-          },
-        ]);
+        const notifRow = {
+          user_email: pendingAd.user_email,
+          title: "Ad Edit Live",
+          message: "Your ad edit was approved and applied to your live campaign.",
+        };
+        await supabaseAdmin.from("notifications").insert([notifRow]);
+        const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+        dispatchNotificationWebhook(notifRow).catch(() => {});
 
         await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
         return NextResponse.json({
@@ -363,7 +349,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Advertiser Campaign: Approve and allow publisher to pay to publish within 3 days
+      // Advertiser Campaign: Approve and require publisher to pay to publish within 3 days
       const approvedStatement = `APPROVED:${now}`;
       await supabaseAdmin
         .from("adds")
@@ -373,14 +359,14 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", id);
 
-      // Create notification for advertiser
-      await supabaseAdmin.from("notifications").insert([
-        {
-          user_email: pendingAd.user_email,
-          title: "Campaign Approved - Ready to Publish!",
-          message: "Your campaign has been approved! You can now review and publish it from My Ads. Approved campaigns expire after 3 days if not published.",
-        },
-      ]);
+      const notifRow = {
+        user_email: pendingAd.user_email,
+        title: "Ad Approved",
+        message: "Your ad is approved! Complete payment in My Ads within 3 days to go live.",
+      };
+      await supabaseAdmin.from("notifications").insert([notifRow]);
+      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      dispatchNotificationWebhook(notifRow).catch(() => {});
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
       return NextResponse.json({
@@ -431,23 +417,61 @@ export async function POST(req: NextRequest) {
       if (!id) return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
 
       const isPaused = action === "pause_ad";
-      const updateData: any = { is_paused: isPaused };
-      if (payload?.statement) {
-        updateData.admin_statement = payload.statement;
+      const activeUpdateData: Record<string, any> = { is_paused: isPaused };
+      const pendingUpdateData: Record<string, any> = { is_paused: isPaused };
+
+      if (isPaused) {
+        if (payload?.statement !== undefined && payload?.statement !== null) {
+          const cleanStmt = String(payload.statement).trim() || null;
+          activeUpdateData.admin_statement = cleanStmt;
+          pendingUpdateData.admin_statement = cleanStmt;
+        }
+      } else {
+        // Resuming ad: clear any admin pause statement so advertiser/UI sees the ad as active and unpaused
+        activeUpdateData.admin_statement = null;
+
+        const { data: existingPending } = await supabaseAdmin
+          .from("adds")
+          .select("admin_statement")
+          .eq("id", id)
+          .maybeSingle();
+
+        const pendingStmt = String(existingPending?.admin_statement || "").trim();
+        if (
+          pendingStmt &&
+          !pendingStmt.startsWith("APPROVED:") &&
+          !pendingStmt.startsWith("REJECTED:") &&
+          !pendingStmt.toLowerCase().startsWith("status:")
+        ) {
+          pendingUpdateData.admin_statement = null;
+        }
       }
 
       // Update in both active and pending tables
-      const [activeRes] = await Promise.all([
-        supabaseAdmin.from("addsactive").update(updateData).eq("id", id).select("*").maybeSingle(),
-        supabaseAdmin.from("adds").update(updateData).eq("id", id),
+      const [activeRes, pendingRes] = await Promise.all([
+        supabaseAdmin.from("addsactive").update(activeUpdateData).eq("id", id).select("*").maybeSingle(),
+        supabaseAdmin.from("adds").update(pendingUpdateData).eq("id", id).select("user_email").maybeSingle(),
       ]);
 
       if (!isPaused && activeRes?.data) {
         dispatchFeedDropWebhook(activeRes.data).catch(() => {});
       }
 
-      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
-      return NextResponse.json({ success: true, message: `Ad campaign ${isPaused ? "paused" : "resumed"} successfully.` });
+      const targetEmail = activeRes?.data?.user_email || pendingRes?.data?.user_email;
+      await invalidateAdminCampaignCache(
+        adminEmail,
+        action,
+        id,
+        payload?.statement || payload?.reason,
+        payload,
+        targetEmail
+      );
+      return NextResponse.json({
+        success: true,
+        is_paused: isPaused,
+        ad: activeRes?.data || null,
+        message: `Ad campaign ${isPaused ? "paused" : "resumed"} successfully.`,
+      });
     }
 
     // 4. DEACTIVATE AD CAMPAIGN
@@ -545,32 +569,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      if (pendingHighlight.is_admin_post || isAdminEmail(pendingHighlight.user_email)) {
-        const {
-          status: _status,
-          approved_at: _appAt,
-          payment_status: _payStatus,
-          is_admin_post: _adminPost,
-          custom_sponsor_name: _csName,
-          custom_sponsor_handle: _csHandle,
-          custom_sponsor_logo: _csLogo,
-          ...cleanHl
-        } = pendingHighlight;
-
-        const activeHighlight = {
-          ...cleanHl,
-          is_paused: false,
-          created_at: now,
-        };
-
-        const { error: insertHlErr } = await supabaseAdmin.from("newsactive").insert([activeHighlight]);
-        if (insertHlErr) throw insertHlErr;
-
-        await supabaseAdmin.from("news").delete().eq("id", id);
-        await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
-        return NextResponse.json({ success: true, message: "Admin highlight approved and published to active feed!" });
-      }
-
       // Check if this highlight exists in newsactive (an active delivering highlight edit)
       const { data: activeHl } = await supabaseAdmin
         .from("newsactive")
@@ -609,14 +607,14 @@ export async function POST(req: NextRequest) {
         // Clean up review draft from news
         await supabaseAdmin.from("news").delete().eq("id", id);
 
-        // Notify advertiser
-        await supabaseAdmin.from("notifications").insert([
-          {
-            user_email: pendingHighlight.user_email,
-            title: "Highlight Edit Approved & Live!",
-            message: "Your highlight updates have been approved and applied directly to your active highlight with no additional payment required.",
-          },
-        ]);
+        const notifRow = {
+          user_email: pendingHighlight.user_email,
+          title: "Highlight Edit Live",
+          message: "Your highlight edit was approved and applied to your live highlight.",
+        };
+        await supabaseAdmin.from("notifications").insert([notifRow]);
+        const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+        dispatchNotificationWebhook(notifRow).catch(() => {});
 
         await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
         return NextResponse.json({
@@ -634,13 +632,14 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", id);
 
-      await supabaseAdmin.from("notifications").insert([
-        {
-          user_email: pendingHighlight.user_email,
-          title: "Highlight Approved!",
-          message: "Your highlight has been approved! You can now publish it from My Highlights.",
-        },
-      ]);
+      const notifRow = {
+        user_email: pendingHighlight.user_email,
+        title: "Highlight Approved",
+        message: "Your highlight is approved! Complete payment in My Highlights to go live.",
+      };
+      await supabaseAdmin.from("notifications").insert([notifRow]);
+      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      dispatchNotificationWebhook(notifRow).catch(() => {});
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
       return NextResponse.json({ success: true, message: "Highlight approved! Advertiser has 3 days to publish and pay." });
@@ -688,10 +687,56 @@ export async function POST(req: NextRequest) {
       if (!id) return NextResponse.json({ error: "Highlight ID is required" }, { status: 400 });
 
       const isPaused = action === "pause_highlight";
-      await supabaseAdmin.from("newsactive").update({ is_paused: isPaused }).eq("id", id);
+      const activeHlUpdate: Record<string, any> = { is_paused: isPaused };
+      const pendingHlUpdate: Record<string, any> = { is_paused: isPaused };
 
-      await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
-      return NextResponse.json({ success: true, message: `Highlight ${isPaused ? "paused" : "resumed"} successfully.` });
+      if (isPaused) {
+        if (payload?.statement !== undefined && payload?.statement !== null) {
+          const cleanStmt = String(payload.statement).trim() || null;
+          activeHlUpdate.admin_statement = cleanStmt;
+          pendingHlUpdate.admin_statement = cleanStmt;
+        }
+      } else {
+        // Resuming highlight: clear any admin pause statement so UI & advertiser see it as active and unpaused
+        activeHlUpdate.admin_statement = null;
+
+        const { data: existingPendingHl } = await supabaseAdmin
+          .from("news")
+          .select("admin_statement")
+          .eq("id", id)
+          .maybeSingle();
+
+        const pendingStmt = String(existingPendingHl?.admin_statement || "").trim();
+        if (
+          pendingStmt &&
+          !pendingStmt.startsWith("APPROVED:") &&
+          !pendingStmt.startsWith("REJECTED:") &&
+          !pendingStmt.toLowerCase().startsWith("status:")
+        ) {
+          pendingHlUpdate.admin_statement = null;
+        }
+      }
+
+      const [activeHlRes, pendingHlRes] = await Promise.all([
+        supabaseAdmin.from("newsactive").update(activeHlUpdate).eq("id", id).select("*").maybeSingle(),
+        supabaseAdmin.from("news").update(pendingHlUpdate).eq("id", id).select("user_email").maybeSingle(),
+      ]);
+
+      const targetEmail = activeHlRes?.data?.user_email || pendingHlRes?.data?.user_email;
+      await invalidateAdminCampaignCache(
+        adminEmail,
+        action,
+        id,
+        payload?.statement || payload?.reason,
+        payload,
+        targetEmail
+      );
+      return NextResponse.json({
+        success: true,
+        is_paused: isPaused,
+        highlight: activeHlRes?.data || null,
+        message: `Highlight ${isPaused ? "paused" : "resumed"} successfully.`,
+      });
     }
 
     // 10. DELETE HIGHLIGHT

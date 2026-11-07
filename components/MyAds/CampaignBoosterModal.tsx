@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, X, Users, User, UserCheck, Wallet, CreditCard } from "lucide-react";
+import { TrendingUp, X, Users, User, UserCheck, Wallet, CreditCard } from "lucide-react";
 import { boostSchema } from "@/lib/validationSchemas";
 import { formatCurrency } from "@/lib/utils/currency";
 import LocationSelector from "../LocationSelector";
@@ -15,6 +15,7 @@ interface CampaignBoosterModalProps {
   boosterAd: Ad | null;
   onClose: () => void;
   reportsCount: number;
+  userBalance?: number;
   onSuccess: (message?: string) => void;
   onShowNotice: (title: string, message: string, adId?: string) => void;
 }
@@ -23,6 +24,7 @@ export default function CampaignBoosterModal({
   boosterAd,
   onClose,
   reportsCount,
+  userBalance,
   onSuccess,
   onShowNotice,
 }: CampaignBoosterModalProps) {
@@ -58,28 +60,41 @@ export default function CampaignBoosterModal({
   if (!boosterAd) return null;
 
   const calculateBoosterCost = () => {
-    const currentCost = Number(boosterAd.cost_per_impression || 25);
+    const currentCost = Math.max(15, Number(boosterAd.cost_per_impression || 25));
     const effectiveCost = newBidPrice > 0 && newBidPrice > currentCost ? newBidPrice : currentCost;
-    return addImpressions * effectiveCost;
+    if (addImpressions > 0) {
+      return addImpressions * effectiveCost;
+    }
+    if (effectiveCost > currentCost) {
+      const remainingImp = Math.max(
+        1,
+        Number(boosterAd.impressions || 1000) - Number(boosterAd.impression_count || 0)
+      );
+      return (effectiveCost - currentCost) * remainingImp;
+    }
+    return 0;
   };
 
   const getBoostUnavailableReason = (ad: Ad, reports: number): string | null => {
     if (
       ad.payment_status === "unpaid" ||
       ad.status === "pending_review" ||
-      ad.status === "approved_pending_publish" ||
-      (ad.admin_statement && (
-        ad.admin_statement.startsWith("STATUS:") ||
-        ad.admin_statement.startsWith("APPROVED:") ||
-        ad.admin_statement.startsWith("REJECTED:")
-      ))
+      ad.status === "approved_pending_publish"
     ) {
       return "Boosting is only available after your campaign has been approved, paid for, and published live to the feed.";
     }
     if (reports > 0) {
       return "This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete.";
     }
-    if (ad.admin_statement && ad.admin_statement.trim() !== "") {
+    const isPausedByAdmin = Boolean(
+      ad.admin_statement &&
+      typeof ad.admin_statement === "string" &&
+      ad.admin_statement.trim() !== "" &&
+      !ad.admin_statement.startsWith("APPROVED:") &&
+      !ad.admin_statement.toLowerCase().startsWith("status:") &&
+      !ad.admin_statement.startsWith("REJECTED:")
+    );
+    if (isPausedByAdmin) {
       return `This campaign was paused by an administrator. Reason: "${ad.admin_statement}". Please resolve the notice or wait for admin review.`;
     }
     if (ad.is_paused) {
@@ -98,7 +113,7 @@ export default function CampaignBoosterModal({
 
     const validation = boostSchema.safeParse({
       adId: boosterAd.id,
-      bidAmount: newBidPrice > 0 ? newBidPrice : 100,
+      bidAmount: newBidPrice > 0 ? newBidPrice : 25,
       paymentMethod: boosterPaymentMethod,
     });
 
@@ -108,6 +123,16 @@ export default function CampaignBoosterModal({
     }
 
     const totalCost = calculateBoosterCost();
+    if (boosterPaymentMethod === "wallet" && typeof userBalance === "number" && totalCost > userBalance) {
+      onClose();
+      onShowNotice(
+        "Insufficient Wallet Balance",
+        `Your wallet balance (₦${userBalance.toLocaleString()}) is insufficient to cover this campaign boost (₦${totalCost.toLocaleString()}). Please choose Card / Bank Transfer or fund your wallet.`,
+        boosterAd.id
+      );
+      return;
+    }
+
     if (totalCost <= 0) {
       handleExecuteBoost();
       return;
@@ -126,12 +151,24 @@ export default function CampaignBoosterModal({
 
     const validation = boostSchema.safeParse({
       adId: boosterAd.id,
-      bidAmount: newBidPrice > 0 ? newBidPrice : 100,
+      bidAmount: newBidPrice > 0 ? newBidPrice : 25,
       paymentMethod: boosterPaymentMethod,
     });
 
     if (!validation.success) {
       onShowNotice("Validation Notice", validation.error.issues[0]?.message || "Invalid boost parameters.");
+      return;
+    }
+
+    const totalCost = calculateBoosterCost();
+    if (boosterPaymentMethod === "wallet" && typeof userBalance === "number" && totalCost > userBalance) {
+      setShowBoosterPaymentConfirmModal(false);
+      onClose();
+      onShowNotice(
+        "Insufficient Wallet Balance",
+        `Your wallet balance (₦${userBalance.toLocaleString()}) is insufficient to cover this campaign boost (₦${totalCost.toLocaleString()}). Please choose Card / Bank Transfer or fund your wallet.`,
+        boosterAd.id
+      );
       return;
     }
 
@@ -151,6 +188,7 @@ export default function CampaignBoosterModal({
           state: boosterState,
           province: boosterProvince || (boosterMultiLocations.length > 0 ? boosterMultiLocations.join("; ") : ""),
           paymentMethod: boosterPaymentMethod,
+          callbackUrl: typeof window !== "undefined" ? `${window.location.origin}/logged-in` : undefined,
         }),
       });
 
@@ -160,6 +198,10 @@ export default function CampaignBoosterModal({
       }
 
       if (boosterPaymentMethod === "card" && data.paymentUrl) {
+        try {
+          sessionStorage.setItem("paayh_boost_ref", data.reference);
+          sessionStorage.setItem("paayh_boost_type", "ad");
+        } catch {}
         window.location.href = data.paymentUrl;
         return;
       }
@@ -169,7 +211,14 @@ export default function CampaignBoosterModal({
       onSuccess(data.message || "Your campaign has been boosted successfully!");
     } catch (e: any) {
       setShowBoosterPaymentConfirmModal(false);
-      onShowNotice("Boost Notice", e.message || "An error occurred while boosting your campaign.");
+      onClose();
+      const rawError = e.message || "An error occurred while boosting your campaign.";
+      const isInsufficient = rawError.toLowerCase().includes("insufficient");
+      onShowNotice(
+        isInsufficient ? "Insufficient Wallet Balance" : "Boost Notice",
+        rawError,
+        boosterAd.id
+      );
     } finally {
       setBoosting(false);
     }
@@ -196,7 +245,7 @@ export default function CampaignBoosterModal({
           >
             <div className={styles.modalHeader}>
               <div className={styles.modalHeaderLeft}>
-                <Zap size={18} color="var(--primary)" />
+                <TrendingUp size={18} color="var(--primary)" />
                 <h3 className={styles.modalTitle}>Boost &amp; Top Up Campaign</h3>
               </div>
               <button className={styles.modalClose} onClick={onClose} aria-label="Close modal">
@@ -220,7 +269,7 @@ export default function CampaignBoosterModal({
                     { value: "10000", label: "+10,000 Attention", badge: "Scale" },
                   ]}
                   placeholder="Select Extra Attention"
-                  leadingIcon={<Zap size={16} />}
+                  leadingIcon={<TrendingUp size={16} />}
                 />
               </div>
 

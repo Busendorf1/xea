@@ -7,7 +7,7 @@ import styles from "../News/page.module.css";
 import LocationSelector from "../LocationSelector";
 import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
-import { Zap, Calendar, ShieldAlert, Crown, Rocket, Sparkles, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag, Info, Award, AlertCircle } from "lucide-react";
+import { Calendar, ShieldAlert, Crown, TrendingUp, Cpu, Landmark, Film, Trophy, Briefcase, GraduationCap, Activity, Atom, Globe, Tag, Info, Award, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import RollingCounter from "@/components/ui/RollingCounter";
 import CustomSelect from "@/components/ui/CustomSelect";
@@ -55,6 +55,7 @@ export default function News({ session }: NewsProps) {
   const [state, setState] = useState("");
   const [province, setProvince] = useState("");
   const [campaignDays, setCampaignDays] = useState(1);
+  const [scheduledStartAt, setScheduledStartAt] = useState("");
   const [isBiddingEnabled, setIsBiddingEnabled] = useState(false);
   const [bidPrice, setBidPrice] = useState(1500);
   const [highestBid, setHighestBid] = useState<number>(1000);
@@ -121,6 +122,7 @@ export default function News({ session }: NewsProps) {
         if (hl.state) setState(hl.state);
         if (hl.province) setProvince(hl.province);
         if (hl.campaign_days) setCampaignDays(hl.campaign_days);
+        if (hl.scheduled_start_at) setScheduledStartAt(String(hl.scheduled_start_at).slice(0, 10));
         if (hl.is_bidded) {
           setIsBiddingEnabled(true);
           if (hl.bid_price) setBidPrice(Number(hl.bid_price));
@@ -204,6 +206,8 @@ export default function News({ session }: NewsProps) {
 
   // Restore saved draft state on mount
   useEffect(() => {
+    if (editingId) return;
+    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_news_id")) return;
     try {
       const saved = localStorage.getItem("paayh_draft_news_v1");
       if (saved) {
@@ -224,10 +228,12 @@ export default function News({ session }: NewsProps) {
         if (parsed.mediaPreview && !parsed.mediaPreview.startsWith("blob:") && parsed.mediaPreview.startsWith("http")) { setMediaPreview(parsed.mediaPreview); } else { setMediaPreview(null); }
       }
     } catch {}
-  }, []);
+  }, [editingId]);
 
   // Autosave draft state on changes (debounced 400ms; omit base64 data URLs to prevent QuotaExceededError & INP freezes)
   useEffect(() => {
+    if (editingId) return;
+    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_news_id")) return;
     const timer = setTimeout(() => {
       try {
         const draft = {
@@ -426,30 +432,51 @@ export default function News({ session }: NewsProps) {
           }
         }
 
-        let fileData: Blob | File = optimizedFile;
+        const resolvedContentType = mediaFile.type || "image/jpeg";
+        let uploadedViaSigned = false;
+
         try {
-          const buffer = await optimizedFile.arrayBuffer();
-          fileData = new Blob([buffer], { type: mediaFile.type || "image/jpeg" });
-        } catch (e) {
-          console.warn("ArrayBuffer fallback for news image:", e);
-        }
-
-        const { error: uploadError } = await supabase.storage
-          .from("news")
-          .upload(filename, fileData, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: mediaFile.type || "image/jpeg",
+          const signRes = await fetch("/api/campaigns/upload-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bucket: "news", fileName: filename }),
           });
+          if (signRes.ok) {
+            const signJson = await signRes.json();
+            if (signJson?.path && signJson?.token) {
+              const { error: signedUpErr } = await supabase.storage
+                .from("news")
+                .uploadToSignedUrl(signJson.path, signJson.token, optimizedFile, {
+                  cacheControl: "3600",
+                  contentType: resolvedContentType,
+                });
+              if (!signedUpErr && signJson.publicUrl) {
+                uploadedFilename = signJson.path;
+                finalImageUrl = signJson.publicUrl;
+                uploadedViaSigned = true;
+              }
+            }
+          }
+        } catch {}
 
-        if (uploadError) throw uploadError;
-        uploadedFilename = filename;
+        if (!uploadedViaSigned) {
+          const { error: uploadError } = await supabase.storage
+            .from("news")
+            .upload(filename, optimizedFile, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: resolvedContentType,
+            });
 
-        const { data: urlData } = supabase.storage
-          .from("news")
-          .getPublicUrl(filename);
+          if (uploadError) throw uploadError;
+          uploadedFilename = filename;
 
-        finalImageUrl = urlData.publicUrl;
+          const { data: urlData } = supabase.storage
+            .from("news")
+            .getPublicUrl(filename);
+
+          finalImageUrl = urlData.publicUrl;
+        }
       }
 
       if (!finalImageUrl) {
@@ -470,6 +497,7 @@ export default function News({ session }: NewsProps) {
             state: state || null,
             province: province || null,
             campaignDays,
+            scheduledStartAt: scheduledStartAt || null,
             isBidded: isBiddingEnabled,
             bidPrice: isBiddingEnabled ? bidPrice : null,
             customSponsorName: customSponsorName || null,
@@ -493,22 +521,37 @@ export default function News({ session }: NewsProps) {
         return;
       }
 
-      sessionStorage.setItem("paayh_active_tab", "myads");
-      sessionStorage.setItem("paayh_publications_subtab", "highlights");
-      document.cookie = "paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax";
-      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "mynews" } }));
-      setStatusNotice(
-        isDeliveringActive
-          ? "Highlight updates submitted for moderation review! Your live highlight continues running."
-          : "Highlight submitted for moderation review! You will be notified once approved to publish."
-      );
-      setTimeout(() => {
-        window.location.href = "/logged-in?view=myads&tab=highlights";
-      }, 1200);
       clearUserCampaignsCache(session?.user?.email || "");
       try {
         localStorage.removeItem("paayh_draft_news_v1");
       } catch {}
+
+      sessionStorage.setItem("paayh_active_tab", "myads");
+      sessionStorage.setItem("paayh_publications_subtab", "highlights");
+      if (editingId) {
+        sessionStorage.setItem("paayh_mynews_filter_tab", "pending");
+      }
+      document.cookie = "paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax";
+      window.dispatchEvent(
+        new CustomEvent("paayh_campaign_resubmitted", {
+          detail: {
+            id: submitData.highlightId || editingId,
+            type: "highlight",
+            wasEditing: !!editingId,
+          },
+        })
+      );
+      window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "mynews" } }));
+      setStatusNotice(
+        isDeliveringActive
+          ? "Highlight updates submitted for moderation review! Your live highlight continues running."
+          : editingId
+          ? "Highlight readjusted and placed back in review! Waiting for approval."
+          : "Highlight submitted for moderation review! You will be notified once approved to publish."
+      );
+      setTimeout(() => {
+        window.location.href = "/logged-in?view=myads&tab=highlights";
+      }, 900);
       
       setStep(0);
       setEditingId(null);
@@ -852,6 +895,8 @@ export default function News({ session }: NewsProps) {
                 setProvince={setProvince}
                 campaignDays={campaignDays}
                 setCampaignDays={setCampaignDays}
+                scheduledStartAt={scheduledStartAt}
+                setScheduledStartAt={setScheduledStartAt}
                 isBiddingEnabled={isBiddingEnabled}
                 setIsBiddingEnabled={setIsBiddingEnabled}
                 bidPrice={bidPrice}

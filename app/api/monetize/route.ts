@@ -3,7 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
-import { calculateAtwTier } from "@/lib/referralEngine";
+import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { flushPendingAffiliateYield } from "@/lib/affiliateEngine";
@@ -20,16 +20,32 @@ export async function GET(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
-    const cacheKey = `monetize:status:${emailLower}`;
+    const cacheKey = `monetize:status:v2:${emailLower}`;
 
-    // 1. Edge Redis Cache Read Path for Ultra-Low Latency (<5ms response time)
+    // 1. Edge Redis Cache Read Path for Ultra-Low Latency (<5ms response time) merged with real-time live_clicks
     if (isRedisReady()) {
       try {
-        const cached = await redisConnection.get(cacheKey);
+        const [cached, liveClicksStr] = await redisConnection.mget(
+          cacheKey,
+          `user:live_clicks:v2:${emailLower}`
+        );
         if (cached) {
-          return NextResponse.json(JSON.parse(cached), {
+          const parsed = JSON.parse(cached);
+          const liveVal = liveClicksStr ? Number(liveClicksStr) || 0 : 0;
+          const isExempt = isExemptFromBarriersAndInactivity(emailLower) || Boolean(parsed.isUnlimited);
+          const effectiveClicks = Math.max(Number(parsed.clicksCount || 0), liveVal);
+          const tierDetails = computeAtwTierDetails(effectiveClicks, parsed.atwTier, isExempt);
+          parsed.clicksCount = effectiveClicks;
+          parsed.clicksRemaining = tierDetails.clicksRemaining;
+          parsed.targetClicks = tierDetails.currentMilestoneTarget;
+          parsed.atwTier = tierDetails.tierCode;
+          parsed.atwLevel = tierDetails.level;
+          parsed.isUnlimited = tierDetails.isUnlimited;
+          parsed.holdingCap = tierDetails.isUnlimited ? null : tierDetails.holdingCap;
+          if (effectiveClicks >= 300 || isExempt) parsed.isMonetized = true;
+          return NextResponse.json(parsed, {
             headers: {
-              "Cache-Control": "private, max-age=5, stale-while-revalidate=30",
+              "Cache-Control": "no-store, max-age=0",
             },
           });
         }
@@ -48,11 +64,11 @@ export async function GET(req: NextRequest) {
     const [{ data: uData, error: uErr }, rawLiveClicks] = await Promise.all([
       supabaseReadOnly
         .from("users")
-        .select("monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, has_cancelled_monetization, is_affiliate, is_career")
-        .eq("email", emailLower)
+        .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, is_affiliate, is_career")
+        .ilike("email", emailLower)
         .maybeSingle(),
       isRedisReady()
-        ? redisConnection.get(`user:live_clicks:${emailLower}`).catch(() => null)
+        ? redisConnection.get(`user:live_clicks:v2:${emailLower}`).catch(() => null)
         : Promise.resolve(null),
     ]);
 
@@ -60,29 +76,61 @@ export async function GET(req: NextRequest) {
     const liveClicksDelta = rawLiveClicks ? Number(rawLiveClicks) || 0 : 0;
 
     if (uErr || !uData) {
-      // Fallback to RPC if single-read fails or user row not found
-      const { data: statusData } = await supabaseAdmin.rpc("check_and_update_monetization_status", {
-        p_email: emailLower,
-      });
+      // Fallback to baseline columns if optional column is missing
+      const { data: fbUser } = await supabaseReadOnly
+        .from("users")
+        .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, created_at")
+        .ilike("email", emailLower)
+        .maybeSingle();
 
-      const row = statusData?.[0];
+      const rClicks = Number(fbUser?.monetization_clicks ?? 0);
       const isExempt = isExemptFromBarriersAndInactivity(emailLower);
-      const clicksCount = Math.max(Number(row?.monetization_clicks || 0), liveClicksDelta, isExempt ? 300 : 0);
-      const isMonetized = isExempt || !!row?.monetized || clicksCount >= 300;
+      const clicksCount = Math.max(rClicks, liveClicksDelta);
+      const isMonetized = Boolean(
+        isExempt ||
+        fbUser?.monetized === true ||
+        fbUser?.monetized === "true" ||
+        fbUser?.monetized === "yes" ||
+        clicksCount >= 300
+      );
 
+      const tierDetails = computeAtwTierDetails(clicksCount, fbUser?.atw_tier, isExempt);
       payload = {
         success: true,
         isMonetized,
         clicksCount,
-        clicksRemaining: isExempt ? 0 : Math.max(0, 300 - clicksCount),
-        targetClicks: 300,
-        atwTier: row?.atw_tier || "ATW1",
-        daysInactive: isExempt ? 0 : Number(row?.days_inactive || 0),
-        statusMessage: isExempt ? null : row?.status_message || null,
+        clicksRemaining: tierDetails.clicksRemaining,
+        targetClicks: tierDetails.currentMilestoneTarget,
+        atwTier: tierDetails.tierCode,
+        atwLevel: tierDetails.level,
+        isUnlimited: tierDetails.isUnlimited,
+        holdingCap: tierDetails.isUnlimited ? null : tierDetails.holdingCap,
+        balance: Number(fbUser?.balance ?? 0),
+        daysInactive: 0,
+        statusMessage: null,
       };
     } else {
       const isExempt = isExemptFromBarriersAndInactivity(emailLower, uData as any);
-      const dbClicks = uData.monetization_clicks ?? 0;
+      let dbClicks = Number(uData.monetization_clicks || 0);
+
+      // Self-heal if dbClicks was polluted with the legacy 300 floor on an exempt account
+      if (isExempt && dbClicks === 300) {
+        try {
+          const { data: impRows } = await supabaseReadOnly
+            .from("ad_impressions")
+            .select("view_count")
+            .ilike("user_email", emailLower);
+          const actualImpSum = (impRows || []).reduce((acc, r: any) => acc + (Number(r.view_count) || 1), 0);
+          if (actualImpSum < 290) {
+            dbClicks = actualImpSum;
+            await supabaseAdmin
+              .from("users")
+              .update({ monetization_clicks: dbClicks })
+              .eq("id", uData.id);
+          }
+        } catch {}
+      }
+
       const clicks = Math.max(dbClicks, liveClicksDelta);
       const isMonetized = !!(
         isExempt ||
@@ -101,23 +149,51 @@ export async function GET(req: NextRequest) {
       }
 
       let effectiveMonetized = isMonetized;
-      let effectiveClicks = isExempt ? Math.max(clicks, 300) : clicks;
+      let effectiveClicks = clicks;
 
       // Immediately enforce 7-day inactivity reset if threshold reached (skip for exempt accounts)
       if (!isExempt && daysInactive >= 7 && (isMonetized || clicks > 0)) {
-        await supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower });
+        try {
+          const res = await supabaseAdmin.rpc("check_and_update_monetization_status", { user_email_param: emailLower });
+          if (res.error) {
+            await supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower });
+          }
+        } catch {
+          try {
+            await supabaseAdmin.rpc("check_and_update_monetization_status", { p_email: emailLower });
+          } catch {}
+        }
         if (isRedisReady()) {
-          await redisConnection.del(`user:live_clicks:${emailLower}`).catch(() => {});
+          await redisConnection.del(`user:live_clicks:v2:${emailLower}`).catch(() => {});
         }
         effectiveMonetized = false;
         effectiveClicks = 0;
       }
 
-      const { level: computedLevel } = calculateAtwTier(effectiveClicks);
-      const dbLevelMatch = (uData.atw_tier || "ATW1").match(/\d+/);
-      const dbLevel = dbLevelMatch ? parseInt(dbLevelMatch[0], 10) : 1;
-      const finalLevel = Math.max(dbLevel, computedLevel);
-      const effectiveAtwTier = `ATW${Math.min(3, Math.max(1, finalLevel))}`;
+      const tierDetails = computeAtwTierDetails(
+        effectiveClicks,
+        effectiveClicks === 0 && !isExempt ? "ATW1" : uData.atw_tier,
+        isExempt
+      );
+      const effectiveAtwTier = tierDetails.tierCode;
+
+      // Guarantee DB is never behind Redis live count when user checks monetization
+      if (effectiveClicks > dbClicks) {
+        supabaseAdmin
+          .from("users")
+          .update({
+            monetization_clicks: effectiveClicks,
+            atw_tier: effectiveAtwTier,
+            ...(effectiveMonetized && uData.monetized !== "true" && uData.monetized !== true ? { monetized: "true" } : {}),
+          })
+          .ilike("email", emailLower)
+          .then(() => {});
+      }
+
+      // Synchronize Redis live_clicks with effective count
+      if (isRedisReady() && effectiveClicks > liveClicksDelta) {
+        redisConnection.set(`user:live_clicks:v2:${emailLower}`, String(effectiveClicks), "EX", 86400 * 30).catch(() => {});
+      }
 
       if (effectiveAtwTier !== uData.atw_tier || (effectiveMonetized && uData.monetized !== "true" && uData.monetized !== true)) {
         supabaseAdmin
@@ -126,19 +202,21 @@ export async function GET(req: NextRequest) {
             atw_tier: effectiveAtwTier,
             monetized: effectiveMonetized ? "true" : "false",
           })
-          .eq("email", emailLower)
+          .eq("id", uData.id)
           .then(() => {});
       }
-
-      const nextTargetClicks = effectiveClicks < 300 ? 300 : effectiveClicks < 600 ? 600 : 900;
 
       payload = {
         success: true,
         isMonetized: effectiveMonetized,
         clicksCount: effectiveClicks,
-        clicksRemaining: Math.max(0, nextTargetClicks - effectiveClicks),
-        targetClicks: nextTargetClicks,
+        clicksRemaining: tierDetails.clicksRemaining,
+        targetClicks: tierDetails.currentMilestoneTarget,
         atwTier: effectiveAtwTier,
+        atwLevel: tierDetails.level,
+        isUnlimited: tierDetails.isUnlimited,
+        holdingCap: tierDetails.isUnlimited ? null : tierDetails.holdingCap,
+        balance: Number(uData.balance || 0),
         referralCode: uData.referral_code || null,
         daysInactive,
         lastActiveAt: uData.last_active_at || null,

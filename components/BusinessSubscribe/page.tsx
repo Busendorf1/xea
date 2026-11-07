@@ -7,7 +7,7 @@ import {
   CheckCircle2,
   Globe,
   ShieldCheck,
-  Sparkles,
+  TrendingUp,
   Building2,
   Lock,
   Clock,
@@ -245,7 +245,7 @@ export default function BusinessSubscribeComponent() {
       <div className={styles.featureGrid}>
         <div className={styles.featureCard}>
           <div className={`${styles.featureIcon} ${styles.green}`}>
-            <Sparkles size={22} color="#10b981" />
+            <TrendingUp size={22} color="#10b981" />
           </div>
           <h3 className={styles.featureTitle}>30% Cost Reduction</h3>
           <p className={styles.featureDesc}>

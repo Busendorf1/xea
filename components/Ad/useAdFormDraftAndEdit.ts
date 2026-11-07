@@ -14,6 +14,7 @@ export const initialFormSelections: AdFormSelections = {
   targetingAll: false,
   impressions: 1000,
   campaignDays: 5,
+  scheduledStartAt: "",
   userFrequencyCap: 1,
   country: "",
   state: "",
@@ -61,13 +62,17 @@ export function useAdFormDraftAndEdit() {
 
   // Restore saved draft state on mount
   useEffect(() => {
-    if (editingId) return;
+    if (editingId || editAdId) return;
+    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_ad_id")) return;
     try {
       const saved = localStorage.getItem("paayh_draft_ad_v1");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (typeof parsed.step === "number") setStep(parsed.step);
-        if (parsed.adType) setAdType(parsed.adType);
+        if (parsed.adType) {
+          prevAdTypeRef.current = parsed.adType;
+          setAdType(parsed.adType);
+        }
         if (typeof parsed.isBiddingEnabled === "boolean") setIsBiddingEnabled(parsed.isBiddingEnabled);
         if (parsed.bidPrice) setBidPrice(parsed.bidPrice);
         if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
@@ -80,11 +85,12 @@ export function useAdFormDraftAndEdit() {
         }
       }
     } catch {}
-  }, [editingId]);
+  }, [editingId, editAdId]);
 
   // Autosave draft state on changes (debounced 400ms)
   useEffect(() => {
-    if (editingId) return;
+    if (editingId || editAdId) return;
+    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_ad_id")) return;
     const timer = setTimeout(() => {
       try {
         const { adMediaFiles, ...restSelections } = formSelections;
@@ -100,7 +106,7 @@ export function useAdFormDraftAndEdit() {
       } catch {}
     }, 400);
     return () => clearTimeout(timer);
-  }, [step, adType, isBiddingEnabled, bidPrice, isAiContent, formSelections, editingId]);
+  }, [step, adType, isBiddingEnabled, bidPrice, isAiContent, formSelections, editingId, editAdId]);
 
   const loadAdForEdit = async (targetId: string) => {
     if (!targetId) return;
@@ -113,7 +119,13 @@ export function useAdFormDraftAndEdit() {
         const ad = data.ad;
         setIsDeliveringActive(!!data.isDeliveringActive);
         setOriginalTotalCost(Number(data.originalTotalCost || ad.total_cost || 0));
-        if (ad.ad_type) setAdType(ad.ad_type);
+        if (ad.ad_type) {
+          prevAdTypeRef.current = ad.ad_type;
+          setAdType(ad.ad_type);
+        }
+        if (typeof ad.is_ai_content === "boolean") {
+          setIsAiContent(ad.is_ai_content);
+        }
         setFormSelections((prev) => ({
           ...prev,
           industry: Array.isArray(ad.industry) ? ad.industry : ad.industry ? [ad.industry] : [],
@@ -125,6 +137,7 @@ export function useAdFormDraftAndEdit() {
           targetingAll: !!ad.targeting_all,
           impressions: ad.impressions || 1000,
           campaignDays: ad.campaign_days || 5,
+          scheduledStartAt: ad.scheduled_start_at ? String(ad.scheduled_start_at).slice(0, 10) : "",
           userFrequencyCap: ad.user_frequency_cap || 1,
           country: ad.country || "",
           state: ad.state || "",

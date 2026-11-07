@@ -8,8 +8,7 @@ import {
   Image as ImageIcon,
   Video,
   Layers,
-  Crown,
-  Zap,
+  ShieldCheck,
   MessageCircle,
   Phone,
   Globe,
@@ -334,7 +333,7 @@ export default function Step3Creative({
           <div className={`${styles.modernSectionCard} ${styles.adminPrivilegeCard}`}>
             <div className={`${styles.modernSectionHeader} ${styles.adminPrivilegeHeader}`}>
               <span className={`${styles.modernSectionTitle} ${styles.adminPrivilegeTitle}`}>
-                <Crown size={16} color="var(--primary)" /> Admin Privilege: Custom Branding
+                <ShieldCheck size={16} color="var(--primary)" /> Admin Privilege: Custom Branding
               </span>
               <span className={`${styles.modernSectionBadge} ${styles.adminPrivilegeBadge}`}>
                 Free Publishing Active
@@ -802,7 +801,7 @@ export default function Step3Creative({
                         const meta = buttonMetaMap[type] || {
                           title: type.toUpperCase().replace("_", " "),
                           subtitle: "Custom interactive action",
-                          icon: <Zap size={18} />,
+                          icon: <Globe size={18} />,
                           previewLabel: type,
                           inputType: "text",
                           placeholder: "",

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 import { spendWalletBalanceAtomic } from "@/lib/services/payoutSettlementService";
 import { invalidateCachedProfile, invalidateCachedUserCampaigns } from "@/lib/utils/cache";
 import crypto from "crypto";
@@ -13,17 +13,20 @@ export async function POST(req: NextRequest) {
   let walletLockKey: string | null = null;
   let lockAcquired = false;
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const {
-      adId,
+      adId: rawAdId,
+      highlightId,
       additionalImpressions = 0,
       additionalDays = 0,
       newCostPerImpression,
+      newBidPrice,
       paymentMethod = "wallet", // "wallet" | "card"
+      callbackUrl: clientCallbackUrl,
       userFrequencyCap,
       gender,
       country,
@@ -33,6 +36,7 @@ export async function POST(req: NextRequest) {
       interest
     } = await req.json();
 
+    const adId = rawAdId || highlightId;
     if (!adId) {
       return NextResponse.json({ error: "Ad ID is required" }, { status: 400 });
     }
@@ -45,31 +49,58 @@ export async function POST(req: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
 
-    // 1. Fetch current campaign details from adds, addsactive, news, or newsactive
-    let { data: ad } = await supabaseAdmin
-      .from("adds")
+    // 1. Fetch current campaign details from active tables first, then completed, then review queues
+    let ad: any = null;
+    let sourceTable: "addsactive" | "completed_ads" | "adds" | "newsactive" | "news" = "addsactive";
+    let isHighlight = false;
+
+    // Check live active ads first
+    const { data: activeAd } = await supabaseAdmin
+      .from("addsactive")
       .select("*")
       .eq("id", adId)
       .maybeSingle();
 
-    if (!ad) {
-      const { data: activeAd } = await supabaseAdmin
-        .from("addsactive")
+    if (activeAd) {
+      ad = activeAd;
+      sourceTable = "addsactive";
+    } else {
+      // Check recently completed ads (for re-boosting/top-up)
+      const { data: completedAd } = await supabaseAdmin
+        .from("completed_ads")
         .select("*")
         .eq("id", adId)
         .maybeSingle();
-      ad = activeAd;
+
+      if (completedAd) {
+        ad = completedAd;
+        sourceTable = "completed_ads";
+      } else {
+        // Check review queue
+        const { data: queueAd } = await supabaseAdmin
+          .from("adds")
+          .select("*")
+          .eq("id", adId)
+          .maybeSingle();
+
+        if (queueAd) {
+          ad = queueAd;
+          sourceTable = "adds";
+        }
+      }
     }
 
-    let isHighlight = false;
+    // If not found in ad tables, check highlights
     if (!ad) {
       const { data: activeHl } = await supabaseAdmin
         .from("newsactive")
         .select("*")
         .eq("id", adId)
         .maybeSingle();
+
       if (activeHl) {
         ad = activeHl;
+        sourceTable = "newsactive";
         isHighlight = true;
       } else {
         const { data: reviewHl } = await supabaseAdmin
@@ -77,8 +108,10 @@ export async function POST(req: NextRequest) {
           .select("*")
           .eq("id", adId)
           .maybeSingle();
+
         if (reviewHl) {
           ad = reviewHl;
+          sourceTable = "news";
           isHighlight = true;
         }
       }
@@ -106,15 +139,25 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // 2. Check if ad has an admin statement (deactivated or flagged by admin)
-    if (ad.admin_statement && ad.admin_statement.trim() !== "") {
+    // 2. Check if ad has an admin statement (deactivated or flagged by admin for moderation)
+    // NOTE: APPROVED:, STATUS:, and REJECTED: prefixes are system workflow timestamps, NOT admin pause penalties!
+    const isPausedByAdmin = Boolean(
+      ad.admin_statement &&
+      typeof ad.admin_statement === "string" &&
+      ad.admin_statement.trim() !== "" &&
+      !ad.admin_statement.startsWith("APPROVED:") &&
+      !ad.admin_statement.toLowerCase().startsWith("status:") &&
+      !ad.admin_statement.startsWith("REJECTED:")
+    );
+
+    if (isPausedByAdmin) {
       return NextResponse.json({
         error: `Boosting Unavailable: This campaign was paused by an administrator. Reason: "${ad.admin_statement}". Please resolve the notice or wait for admin review.`
       }, { status: 400 });
     }
 
-    // 3. Check if ad is paused by user
-    if (ad.is_paused) {
+    // 3. Check if ad is manually paused by user (completed ads are reactivated by top-up)
+    if (ad.is_paused && sourceTable !== "completed_ads") {
       return NextResponse.json({
         error: "Boosting Unavailable: This campaign is currently paused. Please resume the campaign first to boost it."
       }, { status: 400 });
@@ -124,19 +167,29 @@ export async function POST(req: NextRequest) {
       ? (ad.is_bidded && ad.bid_price ? Number(ad.bid_price) : 1000)
       : Math.max(15, Number(ad.cost_per_impression || 25));
 
-    const effectiveCost = newCostPerImpression && Number(newCostPerImpression) > currentCost
-      ? Number(newCostPerImpression)
+    const requestedRate = newCostPerImpression ?? newBidPrice;
+    const effectiveCost = requestedRate && Number(requestedRate) > currentCost
+      ? Number(requestedRate)
       : currentCost;
 
-    // Calculate total cost
+    const remainingImpressions = Math.max(
+      1,
+      Number(ad.impressions || 1000) - Number(ad.impression_count || 0)
+    );
+
+    // Calculate total cost (unified across Web, Mobile, and Edge Function)
     const totalCost = isHighlight
       ? Number((
           (addDaysNum > 0 ? addDaysNum * effectiveCost : 0) +
-          (newCostPerImpression && Number(newCostPerImpression) > currentCost
-            ? (Number(newCostPerImpression) - currentCost) * Number(ad.campaign_days || 1)
+          (requestedRate && Number(requestedRate) > currentCost
+            ? (Number(requestedRate) - currentCost) * Number(ad.campaign_days || 1)
             : 0)
         ).toFixed(2))
-      : Number((addImpressionsNum * effectiveCost).toFixed(2));
+      : Number((
+          addImpressionsNum > 0
+            ? addImpressionsNum * effectiveCost
+            : (effectiveCost > currentCost ? (effectiveCost - currentCost) * remainingImpressions : 0)
+        ).toFixed(2));
 
     // Build targeting & specs update object
     const updatePayload: Record<string, any> = {
@@ -175,13 +228,26 @@ export async function POST(req: NextRequest) {
       if (interest) updatePayload.interest = Array.isArray(interest) ? interest : [interest];
     }
 
-    // Handle Payment Method
-    if (totalCost === 0) {
-      // Free targeting/specs update without adding cost!
+    // Helper to commit updates across PostgreSQL, Redis, and reactivation tables
+    const applyCampaignDatabaseUpdates = async () => {
       if (isHighlight) {
         await Promise.all([
           supabaseAdmin.from("news").update(updatePayload).eq("id", adId),
           supabaseAdmin.from("newsactive").update(updatePayload).eq("id", adId),
+        ]);
+      } else if (sourceTable === "completed_ads") {
+        // Reactivate completed ad back into live addsactive table
+        const reactivatedAd = {
+          ...ad,
+          ...updatePayload,
+          completed_at: null,
+          is_paused: false,
+          created_at: new Date().toISOString(),
+        };
+        await Promise.all([
+          supabaseAdmin.from("addsactive").upsert([reactivatedAd]),
+          supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
+          supabaseAdmin.from("completed_ads").delete().eq("id", adId),
         ]);
       } else {
         await Promise.all([
@@ -189,23 +255,63 @@ export async function POST(req: NextRequest) {
           supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
         ]);
       }
+
+      // Update bidded_ads and Redis ranking whenever priority bid > 25
+      if (!isHighlight && effectiveCost > 25) {
+        try {
+          const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
+          await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId);
+          await supabaseAdmin.from("bidded_ads").insert({
+            ad_id: adId,
+            user_email: emailLower,
+            industry: adIndustry,
+            bid_price: effectiveCost,
+            is_active: true,
+          });
+          await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, adId).catch(() => {});
+          await redisConnection.del("attention:market_rates").catch(() => {});
+        } catch (bidErr) {
+          console.warn("⚠️ bidded_ads update notice in boost:", bidErr);
+        }
+      }
+
+      // Immediately invalidate L1 and L2 feed & highlight caches so the boost priority takes effect in 0ms
+      try {
+        const { evictAdFromL1FeedCaches, invalidateSharedHighlightsPool } = await import("@/lib/utils/cache");
+        if (isHighlight) {
+          invalidateSharedHighlightsPool();
+        } else {
+          evictAdFromL1FeedCaches();
+        }
+      } catch {}
+      if (isRedisReady()) {
+        redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1", "highlights:active_pool:v3").catch(() => {});
+      }
+    };
+
+    // Handle Payment Method
+    if (totalCost === 0) {
+      // Free targeting/specs update or priority rate change without adding cost!
+      await applyCampaignDatabaseUpdates();
       await invalidateCachedUserCampaigns(emailLower).catch(() => {});
       return NextResponse.json({
         success: true,
-        message: "Campaign targeting and frequency settings updated successfully!"
+        message: "Campaign settings and priority rate updated successfully!"
       });
     }
 
     if (paymentMethod === "wallet") {
       walletLockKey = `lock:wallet:${emailLower}`;
-      const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
-      if (!acquired) {
-        return NextResponse.json(
-          { error: "Another wallet transaction is currently in progress. Please wait a moment." },
-          { status: 429 }
-        );
+      if (isRedisReady()) {
+        const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
+        if (!acquired) {
+          return NextResponse.json(
+            { error: "Another wallet transaction is currently in progress. Please wait a moment." },
+            { status: 429 }
+          );
+        }
+        lockAcquired = true;
       }
-      lockAcquired = true;
 
       const reference = `wallet_boost_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
       const spendRes = await spendWalletBalanceAtomic(
@@ -224,90 +330,83 @@ export async function POST(req: NextRequest) {
       const newBalance = spendRes.newBalance ?? 0;
 
       // Log wallet transaction in payments table
-      await supabaseAdmin.from("payments").insert({
-        user_email: emailLower,
-        reference,
-        amount: totalCost,
-        status: "success",
-        type: isHighlight ? "boost_highlight" : "boost_campaign",
-        description: isHighlight
-          ? `Non-refundable Boost priority top-up for Highlight #${adId.substring(0, 8)}`
-          : `Non-refundable Boost priority top-up for Ad #${adId.substring(0, 8)}`,
-        metadata: {
-          ad_id: adId,
+      try {
+        await supabaseAdmin.from("payments").insert({
+          user_email: emailLower,
+          reference,
+          amount: totalCost,
+          status: "success",
           type: isHighlight ? "boost_highlight" : "boost_campaign",
-          is_highlight: isHighlight,
-          additional_impressions: addImpressionsNum,
-          additional_days: addDaysNum,
-          cost_per_impression: effectiveCost,
-          payment_method: "wallet",
-          non_refundable: true,
-        }
-      });
-
-      // Update both review and active tables
-      if (isHighlight) {
-        await Promise.all([
-          supabaseAdmin.from("news").update(updatePayload).eq("id", adId),
-          supabaseAdmin.from("newsactive").update(updatePayload).eq("id", adId),
-        ]);
-      } else {
-        await Promise.all([
-          supabaseAdmin.from("adds").update(updatePayload).eq("id", adId),
-          supabaseAdmin.from("addsactive").update(updatePayload).eq("id", adId),
-        ]);
-      }
-
-      if (!isHighlight && effectiveCost > 25) {
-        try {
-          const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
-          await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId);
-          await supabaseAdmin.from("bidded_ads").insert({
+          description: isHighlight
+            ? `Non-refundable Boost priority top-up for Highlight #${adId.substring(0, 8)}`
+            : `Non-refundable Boost priority top-up for Ad #${adId.substring(0, 8)}`,
+          metadata: {
             ad_id: adId,
-            user_email: emailLower,
-            industry: adIndustry,
-            bid_price: effectiveCost,
-            is_active: true,
-          });
-          await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, adId).catch(() => {});
-          await redisConnection.del("attention:market_rates").catch(() => {});
-        } catch (bidErr) {
-          console.warn("⚠️ bidded_ads update notice in wallet boost:", bidErr);
-        }
+            type: isHighlight ? "boost_highlight" : "boost_campaign",
+            is_highlight: isHighlight,
+            additional_impressions: addImpressionsNum,
+            additional_days: addDaysNum,
+            cost_per_impression: effectiveCost,
+            payment_method: "wallet",
+            non_refundable: true,
+          }
+        });
+      } catch (payLogErr) {
+        console.warn("⚠️ Boost payment log notice:", payLogErr);
       }
+
+      // Update tables and bidded_ads
+      await applyCampaignDatabaseUpdates();
 
       await invalidateCachedProfile(emailLower);
       await invalidateCachedUserCampaigns(emailLower).catch(() => {});
 
-      // Insert notification
-      await supabaseAdmin.from("notifications").insert({
-        user_email: emailLower,
-        title: isHighlight ? "Highlight Priority Boosted" : "Campaign Priority Boosted",
-        message: isHighlight
-          ? `Your highlight has been successfully boosted with priority daily bid ₦${effectiveCost.toLocaleString()} and ${addDaysNum} additional days.`
-          : `Your campaign has been successfully boosted with priority bid ₦${effectiveCost.toLocaleString()} and ${addImpressionsNum} additional impressions.`,
-      });
+      // Insert concise notification & dispatch fast webhook
+      const boostedAt = new Date().toISOString();
+      try {
+        const notifRow = {
+          user_email: emailLower,
+          title: isHighlight ? "Highlight Boosted" : "Campaign Boosted",
+          message: isHighlight
+            ? `Boosted with ₦${totalCost.toLocaleString()} (+${addDaysNum}d, ₦${effectiveCost.toLocaleString()}/day).`
+            : `Boosted with ₦${totalCost.toLocaleString()} (+${addImpressionsNum.toLocaleString()} attentions, ₦${effectiveCost.toLocaleString()}/view).`,
+          created_at: boostedAt,
+        };
+        await supabaseAdmin.from("notifications").insert(notifRow);
+        const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+        dispatchNotificationWebhook(notifRow).catch(() => {});
+      } catch (notifErr) {
+        console.warn("⚠️ Boost notification notice:", notifErr);
+      }
 
       return NextResponse.json({
         success: true,
         paymentMethod: "wallet",
         totalCost,
+        boostedAmount: totalCost,
+        boostedAt,
         newBalance,
         message: isHighlight
-          ? `Highlight boosted successfully! Schedule duration and priority delivery have been updated and are actively delivering.`
-          : `Campaign topped up successfully! ₦${totalCost.toLocaleString()} deducted from wallet balance.`
+          ? `Boosted with ₦${totalCost.toLocaleString()}! Priority spotlight delivery is now active.`
+          : `Boosted with ₦${totalCost.toLocaleString()}! Priority feed delivery is now active.`,
       });
 
     } else if (paymentMethod === "card") {
       // Generate secure payment link via Paystack / Gateway for card/bank transfer
       const reference = `BOOST-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-      const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
-      
-      const origin = req.headers.get("origin") || "http://localhost:3000";
+
+      const origin = req.headers.get("origin") || req.nextUrl?.origin || "http://localhost:3000";
       const isMobile = !!req.headers.get("x-user-email") && !req.headers.get("origin")?.includes("http");
-      const callbackUrl = isMobile 
-        ? "xea-auth://payment-callback"
-        : `${origin}/logged-in?boost_ref=${reference}${isHighlight ? "&type=highlight&tab=highlights" : ""}`;
+      const baseCallback =
+        typeof clientCallbackUrl === "string" && clientCallbackUrl.trim() !== ""
+          ? clientCallbackUrl.trim()
+          : isMobile
+          ? "xea-auth://payment-callback"
+          : `${origin}/logged-in`;
+      const separator = baseCallback.includes("?") ? "&" : "?";
+      const callbackUrl = `${baseCallback}${separator}boost_ref=${encodeURIComponent(reference)}${
+        isHighlight ? "&type=highlight&tab=highlights" : ""
+      }`;
 
       // Insert pending payment record so verify endpoint and webhooks recognize it
       await supabaseAdmin.from("payments").insert({

@@ -3,7 +3,7 @@ import redisConnection, { isRedisReady } from "@/lib/redis";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 
 export interface EarningWebhookPayload {
-  event: "ad.earned" | "balance.updated" | "monetization.achieved";
+  event: "ad.earned" | "balance.updated" | "monetization.achieved" | "ad.seen" | "ad.mutual_added";
   timestamp: number;
   data: {
     userEmail: string;
@@ -12,7 +12,24 @@ export interface EarningWebhookPayload {
     newBalance: number;
     clicks: number;
     monetized: boolean;
+    atwTier?: string;
+    impressionCount?: number;
+    mutualAdded?: string | null;
+    mutualCount?: number;
     deviceId?: string | null;
+  };
+}
+
+export interface ImpressionWebhookPayload {
+  event: "ad.seen" | "monetization.updated" | "campaign.impression";
+  timestamp: number;
+  data: {
+    userEmail: string;
+    adId: string;
+    clicksCount: number;
+    isMonetized: boolean;
+    impressionCount?: number;
+    atwTier?: string;
   };
 }
 
@@ -26,6 +43,19 @@ export interface FeedDropWebhookPayload {
 }
 
 export const LIVE_FEED_DROP_CHANNEL = "live:feed:new_ad";
+export const LIVE_NOTIFICATION_CHANNEL = "live:notifications";
+
+export interface NotificationWebhookPayload {
+  event: "notification.created";
+  timestamp: number;
+  data: {
+    id?: string;
+    user_email: string;
+    title: string;
+    message: string;
+    created_at: string;
+  };
+}
 
 /**
  * Signs an outgoing webhook payload using HMAC-SHA256.
@@ -46,11 +76,77 @@ export function getWebhookSecret(): string {
 }
 
 /**
- * Dispatches an asynchronous earning event webhook to external platforms,
- * mobile push notification relays, and partner integrations.
+ * Dispatches an asynchronous earning / mutual / seen event webhook to external platforms,
+ * Redis PubSub channels, and Supabase Realtime broadcast channels for 0ms client sync.
  * Executes non-blockingly (fire-and-forget with background error trapping).
  */
 export async function dispatchEarningWebhook(payload: EarningWebhookPayload): Promise<void> {
+  const emailKey = String(payload.data?.userEmail || "").toLowerCase().trim();
+  const payloadString = JSON.stringify(payload);
+
+  // 1. Invalidate L2 monetization cache & publish on Redis PubSub
+  try {
+    if (emailKey && isRedisReady()) {
+      const pipe = redisConnection.pipeline();
+      pipe.del(`monetize:status:${emailKey}`);
+      if (typeof payload.data.clicks === "number" && payload.data.clicks > 0) {
+        pipe.set(`user:live_clicks:${emailKey}`, String(payload.data.clicks), "EX", 3600);
+      }
+      pipe.publish(`live:monetization:${emailKey}`, payloadString);
+      await pipe.exec().catch(() => {});
+    }
+  } catch {}
+
+  // 2. Push zero-latency Supabase Realtime webhook broadcast to connected mobile/web clients
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (supabaseUrl && serviceKey && emailKey) {
+    const userTopic = `realtime:user:${emailKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    (async () => {
+      try {
+        const messages: any[] = [
+          {
+            topic: userTopic,
+            event: "monetization_updated",
+            payload: {
+              userEmail: emailKey,
+              adId: payload.data.adId,
+              clicksCount: payload.data.clicks,
+              isMonetized: payload.data.monetized,
+              newBalance: payload.data.newBalance,
+              earnedAmount: payload.data.amount,
+              impressionCount: payload.data.impressionCount,
+              mutualAdded: payload.data.mutualAdded || null,
+              mutualCount: payload.data.mutualCount,
+              timestamp: payload.timestamp,
+            },
+          },
+        ];
+        if (payload.data.adId) {
+          messages.push({
+            topic: "campaigns_realtime",
+            event: "campaign_impression",
+            payload: {
+              adId: payload.data.adId,
+              impressionCount: payload.data.impressionCount,
+              timestamp: payload.timestamp,
+            },
+          });
+        }
+        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ messages }),
+        });
+      } catch {}
+    })();
+  }
+
+  // 3. Signed HTTP Webhook delivery (if external URL configured)
   const webhookUrl = process.env.EARNING_WEBHOOK_URL || process.env.NEXT_PUBLIC_WEBHOOK_URL;
   const webhookSecret = getWebhookSecret();
 
@@ -58,7 +154,6 @@ export async function dispatchEarningWebhook(payload: EarningWebhookPayload): Pr
     return;
   }
 
-  const payloadString = JSON.stringify(payload);
   const timestamp = Date.now().toString();
   const nonce = crypto.randomUUID();
   const signaturePayload = `${timestamp}.${nonce}.${payloadString}`;
@@ -93,6 +188,106 @@ export async function dispatchEarningWebhook(payload: EarningWebhookPayload): Pr
       }
     }
   })();
+}
+
+/**
+ * Dispatches an ultra-fast (<5ms non-blocking) webhook & Realtime broadcast whenever
+ * a user clicks "Seen" on an ad so Monetization Hub, Ad Manager, Web, and Mobile
+ * reflect the exact incremented counter in real time.
+ */
+export async function dispatchImpressionWebhook(payload: ImpressionWebhookPayload): Promise<void> {
+  const emailKey = String(payload.data?.userEmail || "").toLowerCase().trim();
+  const payloadString = JSON.stringify(payload);
+
+  try {
+    if (emailKey && isRedisReady()) {
+      const pipe = redisConnection.pipeline();
+      pipe.del(`monetize:status:${emailKey}`);
+      if (typeof payload.data.clicksCount === "number" && payload.data.clicksCount > 0) {
+        pipe.set(`user:live_clicks:${emailKey}`, String(payload.data.clicksCount), "EX", 3600);
+      }
+      pipe.publish(`live:monetization:${emailKey}`, payloadString);
+      await pipe.exec().catch(() => {});
+    }
+  } catch {}
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (supabaseUrl && serviceKey && emailKey) {
+    const userTopic = `realtime:user:${emailKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    (async () => {
+      try {
+        const messages: any[] = [
+          {
+            topic: userTopic,
+            event: "monetization_updated",
+            payload: {
+              userEmail: emailKey,
+              adId: payload.data.adId,
+              clicksCount: payload.data.clicksCount,
+              isMonetized: payload.data.isMonetized,
+              impressionCount: payload.data.impressionCount,
+              atwTier: payload.data.atwTier,
+              timestamp: payload.timestamp,
+            },
+          },
+        ];
+        if (payload.data.adId) {
+          messages.push({
+            topic: "campaigns_realtime",
+            event: "campaign_impression",
+            payload: {
+              adId: payload.data.adId,
+              impressionCount: payload.data.impressionCount,
+              timestamp: payload.timestamp,
+            },
+          });
+        }
+        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ messages }),
+        });
+      } catch {}
+    })();
+  }
+
+  const webhookUrl =
+    process.env.IMPRESSION_WEBHOOK_URL ||
+    process.env.EARNING_WEBHOOK_URL ||
+    process.env.NEXT_PUBLIC_WEBHOOK_URL;
+  const webhookSecret = getWebhookSecret();
+
+  if (webhookUrl && webhookSecret) {
+    const timestamp = Date.now().toString();
+    const nonce = crypto.randomUUID();
+    const signaturePayload = `${timestamp}.${nonce}.${payloadString}`;
+    const signature = signWebhookPayload(signaturePayload, webhookSecret);
+
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Xea-Signature-256": signature,
+            "X-Xea-Timestamp": timestamp,
+            "X-Xea-Nonce": nonce,
+            "User-Agent": "Xea-Impression-Webhook/2.0",
+          },
+          body: payloadString,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch {}
+    })();
+  }
 }
 
 /**
@@ -193,3 +388,109 @@ export async function dispatchFeedDropWebhook(
     console.warn("⚠️ dispatchFeedDropWebhook warning:", err?.message || err);
   }
 }
+
+/**
+ * High-speed notification webhook & Redis PubSub dispatcher.
+ * Invalidates the user's L2 notification cache, broadcasts on `live:notifications`,
+ * and dispatches a signed HTTP webhook in <5ms non-blockingly.
+ */
+export async function dispatchNotificationWebhook(notification: {
+  id?: string;
+  user_email: string;
+  title: string;
+  message: string;
+  created_at?: string;
+}): Promise<void> {
+  const emailKey = String(notification.user_email || "").toLowerCase().trim();
+  if (!emailKey) return;
+
+  const createdAt = notification.created_at || new Date().toISOString();
+  const payload: NotificationWebhookPayload = {
+    event: "notification.created",
+    timestamp: Date.now(),
+    data: {
+      id: notification.id || crypto.randomUUID(),
+      user_email: emailKey,
+      title: notification.title,
+      message: notification.message,
+      created_at: createdAt,
+    },
+  };
+
+  const payloadString = JSON.stringify(payload);
+
+  try {
+    if (isRedisReady()) {
+      const pipe = redisConnection.pipeline();
+      pipe.del(`notifications:${emailKey}`);
+      pipe.publish(LIVE_NOTIFICATION_CHANNEL, payloadString);
+      pipe.publish(`${LIVE_NOTIFICATION_CHANNEL}:${emailKey}`, payloadString);
+      await pipe.exec().catch(() => {});
+    }
+  } catch {}
+
+  // Push zero-latency Supabase Realtime webhook broadcast to connected mobile/web clients
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (supabaseUrl && serviceKey) {
+    const userTopic = `realtime:user:${emailKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    (async () => {
+      try {
+        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                topic: userTopic,
+                event: "notification",
+                payload: {
+                  ...payload.data,
+                  read: false,
+                },
+              },
+            ],
+          }),
+        });
+      } catch {}
+    })();
+  }
+
+  const webhookUrl =
+    process.env.NOTIFICATION_WEBHOOK_URL ||
+    process.env.EARNING_WEBHOOK_URL ||
+    process.env.NEXT_PUBLIC_WEBHOOK_URL;
+  const webhookSecret = getWebhookSecret();
+
+  if (webhookUrl && webhookSecret) {
+    const timestamp = Date.now().toString();
+    const nonce = crypto.randomUUID();
+    const signaturePayload = `${timestamp}.${nonce}.${payloadString}`;
+    const signature = signWebhookPayload(signaturePayload, webhookSecret);
+
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Xea-Signature-256": signature,
+            "X-Xea-Timestamp": timestamp,
+            "X-Xea-Nonce": nonce,
+            "User-Agent": "Xea-Notification-Webhook/2.0",
+          },
+          body: payloadString,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch {}
+    })();
+  }
+}
+

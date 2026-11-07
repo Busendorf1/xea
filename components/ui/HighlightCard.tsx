@@ -104,7 +104,7 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
               <>
                 <span className={styles.dot}>·</span>
                 <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                  AI Content
+                  AI
                 </span>
               </>
             )}

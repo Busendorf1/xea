@@ -88,6 +88,7 @@ export interface AdFormSelections {
   targetingAll: boolean;
   impressions: number;
   campaignDays: number;
+  scheduledStartAt: string;
   userFrequencyCap: number;
   country: string;
   state: string;

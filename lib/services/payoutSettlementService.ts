@@ -256,8 +256,8 @@ export async function spendWalletBalanceAtomic(
   // Fallback if migration 007 RPC is not yet applied: guarded conditional update
   const { data: user, error: userErr } = await supabaseAdmin
     .from("users")
-    .select("balance")
-    .eq("email", cleanEmail)
+    .select("id, balance")
+    .ilike("email", cleanEmail)
     .maybeSingle();
 
   if (userErr || !user) {
@@ -273,7 +273,7 @@ export async function spendWalletBalanceAtomic(
   const { data: updated, error: updateErr } = await supabaseAdmin
     .from("users")
     .update({ balance: newBalance })
-    .eq("email", cleanEmail)
+    .eq("id", user.id)
     .gte("balance", normalizedAmount)
     .select("balance")
     .maybeSingle();
@@ -321,8 +321,8 @@ export async function refundWalletDeductionAtomic(
 
   const { data: user } = await supabaseAdmin
     .from("users")
-    .select("balance")
-    .eq("email", cleanEmail)
+    .select("id, balance")
+    .ilike("email", cleanEmail)
     .maybeSingle();
 
   if (user) {
@@ -330,6 +330,6 @@ export async function refundWalletDeductionAtomic(
     await supabaseAdmin
       .from("users")
       .update({ balance: restored })
-      .eq("email", cleanEmail);
+      .eq("id", user.id);
   }
 }

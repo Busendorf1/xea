@@ -513,31 +513,50 @@ export class KoraService {
     }
 
     const customerName = (metadata?.name as string) || email.split("@")[0] || "Paayh Customer";
+    const baseAppUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://paayh.com";
+    const isCustomScheme =
+      redirectUrl &&
+      !redirectUrl.startsWith("http://") &&
+      !redirectUrl.startsWith("https://");
 
-    const payload = {
+    const buildPayload = (targetRedirectUrl: string) => ({
       amount: amountInNaira,
       currency: "NGN",
       reference,
       narration: (narration || "Paayh Payment").slice(0, 100),
-      redirect_url: redirectUrl,
-      notification_url: `${process.env.NEXT_PUBLIC_BASE_URL || "https://paayh.com"}/api/payments/kora-webhook`,
+      redirect_url: targetRedirectUrl,
+      notification_url: `${baseAppUrl}/api/payments/kora-webhook`,
       customer: {
         name: customerName.slice(0, 60),
         email: email.toLowerCase().trim(),
       },
       metadata: cleanMetadata,
-    };
+    });
 
-    const response = await fetch(`${this.getBaseUrl()}/charges/initialize`, {
+    let response = await fetch(`${this.getBaseUrl()}/charges/initialize`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.getSecretKey()}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildPayload(redirectUrl)),
     });
 
-    const result = await response.json();
+    let result = await response.json();
+
+    // If Kora rejects a non-HTTP custom scheme (e.g. exp:// in Expo Go dev), bounce via HTTPS mobile-callback
+    if ((!response.ok || !result.status) && isCustomScheme) {
+      const bounceUrl = `${baseAppUrl}/api/payments/mobile-callback?redirect=${encodeURIComponent(redirectUrl)}`;
+      response = await fetch(`${this.getBaseUrl()}/charges/initialize`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.getSecretKey()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildPayload(bounceUrl)),
+      });
+      result = await response.json();
+    }
     if (!response.ok || !result.status) {
       let detailedErr = result.message || "Failed to initialize payment checkout on Korapay";
       if (result.data?.amount?.message) {

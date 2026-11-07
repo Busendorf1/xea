@@ -8,7 +8,7 @@ import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import RoleStarBadges from "@/components/ui/RoleStarBadges";
 import { AgentProfileStats } from "@/components/AgentSystem/AgentSystem";
-import { resolveAtwTier, getAtwBalanceLimit } from "@/lib/attentionTierEngine";
+import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { UserProfile } from "./types";
 import styles from "./page.module.css";
@@ -26,9 +26,11 @@ export default function DashboardProfileCard({
 }: DashboardProfileCardProps) {
   const [showAtwTooltip, setShowAtwTooltip] = useState(false);
 
-  const clicksCount = user.monetization_clicks ?? 0;
+  const clicksCount = Number(user.monetization_clicks ?? 0);
+  const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
   const isMonetized = Boolean(
-    user.monetized === "yes" ||
+    isExempt ||
+      user.monetized === "yes" ||
       user.monetized === "true" ||
       user.monetized === true ||
       clicksCount >= 300
@@ -49,14 +51,14 @@ export default function DashboardProfileCard({
     return new Date(user.lastUpdated).toLocaleDateString();
   })();
 
-  // ATW Tier calculations
-  const score = Number(user.attention_worth_score ?? 0);
-  const tier = resolveAtwTier(score);
-  const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
-  const balanceCap = getAtwBalanceLimit(tier.code, isExempt);
+  // ATW Tier & Balance Holding Cap calculations (driven by live 300-click steps & Unlimited for admins)
+  const tierDetails = computeAtwTierDetails(clicksCount, user.atw_tier, isExempt);
+  const balanceCap = tierDetails.holdingCap;
   const currentBal = Number(user.balance ?? 0);
-  const ratio = isExempt ? 0 : Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
-  const pct = isExempt ? 0 : Math.round(ratio * 100);
+  const ratio = tierDetails.isUnlimited
+    ? 0
+    : Math.min(1, Math.max(0, currentBal / (balanceCap || 30000)));
+  const pct = tierDetails.isUnlimited ? 0 : Math.round(ratio * 100);
 
   let stateColor = "var(--foreground)";
   let stateColorClass = styles.stateColorNormal;
@@ -149,7 +151,7 @@ export default function DashboardProfileCard({
 
           {/* ATW Level + Interactive Circular Gauge & Tooltip */}
           <div className={`${styles.profileStatItem} ${styles.detailItemCenter}`}>
-            <strong className={styles.atwTierCode}>{tier.code}</strong>
+            <strong className={styles.atwTierCode}>{tierDetails.tierCode}</strong>
             <span className={styles.profileStatLabel}>Tier</span>
 
             <div
@@ -157,10 +159,16 @@ export default function DashboardProfileCard({
               onMouseEnter={() => setShowAtwTooltip(true)}
               onMouseLeave={() => setShowAtwTooltip(false)}
               onClick={() => setShowAtwTooltip((prev) => !prev)}
-              title={`ATW Capacity: ${pct}%`}
+              title={
+                tierDetails.isUnlimited
+                  ? "ATW Capacity: Unlimited"
+                  : `ATW Capacity: ${pct}%`
+              }
               role="button"
               tabIndex={0}
-              aria-label={`Withdrawal limit gauge: ${pct}% capacity`}
+              aria-label={`Withdrawal limit gauge: ${
+                tierDetails.isUnlimited ? "Unlimited" : `${pct}% capacity`
+              }`}
             >
               <div className={styles.atwGaugeWrapper}>
                 <svg className={styles.atwGaugeSvg} width="20" height="20" viewBox="0 0 20 20">
@@ -199,14 +207,18 @@ export default function DashboardProfileCard({
                 <div className={styles.atwTooltipHeader}>
                   <span>ATW Holding Capacity</span>
                   <span className={`${styles.atwPct} ${stateColorClass}`}>
-                    {pct}%
+                    {tierDetails.isUnlimited ? "Unlimited" : `${pct}%`}
                   </span>
                 </div>
                 <p className={styles.atwTooltipText}>
-                  Holding limit: {formatCurrency(balanceCap)} ({tier.code}).
+                  {tierDetails.isUnlimited
+                    ? "Holding limit: Unlimited (Unlimited Tier)."
+                    : `Holding limit: ${formatCurrency(balanceCap)} (${tierDetails.tierCode} • ${clicksCount} clicks).`}
                 </p>
                 <span className={`${styles.atwTooltipHint} ${stateColorClass}`}>
-                  {ratio >= 0.9
+                  {tierDetails.isUnlimited
+                    ? "Unlimited holding balance cap active."
+                    : ratio >= 0.9
                     ? "Max holding reached! Please withdraw your funds."
                     : ratio >= 0.6
                     ? "Balance is filling up. Prepare to withdraw soon."

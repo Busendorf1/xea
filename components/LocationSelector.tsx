@@ -222,17 +222,7 @@ export default function LocationSelector({
                   markWebManualLocationSelected();
                 }
               }}
-              style={{
-                marginTop: 8,
-                background: "transparent",
-                border: "none",
-                padding: 0,
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--accent, #1d9bf0)",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
+              className={styles.appleFallbackToggle}
             >
               {manualFallback
                 ? "Hide manual location selector"

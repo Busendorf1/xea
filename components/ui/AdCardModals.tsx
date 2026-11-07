@@ -655,7 +655,7 @@ export const AdTextReaderModal = React.memo(function AdTextReaderModal({
                 )}
                 {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
                   <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                    AI Content
+                    AI
                   </span>
                 )}
               </div>

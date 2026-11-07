@@ -182,12 +182,13 @@ export async function getAuthenticatedEmail(
     return resolvedCookieEmail;
   }
 
-  // 5. Explicitly gated non-production test harness fallback ONLY
-  if (
+  // 5. Mobile client fallback using x-user-email header (ONLY when explicitly permitted in dev/test)
+  const isTestOrDev = process.env.NODE_ENV !== "production";
+  const allowUnverifiedHeader =
     options?.allowMobileHeader === true &&
-    process.env.NODE_ENV !== "production" &&
-    process.env.ALLOW_UNVERIFIED_MOBILE_HEADER === "true"
-  ) {
+    (isTestOrDev && process.env.ALLOW_UNVERIFIED_MOBILE_HEADER === "true");
+
+  if (allowUnverifiedHeader) {
     const mobileHeader = req.headers.get("x-user-email");
     if (mobileHeader && mobileHeader.includes("@") && mobileHeader.length <= 254) {
       const normalizedMobile = mobileHeader.toLowerCase().trim();

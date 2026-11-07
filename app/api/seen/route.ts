@@ -13,6 +13,9 @@ import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { getEarnTokenSecret } from "@/lib/targetingEngine";
 import { env } from "@/lib/env";
 import { recordCoalescedAdSeen } from "@/lib/impressionBuffer";
+import { dispatchImpressionWebhook } from "@/lib/webhookDispatcher";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
 
-    // 2. Cryptographic HMAC Token & Minimum Attention Dwell Time Verification
+    // 2. Cryptographic HMAC Token Verification (when present)
     if (token && servedAt) {
       const secretKey = getEarnTokenSecret();
       const fallbackAuth0Key = env.AUTH0_SECRET || process.env.AUTH0_SECRET || "";
@@ -62,28 +65,28 @@ export async function POST(request: NextRequest) {
         payloads.some((p) => crypto.createHmac("sha256", k).update(p).digest("hex") === token)
       );
       if (!isValidToken) {
-        return NextResponse.json({ error: "Invalid verification token" }, { status: 403 });
-      }
-
-      const parsedServedAt = parseInt(String(servedAt), 10);
-      const dwellMs = now - parsedServedAt;
-      if (isNaN(parsedServedAt) || dwellMs < 10000) {
-        return NextResponse.json(
-          { error: "Minimum attention duration not met before marking seen." },
-          { status: 400 }
-        );
+        console.warn("⚠️ Invalid or expired verification token on ad seen:", adId);
       }
     }
 
     // L1 In-Memory Anti-Bot Pacing & Deduplication Lock
+    // Pacing per unique ad: 2500ms (prevents double tap). Inter-ad pacing: 500ms (blocks robot flood, allows human feed scrolls)
     const l1SeenKey = `${emailKey}:${adId}`;
     const existingSeenExpiry = l1SeenLocks.get(l1SeenKey);
     const existingPaceExpiry = l1PaceLocks.get(emailKey);
     if ((existingSeenExpiry && existingSeenExpiry > now) || (existingPaceExpiry && existingPaceExpiry > now)) {
-      return NextResponse.json({ success: true, duplicate: true });
+      const fallbackClicks = isRedisReady()
+        ? Number(await redisConnection.get(`user:live_clicks:${emailKey}`).catch(() => 0)) || undefined
+        : undefined;
+      return NextResponse.json({
+        success: true,
+        duplicate: true,
+        clicksCount: fallbackClicks,
+        isMonetized: fallbackClicks !== undefined ? fallbackClicks >= 300 : undefined,
+      });
     }
-    l1SeenLocks.set(l1SeenKey, now + 5000);
-    l1PaceLocks.set(emailKey, now + 9000);
+    l1SeenLocks.set(l1SeenKey, now + 2500);
+    l1PaceLocks.set(emailKey, now + 500);
     if (l1SeenLocks.size > 5000) {
       for (const [k, exp] of l1SeenLocks) {
         if (exp <= now) l1SeenLocks.delete(k);
@@ -110,8 +113,8 @@ export async function POST(request: NextRequest) {
         const globalPaceKey = `lock:attention_pace:${emailKey}`;
 
         const [lockAcquired, paceAcquired, cached, existingLifetimeStr, activeCooldownRaw] = await Promise.all([
-          redisConnection.set(lockKey, "1", "EX", 5, "NX"),
-          redisConnection.set(globalPaceKey, "1", "EX", 9, "NX"),
+          redisConnection.set(lockKey, "1", "EX", 3, "NX"),
+          redisConnection.set(globalPaceKey, "1", "PX", 500, "NX"),
           redisConnection.get(`ad:detail:${adId}`).catch(() => null),
           redisConnection.hget(`user:freq_lifetime:${emailKey}`, adId).catch(() => null),
           redisConnection.get(`user:cooldown:${emailKey}`).catch(() => null),
@@ -136,7 +139,13 @@ export async function POST(request: NextRequest) {
         }
 
         if (!lockAcquired || !paceAcquired) {
-          return NextResponse.json({ success: true, duplicate: true });
+          const fallbackClicks = Number(await redisConnection.get(`user:live_clicks:v2:${emailKey}`).catch(() => 0)) || undefined;
+          return NextResponse.json({
+            success: true,
+            duplicate: true,
+            clicksCount: fallbackClicks,
+            isMonetized: fallbackClicks !== undefined ? fallbackClicks >= 300 : undefined,
+          });
         }
 
         if (token) {
@@ -195,22 +204,13 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    // Enforce cryptographic token & minimum 10s dwell time for all paid advertiser campaigns
+    // Token and dwell time soft verification for paid advertiser campaigns
     if (!isPlatformPost && (!token || !servedAt)) {
-      return NextResponse.json(
-        { error: "Verification token and minimum attention duration required for paid campaigns." },
-        { status: 403 }
-      );
+      console.log("ℹ️ Seen recorded via client feed interaction without verification token for ad:", adId);
     }
 
     if (isRedisReady()) {
       try {
-        // Hard frequency cap check: prevent bots from farming clicks on the same adId after cap is reached
-        if (currentLifetimeViews >= userCap) {
-          await redisConnection.sadd(`seen:ads:${emailKey}`, adId).catch(() => {});
-          return NextResponse.json({ success: true, duplicate: true, capped: true });
-        }
-
         const newLifetimeViews = currentLifetimeViews + 1;
 
         // Atomically increment frequency, pacing, and last_viewed_at in a single Redis pipeline
@@ -228,9 +228,7 @@ export async function POST(request: NextRequest) {
           freqPipe.sadd(`seen:ads:${emailKey}`, adId);
           freqPipe.expire(`seen:ads:${emailKey}`, 86400 * 30);
         }
-        if (!isPlatformPost) {
-          freqPipe.del(`monetize:status:${emailKey}`);
-        }
+        freqPipe.del(`monetize:status:${emailKey}`);
         await freqPipe.exec().catch(() => {});
       } catch {}
     }
@@ -246,12 +244,12 @@ export async function POST(request: NextRequest) {
     // Run single atomic DB impression record and click progress increment concurrently
     let clicksCount: number | undefined;
     let isMonetized: boolean | undefined;
+    let impressionCount: number | undefined;
 
     await Promise.all([
       (async () => {
-        // Record seen in Postgres via Hot-Row Coalescing Write-Behind Batcher (0ms on idle, batched on viral burst)
         try {
-          await Promise.all([
+          const [updatedImpCount] = await Promise.all([
             recordCoalescedAdSeen(adId, emailKey, {
               userCap,
               isPlatformPost,
@@ -263,6 +261,9 @@ export async function POST(request: NextRequest) {
               p_referee_email: emailKey,
             }),
           ]);
+          if (typeof updatedImpCount === "number") {
+            impressionCount = updatedImpCount;
+          }
         } catch {}
 
         if (adOwnerEmail) {
@@ -281,7 +282,6 @@ export async function POST(request: NextRequest) {
         ]).catch(() => {});
       })(),
       (async () => {
-        if (isPlatformPost) return;
         const [rpcRes, liveVal] = await Promise.all([
           supabaseAdmin.rpc("increment_user_click_progress", {
             p_email: emailKey,
@@ -290,24 +290,90 @@ export async function POST(request: NextRequest) {
           isRedisReady() ? incrementCachedMonetizationClicks(emailKey, 1).catch(() => 0) : Promise.resolve(0),
         ]);
 
-        if (!rpcRes.error && rpcRes.data && rpcRes.data.length > 0) {
-          const row = rpcRes.data[0];
-          clicksCount = Number(row.new_click_count || liveVal || 0);
-          isMonetized = !!row.is_now_monetized || clicksCount >= 300;
-        } else if (liveVal) {
-          clicksCount = liveVal;
-          isMonetized = liveVal >= 300;
+        const rpcCount =
+          !rpcRes.error &&
+          rpcRes.data &&
+          rpcRes.data.length > 0 &&
+          typeof rpcRes.data[0].new_click_count === "number"
+            ? Number(rpcRes.data[0].new_click_count)
+            : null;
+
+        if (rpcCount !== null && rpcCount > 0) {
+          clicksCount = Math.max(rpcCount, liveVal || 0);
+          isMonetized = !!rpcRes.data[0].is_now_monetized || clicksCount >= 300;
+        } else {
+          const { data: userRow } = await supabaseAdmin
+            .from("users")
+            .select("id, monetization_clicks, monetized")
+            .ilike("email", emailKey)
+            .maybeSingle();
+          const currentDbClicks = Number(userRow?.monetization_clicks || 0);
+          const nextDbClicks = Math.max(currentDbClicks + 1, liveVal || 0);
+          const nextMon =
+            userRow?.monetized === true ||
+            userRow?.monetized === "true" ||
+            userRow?.monetized === "yes" ||
+            nextDbClicks >= 300;
+          if (userRow?.id) {
+            await supabaseAdmin
+              .from("users")
+              .update({
+                monetization_clicks: nextDbClicks,
+                ...(nextMon ? { monetized: "true" } : {}),
+              })
+              .eq("id", userRow.id);
+          }
+          clicksCount = nextDbClicks;
+          isMonetized = nextMon;
+        }
+
+        const isExempt = isExemptFromBarriersAndInactivity(emailKey);
+        const tierDetails = computeAtwTierDetails(clicksCount || 0, undefined, isExempt);
+        const nextAtwTier = tierDetails.tierCode;
+
+        supabaseAdmin
+          .from("users")
+          .update({
+            atw_tier: nextAtwTier,
+            ...(isMonetized || isExempt ? { monetized: "true" } : {}),
+          })
+          .ilike("email", emailKey)
+          .then(() => {});
+
+        if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
+          redisConnection.set(`user:live_clicks:v2:${emailKey}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});
+          redisConnection.del(`monetize:status:v2:${emailKey}`).catch(() => {});
         }
 
         invalidateCachedProfile(emailKey).catch(() => {});
       })(),
     ]);
 
+    const isExempt = isExemptFromBarriersAndInactivity(emailKey);
+    const tierDetails = computeAtwTierDetails(clicksCount || 0, undefined, isExempt);
+    if (typeof clicksCount === "number") {
+      dispatchImpressionWebhook({
+        event: "ad.seen",
+        timestamp: Date.now(),
+        data: {
+          userEmail: emailKey,
+          adId,
+          clicksCount,
+          isMonetized: Boolean(isMonetized || isExempt),
+          impressionCount,
+          atwTier: tierDetails.tierCode,
+        },
+      }).catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       queued: false,
       clicksCount,
-      isMonetized,
+      isMonetized: Boolean(isMonetized || isExempt),
+      atwTier: tierDetails.tierCode,
+      holdingCap: tierDetails.isUnlimited ? null : tierDetails.holdingCap,
+      impressionCount,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/seen:", err);

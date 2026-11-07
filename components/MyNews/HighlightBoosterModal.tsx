@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, X, Wallet, CreditCard, Sparkles, SlidersHorizontal } from "lucide-react";
+import { TrendingUp, X, Wallet, CreditCard, SlidersHorizontal } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/currency";
 import LocationSelector from "../LocationSelector";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
@@ -12,6 +12,7 @@ import styles from "../MyAds/page.module.css";
 interface HighlightBoosterModalProps {
   item: HighlightItem | null;
   onClose: () => void;
+  userBalance?: number;
   onSuccess: (message?: string) => void;
   onShowNotice: (title: string, message: string) => void;
 }
@@ -19,6 +20,7 @@ interface HighlightBoosterModalProps {
 export default function HighlightBoosterModal({
   item,
   onClose,
+  userBalance,
   onSuccess,
   onShowNotice,
 }: HighlightBoosterModalProps) {
@@ -65,9 +67,33 @@ export default function HighlightBoosterModal({
   const totalCost = calculateBoosterCost();
 
   const handleInitiateBoost = () => {
+    const isPausedByAdmin = Boolean(
+      item.admin_statement &&
+      typeof item.admin_statement === "string" &&
+      item.admin_statement.trim() !== "" &&
+      !item.admin_statement.startsWith("APPROVED:") &&
+      !item.admin_statement.toLowerCase().startsWith("status:") &&
+      !item.admin_statement.startsWith("REJECTED:")
+    );
+    if (isPausedByAdmin) {
+      onShowNotice("Boosting Unavailable", `This highlight was paused by an administrator. Reason: "${item.admin_statement}". Please resolve the notice or wait for admin review.`);
+      onClose();
+      return;
+    }
+
     if (item.is_paused) {
       onShowNotice("Boosting Unavailable", "This highlight is currently paused. Please resume the highlight first to boost it.");
       onClose();
+      return;
+    }
+
+    const totalCost = calculateBoosterCost();
+    if (boosterPaymentMethod === "wallet" && typeof userBalance === "number" && totalCost > userBalance) {
+      onClose();
+      onShowNotice(
+        "Insufficient Wallet Balance",
+        `Your wallet balance (₦${userBalance.toLocaleString()}) is insufficient to cover this highlight boost (₦${totalCost.toLocaleString()}). Please choose Card / Bank Transfer or fund your wallet.`
+      );
       return;
     }
 
@@ -79,6 +105,17 @@ export default function HighlightBoosterModal({
   };
 
   const handleExecuteBoost = async () => {
+    const totalCost = calculateBoosterCost();
+    if (boosterPaymentMethod === "wallet" && typeof userBalance === "number" && totalCost > userBalance) {
+      setShowBoosterPaymentConfirmModal(false);
+      onClose();
+      onShowNotice(
+        "Insufficient Wallet Balance",
+        `Your wallet balance (₦${userBalance.toLocaleString()}) is insufficient to cover this highlight boost (₦${totalCost.toLocaleString()}). Please choose Card / Bank Transfer or fund your wallet.`
+      );
+      return;
+    }
+
     setBoosting(true);
     try {
       const res = await fetch("/api/campaigns/boost", {
@@ -92,6 +129,7 @@ export default function HighlightBoosterModal({
           state: boosterState,
           province: boosterProvince || (boosterMultiLocations.length > 0 ? boosterMultiLocations.join("; ") : ""),
           paymentMethod: boosterPaymentMethod,
+          callbackUrl: typeof window !== "undefined" ? `${window.location.origin}/logged-in` : undefined,
         }),
       });
 
@@ -120,7 +158,13 @@ export default function HighlightBoosterModal({
       onSuccess(data.message || "Your highlight has been boosted successfully! Schedule duration and priority delivery have been updated and are actively delivering.");
     } catch (e: any) {
       setShowBoosterPaymentConfirmModal(false);
-      onShowNotice("Boost Notice", e.message || "An error occurred while boosting your highlight.");
+      onClose();
+      const rawError = e.message || "An error occurred while boosting your highlight.";
+      const isInsufficient = rawError.toLowerCase().includes("insufficient");
+      onShowNotice(
+        isInsufficient ? "Insufficient Wallet Balance" : "Boost Notice",
+        rawError
+      );
     } finally {
       setBoosting(false);
     }
@@ -148,7 +192,7 @@ export default function HighlightBoosterModal({
             {/* Header */}
             <div className={styles.modalHeader}>
               <div className={styles.modalHeaderInner}>
-                <Zap size={20} color="var(--primary)" />
+                <TrendingUp size={20} color="var(--primary)" />
                 <h3 className={styles.modalTitle}>Boost Highlight Priority &amp; Reach</h3>
               </div>
               <button className={styles.modalClose} onClick={onClose} aria-label="Close modal">

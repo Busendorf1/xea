@@ -1,24 +1,29 @@
 // lib/payment/processPayment.ts
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 
 async function sendIdempotentNotification(userEmail: string, title: string, message: string) {
   try {
+    const cleanEmail = userEmail.toLowerCase().trim();
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const { data: recent } = await supabaseAdmin
       .from("notifications")
       .select("id")
-      .ilike("user_email", userEmail.toLowerCase().trim())
+      .ilike("user_email", cleanEmail)
       .eq("title", title)
       .gte("created_at", fiveMinutesAgo)
       .limit(1);
 
     if (!recent || recent.length === 0) {
-      await supabaseAdmin.from("notifications").insert({
-        user_email: userEmail.toLowerCase().trim(),
+      const notifRow = {
+        user_email: cleanEmail,
         title,
         message,
-      });
+        created_at: new Date().toISOString(),
+      };
+      await supabaseAdmin.from("notifications").insert(notifRow);
+      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      dispatchNotificationWebhook(notifRow).catch(() => {});
     }
   } catch (err) {
     console.warn("⚠️ Notification insert notice:", err);
@@ -32,10 +37,12 @@ export async function processSuccessfulPayment(
 ) {
   // Distributed Redis mutex to prevent race condition between webhook and client redirect verification
   const procLockKey = `lock:payment_proc:${reference}`;
-  const acquired = await redisConnection.set(procLockKey, "1", "EX", 30, "NX").catch(() => "OK");
-  if (!acquired) {
-    console.log(`ℹ️ Payment ${reference} is currently being processed by another worker.`);
-    return { alreadyProcessed: true };
+  if (isRedisReady()) {
+    const acquired = await redisConnection.set(procLockKey, "1", "EX", 30, "NX").catch(() => "OK");
+    if (!acquired) {
+      console.log(`ℹ️ Payment ${reference} is currently being processed by another worker.`);
+      return { alreadyProcessed: true };
+    }
   }
 
   try {
@@ -251,8 +258,8 @@ export async function processSuccessfulPayment(
 
     await sendIdempotentNotification(
       user_email,
-      editingId ? "Highlight Updated 🚀" : "Highlight Submitted 🚀",
-      `Your highlight "${title}" has been ${editingId ? "updated" : "submitted for review"}. It will be published after admin approval!`
+      editingId ? "Highlight In Review" : "Highlight Submitted",
+      `"${title}" is in review. Pay in My Highlights once approved.`
     );
   } else if (type === "boost_campaign" || type === "boost" || type === "boost_highlight") {
     const {
@@ -270,10 +277,17 @@ export async function processSuccessfulPayment(
     } = mergedMetadata as any;
 
     if (ad_id) {
-      let { data: ad } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).maybeSingle();
+      let isCompletedTable = false;
+      let { data: ad } = await supabaseAdmin.from("addsactive").select("*").eq("id", ad_id).maybeSingle();
       if (!ad) {
-        const { data: activeAd } = await supabaseAdmin.from("addsactive").select("*").eq("id", ad_id).maybeSingle();
-        ad = activeAd;
+        const { data: compAd } = await supabaseAdmin.from("completed_ads").select("*").eq("id", ad_id).maybeSingle();
+        if (compAd) {
+          ad = compAd;
+          isCompletedTable = true;
+        } else {
+          const { data: queueAd } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).maybeSingle();
+          ad = queueAd;
+        }
       }
 
       if (ad) {
@@ -304,10 +318,25 @@ export async function processSuccessfulPayment(
         if (industry) updatePayload.industry = Array.isArray(industry) ? industry : [industry];
         if (interest) updatePayload.interest = Array.isArray(interest) ? interest : [interest];
 
-        await Promise.all([
-          supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
-          supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id),
-        ]);
+        if (isCompletedTable) {
+          const reactivatedAd = {
+            ...ad,
+            ...updatePayload,
+            completed_at: null,
+            is_paused: false,
+            created_at: new Date().toISOString(),
+          };
+          await Promise.all([
+            supabaseAdmin.from("addsactive").upsert([reactivatedAd]),
+            supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
+            supabaseAdmin.from("completed_ads").delete().eq("id", ad_id),
+          ]);
+        } else {
+          await Promise.all([
+            supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
+            supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id),
+          ]);
+        }
 
         if (effectiveCost > 25) {
           try {
@@ -364,8 +393,8 @@ export async function processSuccessfulPayment(
 
       await sendIdempotentNotification(
         user_email,
-        "Campaign Priority Boosted ⚡",
-        `Your campaign has been successfully boosted with priority bid ₦${cost_per_impression || 25}.`
+        type === "boost_highlight" ? "Highlight Boosted" : "Campaign Boosted",
+        `Priority boost active at ₦${Number(cost_per_impression || 25).toLocaleString()}.`
       );
     }
   } else if (type === "ad") {
@@ -459,8 +488,8 @@ export async function processSuccessfulPayment(
     // Insert user notification
     await sendIdempotentNotification(
       user_email,
-      "Ad Campaign Created 📢",
-      `Your ad campaign with ${adData.impressions} impressions was successfully created and submitted for review.`
+      "Ad Submitted",
+      `Your ad (${adData.impressions} attentions) is in review.`
     );
   } else if (type === "brand_subscription") {
     const subscriberId = (mergedMetadata.subscriber_id || mergedMetadata.brand_id) as string | undefined;
@@ -498,8 +527,8 @@ export async function processSuccessfulPayment(
 
       await sendIdempotentNotification(
         user_email,
-        "Brand Subscription Activated 🌟",
-        `Your Premium Brand Subscription for ${businessName} (${domain}) is now active!`
+        "Brand Subscription Active",
+        `Premium Brand Subscription for ${businessName} (${domain}) is now active.`
       );
     }
   }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import supabase from "@/lib/utils/db";
-import { resizeImageToMax1080p } from "@/lib/utils/mediaOptimizer";
+import { resizeImageToMax1080p, compressVideoIfHeavy } from "@/lib/utils/mediaOptimizer";
 import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
 import { NoticeModalData } from "@/components/MyAds/NoticeModal";
@@ -122,22 +122,46 @@ export function useAdSubmission({
             } catch (optErr) {
               console.warn("Image 1080p optimization notice:", optErr);
             }
+          } else if (isVid && file instanceof File) {
+            try {
+              optimizedFile = await compressVideoIfHeavy(file);
+            } catch (vidOptErr) {
+              console.warn("Video compression notice:", vidOptErr);
+            }
           }
 
-          let fileData: Blob | File = optimizedFile;
+          const resolvedContentType = file.type || (isVid ? "video/mp4" : "image/jpeg");
+
+          // 1. Prefer Enterprise Server-Signed Upload URL (zero anon-key bucket exposure & streamable Blob)
           try {
-            const buffer = await optimizedFile.arrayBuffer();
-            fileData = new Blob([buffer], { type: file.type || (isVid ? "video/mp4" : "image/jpeg") });
-          } catch (e) {
-            console.warn("ArrayBuffer fallback, using raw file:", e);
-          }
+            const signRes = await fetch("/api/campaigns/upload-url", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ bucket: "ad-media", fileName: uniqueFileName }),
+            });
+            if (signRes.ok) {
+              const signJson = await signRes.json();
+              if (signJson?.path && signJson?.token) {
+                const { error: signedUpErr } = await supabase.storage
+                  .from("ad-media")
+                  .uploadToSignedUrl(signJson.path, signJson.token, optimizedFile, {
+                    cacheControl: "3600",
+                    contentType: resolvedContentType,
+                  });
+                if (!signedUpErr && signJson.publicUrl) {
+                  return signJson.publicUrl as string;
+                }
+              }
+            }
+          } catch {}
 
+          // 2. Direct fallback upload (using streamable File/Blob directly without double ArrayBuffer RAM copy)
           const { error: uploadError } = await supabase.storage
             .from("ad-media")
-            .upload(uniqueFileName, fileData, {
+            .upload(uniqueFileName, optimizedFile, {
               cacheControl: "3600",
               upsert: false,
-              contentType: file.type || (isVid ? "video/mp4" : "image/jpeg"),
+              contentType: resolvedContentType,
             });
 
           if (uploadError) throw uploadError;
@@ -168,6 +192,7 @@ export function useAdSubmission({
             targetingAll: formSelections.targetingAll ?? false,
             impressions: formSelections.impressions,
             campaignDays: formSelections.campaignDays,
+            scheduledStartAt: formSelections.scheduledStartAt || null,
             userFrequencyCap: formSelections.userFrequencyCap,
             country: formSelections.country || null,
             state: formSelections.state || null,
@@ -226,19 +251,28 @@ export function useAdSubmission({
       } catch {}
 
       sessionStorage.setItem("paayh_active_tab", "myads");
+      sessionStorage.setItem("paayh_publications_subtab", "ads");
+      if (editingId) {
+        sessionStorage.setItem("paayh_myads_filter_tab", "review");
+      }
       document.cookie = "paayh_active_tab=myads; path=/; max-age=604800; SameSite=Lax";
+      window.dispatchEvent(
+        new CustomEvent("paayh_campaign_resubmitted", {
+          detail: { id: adId, type: "ad", wasEditing: !!editingId },
+        })
+      );
       window.dispatchEvent(new CustomEvent("paayh_tab_change", { detail: { tab: "myads" } }));
 
       showAppleAlert(
         editingId
-          ? "Campaign updated and re-submitted for moderation review!"
+          ? "Campaign readjusted and placed back in review! Waiting for approval."
           : "Campaign submitted for review! You will be notified once approved to publish it from My Ads.",
         "success"
       );
 
       setTimeout(() => {
         window.location.href = "/logged-in?view=myads";
-      }, 1200);
+      }, 900);
       setIsSubmitting(false);
     } catch (err: any) {
       console.error("Submit error details:", err);

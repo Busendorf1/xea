@@ -23,6 +23,16 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  async rewrites() {
+    const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+    if (!supabaseUrl) return [];
+    return [
+      {
+        source: "/cdn/storage/:path*",
+        destination: `${supabaseUrl}/storage/v1/object/public/:path*`,
+      },
+    ];
+  },
   async headers() {
     const cspHeader = `
       default-src 'self';
@@ -42,6 +52,19 @@ const nextConfig = {
       .trim();
 
     return [
+      {
+        source: "/cdn/storage/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable",
+          },
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+        ],
+      },
       {
         source: "/:path*",
         headers: [

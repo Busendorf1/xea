@@ -196,12 +196,55 @@ export default function TransactionReceiptModal({
   const destinationAccount = maskAccountNumber(rawDestinationAccount);
   const destinationName = meta.accountName || meta.account_name || meta.recipientName;
   const isTransferReceived = transaction.type === "transfer_received";
-  const recipientEmail = isTransferReceived
-    ? (transaction.user_email || currentUserEmail || meta.recipientEmail || meta.recipient_email)
-    : (meta.recipientEmail || meta.recipient_email || meta.counterparty_email);
-  const payerEmail = isTransferReceived
-    ? (meta.sender_email || meta.senderEmail || meta.counterparty_email || "Paayh User")
-    : (transaction.user_email || currentUserEmail || "Account Holder");
+  const isTransferSent = transaction.type === "transfer_sent";
+  const isPeerTransfer = isTransferReceived || isTransferSent || transaction.type === "transfer";
+
+  const formatPrivacyUsername = (val?: string): string => {
+    if (!val) return "";
+    const trimmed = String(val).trim();
+    if (trimmed.toLowerCase() === "recipient") return "";
+    if (trimmed.includes("@")) {
+      const handle = trimmed.split("@")[0]?.trim();
+      return handle ? `@${handle}` : "";
+    }
+    return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+  };
+
+  const extractHandleFromText = (text?: string): string => {
+    if (!text) return "";
+    const atMatch = text.match(/@([a-zA-Z0-9_.-]+)/);
+    if (atMatch && atMatch[1]) return `@${atMatch[1]}`;
+    const toEmailMatch = text.match(/to\s+([a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+)/i);
+    if (toEmailMatch && toEmailMatch[1]) return formatPrivacyUsername(toEmailMatch[1]);
+    const toUserMatch = text.match(/to\s+([a-zA-Z0-9_.-]+)/i);
+    if (toUserMatch && toUserMatch[1] && !["the", "our", "bank", "wallet", "recipient"].includes(toUserMatch[1].toLowerCase())) {
+      return formatPrivacyUsername(toUserMatch[1]);
+    }
+    return "";
+  };
+
+  const recipientUsernameRaw = isTransferReceived
+    ? (formatPrivacyUsername((transaction as any).user_username || currentUserName || transaction.user_email || currentUserEmail))
+    : (formatPrivacyUsername(
+        meta.recipient_username ||
+        meta.recipientUsername ||
+        meta.counterparty_username ||
+        (transaction as any).recipient_username ||
+        (transaction as any).recipientUsername ||
+        extractHandleFromText(transaction.description) ||
+        meta.recipientEmail ||
+        meta.recipient_email ||
+        meta.counterparty_email ||
+        (transaction as any).recipientEmail
+      ) || (destinationName && !isWithdrawal ? destinationName : ""));
+
+  const recipientUsername = (recipientUsernameRaw && recipientUsernameRaw.toLowerCase() !== "recipient")
+    ? recipientUsernameRaw
+    : (isPeerTransfer ? "Paayh User" : "");
+
+  const payerUsername = isTransferReceived
+    ? (formatPrivacyUsername(meta.sender_username || meta.senderUsername || meta.counterparty_username || extractHandleFromText(transaction.description) || meta.sender_email || meta.senderEmail || meta.counterparty_email) || "Paayh User")
+    : (formatPrivacyUsername((transaction as any).user_username || currentUserName || transaction.user_email || currentUserEmail) || "Account Holder");
 
   // Payment purpose / narration (with any embedded bank account number masked)
   const rawPurpose = transaction.description || meta.purpose || getTypeLabel(transaction.type);
@@ -429,7 +472,7 @@ export default function TransactionReceiptModal({
             </tr>
             <tr>
               <td class="label">Paid By</td>
-              <td class="value">${payerEmail}</td>
+              <td class="value">${payerUsername}</td>
             </tr>
             ${destinationBank ? `
             <tr>
@@ -446,10 +489,10 @@ export default function TransactionReceiptModal({
               <td class="label">Beneficiary Name</td>
               <td class="value">${destinationName}</td>
             </tr>` : ""}
-            ${recipientEmail ? `
+            ${recipientUsername && recipientUsername !== destinationName ? `
             <tr>
               <td class="label">Recipient</td>
-              <td class="value">${recipientEmail}</td>
+              <td class="value">${recipientUsername}</td>
             </tr>` : ""}
             ${charge > 0 ? `
             <tr>
@@ -582,7 +625,7 @@ export default function TransactionReceiptModal({
             {/* Payer Account */}
             <div className={styles.detailRow}>
               <span className={styles.detailLabel}>Paid By</span>
-              <span className={styles.detailValue}>{payerEmail}</span>
+              <span className={styles.detailValue}>{payerUsername}</span>
             </div>
 
             {/* Destination Bank / Account (if withdrawal) */}
@@ -610,10 +653,10 @@ export default function TransactionReceiptModal({
               </div>
             )}
 
-            {recipientEmail && !destinationName && (
+            {recipientUsername && recipientUsername !== destinationName && (
               <div className={styles.detailRow}>
                 <span className={styles.detailLabel}>Recipient</span>
-                <span className={styles.detailValue}>{recipientEmail}</span>
+                <span className={styles.detailValue}>{recipientUsername}</span>
               </div>
             )}
 

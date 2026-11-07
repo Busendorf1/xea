@@ -4,7 +4,7 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

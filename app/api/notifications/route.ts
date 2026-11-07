@@ -357,6 +357,22 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: delErr.message }, { status: 500 });
       }
 
+      // Also mark active global announcements as read so they don't reappear as unread
+      try {
+        const { data: activeAnns } = await supabaseAdmin
+          .from("global_announcements")
+          .select("id")
+          .limit(50);
+        if (activeAnns && activeAnns.length > 0) {
+          await supabaseAdmin
+            .from("read_announcements")
+            .upsert(
+              activeAnns.map((a) => ({ user_email: emailLower, announcement_id: a.id })),
+              { onConflict: "user_email,announcement_id" }
+            );
+        }
+      } catch {}
+
       await invalidateUserNotifCache(emailLower);
       return NextResponse.json({ success: true, message: "All notifications deleted successfully." });
     } else if (Array.isArray(notificationIds) && notificationIds.length > 0) {
@@ -370,6 +386,15 @@ export async function DELETE(req: NextRequest) {
         console.error("❌ Error deleting selected notifications:", delErr);
         return NextResponse.json({ error: delErr.message }, { status: 500 });
       }
+
+      try {
+        await supabaseAdmin
+          .from("read_announcements")
+          .upsert(
+            notificationIds.map((id: string) => ({ user_email: emailLower, announcement_id: id })),
+            { onConflict: "user_email,announcement_id" }
+          );
+      } catch {}
 
       await invalidateUserNotifCache(emailLower);
       return NextResponse.json({

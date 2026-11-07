@@ -208,9 +208,10 @@ export default function Step2Budget({
               value={formSelections.campaignDays}
               onChange={(e) => {
                 const val = parseInt(e.target.value);
+                const nextDays = isNaN(val) || val < 1 ? 1 : Math.min(365, val);
                 setFormSelections((prev) => ({
                   ...prev,
-                  campaignDays: isNaN(val) || val < 1 ? 1 : val,
+                  campaignDays: nextDays,
                 }));
               }}
               className={styles.inputBox}
@@ -219,6 +220,101 @@ export default function Step2Budget({
             <p className={styles.hintText}>
               Daily pace: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} views/day
             </p>
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
+              When Ad Should Start
+            </label>
+            <div className={styles.genderSegmentGroup} style={{ marginBottom: formSelections.scheduledStartAt ? 10 : 0 }}>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormSelections((prev) => ({
+                    ...prev,
+                    scheduledStartAt: "",
+                  }))
+                }
+                className={`${styles.genderSegmentBtn} ${!formSelections.scheduledStartAt ? styles.genderSegmentBtnActive : ""}`}
+              >
+                <span>Start Upon Approval</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultStart = new Date().toISOString().slice(0, 10);
+                  setFormSelections((prev) => ({
+                    ...prev,
+                    scheduledStartAt: prev.scheduledStartAt ? prev.scheduledStartAt.slice(0, 10) : defaultStart,
+                  }));
+                }}
+                className={`${styles.genderSegmentBtn} ${Boolean(formSelections.scheduledStartAt) ? styles.genderSegmentBtnActive : ""}`}
+              >
+                <span>Pick Start Date (Calendar)</span>
+              </button>
+            </div>
+            {formSelections.scheduledStartAt && (
+              <div style={{ marginTop: 8 }}>
+                <label className={`${styles.ageRangeLabel} ${styles.fieldLabelBold}`} style={{ display: "block", marginBottom: 4 }}>
+                  Start Day
+                </label>
+                <input
+                  type="date"
+                  value={formSelections.scheduledStartAt.slice(0, 10)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) =>
+                    setFormSelections((prev) => ({
+                      ...prev,
+                      scheduledStartAt: e.target.value,
+                    }))
+                  }
+                  className={styles.inputBox}
+                />
+              </div>
+            )}
+            {(() => {
+              const daysCount = Math.max(1, Number(formSelections.campaignDays) || 1);
+              const startBase = formSelections.scheduledStartAt
+                ? new Date(`${formSelections.scheduledStartAt.slice(0, 10)}T00:00:00`)
+                : new Date();
+              const validStart = isNaN(startBase.getTime()) ? new Date() : startBase;
+              const endDate = new Date(validStart.getTime() + daysCount * 86_400_000);
+              const fmt = (d: Date) =>
+                d.toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+              return (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "var(--card-bg)",
+                    border: "1px solid var(--card-border)",
+                    fontSize: "0.82rem",
+                    color: "var(--foreground)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div>
+                    <strong>Start Day:</strong>{" "}
+                    {formSelections.scheduledStartAt ? fmt(validStart) : `${fmt(validStart)} (Upon Approval)`}
+                  </div>
+                  <div>
+                    <strong>Ends On:</strong>{" "}
+                    <span style={{ color: "var(--primary)", fontWeight: 700 }}>{fmt(endDate)}</span>{" "}
+                    <span style={{ color: "var(--text-muted)" }}>
+                      ({daysCount} {daysCount === 1 ? "day" : "days"} duration)
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div className={styles.formGroup}>
@@ -241,7 +337,7 @@ export default function Step2Budget({
               placeholder="e.g. 3"
             />
             <p className={styles.hintText}>
-              Max views per user (recommended: 3–7).
+              Max views per user (strictly enforced &amp; evenly spaced across {formSelections.campaignDays}d; auto-broadens reach at 80% duration if needed).
             </p>
           </div>
         </div>

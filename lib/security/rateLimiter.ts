@@ -1,4 +1,4 @@
-import redisConnection from "../redis";
+import redisConnection, { isRedisReady } from "../redis";
 import supabaseAdmin from "../utils/dbAdmin";
 
 export interface RateLimitResult {
@@ -129,6 +129,7 @@ export async function checkRecipientRateLimit(recipientEmail: string): Promise<R
  * Prevents concurrent double-spending race conditions.
  */
 export async function acquireWalletLock(senderEmail: string, ttlSeconds = 15): Promise<boolean> {
+  if (!isRedisReady()) return true;
   const cleanSender = senderEmail.toLowerCase().trim();
   const lockKey = `lock:wallet:${cleanSender}`;
   try {

@@ -61,20 +61,22 @@ export default function DashboardWalletCard({
   const currentPinRefs = useRef<Array<HTMLInputElement | null>>([null, null, null, null]);
 
   useEffect(() => {
-    if (typeof user.has_wallet_pin === "boolean") {
-      setHasPin(user.has_wallet_pin);
-    } else {
-      // Check server once if has_wallet_pin was not in cached profile payload
-      fetch("/api/wallet/pin")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          if (d && typeof d.hasPin === "boolean") {
-            setHasPin(d.hasPin);
-          }
-        })
-        .catch(() => {});
+    if (user.has_wallet_pin) {
+      setHasPin(true);
     }
-  }, [user.has_wallet_pin]);
+    // Always check server source-of-truth in case profile was cached before PIN was set
+    fetch("/api/wallet/pin")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.hasPin === "boolean") {
+          setHasPin(d.hasPin);
+          if (d.hasPin && !user.has_wallet_pin) {
+            onPinConfigured?.();
+          }
+        }
+      })
+      .catch(() => {});
+  }, [user.has_wallet_pin, onPinConfigured]);
 
   // Auto-close wallet balance after 5 minutes if user did not manually close with the Eye icon
   useEffect(() => {
@@ -95,10 +97,25 @@ export default function DashboardWalletCard({
     setPinSuccessMsg("");
   };
 
-  const openPinPrompt = (actionAfterUnlock: PendingWalletAction = "none") => {
+  const openPinPrompt = async (actionAfterUnlock: PendingWalletAction = "none") => {
     resetPinInputs();
     setPendingAction(actionAfterUnlock);
-    const nextMode: PinBoxMode = hasPin ? "verify" : "setup";
+    let effectiveHasPin = hasPin;
+    if (!effectiveHasPin) {
+      // Re-verify with server in case profile state is lagging
+      try {
+        const r = await fetch("/api/wallet/pin");
+        if (r.ok) {
+          const d = await r.json();
+          if (d?.hasPin) {
+            effectiveHasPin = true;
+            setHasPin(true);
+            onPinConfigured?.();
+          }
+        }
+      } catch {}
+    }
+    const nextMode: PinBoxMode = effectiveHasPin ? "verify" : "setup";
     setPinMode(nextMode);
     setTimeout(() => {
       pinRefs.current[0]?.focus();
@@ -211,6 +228,13 @@ export default function DashboardWalletCard({
       const data = await res.json();
       if (res.ok && data.success) {
         completeUnlock(true);
+      } else if (data?.error && (data.error.includes("already set") || data.error.includes("already configured"))) {
+        setHasPin(true);
+        onPinConfigured?.();
+        resetPinInputs();
+        setPinMode("verify");
+        setPinError("Your Wallet PIN is already configured. Please enter your 4-digit PIN below to unlock.");
+        setTimeout(() => pinRefs.current[0]?.focus(), 40);
       } else {
         setPinError(data?.error || "Could not save PIN.");
       }

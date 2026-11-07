@@ -107,8 +107,10 @@ export default function SendMoneyModal({
           window.dispatchEvent(new CustomEvent("paayh:transfer_completed", { detail: { reference: data.reference } }));
         } catch {}
 
+        const recipientUserHandle = data.recipient_username || (cleanEmail.includes("@") ? `@${cleanEmail.split("@")[0]}` : `@${cleanEmail}`);
         onSuccess({
           amount: amountNum,
+          recipientUsername: recipientUserHandle,
           recipientEmail: cleanEmail,
           reference: data.reference,
           newBalance: finalBal,

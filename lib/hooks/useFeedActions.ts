@@ -2,6 +2,8 @@ import { useState, useRef, useCallback } from "react";
 import { Ad } from "@/components/ui/AdCard";
 import { ViewerProfileState } from "./useViewerProfile";
 import { KinematicVector } from "@/lib/security/kinematicsEvaluator";
+import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 
 export interface InteractionData {
   telemetry?: KinematicVector[];
@@ -39,7 +41,6 @@ export function useFeedActions({
   const handleAdSeen = useCallback(
     async (ad: Ad): Promise<boolean> => {
       if (!ad || !ad.id) return false;
-      const isOwner = Boolean(userEmail && ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase());
       if (processingRef.current.has(ad.id)) return false;
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
@@ -51,7 +52,7 @@ export function useFeedActions({
         !ad.impressions ||
         Number(ad.impressions) <= 0
       );
-      if (!isPlatform && !isOwner) {
+      if (!isPlatform) {
         incrementClicks?.(1);
       }
 
@@ -83,7 +84,7 @@ export function useFeedActions({
                 prev
                   ? {
                       ...prev,
-                      monetization_clicks: Math.max(prev.monetization_clicks || 0, data.clicksCount),
+                      monetization_clicks: data.clicksCount,
                       monetized: isNowMonetized || prev.monetized,
                     }
                   : null
@@ -91,28 +92,33 @@ export function useFeedActions({
             }
 
             try {
-              const existing = localStorage.getItem("paayh_monetize_cache");
+              const existing = localStorage.getItem("paayh_monetize_cache_v2");
               const parsed = existing ? JSON.parse(existing) : {};
-              const nextLevel = data.clicksCount >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((data.clicksCount - 300) / 300))) : 1;
+              const isExempt = isExemptFromBarriersAndInactivity(userEmail);
+              const details = computeAtwTierDetails(data.clicksCount, data.atwTier || parsed.atwTier, isExempt);
               const updatedCache = {
                 ...parsed,
+                email: userEmail ? userEmail.toLowerCase() : parsed.email,
                 clicksCount: data.clicksCount,
-                clicksRemaining: Math.max(0, (data.clicksCount < 300 ? 300 : data.clicksCount < 600 ? 600 : 900) - data.clicksCount),
-                isMonetized: isNowMonetized,
-                atwTier: `ATW${nextLevel}`,
+                clicksRemaining: details.clicksRemaining,
+                isMonetized: isNowMonetized || isExempt,
+                atwTier: details.tierCode,
               };
               const serialized = JSON.stringify(updatedCache);
-              localStorage.setItem("paayh_monetize_cache", serialized);
-              sessionStorage.setItem("paayh_monetize_cache", serialized);
+              localStorage.setItem("paayh_monetize_cache_v2", serialized);
+              sessionStorage.setItem("paayh_monetize_cache_v2", serialized);
             } catch {}
 
             if (typeof window !== "undefined") {
+              const isExempt = isExemptFromBarriersAndInactivity(userEmail);
+              const details = computeAtwTierDetails(data.clicksCount, data.atwTier, isExempt);
               window.dispatchEvent(
                 new CustomEvent("xea:click-increment", {
                   detail: {
                     delta: 1,
                     totalClicks: data.clicksCount,
-                    isMonetized: isNowMonetized,
+                    isMonetized: isNowMonetized || isExempt,
+                    atwTier: details.tierCode,
                   },
                 })
               );
@@ -129,24 +135,19 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, incrementClicks, setViewerProfile]
+    [incrementClicks, setViewerProfile]
   );
 
   // Claim Earn reward
   const handleAdEarn = useCallback(
     async (ad: Ad, interactionData?: InteractionData): Promise<boolean> => {
       if (!ad || !ad.id) return false;
-      if (ad.user_email && ad.user_email.toLowerCase() === userEmail.toLowerCase()) {
-        return false;
-      }
       if (processingRef.current.has(ad.id)) return false;
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
 
       const rawCpi = ad.cost_per_impression && Number(ad.cost_per_impression) > 0 ? Number(ad.cost_per_impression) : 25;
       const expectedRate = Math.round(rawCpi * 0.50 * 100) / 100;
-
-      console.log(`🟢 [EARN CLICKED] Ad: ${ad.id}, Base CPI: ₦${rawCpi}, crediting 50% (₦${expectedRate}) immediately to balance...`);
 
       // 1. INSTANT OPTIMISTIC UI: Trigger balance & click progress update immediately (0ms delay)
       if (expectedRate > 0) {
@@ -185,7 +186,6 @@ export function useFeedActions({
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
           console.error("❌ Earn API rejected claim:", response.status, errData);
-          // Rollback on server error
           if (expectedRate > 0) {
             updateBalance(-expectedRate);
             onEarnSuccess?.(-expectedRate);
@@ -230,7 +230,6 @@ export function useFeedActions({
 
         const resData = await response.json();
 
-        // Handle Active Earning Cooldown (Pacing 15m or Review 48h)
         if (resData.code === "COOLDOWN_ACTIVE") {
           setSeenAds((prev) => prev.filter((id) => id !== ad.id));
           if (expectedRate > 0) {
@@ -256,7 +255,6 @@ export function useFeedActions({
             ? parseFloat(String(resData.result ?? 0))
             : expectedRate;
 
-        // Legacy suspension handling
         if (rate === -1 || rate === -2) {
           if (expectedRate > 0) {
             updateBalance(-expectedRate);
@@ -266,14 +264,12 @@ export function useFeedActions({
           return false;
         }
 
-        // If returned rate differed from optimistic rate, reconcile difference
         if (rate !== expectedRate) {
           const diff = rate - expectedRate;
           updateBalance(diff);
           onEarnSuccess?.(diff);
         }
 
-        // Sync with authoritative balance and clicks from server response
         if (typeof resData.balance === "number" && !isNaN(resData.balance)) {
           const authBal = resData.balance;
           const authClicks = typeof resData.clicks === "number" ? resData.clicks : undefined;
@@ -284,7 +280,7 @@ export function useFeedActions({
                 ? {
                     ...prev,
                     balance: authBal,
-                    monetization_clicks: typeof authClicks === "number" ? Math.max(prev.monetization_clicks, authClicks) : prev.monetization_clicks,
+                    monetization_clicks: typeof authClicks === "number" ? authClicks : prev.monetization_clicks,
                     monetized: (typeof authClicks === "number" && authClicks >= 300) || prev.monetized,
                   }
                 : null
@@ -293,20 +289,22 @@ export function useFeedActions({
 
           if (typeof window !== "undefined") {
             if (typeof authClicks === "number") {
+              const isExempt = isExemptFromBarriersAndInactivity(userEmail);
+              const details = computeAtwTierDetails(authClicks, resData.atwTier, isExempt);
               try {
-                const existing = localStorage.getItem("paayh_monetize_cache");
+                const existing = localStorage.getItem("paayh_monetize_cache_v2");
                 const parsed = existing ? JSON.parse(existing) : {};
-                const nextLevel = authClicks >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((authClicks - 300) / 300))) : 1;
                 const updatedCache = {
                   ...parsed,
+                  email: userEmail ? userEmail.toLowerCase() : parsed.email,
                   clicksCount: authClicks,
-                  clicksRemaining: Math.max(0, 300 - authClicks),
-                  isMonetized: authClicks >= 300 || Boolean(parsed.isMonetized),
-                  atwTier: `ATW${nextLevel}`,
+                  clicksRemaining: details.clicksRemaining,
+                  isMonetized: isExempt || authClicks >= 300 || Boolean(parsed.isMonetized),
+                  atwTier: details.tierCode,
                 };
                 const serialized = JSON.stringify(updatedCache);
-                localStorage.setItem("paayh_monetize_cache", serialized);
-                sessionStorage.setItem("paayh_monetize_cache", serialized);
+                localStorage.setItem("paayh_monetize_cache_v2", serialized);
+                sessionStorage.setItem("paayh_monetize_cache_v2", serialized);
               } catch {}
 
               window.dispatchEvent(
@@ -314,7 +312,8 @@ export function useFeedActions({
                   detail: {
                     delta: 1,
                     totalClicks: authClicks,
-                    isMonetized: authClicks >= 300,
+                    isMonetized: isExempt || authClicks >= 300,
+                    atwTier: details.tierCode,
                   },
                 })
               );
@@ -343,18 +342,15 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, viewerProfile, updateBalance, incrementClicks, suspendAccount, onEarnSuccess, setViewerProfile]
+    [updateBalance, incrementClicks, suspendAccount, onEarnSuccess, setViewerProfile]
   );
 
-  // Add Mutual
+  // Add Mutual (Real-time optimistic addition + server sync)
   const handleAdMutual = useCallback(
     async (ad: Ad): Promise<boolean> => {
-      if (!ad || !ad.id || !ad.user_email) return false;
-      const publisherEmail = ad.user_email.toLowerCase();
+      if (!ad || !ad.id) return false;
+      const publisherEmail = String(ad.user_email || ad.custom_sponsor_handle || "").toLowerCase().trim();
 
-      if (publisherEmail === userEmail.toLowerCase()) {
-        return false;
-      }
       if (viewerProfile && viewerProfile.mutual_count >= 50) {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Mutual limit reached (50 max)" } }));
@@ -364,6 +360,11 @@ export function useFeedActions({
       if (processingRef.current.has(ad.id)) return false;
       processingRef.current.add(ad.id);
       setProcessingAds((prev) => [...prev, ad.id]);
+
+      // Optimistic 0ms mutual + click increment
+      if (publisherEmail) {
+        addMutual(publisherEmail);
+      }
       incrementClicks?.(1);
       setSeenAds((prev) => [...prev, ad.id]);
 
@@ -427,20 +428,22 @@ export function useFeedActions({
 
         if (typeof resData.clicks === "number" && typeof window !== "undefined") {
           const authClicks = resData.clicks;
+          const isExempt = isExemptFromBarriersAndInactivity(userEmail);
+          const details = computeAtwTierDetails(authClicks, resData.atwTier, isExempt);
           try {
-            const existing = localStorage.getItem("paayh_monetize_cache");
+            const existing = localStorage.getItem("paayh_monetize_cache_v2");
             const parsed = existing ? JSON.parse(existing) : {};
-            const nextLevel = authClicks >= 300 ? Math.min(3, Math.max(1, 1 + Math.floor((authClicks - 300) / 300))) : 1;
             const updatedCache = {
               ...parsed,
+              email: userEmail ? userEmail.toLowerCase() : parsed.email,
               clicksCount: authClicks,
-              clicksRemaining: Math.max(0, 300 - authClicks),
-              isMonetized: authClicks >= 300 || Boolean(parsed.isMonetized),
-              atwTier: `ATW${nextLevel}`,
+              clicksRemaining: details.clicksRemaining,
+              isMonetized: isExempt || authClicks >= 300 || Boolean(parsed.isMonetized),
+              atwTier: details.tierCode,
             };
             const serialized = JSON.stringify(updatedCache);
-            localStorage.setItem("paayh_monetize_cache", serialized);
-            sessionStorage.setItem("paayh_monetize_cache", serialized);
+            localStorage.setItem("paayh_monetize_cache_v2", serialized);
+            sessionStorage.setItem("paayh_monetize_cache_v2", serialized);
           } catch {}
 
           window.dispatchEvent(
@@ -448,15 +451,13 @@ export function useFeedActions({
               detail: {
                 delta: 1,
                 totalClicks: authClicks,
-                isMonetized: authClicks >= 300,
+                isMonetized: isExempt || authClicks >= 300,
+                atwTier: details.tierCode,
               },
             })
           );
         }
 
-        if (mutualResult === 1) {
-          addMutual(publisherEmail);
-        }
         onMutualSuccess?.();
         return true;
       } catch (e: unknown) {
@@ -470,7 +471,7 @@ export function useFeedActions({
         setProcessingAds((prev) => prev.filter((id) => id !== ad.id));
       }
     },
-    [userEmail, viewerProfile, addMutual, incrementClicks, suspendAccount, onMutualSuccess]
+    [viewerProfile, addMutual, incrementClicks, suspendAccount, onMutualSuccess, setViewerProfile]
   );
 
   // Ad Sharing

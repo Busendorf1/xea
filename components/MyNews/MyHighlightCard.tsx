@@ -3,12 +3,10 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Rocket,
   Trash2,
   Video,
   Image as ImageIcon,
   Clock,
-  Zap,
   Info,
   Globe,
   Tag,
@@ -87,7 +85,10 @@ function MyHighlightCard({
 }: MyHighlightCardProps) {
   const rawMediaUrl = item.image_url || "";
   const isVideoMedia = /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(rawMediaUrl);
-  const isBidded = !!item.is_bidded || Number(item.bid_price || 0) > 1000;
+  const boostedAmount = Number((item as any).boosted_amount || 0);
+  const boostedAt = (item as any).boosted_at as string | undefined;
+  const isBoosted = Boolean((item as any).is_boosted || boostedAmount > 0 || boostedAt);
+  const isBidded = isBoosted || !!item.is_bidded || Number(item.bid_price || 0) > 1000;
   const dailyRate = isBidded ? Number(item.bid_price || 1500) : 1000;
   const scheduleInfo = getHighlightScheduleInfo(item, timeNow);
   const totalCost = dailyRate * scheduleInfo.scheduledDays;
@@ -187,7 +188,15 @@ function MyHighlightCard({
                 className={`${styles.tagPill} ${styles.tagPillBidded}`}
                 title="Priority Spotlight Auction: Contests for the #1 top carousel slot."
               >
-                Spotlight Bid • {formatCurrency(dailyRate, item.country)}/day
+                {isBoosted ? (
+                  <>
+                    Boosted •{" "}
+                    {formatCurrency(boostedAmount > 0 ? boostedAmount : dailyRate, item.country)}
+                    {boostedAt ? ` • ${formatTimestamp(boostedAt)}` : ""}
+                  </>
+                ) : (
+                  <>Spotlight Bid • {formatCurrency(dailyRate, item.country)}/day</>
+                )}
               </span>
             )}
 
@@ -245,7 +254,10 @@ function MyHighlightCard({
               <Globe size={12} /> {geoText}
             </span>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              <Calendar size={12} /> {scheduleInfo.scheduledDays}d Schedule
+              <Calendar size={12} />{" "}
+              {status === "active" && !isExpired
+                ? scheduleInfo.remainingText
+                : `${scheduleInfo.scheduledDays} ${scheduleInfo.scheduledDays === 1 ? "day" : "days"}`}
             </span>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
               {isBidded ? "25–30m Hold / Viewer" : "10m Hold / Viewer"}
@@ -303,8 +315,10 @@ function MyHighlightCard({
             </span>
           </div>
           <div className={styles.metricCell}>
-            <span className={styles.metricTitle}>Duration</span>
-            <span className={styles.metricVal}>{scheduleInfo.scheduledDays} Day(s)</span>
+            <span className={styles.metricTitle}>{status === "active" && !isExpired ? "Time Remaining" : "Duration"}</span>
+            <span className={styles.metricVal}>
+              {status === "active" && !isExpired ? scheduleInfo.remainingText : `${scheduleInfo.scheduledDays} Day(s)`}
+            </span>
           </div>
         </div>
       </div>
@@ -368,7 +382,7 @@ function MyHighlightCard({
                     onEdit(item.id);
                   }}
                 >
-                  Adjust
+                  Adjust &amp; Resubmit
                 </a>
               )}
 

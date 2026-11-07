@@ -13,7 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const MAX_FAILED_PIN_ATTEMPTS = 5;
-const PIN_LOCKOUT_SECONDS = 15 * 60; // 15 minutes (900 seconds)
+const PIN_LOCKOUT_SECONDS = 45 * 60; // 45 minutes (2700 seconds)
 
 interface PinFailRecord {
   count: number;
@@ -174,7 +174,7 @@ async function fetchUserForPin(emailLower: string): Promise<{
     const { data, error } = await supabaseAdmin
       .from("users")
       .select("id, email, phone, username, passphrase, wallet_pin_hash")
-      .eq("email", emailLower)
+      .ilike("email", emailLower)
       .maybeSingle();
 
     if (!error) {
@@ -192,7 +192,7 @@ async function fetchUserForPin(emailLower: string): Promise<{
   const { data: fbData, error: fbErr } = await supabaseAdmin
     .from("users")
     .select("id, email, phone, username, passphrase")
-    .eq("email", emailLower)
+    .ilike("email", emailLower)
     .maybeSingle();
 
   return { user: fbData, usePassphraseFallback: true, error: fbErr };
@@ -228,7 +228,7 @@ async function saveUserPinHash(
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -248,7 +248,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -383,7 +383,7 @@ export async function POST(req: NextRequest) {
           {
             error: `Incorrect 4-digit Wallet PIN (${failInfo.attemptsRemaining} attempt${
               failInfo.attemptsRemaining === 1 ? "" : "s"
-            } left before 15-min lockout).`,
+            } left before 45-min lockout).`,
             attemptsRemaining: failInfo.attemptsRemaining,
           },
           { status: 401 }
@@ -434,7 +434,7 @@ export async function POST(req: NextRequest) {
           {
             error: `Current Wallet PIN is incorrect (${failInfo.attemptsRemaining} attempt${
               failInfo.attemptsRemaining === 1 ? "" : "s"
-            } left before 15-min lockout).`,
+            } left before 45-min lockout).`,
           },
           { status: 401 }
         );

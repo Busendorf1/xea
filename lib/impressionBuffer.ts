@@ -1,4 +1,4 @@
-import redisConnection from "./redis";
+import redisConnection, { isRedisReady } from "./redis";
 import supabaseAdmin from "./utils/dbAdmin";
 import { streamImpressionsToClickHouse } from "./clickhouse";
 import { invalidateCachedUserCampaigns } from "./utils/cache";
@@ -52,6 +52,30 @@ interface PendingSeenBatch {
 }
 const l1PendingSeen = new Map<string, PendingSeenBatch>();
 const l1ActiveSeenFlushers = new Set<string>();
+const l1LastKnownImpCount = new Map<string, { count: number; updatedAt: number }>();
+
+async function drainSeenBufferForAd(adId: string): Promise<number | undefined> {
+  const batch = l1PendingSeen.get(adId);
+  if (!batch || batch.delta <= 0) return l1LastKnownImpCount.get(adId)?.count;
+  l1PendingSeen.delete(adId);
+
+  const updatedCount = await applyBatchedSeenDeltaToAd(
+    adId,
+    batch.delta,
+    Boolean(batch.isPlatformPost),
+    batch.adOwnerEmail
+  );
+  if (typeof updatedCount === "number") {
+    l1LastKnownImpCount.set(adId, { count: updatedCount, updatedAt: Date.now() });
+    if (l1LastKnownImpCount.size > 5000) {
+      const cutoff = Date.now() - 60_000;
+      for (const [k, v] of l1LastKnownImpCount) {
+        if (v.updatedAt < cutoff) l1LastKnownImpCount.delete(k);
+      }
+    }
+  }
+  return updatedCount;
+}
 
 /**
  * Coalesces high-concurrency non-monetized Seen increments on the same adId so a viral ad
@@ -70,42 +94,37 @@ export async function recordCoalescedAdSeen(
     dbImpressionsTarget?: number;
     dbImpressionCount?: number;
   }
-): Promise<void> {
+): Promise<number | undefined> {
   const nowIso = new Date().toISOString();
 
-  // 1. Try atomic RPC first
-  try {
-    const { data: seenRpcRes, error: seenRpcErr } = await supabaseAdmin.rpc("record_ad_seen", {
-      p_ad_id: adId,
-      p_user_email: emailKey,
-    });
-
-    if (!seenRpcErr && seenRpcRes) {
-      // Synchronize mirror counter to public.adds table asynchronously
-      supabaseAdmin.from("adds").select("impression_count").eq("id", adId).maybeSingle().then(({ data }) => {
-        if (data) {
-          supabaseAdmin.from("adds").update({ impression_count: Number(data.impression_count || 0) + 1 }).eq("id", adId).then(() => {}, () => {});
-        }
-      }, () => {});
-      if (meta.adOwnerEmail) {
-        invalidateCachedUserCampaigns(meta.adOwnerEmail).catch(() => {});
-      }
-      return;
+  // Queue increment into L1 hot-row coalescer
+  const existingBatch = l1PendingSeen.get(adId);
+  if (existingBatch) {
+    existingBatch.delta += 1;
+    if (meta.adOwnerEmail && !existingBatch.adOwnerEmail) {
+      existingBatch.adOwnerEmail = meta.adOwnerEmail;
     }
-  } catch {}
+    existingBatch.isPlatformPost = existingBatch.isPlatformPost || meta.isPlatformPost;
+  } else {
+    l1PendingSeen.set(adId, {
+      delta: 1,
+      adOwnerEmail: meta.adOwnerEmail,
+      isPlatformPost: meta.isPlatformPost,
+    });
+  }
 
-  // 2. Fallback: User impression table tracking + atomic counter increment
-  try {
-    const { data: existingImp } = await supabaseAdmin
-      .from("ad_impressions")
-      .select("id, view_count")
-      .eq("ad_id", adId)
-      .ilike("user_email", emailKey)
-      .maybeSingle();
+  // Record user-level ad_impressions row asynchronously / concurrently (isolated per user, no hot-row lock)
+  const userImpPromise = (async () => {
+    try {
+      const { data: existingImp } = await supabaseAdmin
+        .from("ad_impressions")
+        .select("id, view_count")
+        .eq("ad_id", adId)
+        .ilike("user_email", emailKey)
+        .maybeSingle();
 
-    const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
-    if (existingViews < meta.userCap) {
-      if (existingImp) {
+      const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
+      if (existingImp?.id) {
         await supabaseAdmin
           .from("ad_impressions")
           .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
@@ -115,11 +134,35 @@ export async function recordCoalescedAdSeen(
           .from("ad_impressions")
           .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
       }
+    } catch {}
+  })();
 
-      await applyBatchedSeenDeltaToAd(adId, 1, meta.isPlatformPost, meta.adOwnerEmail);
-    }
+  // If another request is already flushing/shielding this hot adId, return optimistic count in 0ms!
+  if (l1ActiveSeenFlushers.has(adId)) {
+    await userImpPromise;
+    const baseKnown = l1LastKnownImpCount.get(adId)?.count ?? meta.dbImpressionCount ?? 0;
+    const pendingDelta = l1PendingSeen.get(adId)?.delta ?? 0;
+    return baseKnown + pendingDelta;
+  }
+
+  l1ActiveSeenFlushers.add(adId);
+  try {
+    const [, flushedCount] = await Promise.all([userImpPromise, drainSeenBufferForAd(adId)]);
+    // Keep hot-row shield active for COALESCE_WINDOW_MS (1500ms) to coalesce burst traffic into 1 SQL UPDATE
+    setTimeout(async () => {
+      try {
+        if (l1PendingSeen.has(adId)) {
+          await drainSeenBufferForAd(adId);
+        }
+      } finally {
+        l1ActiveSeenFlushers.delete(adId);
+      }
+    }, COALESCE_WINDOW_MS);
+    return flushedCount;
   } catch (err) {
+    l1ActiveSeenFlushers.delete(adId);
     console.warn("⚠️ Fallback seen record error:", err);
+    return undefined;
   }
 }
 
@@ -128,8 +171,8 @@ async function applyBatchedSeenDeltaToAd(
   delta: number,
   isPlatformPost: boolean,
   adOwnerEmail?: string | null
-): Promise<void> {
-  if (delta <= 0) return;
+): Promise<number | undefined> {
+  if (delta <= 0) return undefined;
   const nowIso = new Date().toISOString();
 
   let targetTable = "addsactive";
@@ -156,7 +199,7 @@ async function applyBatchedSeenDeltaToAd(
     }
   }
 
-  if (!targetRow) return;
+  if (!targetRow) return undefined;
 
   const currentImpCount = Number(targetRow.impression_count || 0);
   const targetImps = Number(targetRow.impressions || 0);
@@ -185,15 +228,27 @@ async function applyBatchedSeenDeltaToAd(
       await supabaseAdmin.from("completed_ads").upsert([updatedAdRow], { onConflict: "id" });
     }
     await supabaseAdmin.from("addsactive").delete().eq("id", adId);
+    await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId).then(() => {}, () => {});
     await supabaseAdmin
       .from("adds")
       .update({ completed_at: completedIso, impression_count: nextImpCount })
       .eq("id", adId);
+
+    // Immediately evict exhausted ad from L1 in-memory caches and L2 Redis caches
+    try {
+      const { evictAdFromL1FeedCaches } = await import("@/lib/utils/cache");
+      evictAdFromL1FeedCaches(adId);
+    } catch {}
+    if (isRedisReady()) {
+      redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
+    }
   }
 
   if (resolvedOwner) {
     invalidateCachedUserCampaigns(resolvedOwner).catch(() => {});
   }
+
+  return nextImpCount;
 }
 
 /**

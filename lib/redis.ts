@@ -262,7 +262,10 @@ function createSafeRedisProxy(client: Redis): Redis {
               return 0;
             }
             // Mutation methods
-            if (method === "set" || method === "hset" || method === "setex" || method === "expire") {
+            if (method === "set") {
+              return "OK";
+            }
+            if (method === "hset" || method === "setex" || method === "expire") {
               return null;
             }
             return null;
@@ -299,6 +302,7 @@ function createSafeRedisProxy(client: Redis): Redis {
               ) {
                 return 0;
               }
+              if (method === "set") return "OK";
               return null;
             }
             const isConnectionError =
@@ -337,6 +341,9 @@ function createSafeRedisProxy(client: Redis): Redis {
                 method === "decrby"
               ) {
                 return 0;
+              }
+              if (method === "set") {
+                return "OK";
               }
               return null;
             }

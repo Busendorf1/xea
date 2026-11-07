@@ -5,7 +5,7 @@ import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
 
 export async function POST(request: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(request);
+    const email = await getAuthenticatedEmail(request, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

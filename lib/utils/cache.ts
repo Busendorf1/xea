@@ -1,4 +1,5 @@
 import redisConnection, { isRedisReady } from "../redis";
+import supabaseAdmin from "./dbAdmin";
 
 // ----------------------------------------------------
 // ATOMIC REDIS LUA EARNING MULTI-DEVICE DEDUPLICATION
@@ -233,12 +234,25 @@ export async function incrementCachedMonetizationClicks(email: string, count: nu
 
   if (!isRedisReady()) return 0;
   try {
-    const liveKey = `user:live_clicks:${emailLower}`;
-    const liveClicks = await redisConnection.incrby(liveKey, count);
-    await redisConnection.expire(liveKey, 86400 * 30); // 30-day retention
+    const liveKey = `user:live_clicks:v2:${emailLower}`;
+    const exists = await redisConnection.exists(liveKey).catch(() => 0);
+    let liveClicks = 0;
+    if (!exists) {
+      let base = 0;
+      try {
+        const { data: u } = await supabaseAdmin.from("users").select("monetization_clicks").ilike("email", emailLower).maybeSingle();
+        base = Number(u?.monetization_clicks || 0);
+      } catch {}
+      liveClicks = base + count;
+      await redisConnection.set(liveKey, String(liveClicks), "EX", 86400 * 30).catch(() => {});
+    } else {
+      liveClicks = await redisConnection.incrby(liveKey, count);
+      await redisConnection.expire(liveKey, 86400 * 30); // 30-day retention
+    }
 
     // Invalidate profile & monetize status cache to force fresh real-time calculation
     await Promise.all([
+      redisConnection.del(`monetize:status:v2:${emailLower}`),
       redisConnection.del(`monetize:status:${emailLower}`),
       redisConnection.del(`user:profile:${emailLower}`),
       redisConnection.del(`profile:${emailLower}`),
@@ -574,5 +588,38 @@ export async function setCachedUserCampaignAnalytics<T = Record<string, unknown>
     if (err?.message !== "Connection is closed.") {
       console.warn("⚠️ Redis setCachedUserCampaignAnalytics notice:", err.message || err);
     }
+  }
+}
+
+// ----------------------------------------------------
+// L1 FEED & HIGHLIGHTS POOL EVICTION CALLBACK REGISTRY
+// ----------------------------------------------------
+let l1FeedEvictionHandler: ((adId?: string) => void) | null = null;
+let l1HighlightsEvictionHandler: (() => void) | null = null;
+
+export function registerL1FeedEvictionHandler(fn: (adId?: string) => void) {
+  l1FeedEvictionHandler = fn;
+}
+
+export function registerL1HighlightsEvictionHandler(fn: () => void) {
+  l1HighlightsEvictionHandler = fn;
+}
+
+export function evictAdFromL1FeedCaches(adId?: string) {
+  if (l1FeedEvictionHandler) {
+    try {
+      l1FeedEvictionHandler(adId);
+    } catch {}
+  }
+}
+
+export function invalidateSharedHighlightsPool() {
+  if (l1HighlightsEvictionHandler) {
+    try {
+      l1HighlightsEvictionHandler();
+    } catch {}
+  }
+  if (isRedisReady()) {
+    redisConnection.del("highlights:active_pool:v3").catch(() => {});
   }
 }

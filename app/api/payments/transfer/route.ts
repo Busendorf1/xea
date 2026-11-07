@@ -223,6 +223,21 @@ export async function POST(req: NextRequest) {
         ? rpcResult.new_sender_balance
         : Math.max(0, balanceRes.currentBalance - amountNum);
 
+    // Resolve usernames for privacy policy (never leak raw email on receipts or notifications)
+    let senderUsername = cleanSender.split("@")[0] || "User";
+    let recipientUsername = cleanRecipient.split("@")[0] || "User";
+    try {
+      const [{ data: sUser }, { data: rUser }] = await Promise.all([
+        supabaseAdmin.from("users").select("username").eq("email", cleanSender).maybeSingle(),
+        supabaseAdmin.from("users").select("username").eq("email", cleanRecipient).maybeSingle(),
+      ]);
+      if (sUser?.username) senderUsername = sUser.username;
+      if (rUser?.username) recipientUsername = rUser.username;
+    } catch {}
+
+    const senderHandle = senderUsername.startsWith("@") ? senderUsername : `@${senderUsername}`;
+    const recipientHandle = recipientUsername.startsWith("@") ? recipientUsername : `@${recipientUsername}`;
+
     // 8. Synchronize with Payments Ledger for Statements (Sender Debit & Recipient Credit)
     const senderRef = reference;
     const recipientRef = `${reference}_rcv`;
@@ -236,11 +251,13 @@ export async function POST(req: NextRequest) {
             amount: amountNum,
             status: "success",
             type: "transfer_sent",
-            description: `Sent money to ${cleanRecipient}`,
+            description: `Sent money to ${recipientHandle}`,
             metadata: {
               recipient_email: cleanRecipient,
               recipientEmail: cleanRecipient,
               counterparty_email: cleanRecipient,
+              recipient_username: recipientHandle,
+              counterparty_username: recipientHandle,
               amount: amountNum,
               amount_kobo: amountKobo,
               transfer_type: "outbound",
@@ -256,11 +273,13 @@ export async function POST(req: NextRequest) {
             amount: amountNum,
             status: "success",
             type: "transfer_received",
-            description: `Received money from ${cleanSender}`,
+            description: `Received money from ${senderHandle}`,
             metadata: {
               sender_email: cleanSender,
               senderEmail: cleanSender,
               counterparty_email: cleanSender,
+              sender_username: senderHandle,
+              counterparty_username: senderHandle,
               amount: amountNum,
               amount_kobo: amountKobo,
               transfer_type: "inbound",
@@ -281,12 +300,12 @@ export async function POST(req: NextRequest) {
         supabaseAdmin.from("notifications").insert({
           user_email: cleanSender,
           title: "Money Sent",
-          message: `You successfully sent ${formattedNaira} to ${cleanRecipient}`,
+          message: `You successfully sent ${formattedNaira} to ${recipientHandle}`,
         }),
         supabaseAdmin.from("notifications").insert({
           user_email: cleanRecipient,
           title: "Money Received",
-          message: `You received ${formattedNaira} from ${cleanSender}`,
+          message: `You received ${formattedNaira} from ${senderHandle}`,
         }),
       ]);
     } catch (notifErr) {
@@ -333,8 +352,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully sent ${formattedAmount} to ${cleanRecipient}`,
+      message: `Successfully sent ${formattedAmount} to ${recipientHandle}`,
       reference,
+      recipient_username: recipientHandle,
       new_balance: newBalance,
     });
   } catch (err: unknown) {

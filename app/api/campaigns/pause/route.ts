@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady, scanDeletePattern } from "@/lib/redis";
+
+function isAdminPauseStatement(stmt?: string | null): boolean {
+  if (!stmt || typeof stmt !== "string") return false;
+  const trimmed = stmt.trim();
+  if (!trimmed) return false;
+  const upper = trimmed.toUpperCase();
+  if (
+    upper.startsWith("APPROVED:") ||
+    upper.startsWith("REJECTED:") ||
+    upper.startsWith("STATUS:") ||
+    trimmed === "pending_review"
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,70 +32,82 @@ export async function POST(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
+    const isAdmin = isAdminEmail(emailLower);
 
-    // Verify ownership of the campaign across adds and addsactive
+    // Check active table first, then review queue table
     let { data: ad } = await supabaseAdmin
-      .from("adds")
+      .from("addsactive")
       .select("id, user_email, admin_statement")
       .eq("id", adId)
       .maybeSingle();
 
     if (!ad) {
-      const { data: activeAd } = await supabaseAdmin
-        .from("addsactive")
+      const { data: pendingAd } = await supabaseAdmin
+        .from("adds")
         .select("id, user_email, admin_statement")
         .eq("id", adId)
         .maybeSingle();
-      ad = activeAd;
+      ad = pendingAd;
     }
 
     if (!ad) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    if (ad.user_email?.toLowerCase().trim() !== emailLower) {
+    if (!isAdmin && ad.user_email?.toLowerCase().trim() !== emailLower) {
       return NextResponse.json({ error: "Access denied. You do not own this campaign." }, { status: 403 });
     }
 
-    // Block user from resuming an ad paused by Admin with an admin statement
-    if (!isPaused && ad.admin_statement) {
+    // Block regular advertiser from resuming an ad paused by Admin with an actual admin pause statement
+    if (!isPaused && !isAdmin && isAdminPauseStatement(ad.admin_statement)) {
       return NextResponse.json({ error: "Ad Paused, follow instruction provided" }, { status: 400 });
     }
 
-    // Rate Limit Check: 5 pause/resume actions per 12 hours (43200 seconds) per advertiser
-    const rateLimitKey = `ratelimit:pause_ad:${emailLower}`;
-    let currentPauseCount = 0;
-    try {
-      const cnt = await redisConnection.get(rateLimitKey);
-      currentPauseCount = cnt ? parseInt(cnt, 10) : 0;
-    } catch (e) {
-      currentPauseCount = 0;
-    }
-
-    if (currentPauseCount >= 5) {
-      return NextResponse.json(
-        { error: "Limit reached, try again later." },
-        { status: 429 }
-      );
-    }
-
-    // Increment count & set 12-hour expiry (43200 seconds)
-    try {
-      await redisConnection.incr(rateLimitKey);
-      if (currentPauseCount === 0) {
-        await redisConnection.expire(rateLimitKey, 43200);
+    if (!isAdmin) {
+      // Rate Limit Check: 5 pause/resume actions per 12 hours (43200 seconds) per advertiser
+      const rateLimitKey = `ratelimit:pause_ad:${emailLower}`;
+      let currentPauseCount = 0;
+      try {
+        const cnt = await redisConnection.get(rateLimitKey);
+        currentPauseCount = cnt ? parseInt(cnt, 10) : 0;
+      } catch (e) {
+        currentPauseCount = 0;
       }
-    } catch (e) {}
+
+      if (currentPauseCount >= 5) {
+        return NextResponse.json(
+          { error: "Limit reached, try again later." },
+          { status: 429 }
+        );
+      }
+
+      // Increment count & set 12-hour expiry (43200 seconds)
+      try {
+        await redisConnection.incr(rateLimitKey);
+        if (currentPauseCount === 0) {
+          await redisConnection.expire(rateLimitKey, 43200);
+        }
+      } catch (e) {}
+    }
+
+    const activeUpdatePayload: Record<string, any> = { is_paused: isPaused };
+    const addsUpdatePayload: Record<string, any> = { is_paused: isPaused };
+    if (!isPaused && isAdmin) {
+      activeUpdatePayload.admin_statement = null;
+      if (isAdminPauseStatement(ad.admin_statement)) {
+        addsUpdatePayload.admin_statement = null;
+      }
+    }
 
     // Update is_paused on adds and addsactive tables
     const [addsUpdate, activeUpdate] = await Promise.all([
       supabaseAdmin
         .from("adds")
-        .update({ is_paused: isPaused })
+        .update(addsUpdatePayload)
         .eq("id", adId),
       supabaseAdmin
         .from("addsactive")
-        .update({ is_paused: isPaused })
+        .update(activeUpdatePayload)
         .eq("id", adId),
     ]);
 
@@ -89,7 +117,11 @@ export async function POST(req: NextRequest) {
     }
 
     const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
-    await invalidateCachedUserCampaigns(emailLower);
+    const ownerEmail = ad.user_email?.toLowerCase().trim() || emailLower;
+    await invalidateCachedUserCampaigns(ownerEmail);
+    if (isRedisReady()) {
+      scanDeletePattern("admin:campaigns:*").catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,

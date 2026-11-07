@@ -170,7 +170,7 @@ export default function DashboardHeader({
         title="Notifications"
         aria-label="Toggle notifications panel"
       >
-        <Bell size={18} />
+        <Bell size={20} />
         {unreadCount > 0 && <span className={styles.notificationBadge}>{unreadCount}</span>}
       </button>
 
@@ -337,16 +337,16 @@ export default function DashboardHeader({
             <button
               onClick={onToggleHighlightsMobile}
               className={`${styles.controlBtn} ${showHighlightsMobile ? styles.controlBtnActive : ""}`}
-              title="Campaigns"
+              title="Highlights & Campaigns"
             >
-              <Compass size={20} />
+              <Compass size={22} strokeWidth={2} />
             </button>
             <button
               onClick={onToggleProfileMobile}
               className={`${styles.controlBtn} ${showProfileMobile ? styles.controlBtnActive : ""}`}
               title="My Profile"
             >
-              <User size={20} />
+              <User size={22} strokeWidth={2} />
             </button>
             {renderNotificationBell()}
             {renderThemeSwitcher()}

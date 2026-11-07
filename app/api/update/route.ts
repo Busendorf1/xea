@@ -22,11 +22,29 @@ export async function POST(req: NextRequest) {
     const isAdmin = isAdminEmail(emailLower);
     const data = await req.json();
 
+    // Check if this is an avatar-only update (`profileImage` only) — exempt from 30-day demographic cooldown
+    const nonAvatarKeys = Object.keys(data || {}).filter(
+      (k) => k !== "profileImage" && k !== "email" && data[k] !== undefined
+    );
+    const isAvatarOnlyUpdate = Boolean(data?.profileImage) && nonAvatarKeys.length === 0;
+
+    if (isAvatarOnlyUpdate) {
+      const { error: avatarErr } = await supabaseAdmin
+        .from("users")
+        .update({ profileImage: String(data.profileImage).trim() })
+        .eq("email", emailLower);
+      if (avatarErr) {
+        return NextResponse.json({ error: "Could not update profile photo." }, { status: 500 });
+      }
+      await invalidateCachedProfile(emailLower);
+      return NextResponse.json({ success: true, message: "Profile photo updated successfully" }, { status: 200 });
+    }
+
     // 1. Server-Side 30-Day Cooldown Enforcement (for users who have already completed initial setup)
     const { data: existingUser } = await supabaseAdmin
       .from("users")
       .select('id, "lastUpdated", has_updated_profile, "firstName", "lastName", phone')
-      .ilike("email", emailLower)
+      .eq("email", emailLower)
       .maybeSingle();
 
     if (!isAdmin && existingUser?.has_updated_profile && existingUser?.lastUpdated) {

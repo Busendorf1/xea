@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const url = new URL(req.url);
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
 
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
       highlightsActive,
       ratingsData,
       advBlockRes,
+      boostPaymentsRes,
     ] = await Promise.all([
       supabaseReadOnly.from("adds").select("*").ilike("user_email", emailLower).is("completed_at", null),
       supabaseReadOnly.from("addsactive").select("*").ilike("user_email", emailLower),
@@ -77,7 +78,30 @@ export async function GET(req: NextRequest) {
         .from("blocked_advertisers")
         .select("id", { count: "exact", head: true })
         .ilike("advertiser_email", emailLower),
+      supabaseReadOnly
+        .from("payments")
+        .select("amount, created_at, type, metadata")
+        .ilike("user_email", emailLower)
+        .eq("status", "success")
+        .in("type", ["boost_campaign", "boost_highlight", "boost"])
+        .order("created_at", { ascending: false })
+        .limit(200),
     ]);
+
+    const boostMap: Record<string, { boosted_amount: number; boosted_at: string; is_boosted: boolean }> = {};
+    if (boostPaymentsRes.data) {
+      for (const p of boostPaymentsRes.data) {
+        const meta = typeof p.metadata === "object" && p.metadata !== null ? (p.metadata as Record<string, any>) : {};
+        const targetId = String(meta.ad_id || meta.adId || meta.highlight_id || meta.highlightId || "");
+        if (targetId && !boostMap[targetId]) {
+          boostMap[targetId] = {
+            boosted_amount: Number(p.amount || 0),
+            boosted_at: p.created_at,
+            is_boosted: true,
+          };
+        }
+      }
+    }
 
     const combinedActive = [
       ...(adsActiveReal.data || []),
@@ -116,6 +140,15 @@ export async function GET(req: NextRequest) {
     const sanitizeItem = (item: any) => {
       if (!item) return item;
       let normalized = overlayPendingBufferedDeltas(item);
+      const boostInfo = item.id ? boostMap[String(item.id)] : undefined;
+      if (boostInfo) {
+        normalized = {
+          ...normalized,
+          is_boosted: true,
+          boosted_amount: boostInfo.boosted_amount,
+          boosted_at: boostInfo.boosted_at,
+        };
+      }
       // Normalize stale daily_impression_count when last_reset_date is prior to today UTC
       if (
         normalized.last_reset_date &&

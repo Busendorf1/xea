@@ -3,13 +3,11 @@
 import React from "react";
 import { motion } from "framer-motion";
 import {
-  Rocket,
   Trash2,
   Video,
   Image as ImageIcon,
   Megaphone,
   Clock,
-  Zap,
   Info,
   Globe,
   Users,
@@ -102,40 +100,42 @@ function formatTimestamp(timestamp: string | null | undefined): string {
 }
 
 export function getCampaignDaysInfo(ad: Ad, timeNow: number) {
+  const scheduled = Math.max(1, Number(ad.campaign_days) || 1);
   if (!ad.created_at) {
-    return { scheduled: ad.campaign_days || 1, remaining: ad.campaign_days || 1, isRollover: false, rolloverDays: 0 };
+    return { scheduled, remaining: scheduled, isRollover: false, rolloverDays: 0 };
   }
-  const createdDate = new Date(ad.created_at);
-  const createdDateOnly = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+  const createdMs = new Date(ad.created_at).getTime();
+  const scheduledStartMs = ad.scheduled_start_at ? new Date(ad.scheduled_start_at).getTime() : NaN;
+  const startMs = !isNaN(scheduledStartMs) && scheduledStartMs > 0 ? Math.max(createdMs, scheduledStartMs) : createdMs;
+  if (isNaN(startMs)) {
+    return { scheduled, remaining: scheduled, isRollover: false, rolloverDays: 0 };
+  }
 
-  const today = new Date(timeNow);
-  const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-  const diffTime = todayDateOnly.getTime() - createdDateOnly.getTime();
-  const daysPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-  const scheduled = ad.campaign_days || 1;
   const isCompleted = !!ad.completed_at || (ad.impression_count !== null && ad.impression_count >= ad.impressions);
-
   if (isCompleted) {
     return { scheduled, remaining: 0, isRollover: false, rolloverDays: 0 };
   }
 
-  if (daysPassed > scheduled) {
+  const endMs = startMs + scheduled * 86_400_000;
+  if (timeNow < startMs) {
+    return { scheduled, remaining: scheduled, isRollover: false, rolloverDays: 0 };
+  }
+
+  if (timeNow >= endMs) {
     return {
       scheduled,
       remaining: 0,
       isRollover: true,
-      rolloverDays: daysPassed - scheduled,
-    };
-  } else {
-    return {
-      scheduled,
-      remaining: Math.max(0, scheduled - daysPassed),
-      isRollover: false,
-      rolloverDays: 0,
+      rolloverDays: Math.max(1, Math.ceil((timeNow - endMs) / 86_400_000)),
     };
   }
+
+  return {
+    scheduled,
+    remaining: Math.max(1, Math.ceil((endMs - timeNow) / 86_400_000)),
+    isRollover: false,
+    rolloverDays: 0,
+  };
 }
 
 function getDeletionCountdown(completedAt: string, timeNow: number): string | null {
@@ -156,19 +156,22 @@ function getBoostUnavailableReason(ad: Ad, reportsCount: number): string | null 
   if (
     ad.payment_status === "unpaid" ||
     ad.status === "pending_review" ||
-    ad.status === "approved_pending_publish" ||
-    (ad.admin_statement && (
-      ad.admin_statement.startsWith("STATUS:") ||
-      ad.admin_statement.startsWith("APPROVED:") ||
-      ad.admin_statement.startsWith("REJECTED:")
-    ))
+    ad.status === "approved_pending_publish"
   ) {
     return "Boosting is only available after your campaign has been approved, paid for, and published live to the feed.";
   }
   if (reportsCount > 0) {
     return "This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete.";
   }
-  if (ad.admin_statement && ad.admin_statement.trim() !== "") {
+  const isPausedByAdmin = Boolean(
+    ad.admin_statement &&
+    typeof ad.admin_statement === "string" &&
+    ad.admin_statement.trim() !== "" &&
+    !ad.admin_statement.startsWith("APPROVED:") &&
+    !ad.admin_statement.toLowerCase().startsWith("status:") &&
+    !ad.admin_statement.startsWith("REJECTED:")
+  );
+  if (isPausedByAdmin) {
     return `This campaign was paused by an administrator. Reason: "${getAdminCustomNote(ad.admin_statement) || ad.admin_statement}". Please resolve the notice or wait for admin review.`;
   }
   if (ad.is_paused) {
@@ -307,7 +310,10 @@ function MyAdCard({
     rawMediaString.toLowerCase() !== "text" &&
     rawMediaString.toLowerCase() !== "null";
 
-  const isBiddedOrBoosted = !!ad.is_bidded || Number(ad.cost_per_impression || 25) > 25;
+  const boostedAmount = Number((ad as any).boosted_amount || 0);
+  const boostedAt = (ad as any).boosted_at as string | undefined;
+  const isBoosted = Boolean((ad as any).is_boosted || boostedAmount > 0 || boostedAt);
+  const isBiddedOrBoosted = isBoosted || !!ad.is_bidded || Number(ad.cost_per_impression || 25) > 25;
 
   return (
     <motion.div
@@ -383,10 +389,23 @@ function MyAdCard({
             {isBiddedOrBoosted && (
               <span
                 className={`${styles.tagPill} ${styles.tagPillBidded}`}
-                title="Priority Bidded Ad: Higher bid per view guarantees top placement in feeds."
+                title="Boosted Priority Ad: Higher priority guarantees top placement in feeds."
               >
-                {ad.is_bidded ? "Priority" : "Boosted"} •{" "}
-                {formatCurrency(ad.cost_per_impression, ad.country)}/view
+                {isBoosted ? (
+                  <>
+                    Boosted •{" "}
+                    {formatCurrency(
+                      boostedAmount > 0 ? boostedAmount : ad.cost_per_impression,
+                      ad.country
+                    )}
+                    {boostedAt ? ` • ${formatTimestamp(boostedAt)}` : ""}
+                  </>
+                ) : (
+                  <>
+                    {ad.is_bidded ? "Priority" : "Boosted"} •{" "}
+                    {formatCurrency(ad.cost_per_impression, ad.country)}/view
+                  </>
+                )}
               </span>
             )}
 
@@ -452,7 +471,13 @@ function MyAdCard({
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
               {ad.user_frequency_cap || 1}× / Viewer / Day
             </span>
-            <span className={styles.tagPill}>{daysInfo.scheduled}d Schedule</span>
+            <span className={styles.tagPill}>
+              {status === "active" && !isCompleted
+                ? daysInfo.isRollover
+                  ? `Rollover (+${daysInfo.rolloverDays}d)`
+                  : `${daysInfo.remaining} ${daysInfo.remaining === 1 ? "day" : "days"} remaining`
+                : `${daysInfo.scheduled} ${daysInfo.scheduled === 1 ? "day" : "days"}`}
+            </span>
           </div>
 
           {/* Live Delivery Progress */}
@@ -650,9 +675,9 @@ function MyAdCard({
                     e.preventDefault();
                     onEdit(ad.id);
                   }}
-                  title="Edit ad according to admin feedback"
+                  title="Edit and resubmit campaign according to admin feedback"
                 >
-                  Adjust
+                  Adjust &amp; Resubmit
                 </a>
               )}
 

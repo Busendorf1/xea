@@ -222,10 +222,13 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchPendingAdsTab = async (page: number) => {
+  const fetchPendingAdsTab = async (page: number, fresh = false) => {
     if (pendingAds.length === 0) setLoading(true);
     try {
-      const res = await fetch(`/api/admin/campaigns?tab=ad-approvals&page=${page}&limit=10`);
+      const res = await fetch(
+        `/api/admin/campaigns?tab=ad-approvals&page=${page}&limit=10${fresh ? "&fresh=true" : ""}`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch pending ads");
       const json = await res.json();
       setPendingAds(json.data || []);
@@ -237,13 +240,14 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchActiveAdsTab = async (page: number, search: string) => {
+  const fetchActiveAdsTab = async (page: number, search: string, fresh = false) => {
     if (activeAds.length === 0) setLoading(true);
     try {
       const res = await fetch(
         `/api/admin/campaigns?tab=active-ads&page=${page}&limit=10&search=${encodeURIComponent(
           search || ""
-        )}`
+        )}${fresh ? "&fresh=true" : ""}`,
+        { cache: "no-store" }
       );
       if (!res.ok) throw new Error("Failed to fetch active ads");
       const json = await res.json();
@@ -256,10 +260,13 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchPendingHighlightsTab = async (page: number) => {
+  const fetchPendingHighlightsTab = async (page: number, fresh = false) => {
     if (pendingHighlights.length === 0) setLoading(true);
     try {
-      const res = await fetch(`/api/admin/campaigns?tab=highlight-approvals&page=${page}&limit=10`);
+      const res = await fetch(
+        `/api/admin/campaigns?tab=highlight-approvals&page=${page}&limit=10${fresh ? "&fresh=true" : ""}`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch pending highlights");
       const json = await res.json();
       setPendingHighlights(json.data || []);
@@ -271,13 +278,14 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchActiveHighlightsTab = async (page: number, search: string) => {
+  const fetchActiveHighlightsTab = async (page: number, search: string, fresh = false) => {
     if (activeHighlights.length === 0) setLoading(true);
     try {
       const res = await fetch(
         `/api/admin/campaigns?tab=active-highlights&page=${page}&limit=10&search=${encodeURIComponent(
           search || ""
-        )}`
+        )}${fresh ? "&fresh=true" : ""}`,
+        { cache: "no-store" }
       );
       if (!res.ok) throw new Error("Failed to fetch active highlights");
       const json = await res.json();
@@ -607,13 +615,13 @@ export function useAdminDataAndSupport(params: {
     } else if (activeTab === "accounts") {
       await fetchUsersTab(usersPage, searchQuery, usersLimit, true);
     } else if (activeTab === "ad-approvals") {
-      await fetchPendingAdsTab(pendingAdsPage);
+      await fetchPendingAdsTab(pendingAdsPage, true);
     } else if (activeTab === "active-ads") {
-      await fetchActiveAdsTab(activeAdsPage, searchQuery);
+      await fetchActiveAdsTab(activeAdsPage, searchQuery, true);
     } else if (activeTab === "highlight-approvals") {
-      await fetchPendingHighlightsTab(pendingHighlightsPage);
+      await fetchPendingHighlightsTab(pendingHighlightsPage, true);
     } else if (activeTab === "active-highlights") {
-      await fetchActiveHighlightsTab(activeHighlightsPage, searchQuery);
+      await fetchActiveHighlightsTab(activeHighlightsPage, searchQuery, true);
     } else if (activeTab === "help-center") {
       await fetchHelpTickets(helpTicketsPage, helpTicketSearch, true);
     } else if (activeTab === "reported-ads") {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
-import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
-import { getCachedProfile, getCachedHighlights, setCachedHighlights } from "@/lib/utils/cache";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import { getCachedProfile, getCachedHighlights, setCachedHighlights, registerL1HighlightsEvictionHandler } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { safeParseArray } from "@/lib/utils/parsers";
 
@@ -13,6 +13,18 @@ const SHARED_POOL_L1_TTL_MS = 30 * 1000;
 
 let l1SharedHighlightsPool: { rows: any[]; expiresAt: number } | null = null;
 let inFlightPoolPromise: Promise<any[]> | null = null;
+let lastExpiredHighlightCleanupMs = 0;
+
+/**
+ * Immediately invalidates the shared L1 and L2 highlights pool when a highlight is created, approved, or boosted.
+ */
+function invalidateSharedHighlightsPoolInternal() {
+  l1SharedHighlightsPool = null;
+  if (isRedisReady()) {
+    redisConnection.del(SHARED_POOL_REDIS_KEY).catch(() => {});
+  }
+}
+registerL1HighlightsEvictionHandler(invalidateSharedHighlightsPoolInternal);
 
 /**
  * Single-Flight Shared Active Highlights Pool Loader (L1 Memory -> L2 Redis -> Bounded Indexed DB Query).
@@ -53,7 +65,7 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
       const { data: primaryData, error } = await supabaseReadOnly
         .from("newsactive")
         .select(
-          "id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement, is_ai_content"
+          "id, title, content, image_url, interest, created_at, scheduled_start_at, scheduled_end_at, user_email, country, state, province, is_bidded, bid_price, is_boosted, boosted_amount, boosted_at, campaign_days, is_paused, admin_statement, is_ai_content"
         )
         .or("is_paused.eq.false,is_paused.is.null")
         .gte("created_at", thirtyFiveDaysAgo)
@@ -65,8 +77,13 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
       if (error && (error.code === "42703" || error.message?.includes("does not exist"))) {
         const fallbackRes = await supabaseReadOnly
           .from("newsactive")
-          .select("id, title, content, image_url, interest, created_at, user_email")
+          .select(
+            "id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement, is_ai_content"
+          )
+          .or("is_paused.eq.false,is_paused.is.null")
           .gte("created_at", thirtyFiveDaysAgo)
+          .order("is_bidded", { ascending: false })
+          .order("bid_price", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(300);
         rawHighlights = fallbackRes.data || [];
@@ -77,18 +94,43 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
         rawHighlights = primaryData || [];
       }
 
+      const nowMs = Date.now();
+      const expiredIds: string[] = [];
+      const activeHighlights = rawHighlights.filter((h: any) => {
+        const createdMs = h.created_at ? new Date(h.created_at).getTime() : nowMs;
+        const scheduledMs = h.scheduled_start_at ? new Date(h.scheduled_start_at).getTime() : NaN;
+        const startMs = !isNaN(scheduledMs) && scheduledMs > 0 ? Math.max(createdMs, scheduledMs) : createdMs;
+        const days = Math.max(1, Number(h.campaign_days || 1));
+        const endMs = startMs + days * 86_400_000;
+        if (nowMs >= startMs && nowMs > endMs) {
+          if (h.id) expiredIds.push(String(h.id));
+          return false;
+        }
+        return true;
+      });
+
+      // Smooth non-blocking cleanup of expired highlights from newsactive (at most once per 60s)
+      if (expiredIds.length > 0 && nowMs - lastExpiredHighlightCleanupMs > 60_000) {
+        lastExpiredHighlightCleanupMs = nowMs;
+        supabaseAdmin
+          .from("newsactive")
+          .delete()
+          .in("id", expiredIds)
+          .then(() => {}, () => {});
+      }
+
       l1SharedHighlightsPool = {
-        rows: rawHighlights,
+        rows: activeHighlights,
         expiresAt: Date.now() + SHARED_POOL_L1_TTL_MS,
       };
 
       if (isRedisReady()) {
         redisConnection
-          .set(SHARED_POOL_REDIS_KEY, JSON.stringify(rawHighlights), "EX", SHARED_POOL_TTL_SECONDS)
+          .set(SHARED_POOL_REDIS_KEY, JSON.stringify(activeHighlights), "EX", SHARED_POOL_TTL_SECONDS)
           .catch(() => {});
       }
 
-      return rawHighlights;
+      return activeHighlights;
     } finally {
       inFlightPoolPromise = null;
     }
@@ -133,7 +175,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -252,12 +294,27 @@ export async function GET(req: NextRequest) {
     for (const h of rawHighlights || []) {
       if (h.is_paused) continue;
       const createdAtMs = new Date(h.created_at).getTime();
-      const diffHours = (nowMs - createdAtMs) / (1000 * 60 * 60);
+      const scheduledMs = h.scheduled_start_at ? new Date(h.scheduled_start_at).getTime() : NaN;
+      if (!isNaN(scheduledMs) && scheduledMs > nowMs) {
+        // Highlight is scheduled for a future start time; do not serve yet
+        continue;
+      }
 
-      const isNotExpired = h.is_bidded
-        ? diffHours < Math.max(1, Number(h.campaign_days || 1)) * 24
-        : diffHours < 24;
+      const startMs = !isNaN(scheduledMs) && scheduledMs > 0 ? Math.max(createdAtMs, scheduledMs) : createdAtMs;
+      const scheduledEndMs = h.scheduled_end_at ? new Date(h.scheduled_end_at).getTime() : NaN;
+      const fallbackDurationHours = Math.max(1, Number(h.campaign_days || 1)) * 24;
+      const endMs = !isNaN(scheduledEndMs) && scheduledEndMs > startMs
+        ? scheduledEndMs
+        : startMs + fallbackDurationHours * 3600_000;
+
+      const diffHours = Math.max(0, (nowMs - startMs) / (1000 * 60 * 60));
+      const totalDurationHours = Math.max(1, (endMs - startMs) / (1000 * 60 * 60));
+      const durationRatio = diffHours / totalDurationHours;
+
+      const isNotExpired = nowMs <= endMs;
       if (!isNotExpired) continue;
+
+      const isBroadened80Pct = durationRatio >= 0.8;
 
       let interestMatched = true;
       if (normalizedViewerInterests.size > 0 && h.interest) {
@@ -294,13 +351,18 @@ export async function GET(req: NextRequest) {
         if (!provHit) stateMatched = false;
       }
 
-      if (interestMatched && countryMatched && stateMatched) {
+      // If highlight is >= 80% through its duration, automatically broaden state & interest within its target country
+      if (
+        (interestMatched && countryMatched && stateMatched) ||
+        (isBroadened80Pct && countryMatched)
+      ) {
         strictHighlights.push(h);
       } else {
         let affinityScore = 0;
         if (countryMatched) affinityScore += 40;
         if (stateMatched) affinityScore += 25;
         if (interestMatched) affinityScore += 20;
+        if (isBroadened80Pct) affinityScore += 15;
         if (h.is_bidded) affinityScore += Math.min(50, parseFloat(h.bid_price || 0) / 100);
         fallbackHighlights.push({ hl: h, affinityScore });
       }
@@ -350,11 +412,16 @@ export async function GET(req: NextRequest) {
         interest: h.interest,
         user_email: h.user_email,
         created_at: h.created_at,
+        scheduled_start_at: h.scheduled_start_at || null,
+        scheduled_end_at: h.scheduled_end_at || null,
         country: h.country || null,
         state: h.state || null,
         province: h.province || null,
         is_bidded: h.is_bidded || false,
         bid_price: h.bid_price || null,
+        is_boosted: h.is_boosted || false,
+        boosted_amount: h.boosted_amount || null,
+        boosted_at: h.boosted_at || null,
         campaign_days: h.campaign_days || 1,
         is_paused: h.is_paused || false,
         admin_statement: h.admin_statement || null,

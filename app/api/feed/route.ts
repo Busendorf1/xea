@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
-import { getCachedProfile } from "@/lib/utils/cache";
+import { getCachedProfile, registerL1FeedEvictionHandler } from "@/lib/utils/cache";
 import { Ad, AdvertiserProfile } from "@/types/ads";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import {
+  computeCampaignBroadeningPlan,
   evaluateAdTargeting,
   rankAndFilterTargetedAds,
   signAdImpressionToken,
@@ -20,7 +21,8 @@ const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 const L1_USER_FEED_TTL_MS = 120 * 1000; // 2 minutes L1 fallback cache (absorbs repeat fetches even when Redis is over quota)
 const L1_SHARED_ADS_POOL_TTL_MS = 25 * 1000; // 25s shared active campaign pool
 
-const AD_SELECT_FIELDS = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, is_ai_content";
+const AD_SELECT_FIELDS = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, bid_price, is_bidded, is_boosted, boosted_amount, boosted_at, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, approved_at, scheduled_start_at, scheduled_end_at, is_ai_content";
+const AD_SELECT_FIELDS_FALLBACK = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, is_ai_content";
 
 // Circuit breaker when DB RPC get_user_feed has a return-type mismatch (avoids wasted 500ms roundtrip per request)
 let rpcGetFeedBrokenUntil = 0;
@@ -41,6 +43,34 @@ interface L1UserFeedEntry {
 }
 const l1UserFeedCache = new Map<string, L1UserFeedEntry>();
 const MAX_L1_USER_FEEDS = 3000;
+
+/**
+ * Immediately evicts an exhausted, deleted, or updated campaign from L1 in-memory caches
+ * so zero ghost impressions or stale bids are ever served.
+ */
+function evictAdFromL1FeedCachesInternal(adId?: string) {
+  if (adId) {
+    l1AdDetailsCache.delete(adId);
+    for (const [poolKey, entry] of l1SharedCampaignsPool.entries()) {
+      const filtered = entry.ads.filter((a: any) => String(a?.id) !== String(adId));
+      if (filtered.length !== entry.ads.length) {
+        l1SharedCampaignsPool.set(poolKey, { ads: filtered, expiresAt: entry.expiresAt });
+      }
+    }
+    for (const [userKey, feedEntry] of l1UserFeedCache.entries()) {
+      if (feedEntry.adIds.includes(adId)) {
+        l1UserFeedCache.set(userKey, {
+          ...feedEntry,
+          adIds: feedEntry.adIds.filter((id) => id !== adId),
+        });
+      }
+    }
+  } else {
+    l1SharedCampaignsPool.clear();
+    l1UserFeedCache.clear();
+  }
+}
+registerL1FeedEvictionHandler(evictAdFromL1FeedCachesInternal);
 
 function setL1UserFeed(emailKey: string, adIds: string[], profilesMap: Record<string, AdvertiserProfile>) {
   if (l1UserFeedCache.size >= MAX_L1_USER_FEEDS && !l1UserFeedCache.has(emailKey)) {
@@ -77,23 +107,32 @@ async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): Promise<
 
   const fetchPromise = (async () => {
     try {
-      let query = supabaseReadOnly
-        .from("addsactive")
-        .select(AD_SELECT_FIELDS)
-        .is("completed_at", null)
-        .or("is_paused.is.null,is_paused.eq.false");
+      const buildQuery = (fields: string) => {
+        let q = supabaseReadOnly
+          .from("addsactive")
+          .select(fields)
+          .is("completed_at", null)
+          .or("is_paused.is.null,is_paused.eq.false");
 
-      if (poolKey !== "__global__") {
-        const safeCountry = cleanCountry.replace(/[,()]/g, "");
-        query = query.or(
-          `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`
-        );
+        if (poolKey !== "__global__") {
+          const safeCountry = cleanCountry.replace(/[,()]/g, "");
+          q = q.or(
+            `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`
+          );
+        }
+
+        return q
+          .order("cost_per_impression", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(250);
+      };
+
+      const { data: initialAds, error: queryErr } = await buildQuery(AD_SELECT_FIELDS);
+      let fallbackAds = initialAds;
+      if (queryErr) {
+        const fallbackRes = await buildQuery(AD_SELECT_FIELDS_FALLBACK);
+        fallbackAds = fallbackRes.data;
       }
-
-      const { data: fallbackAds } = await query
-        .order("cost_per_impression", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(250);
 
       const rows = fallbackAds || [];
       l1SharedCampaignsPool.set(poolKey, {
@@ -360,10 +399,23 @@ export async function GET(req: NextRequest) {
 
           // 3. Backfill missing ad details from Supabase if evicted from L1 & L2
           if (missingIds.length > 0) {
-            const { data: dbMissing, error: dbErr } = await supabaseReadOnly
+            let dbMissing: any[] | null = null;
+            let dbErr: any = null;
+            const primaryMissingRes = await supabaseReadOnly
               .from("addsactive")
               .select(AD_SELECT_FIELDS)
               .in("id", missingIds);
+            dbMissing = primaryMissingRes.data as any[] | null;
+            dbErr = primaryMissingRes.error;
+
+            if (dbErr) {
+              const fbMissing = await supabaseReadOnly
+                .from("addsactive")
+                .select(AD_SELECT_FIELDS_FALLBACK)
+                .in("id", missingIds);
+              dbMissing = fbMissing.data as any[] | null;
+              dbErr = fbMissing.error;
+            }
 
             if (!dbErr && dbMissing) {
               const pipeline = isRedisReady() ? redisConnection.pipeline() : null;
@@ -392,19 +444,34 @@ export async function GET(req: NextRequest) {
               const impressionCount = Number(ad.impression_count ?? ad.view_count ?? 0);
               if (impressionsTarget > 0 && impressionCount >= impressionsTarget) return false;
 
+              const plan = computeCampaignBroadeningPlan(ad as any, now.getTime());
+              if (plan.isScheduledFuture) return false;
+
               if (viewerProfile) {
-                const check = evaluateAdTargeting(ad as any, { ...viewerProfile, email: emailKey }, { allowRolloverPsychographics: true });
+                const check = evaluateAdTargeting(
+                  ad as any,
+                  { ...viewerProfile, email: emailKey },
+                  { allowRolloverPsychographics: true, broadeningStage: plan.broadeningStage }
+                );
                 if (!check.matches) return false;
               }
-              const userCap = Math.max(1, Number(ad.user_frequency_cap || 1));
               const imp = userImpressionMap.get(ad.id);
-              const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? userCap : 0);
-              if (totalViews >= userCap) return false;
+              const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? plan.effectiveUserCap : 0);
+              if (totalViews >= plan.effectiveUserCap) return false;
 
-              if (totalViews > 0 && imp?.last_viewed_at) {
-                const lastViewedMs = new Date(imp.last_viewed_at).getTime();
-                if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < RETARGET_MIN_COOLDOWN_MS) {
-                  return false;
+              const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
+              const viewsToday = Math.max(
+                Number((todayPacingMap as Record<string, string>)[ad.id] || 0),
+                isToday ? (imp?.today_view_count || 0) : 0
+              );
+
+              if (totalViews > 0) {
+                if (viewsToday >= plan.dailyUserCap) return false;
+                if (imp?.last_viewed_at) {
+                  const lastViewedMs = new Date(imp.last_viewed_at).getTime();
+                  if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < plan.minSpacingMs) {
+                    return false;
+                  }
                 }
               }
               return true;
@@ -463,6 +530,7 @@ export async function GET(req: NextRequest) {
       const freshAdsList: Ad[] = [];
       const retargetedAdsList: Ad[] = [];
       const seenCandidateIds = new Set<string>();
+      const cappedIdsSet = new Set<string>();
 
       (ads || []).forEach((ad: any) => {
         if (!ad || !ad.id || seenCandidateIds.has(ad.id)) return;
@@ -477,17 +545,24 @@ export async function GET(req: NextRequest) {
           return;
         }
 
-        const userCap = Math.max(1, Number(ad.user_frequency_cap || 1));
-        const imp = userImpressionMap.get(ad.id);
-        const totalViews = Math.max(imp?.view_count || 0, seenAdIdsSet.has(ad.id) ? userCap : 0);
-
-        if (totalViews >= userCap) {
-          completedOrCappedAdIds.push(ad.id);
+        const plan = computeCampaignBroadeningPlan(ad, now.getTime());
+        if (plan.isScheduledFuture) {
           return;
         }
 
-        const campaignDays = Number(ad.campaign_days || 1);
-        const dailyUserCap = Math.max(1, Math.ceil(userCap / Math.max(campaignDays, 1)));
+        const imp = userImpressionMap.get(ad.id);
+        const totalViews = Math.max(
+          imp?.view_count || 0,
+          seenAdIdsSet.has(ad.id) ? plan.effectiveUserCap : 0
+        );
+
+        // STRICT PER-USER FREQUENCY CAP: Never exceed effectiveUserCap under any circumstance
+        if (totalViews >= plan.effectiveUserCap) {
+          completedOrCappedAdIds.push(ad.id);
+          cappedIdsSet.add(ad.id);
+          return;
+        }
+
         const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
         const viewsToday = Math.max(
           Number((todayPacingMap as Record<string, string>)[ad.id] || 0),
@@ -495,24 +570,24 @@ export async function GET(req: NextRequest) {
         );
 
         if (totalViews > 0) {
-          if (viewsToday >= dailyUserCap) {
+          if (viewsToday >= plan.dailyUserCap) {
             return;
           }
           if (imp?.last_viewed_at) {
             const lastViewedMs = new Date(imp.last_viewed_at).getTime();
-            if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < RETARGET_MIN_COOLDOWN_MS) {
+            if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < plan.minSpacingMs) {
               return;
             }
           }
         }
 
-        const createdAt = ad.created_at ? new Date(ad.created_at).getTime() : now.getTime();
-        const diffDays = (now.getTime() - createdAt) / (1000 * 60 * 60 * 24);
-        const isRollover = diffDays > campaignDays && impressionsTarget > 0 && impressionCount < impressionsTarget;
+        const isRollover = plan.durationRatio >= 1.0 && impressionsTarget > 0 && impressionCount < impressionsTarget;
         ad.is_rollover = isRollover;
+        ad.broadening_stage = plan.broadeningStage;
 
-        const isPlatformFreeAd = (!ad.cost_per_impression || Number(ad.cost_per_impression) === 0) && impressionsTarget === 0;
-        if (isPlatformFreeAd && diffDays > campaignDays) {
+        const isPlatformFreeAd =
+          (!ad.cost_per_impression || Number(ad.cost_per_impression) === 0) && impressionsTarget === 0;
+        if (isPlatformFreeAd && plan.durationRatio > 1.0) {
           return;
         }
 
@@ -536,6 +611,70 @@ export async function GET(req: NextRequest) {
           candidateAds.push(retargetedAdsList[rIdx++]);
         }
       }
+
+      // Gold-Plated Target Broadening Backfill:
+      // If strict + stage-broadened matches leave fewer than 8 ads, broaden across remaining rawAds
+      // while NEVER violating the user's frequency cap, daily cap, or minimum view spacing!
+      if (candidateAds.length < 8 && Array.isArray(rawAds) && rawAds.length > 0) {
+        const broadenedFallback = rankAndFilterTargetedAds(
+          rawAds,
+          { ...viewerProfile, email: emailKey },
+          { minResults: 20, seenAdIds: seenAdIdsSet, allowNearestFallback: true }
+        );
+        for (const fallbackAd of broadenedFallback) {
+          if (!fallbackAd || !fallbackAd.id || seenCandidateIds.has(fallbackAd.id)) continue;
+          if (cappedIdsSet.has(fallbackAd.id)) continue;
+          if (fallbackAd.completed_at || fallbackAd.is_paused === true) continue;
+          if (blockedAdIdsSet.has(fallbackAd.id)) continue;
+          if (fallbackAd.user_email && blockedAdvertisersSet.has(fallbackAd.user_email.toLowerCase())) continue;
+
+          const impressionsTarget = Number(fallbackAd.impressions || 0);
+          const impressionCount = Number(fallbackAd.impression_count ?? fallbackAd.view_count ?? 0);
+          if (impressionsTarget > 0 && impressionCount >= impressionsTarget) continue;
+
+          const plan = computeCampaignBroadeningPlan(fallbackAd, now.getTime());
+          if (plan.isScheduledFuture) continue;
+
+          const imp = userImpressionMap.get(fallbackAd.id);
+          const totalViews = Math.max(
+            imp?.view_count || 0,
+            seenAdIdsSet.has(fallbackAd.id) ? plan.effectiveUserCap : 0
+          );
+
+          // NEVER exceed frequency cap or spacing even during broadened backfill
+          if (totalViews >= plan.effectiveUserCap) {
+            cappedIdsSet.add(fallbackAd.id);
+            continue;
+          }
+
+          if (totalViews > 0) {
+            const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
+            const viewsToday = Math.max(
+              Number((todayPacingMap as Record<string, string>)[fallbackAd.id] || 0),
+              isToday ? (imp?.today_view_count || 0) : 0
+            );
+            if (viewsToday >= plan.dailyUserCap) continue;
+            if (imp?.last_viewed_at) {
+              const lastViewedMs = new Date(imp.last_viewed_at).getTime();
+              if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < plan.minSpacingMs) {
+                continue;
+              }
+            }
+          }
+
+          seenCandidateIds.add(fallbackAd.id);
+          candidateAds.push(fallbackAd);
+          if (candidateAds.length >= 15) break;
+        }
+      }
+
+      // Prioritize ads with media ahead of bare text-only stubs
+      candidateAds.sort((a: any, b: any) => {
+        const aHasMedia = Boolean(a.ad_media) ? 1 : 0;
+        const bHasMedia = Boolean(b.ad_media) ? 1 : 0;
+        if (aHasMedia !== bHasMedia) return bHasMedia - aHasMedia;
+        return 0;
+      });
 
       // Google Enterprise Tiered Priority Interleaver
       const biddedTier: Ad[] = [];
@@ -594,7 +733,7 @@ export async function GET(req: NextRequest) {
       if (missingPublisherEmails.length > 0) {
         const { data: profiles, error: profilesError } = await supabaseReadOnly
           .from("users")
-          .select('email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized')
+          .select('email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized, is_career, is_affiliate, affiliate_role')
           .in("email", missingPublisherEmails);
 
         if (!profilesError && profiles) {
@@ -617,6 +756,9 @@ export async function GET(req: NextRequest) {
                 country: p.country || "",
                 created_at: p.created_at || "",
                 monetized: p.monetized === true || p.monetized === "true" || p.monetized === "yes",
+                is_career: Boolean(p.is_career),
+                is_affiliate: Boolean(p.is_affiliate),
+                affiliate_role: p.affiliate_role || null,
               };
               profilesMap[lower] = formatted;
               l1PublisherProfilesCache.set(lower, { profile: formatted, expiresAt: pubExp });

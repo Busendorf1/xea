@@ -210,23 +210,32 @@ const getIcon = (type: string): React.ReactNode => {
 };
 
 const formatTimestamp = (timestamp: string | null | undefined): string => {
-  if (!timestamp) return "Just now";
+  if (!timestamp) return "1sec";
   try {
     const created = new Date(timestamp);
+    const createdMs = created.getTime();
+    if (isNaN(createdMs)) return "1sec";
     const now = new Date();
-    const diff = (now.getTime() - created.getTime()) / 1000;
+    const diffSec = Math.max(1, Math.floor((now.getTime() - createdMs) / 1000));
 
-    if (isNaN(diff)) return "Just now";
-    if (diff < 60) return "Just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    if (diff < 172800) return "1d";
+    if (diffSec < 60) {
+      return diffSec === 1 ? "1sec" : `${diffSec}secs`;
+    }
+    if (diffSec < 3600) {
+      const mins = Math.floor(diffSec / 60);
+      return mins === 1 ? "1min" : `${mins}mins`;
+    }
+    if (diffSec <= 86400) {
+      const hrs = Math.floor(diffSec / 3600);
+      return hrs === 1 ? "1hr" : `${hrs}hrs`;
+    }
     return created.toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
+      ...(created.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
     });
   } catch {
-    return "Just now";
+    return "1sec";
   }
 };
 
@@ -458,28 +467,34 @@ function AdCard({
   }, [userEmail, ad.user_email]);
 
   const isPlatformPost = useMemo(() => {
-    // An ad is an unpaid platform post if it is an admin post or has no pay-per-impression reward / budget
+    const emailLower = (ad.user_email || "").toLowerCase().trim();
+    const isPlatformAdmin =
+      emailLower === "admin@paayh.com" ||
+      emailLower === "system@paayh.com" ||
+      ad.ad_type === "admin_broadcast";
+    // An ad is an unpaid platform post if it is an admin/platform campaign or has no pay-per-impression reward / budget
     return Boolean(
+      isPlatformAdmin ||
       ad.is_admin_post ||
       !ad.cost_per_impression ||
       Number(ad.cost_per_impression) <= 0 ||
       !ad.impressions ||
       Number(ad.impressions) <= 0
     );
-  }, [ad.is_admin_post, ad.cost_per_impression, ad.impressions]);
+  }, [ad.user_email, ad.ad_type, ad.is_admin_post, ad.cost_per_impression, ad.impressions]);
 
-  // Automatic viewability tracking for platform / zero-budget posts or own ads:
+  // Automatic viewability tracking for platform / zero-budget posts:
   // When viewed continuously in the active viewport for 1.5 seconds, automatically register as seen
   // so the post records impression in ClickHouse / DB and is filtered on feed refresh.
   useEffect(() => {
-    if ((!isPlatformPost && !isOwner) || !isCardVisible || seenAds.includes(ad.id)) return;
+    if (!isPlatformPost || !isCardVisible || seenAds.includes(ad.id)) return;
 
     const timer = setTimeout(() => {
       onMarkSeen(ad).catch((err) => console.error("Auto seen tracking error:", err));
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [isPlatformPost, isOwner, isCardVisible, seenAds, ad, onMarkSeen]);
+  }, [isPlatformPost, isCardVisible, seenAds, ad, onMarkSeen]);
 
   const handleCtaClick = useCallback(
     (clickType: string) => {
@@ -649,14 +664,7 @@ function AdCard({
                 {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
                   <VerifiedBadge size={14} title="Verified Account" />
                 )}
-                <RoleStarBadges
-                  email={ad.user_email}
-                  isCareer={advertiserProfile?.is_career}
-                  isAffiliate={advertiserProfile?.is_affiliate}
-                  affiliateRole={advertiserProfile?.affiliate_role}
-                  size={14}
-                  variant="compact"
-                />
+                
               </div>
             </AdvertiserHoverCard>
             <span className={styles.dot}></span>
@@ -665,7 +673,7 @@ function AdCard({
               <>
                 <span className={styles.dot}></span>
                 <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                  AI Content
+                  AI
                 </span>
               </>
             )}

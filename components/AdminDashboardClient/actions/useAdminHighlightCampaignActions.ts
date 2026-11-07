@@ -147,6 +147,22 @@ export function useAdminHighlightCampaignActions(params: AdminHighlightCampaignP
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Toggle failed");
 
+      const nextStatement = targetState ? (highlight.admin_statement || null) : null;
+      setActiveHighlights((prev) =>
+        prev.map((h) =>
+          h.id === highlight.id
+            ? { ...h, is_paused: targetState, admin_statement: nextStatement }
+            : h
+        )
+      );
+      setPendingHighlights((prev) =>
+        prev.map((h) =>
+          h.id === highlight.id
+            ? { ...h, is_paused: targetState, admin_statement: nextStatement }
+            : h
+        )
+      );
+
       await alertDialog(`Highlight successfully ${targetState ? "paused" : "resumed"}!`, "Highlight Updated");
       handleRefresh();
       fetchOverviewStats(true);

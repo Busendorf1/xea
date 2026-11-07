@@ -410,3 +410,101 @@
   align-items: center;
   padding: 0;
 }
+
+
+/* ── Auto-Detect Location Apple Card Theme Compliance ── */
+.appleFallbackToggle {
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d9bf0;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.15s ease;
+}
+
+.appleFallbackToggle:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+[data-theme='dark'] .appleLocationCard,
+:global([data-theme='dark']) .appleLocationCard {
+  background: #111215;
+  border: 1px solid #282a30;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='dark'] .appleLocationCard:hover,
+:global([data-theme='dark']) .appleLocationCard:hover {
+  border-color: #3d4049;
+}
+
+[data-theme='dark'] .appleIconSquircle,
+:global([data-theme='dark']) .appleIconSquircle {
+  background: #1a1b20;
+  border: 1px solid #2e3038;
+}
+
+[data-theme='dark'] .appleSwitchTrack,
+:global([data-theme='dark']) .appleSwitchTrack {
+  background-color: #39393d;
+}
+
+[data-theme='dark'] .appleSwitchKnob,
+:global([data-theme='dark']) .appleSwitchKnob {
+  background-color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='dark'] .appleFallbackToggle,
+:global([data-theme='dark']) .appleFallbackToggle {
+  color: #38bdf8;
+}
+
+[data-theme='dark'] .selectStyled,
+:global([data-theme='dark']) .selectStyled {
+  background-color: #121316;
+  border-color: #26282e;
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .manualFallbackBtn,
+:global([data-theme='dark']) .manualFallbackBtn {
+  border-color: #2e3038;
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .manualFallbackBtn:hover,
+:global([data-theme='dark']) .manualFallbackBtn:hover {
+  color: #f8fafc;
+  background: #1c1d22;
+}
+
+/* Light / White Theme Polish */
+[data-theme='white'] .appleLocationCard,
+[data-theme='light'] .appleLocationCard,
+:global([data-theme='white']) .appleLocationCard,
+:global([data-theme='light']) .appleLocationCard {
+  background: #ffffff;
+  border: 1px solid #e6e5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='white'] .appleIconSquircle,
+[data-theme='light'] .appleIconSquircle,
+:global([data-theme='white']) .appleIconSquircle,
+:global([data-theme='light']) .appleIconSquircle {
+  background: #f4f4f2;
+  border: 1px solid #e6e5e1;
+}
+
+[data-theme='white'] .appleSwitchTrack,
+[data-theme='light'] .appleSwitchTrack,
+:global([data-theme='white']) .appleSwitchTrack,
+:global([data-theme='light']) .appleSwitchTrack {
+  background-color: #e5e5ea;
+}

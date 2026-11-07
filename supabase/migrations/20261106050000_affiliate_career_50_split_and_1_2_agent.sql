@@ -579,7 +579,7 @@ BEGIN
     END
   WHERE id = p_ad_id;
 
-  -- 7. Atomically Update Viewer Balance & Clicks
+  -- 7. Atomically Update Viewer Balance, Clicks & ATW Tier
   v_next_bal := ROUND((v_current_bal + v_earn_rate)::numeric, 2);
   v_next_clicks := v_current_clicks + 1;
   v_next_monetized := CASE WHEN (v_is_monetized OR v_next_clicks >= 300) THEN 'true' ELSE 'false' END;
@@ -588,6 +588,10 @@ BEGIN
   SET 
     balance = v_next_bal,
     monetization_clicks = v_next_clicks,
+    atw_tier = CASE
+      WHEN v_is_exempt THEN 'Unlimited'
+      ELSE 'ATW' || GREATEST(1, FLOOR(v_next_clicks / 300.0)::int)
+    END,
     monetized = v_next_monetized,
     last_active_at = now()
   WHERE id = v_user_id;
@@ -670,7 +674,7 @@ BEGIN
     END IF;
     RETURN jsonb_build_object(
       'is_monetized', true,
-      'clicks', GREATEST(v_user.clicks, 300),
+      'clicks', v_user.clicks,
       'days_inactive', 0,
       'was_reset', false
     );

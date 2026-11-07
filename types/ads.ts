@@ -76,6 +76,9 @@ export interface AdvertiserProfile {
   country?: string;
   created_at?: string;
   monetized?: boolean;
+  is_career?: boolean;
+  is_affiliate?: boolean;
+  affiliate_role?: string | null;
 }
 
 export interface ViewerProfile {

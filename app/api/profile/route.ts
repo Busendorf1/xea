@@ -16,7 +16,7 @@ function sanitizeProfileResponse(rawUser: Record<string, any> | null) {
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       if (isRedisReady()) {
         try {
           const [liveVal, cooldownRaw] = await Promise.all([
-            redisConnection.get(`user:live_clicks:${emailLower}`),
+            redisConnection.get(`user:live_clicks:v2:${emailLower}`),
             redisConnection.get(`user:cooldown:${emailLower}`),
           ]);
           if (liveVal) {
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(sanitizeProfileResponse(user));
     }
 
-    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at`;
+    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, wallet_pin_hash`;
     const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, wallet_pin_hash, suspended_until`;
 
     let error: any = null;

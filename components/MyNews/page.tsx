@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { RotateCw, Search, Plus, ArrowUpDown, Compass, Sparkles } from "lucide-react";
+import { RotateCw, Search, Plus, ArrowUpDown } from "lucide-react";
 import { HighlightItem, Session, getHighlightScheduleInfo } from "./types";
 import { fetchUserCampaignsShared, clearUserCampaignsCache, readUserCampaignsSyncCache } from "@/lib/campaignsClient";
 import HighlightKpiSummary from "./HighlightKpiSummary";
@@ -129,8 +129,48 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   };
 
   useEffect(() => {
-    if (session?.user?.email) fetchNews();
+    if (session?.user?.email) {
+      if (typeof window !== "undefined") {
+        const requestedFilter = sessionStorage.getItem("paayh_mynews_filter_tab");
+        if (requestedFilter === "pending" || requestedFilter === "all" || requestedFilter === "approved" || requestedFilter === "active") {
+          setActiveTab(requestedFilter as HighlightFilterTab);
+          sessionStorage.removeItem("paayh_mynews_filter_tab");
+          fetchNews(true);
+          return;
+        }
+      }
+      fetchNews();
+    }
   }, [session]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResubmitted = (e: any) => {
+      const detail = e?.detail;
+      if (detail?.type && detail.type !== "highlight") return;
+      const submittedId = detail?.id;
+      if (submittedId) {
+        setReviewNews((prev) =>
+          prev.map((item) =>
+            item.id === submittedId
+              ? {
+                  ...item,
+                  admin_statement: "Status: Pending review",
+                  status: "pending_review",
+                  is_paused: false,
+                }
+              : item
+          )
+        );
+      }
+      if (detail?.wasEditing) {
+        setActiveTab("pending");
+      }
+      fetchNews(true);
+    };
+    window.addEventListener("paayh_campaign_resubmitted", handleResubmitted);
+    return () => window.removeEventListener("paayh_campaign_resubmitted", handleResubmitted);
+  }, [session?.user?.email]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -179,10 +219,18 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
   }, [session?.user?.email]);
 
   const handleTogglePause = async (item: HighlightItem) => {
-    if (item.admin_statement && item.is_paused) {
+    const trimmedStmt = (item.admin_statement || "").trim();
+    const isActualAdminPauseNote =
+      Boolean(trimmedStmt) &&
+      !trimmedStmt.toUpperCase().startsWith("APPROVED:") &&
+      !trimmedStmt.toUpperCase().startsWith("REJECTED:") &&
+      !trimmedStmt.toUpperCase().startsWith("STATUS:") &&
+      trimmedStmt !== "pending_review";
+
+    if (isActualAdminPauseNote && item.is_paused) {
       setNoticeModal({
         title: "Highlight Paused by Admin",
-        message: `This highlight is paused by administration: "${item.admin_statement}". Please follow the instruction provided.`,
+        message: `This highlight is paused by administration: "${trimmedStmt}". Please follow the instruction provided.`,
       });
       return;
     }
@@ -802,6 +850,7 @@ export default function MyNewsDashboard({ session }: MyNewsProps) {
       <HighlightBoosterModal
         item={boosterHighlight}
         onClose={() => setBoosterHighlight(null)}
+        userBalance={userWalletBalance}
         onSuccess={(msg) => {
           setBoosterHighlight(null);
           setNoticeModal({
