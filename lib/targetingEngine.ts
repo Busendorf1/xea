@@ -464,7 +464,7 @@ export function evaluateAdTargeting(
     return { matches: false, isStrictMatch: false, relevanceScore: 0, matchedDimensions, reason: "scheduled_future" };
   }
 
-  const stage: BroadeningStage = options.broadeningStage ?? plan.broadeningStage;
+  const stage: BroadeningStage = options.broadeningStage ?? 0;
 
   // 2. Self-ad exclusion (advertisers should not be served their own paid ads in the earning feed)
   const viewerEmail = (viewer.email || "").toLowerCase().trim();
