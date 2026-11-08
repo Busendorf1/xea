@@ -30,7 +30,12 @@ export async function middleware(request: NextRequest) {
     pathname === "/join" ||
     pathname.startsWith("/api/feed") ||
     pathname === "/api/health" ||
-    pathname.startsWith("/api/highlights");
+    pathname.startsWith("/api/highlights") ||
+    pathname.startsWith("/api/payments/webhook") ||
+    pathname.startsWith("/api/payments/kora-webhook") ||
+    pathname.startsWith("/api/payments/mobile-callback") ||
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/cron");
 
   if (isPublicPage) {
     return NextResponse.next();

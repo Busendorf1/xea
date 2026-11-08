@@ -101,3 +101,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+export async function GET(req: NextRequest) {
+  try {
+    const authEmail = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    if (!authEmail) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const cleanEmail = authEmail.toLowerCase().trim();
+    const { data, error } = await supabaseAdmin
+      .from("help_tickets")
+      .select("*")
+      .eq("user_email", cleanEmail)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("❌ Database error fetching help tickets:", error);
+      return NextResponse.json({ error: "Failed to fetch tickets" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, tickets: data || [] });
+  } catch (err: any) {
+    console.error("❌ Unexpected error in GET /api/helpcenter:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

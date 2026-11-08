@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
           const { data: userRow } = await supabaseAdmin
             .from("users")
             .select("id, monetization_clicks, monetized")
-            .ilike("email", emailLower)
+            .eq("email", emailLower)
             .maybeSingle();
           const currentDbClicks = Number(userRow?.monetization_clicks || 0);
           const nextDbClicks = Math.max(currentDbClicks + 1, liveVal || 0);
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
             atw_tier: tierDetails.tierCode,
             ...(isMonetized || isExempt ? { monetized: "true" } : {}),
           })
-          .ilike("email", emailLower)
+          .eq("email", emailLower)
           .then(() => {});
 
         if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {

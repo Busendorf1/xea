@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { MessageCircle, Send, Inbox, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
@@ -69,28 +68,33 @@ export default function HelpCenter({ session }: HelpCenterProps) {
     fetchProfile();
   }, [userEmail]);
 
-  // Fetch existing tickets for logged-in user
+  // Fetch existing tickets for logged-in user via secure API route
   useEffect(() => {
     if (!userEmail) return;
     const fetchTickets = async () => {
       setLoadingTickets(true);
-      const { data } = await supabase
-        .from("help_tickets")
-        .select("*")
-        .eq("user_email", userEmail.toLowerCase())
-        .order("created_at", { ascending: false });
-      const validTickets = (data || []).filter((t: any) => {
-        if (t.status === "resolved" || t.status === "closed") {
-          if (t.resolved_at) {
-            const resolvedTime = new Date(t.resolved_at).getTime();
-            const twentyFourHours = 24 * 60 * 60 * 1000;
-            if (Date.now() - resolvedTime > twentyFourHours) return false;
-          }
+      try {
+        const res = await fetch("/api/helpcenter");
+        if (res.ok) {
+          const json = await res.json();
+          const data = json?.tickets || [];
+          const validTickets = data.filter((t: any) => {
+            if (t.status === "resolved" || t.status === "closed") {
+              if (t.resolved_at) {
+                const resolvedTime = new Date(t.resolved_at).getTime();
+                const twentyFourHours = 24 * 60 * 60 * 1000;
+                if (Date.now() - resolvedTime > twentyFourHours) return false;
+              }
+            }
+            return true;
+          });
+          setTickets(validTickets);
         }
-        return true;
-      });
-      setTickets(validTickets);
-      setLoadingTickets(false);
+      } catch (err) {
+        console.error("Failed to fetch tickets:", err);
+      } finally {
+        setLoadingTickets(false);
+      }
     };
     fetchTickets();
   }, [userEmail, success]);

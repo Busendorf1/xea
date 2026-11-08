@@ -30,9 +30,6 @@ export async function GET(req: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
 
-    // Self-healing JIT background cleanup of expired approved campaigns (>3 days)
-    cleanupExpiredApprovedCampaigns().catch(() => {});
-    triggerSelfHealingJobsIfDue().catch(() => {});
     const forceRefresh = url.searchParams.get("refresh") === "true";
 
     // 1. Check Redis Cache for ultra-fast 1-2ms response at 100M+ traffic
@@ -46,6 +43,12 @@ export async function GET(req: NextRequest) {
           },
         });
       }
+    }
+
+    // Self-healing JIT background cleanup only runs on cache miss or forceRefresh
+    if (forceRefresh) {
+      cleanupExpiredApprovedCampaigns().catch(() => {});
+      triggerSelfHealingJobsIfDue().catch(() => {});
     }
 
     // 2. Query all queues in parallel on read replica database using B-tree indexed lookups

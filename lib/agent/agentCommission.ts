@@ -157,19 +157,19 @@ export async function creditAgentWalletAndEdge({
   const cleanReferee = refereeEmail.toLowerCase().trim();
 
   const [{ data: agentUser }, { data: refRow }] = await Promise.all([
-    supabaseAdmin.from("users").select("balance").ilike("email", cleanAgent).maybeSingle(),
+    supabaseAdmin.from("users").select("balance").eq("email", cleanAgent).maybeSingle(),
     supabaseAdmin
       .from("referrals")
       .select("id, total_commission_earned")
-      .ilike("referee_email", cleanReferee)
-      .ilike("referrer_email", cleanAgent)
+      .eq("referee_email", cleanReferee)
+      .eq("referrer_email", cleanAgent)
       .maybeSingle(),
   ]);
 
   if (agentUser) {
     const prevBal = Number(agentUser.balance) || 0;
     const newBal = Math.round((prevBal + creditToWallet) * 100) / 100;
-    await supabaseAdmin.from("users").update({ balance: newBal }).ilike("email", cleanAgent);
+    await supabaseAdmin.from("users").update({ balance: newBal }).eq("email", cleanAgent);
     invalidateCachedProfile(cleanAgent).catch(() => {});
     publishLiveBalanceUpdate(cleanAgent, { delta: creditToWallet, newBalance: newBal }).catch(() => {});
   }
@@ -248,54 +248,58 @@ export async function applyAgentCommissionOnEarning({
   }
 
   try {
-    const meta = await resolveLightweightUplineForEarner(cleanEarner);
-    if (!meta.hasUpline || !meta.uplineEmail) {
+    // 1. Call PostgreSQL atomic RPC to lock rows and deduct/credit atomically without race conditions
+    const { data: commRes, error: rpcErr } = await supabaseAdmin.rpc("apply_agent_commission_atomic", {
+      p_earner_email: cleanEarner,
+      p_gross_amount: grossEarnedAmount,
+      p_ad_id: adId || null,
+    });
+
+    if (rpcErr) {
+      console.warn("⚠️ apply_agent_commission_atomic RPC error:", rpcErr);
+    }
+
+    if (commRes && typeof commRes === "object" && (commRes as any).applied) {
+      const netEarnerAmount = Number((commRes as any).net_earner_amount ?? grossEarnedAmount);
+      const deductedAmount = Number((commRes as any).deducted ?? 0);
+      const adjustedEarnerBalance =
+        (commRes as any).earner_new_balance !== undefined && (commRes as any).earner_new_balance !== null
+          ? Number((commRes as any).earner_new_balance)
+          : Math.max(0, Math.round((currentEarnerBalance - deductedAmount) * 100) / 100);
+      const uplineEmail = ((commRes as any).agent1_email as string) || null;
+      const agentCredit = Number((commRes as any).agent1_credit ?? deductedAmount);
+      const agentNewBal =
+        (commRes as any).agent1_new_balance !== undefined && (commRes as any).agent1_new_balance !== null
+          ? Number((commRes as any).agent1_new_balance)
+          : undefined;
+
+      // Invalidate profile caches & notify real-time listeners
+      invalidateCachedProfile(cleanEarner).catch(() => {});
+      publishLiveBalanceUpdate(cleanEarner, { delta: -deductedAmount, newBalance: adjustedEarnerBalance }).catch(() => {});
+
+      if (uplineEmail) {
+        invalidateCachedProfile(uplineEmail).catch(() => {});
+        if (agentNewBal !== undefined) {
+          publishLiveBalanceUpdate(uplineEmail, { delta: agentCredit, newBalance: agentNewBal }).catch(() => {});
+        }
+      }
+
+      await invalidateAgentCaches([cleanEarner, uplineEmail].filter(Boolean) as string[]);
+
       return {
-        netEarnerAmount: grossEarnedAmount,
-        deductedAmount: 0,
-        adjustedEarnerBalance: currentEarnerBalance,
-        uplineAgentEmail: null,
+        netEarnerAmount,
+        deductedAmount,
+        adjustedEarnerBalance,
+        uplineAgentEmail: uplineEmail,
       };
     }
 
-    const uplineEmail = meta.uplineEmail;
-    const rate = meta.rate;
-    const commissionAmount = Math.round(grossEarnedAmount * rate * 100) / 100;
-
-    if (commissionAmount <= 0) {
-      return {
-        netEarnerAmount: grossEarnedAmount,
-        deductedAmount: 0,
-        adjustedEarnerBalance: currentEarnerBalance,
-        uplineAgentEmail: null,
-      };
-    }
-
-    const netEarnerAmount = Math.max(0, Math.round((grossEarnedAmount - commissionAmount) * 100) / 100);
-    const adjustedEarnerBalance = Math.max(0, Math.round((currentEarnerBalance - commissionAmount) * 100) / 100);
-
-    // Deduct agency commission from the earner's 50% share and credit the upline agent's wallet
-    await Promise.all([
-      supabaseAdmin
-        .from("users")
-        .update({ balance: adjustedEarnerBalance })
-        .ilike("email", cleanEarner),
-      creditAgentWalletAndEdge({
-        agentEmail: uplineEmail,
-        refereeEmail: cleanEarner,
-        creditToWallet: commissionAmount,
-        grossCommissionFromReferee: commissionAmount,
-        rate,
-      }),
-    ]);
-
-    await invalidateAgentCaches([cleanEarner, uplineEmail]);
-
+    // If RPC returned not applied (e.g. no upline, upline opted out, earner unmonetized)
     return {
-      netEarnerAmount,
-      deductedAmount: commissionAmount,
-      adjustedEarnerBalance,
-      uplineAgentEmail: uplineEmail,
+      netEarnerAmount: grossEarnedAmount,
+      deductedAmount: 0,
+      adjustedEarnerBalance: currentEarnerBalance,
+      uplineAgentEmail: null,
     };
   } catch (err) {
     console.warn("⚠️ Agent commission split warning:", err);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { verifyAdminUser } from "@/lib/authHelper";
-import redisConnection from "@/lib/redis";
+import redisConnection, { scanDeletePattern } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
@@ -104,10 +104,7 @@ export async function POST(req: NextRequest) {
 
     // Invalidate tickets and overview stats caches on ticket operations
     try {
-      const ticketKeys = await redisConnection.keys("admin:tickets:*");
-      if (ticketKeys && ticketKeys.length > 0) {
-        await redisConnection.del(ticketKeys);
-      }
+      await scanDeletePattern("admin:tickets:*");
       await redisConnection.del("admin:overview:stats").catch(() => {});
     } catch {}
 

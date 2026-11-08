@@ -740,14 +740,6 @@ export async function POST(request: NextRequest) {
         const { computeAtwTierDetails } = await import("@/lib/attentionTierEngine");
         const isExemptAtomic = isExemptFromBarriersAndInactivity(emailKey);
         const atomicTier = computeAtwTierDetails(liveClicks, undefined, isExemptAtomic);
-        supabaseAdmin
-          .from("users")
-          .update({
-            atw_tier: atomicTier.tierCode,
-            ...(liveClicks >= 300 || isExemptAtomic ? { monetized: "true" } : {}),
-          })
-          .ilike("email", emailKey)
-          .then(() => {});
         logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Atomic RPC)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 50% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks} (${atomicTier.tierCode})\n   👁️ View Cap   : ${atomicViews}/${atomicCap}\n========================================================================\n`);
 
         // Stream earned impression directly to ClickHouse Cloud (high-throughput non-blocking)

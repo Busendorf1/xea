@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { verifyAdminUser } from "@/lib/authHelper";
-import redisConnection from "@/lib/redis";
+import redisConnection, { scanDeletePattern } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
@@ -104,18 +104,10 @@ export async function POST(req: NextRequest) {
       // Evict Redis caches & record audit log
       try {
         await redisConnection.del(`ad:detail:${adId}`).catch(() => {});
-        const feedKeys = await redisConnection.keys("feed:ads:*");
-        if (feedKeys && feedKeys.length > 0) {
-          await redisConnection.del(feedKeys);
-        }
-        const campaignKeys = await redisConnection.keys("admin:campaigns:*");
-        if (campaignKeys && campaignKeys.length > 0) {
-          await redisConnection.del(campaignKeys);
-        }
-        const reportKeys = await redisConnection.keys("admin:reports:*");
-        if (reportKeys && reportKeys.length > 0) {
-          await redisConnection.del(reportKeys);
-        }
+        await scanDeletePattern("feed:ads:*");
+        await scanDeletePattern("admin:campaigns:*");
+        await scanDeletePattern("admin:reports:*");
+        await scanDeletePattern("admin:users:list:*");
         await redisConnection.del("admin:overview:stats").catch(() => {});
         await supabaseAdmin.from("admin_audit_logs").insert([{
           admin_email: adminEmail,
@@ -165,22 +157,10 @@ export async function POST(req: NextRequest) {
           const detailKeys = userAds.map((a: any) => `ad:detail:${a.id}`);
           await redisConnection.del(detailKeys);
         }
-        const feedKeys = await redisConnection.keys("feed:ads:*");
-        if (feedKeys && feedKeys.length > 0) {
-          await redisConnection.del(feedKeys);
-        }
-        const campaignKeys = await redisConnection.keys("admin:campaigns:*");
-        if (campaignKeys && campaignKeys.length > 0) {
-          await redisConnection.del(campaignKeys);
-        }
-        const reportKeys = await redisConnection.keys("admin:reports:*");
-        if (reportKeys && reportKeys.length > 0) {
-          await redisConnection.del(reportKeys);
-        }
-        const userListKeys = await redisConnection.keys("admin:users:list:*");
-        if (userListKeys && userListKeys.length > 0) {
-          await redisConnection.del(userListKeys);
-        }
+        await scanDeletePattern("feed:ads:*");
+        await scanDeletePattern("admin:campaigns:*");
+        await scanDeletePattern("admin:reports:*");
+        await scanDeletePattern("admin:users:list:*");
         await redisConnection.del("admin:overview:stats").catch(() => {});
         await supabaseAdmin.from("admin_audit_logs").insert([{
           admin_email: adminEmail,
@@ -200,10 +180,7 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("ad_reports").update({ status: "dismissed" }).eq("id", reportId);
 
       try {
-        const reportKeys = await redisConnection.keys("admin:reports:*");
-        if (reportKeys && reportKeys.length > 0) {
-          await redisConnection.del(reportKeys);
-        }
+        await scanDeletePattern("admin:reports:*");
         await supabaseAdmin.from("admin_audit_logs").insert([{
           admin_email: adminEmail,
           action: "dismiss_ad_report",

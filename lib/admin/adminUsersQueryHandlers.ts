@@ -83,35 +83,15 @@ export async function handleGetAgentsList(searchParams: URLSearchParams) {
     } catch {}
   }
 
-  const { checkIsUserAgent } = await import("@/lib/agentSystem");
-
-  // 1. Fetch referral aggregations
-  const { data: refRows } = await supabaseAdmin
-    .from("referrals")
-    .select("referrer_email, total_commission_earned, status");
-
-  const followerCountMap = new Map<string, number>();
-  const earningsMap = new Map<string, number>();
-  const referrerEmailsSet = new Set<string>();
-
-  (refRows || []).forEach((row: any) => {
-    const refEmail = (row.referrer_email || "").toLowerCase().trim();
-    if (!refEmail) return;
-    referrerEmailsSet.add(refEmail);
-    if (row.status !== "opted_out") {
-      followerCountMap.set(refEmail, (followerCountMap.get(refEmail) || 0) + 1);
-    }
-    const earned = Number(row.total_commission_earned) || 0;
-    earningsMap.set(refEmail, (earningsMap.get(refEmail) || 0) + earned);
-  });
-
-  // 2. Fetch users who have referral_code or match search
+  // 1. Fetch users who have referral_code, are agents, or match search
   let usersQuery = supabaseAdmin
     .from("users")
-    .select('id, username, email, "firstName", "lastName", "profileImage", balance, referral_code, suspended_until, created_at');
+    .select('id, username, email, "firstName", "lastName", "profileImage", balance, referral_code, suspended_until, created_at, is_agent, agent_registered_at, agent_banned_until, agent_ban_reason');
 
   if (search) {
     usersQuery = usersQuery.or(`email.ilike.%${search}%,username.ilike.%${search}%,firstName.ilike.%${search}%,lastName.ilike.%${search}%,referral_code.ilike.%${search}%`);
+  } else {
+    usersQuery = usersQuery.or("is_agent.eq.true,referral_code.not.is.null");
   }
 
   const { data: matchedUsers, error: usersErr } = await usersQuery
@@ -123,37 +103,60 @@ export async function handleGetAgentsList(searchParams: URLSearchParams) {
   }
 
   const allCandidates = matchedUsers || [];
-  const agents = await Promise.all(
-    allCandidates.map(async (u: any) => {
-      const emailLower = (u.email || "").toLowerCase().trim();
-      const agStatus = await checkIsUserAgent(emailLower);
-      const special = getSpecialRoleProfile(emailLower, u);
-      const followersCount = followerCountMap.get(emailLower) || 0;
-      const totalEarned = earningsMap.get(emailLower) || 0;
+  const candidateEmails = allCandidates.map((u: any) => (u.email || "").toLowerCase().trim()).filter(Boolean);
 
-      return {
-        id: u.id,
-        username: u.username,
-        email: u.email,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        profileImage: u.profileImage,
-        balance: u.balance || 0,
-        referral_code: u.referral_code,
-        created_at: u.created_at,
-        is_agent: agStatus.isAgent,
-        is_agent_banned: agStatus.isBanned,
-        agent_banned_until: agStatus.bannedUntil,
-        agent_ban_reason: agStatus.banReason,
-        registered_at: agStatus.registeredAt,
-        is_career: special.isCareer,
-        is_affiliate: special.isAffiliate,
-        affiliate_role: special.affiliateRole,
-        followers_count: followersCount,
-        total_earned: totalEarned,
-      };
-    })
-  );
+  // 2. Fetch referral aggregations ONLY for matched candidates (avoids unbounded table scan)
+  const followerCountMap = new Map<string, number>();
+  const earningsMap = new Map<string, number>();
+
+  if (candidateEmails.length > 0) {
+    const { data: refRows } = await supabaseAdmin
+      .from("referrals")
+      .select("referrer_email, total_commission_earned, status")
+      .in("referrer_email", candidateEmails);
+
+    (refRows || []).forEach((row: any) => {
+      const refEmail = (row.referrer_email || "").toLowerCase().trim();
+      if (!refEmail) return;
+      if (row.status !== "opted_out") {
+        followerCountMap.set(refEmail, (followerCountMap.get(refEmail) || 0) + 1);
+      }
+      const earned = Number(row.total_commission_earned) || 0;
+      earningsMap.set(refEmail, (earningsMap.get(refEmail) || 0) + earned);
+    });
+  }
+
+  // 3. Map candidates directly without N+1 queries
+  const agents = allCandidates.map((u: any) => {
+    const emailLower = (u.email || "").toLowerCase().trim();
+    const isBanned = Boolean(u.agent_banned_until && new Date(u.agent_banned_until).getTime() > Date.now());
+    const isAgent = isBanned ? false : Boolean(u.is_agent);
+    const special = getSpecialRoleProfile(emailLower, u);
+    const followersCount = followerCountMap.get(emailLower) || 0;
+    const totalEarned = earningsMap.get(emailLower) || 0;
+
+    return {
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      profileImage: u.profileImage,
+      balance: u.balance || 0,
+      referral_code: u.referral_code,
+      created_at: u.created_at,
+      is_agent: isAgent,
+      is_agent_banned: isBanned,
+      agent_banned_until: u.agent_banned_until || null,
+      agent_ban_reason: u.agent_ban_reason || null,
+      registered_at: u.agent_registered_at || null,
+      is_career: special.isCareer,
+      is_affiliate: special.isAffiliate,
+      affiliate_role: special.affiliateRole,
+      followers_count: followersCount,
+      total_earned: totalEarned,
+    };
+  });
 
   const filteredAgents = search
     ? agents

@@ -19,9 +19,15 @@ export async function POST(req: NextRequest) {
   try {
     const signature = req.headers.get("x-korapay-signature");
     const bodyText = await req.text();
-    const koraSecret = process.env.KORA_SECRET_KEY;
+    const candidateSecrets = [
+      process.env.KORA_SECRET_KEY,
+      process.env.KORA_LIVE_SECRET_KEY,
+      process.env.KORA_TEST_SECRET_KEY,
+    ]
+      .filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0))
+      .map((k) => k.trim());
 
-    if (!koraSecret) {
+    if (candidateSecrets.length === 0) {
       console.error("❌ Kora Webhook error: KORA_SECRET_KEY is missing from environment variables!");
       return NextResponse.json({ error: "Webhook configuration error" }, { status: 500 });
     }
@@ -38,20 +44,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    // 1. Constant-Time Signature Verification
+    // 1. Constant-Time Signature Verification across candidate secrets
     const hashData = payload.data ? JSON.stringify(payload.data) : bodyText;
-    const computedHashData = createHmac("sha256", koraSecret).update(hashData).digest("hex");
-    const computedHashRaw = createHmac("sha256", koraSecret).update(bodyText).digest("hex");
+    let isValidSignature = false;
 
-    const isValidSignature =
-      safeCompareHex(signature, computedHashData) ||
-      safeCompareHex(signature, computedHashRaw);
+    for (const secret of candidateSecrets) {
+      const computedHashData = createHmac("sha256", secret).update(hashData).digest("hex");
+      const computedHashRaw = createHmac("sha256", secret).update(bodyText).digest("hex");
+      if (safeCompareHex(signature, computedHashData) || safeCompareHex(signature, computedHashRaw)) {
+        isValidSignature = true;
+        break;
+      }
+    }
 
     const allowMockBypass =
-      process.env.NODE_ENV !== "production" && koraSecret.startsWith("sk_test_mock");
+      process.env.NODE_ENV !== "production" && candidateSecrets.some((s) => s.startsWith("sk_test_mock"));
 
     if (!isValidSignature && !allowMockBypass) {
-      console.error("❌ Kora Webhook: Signature mismatch!");
+      console.error("❌ Kora Webhook: Signature mismatch! Checked against " + candidateSecrets.length + " candidate key(s).");
       return NextResponse.json({ error: "Signature mismatch" }, { status: 401 });
     }
 

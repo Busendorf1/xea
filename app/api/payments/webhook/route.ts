@@ -11,8 +11,15 @@ export async function POST(req: NextRequest) {
   try {
     const signature = req.headers.get("x-paystack-signature");
     const bodyText = await req.text();
-    const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
-    if (!paystackSecret) {
+    const candidateSecrets = [
+      process.env.PAYSTACK_SECRET_KEY,
+      process.env.PAYSTACK_LIVE_SECRET_KEY,
+      process.env.PAYSTACK_TEST_SECRET_KEY,
+    ]
+      .filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0))
+      .map((k) => k.trim());
+
+    if (candidateSecrets.length === 0) {
       console.error("❌ Webhook error: PAYSTACK_SECRET_KEY is missing from environment variables!");
       return NextResponse.json({ error: "Webhook configuration error" }, { status: 500 });
     }
@@ -21,12 +28,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing signature header" }, { status: 401 });
     }
 
-    // 1. Constant-Time HMAC Signature Verification
-    const hash = createHmac("sha512", paystackSecret).update(bodyText).digest("hex");
+    // 1. Constant-Time HMAC Signature Verification across candidate secrets (Supports both Test and Live environments)
     const sigBuf = Buffer.from(signature, "utf8");
-    const hashBuf = Buffer.from(hash, "utf8");
-    if (sigBuf.length !== hashBuf.length || !timingSafeEqual(sigBuf, hashBuf)) {
-      console.error("❌ Webhook Signature mismatch!");
+    let isValid = false;
+
+    for (const secret of candidateSecrets) {
+      const hash = createHmac("sha512", secret).update(bodyText).digest("hex");
+      const hashBuf = Buffer.from(hash, "utf8");
+      if (sigBuf.length === hashBuf.length && timingSafeEqual(sigBuf, hashBuf)) {
+        isValid = true;
+        break;
+      }
+    }
+
+    if (!isValid) {
+      console.error("❌ Webhook Signature mismatch! Checked against " + candidateSecrets.length + " candidate key(s).");
       return NextResponse.json({ error: "Signature mismatch" }, { status: 401 });
     }
 
