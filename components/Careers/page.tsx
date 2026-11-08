@@ -19,7 +19,7 @@ export default function Careers() {
           building the future of monetization, advertisement delivery, and instant payout infrastructure.
         </p>
 
-        <h2 className={styles.heading}>Open Roles</h2>
+        <h2 className={styles.heading}>Open Roles.</h2>
         <p className={styles.text}>
           We are constantly looking for talented and creative individuals. Whether you specialize in backend API scaling, or 
           product design, we would love to hear from you.
