@@ -6,14 +6,14 @@ export default function CookiesPage() {
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <h1 className={styles.title}>Paayh Cookie Policy</h1>
+        <h1 className={styles.title}>Paayh Device Storage, Security Tokens &amp; Tracking Policy</h1>
         <p className={styles.updatedDate}>
           <em>Last Updated: November 5, 2026 | Effective Date: November 5, 2026</em>
         </p>
 
         <div className={styles.noticeBox}>
-          This Cookie Policy explains how Paayh uses cookies, local storage, and similar web technologies to provide,
-          secure, and improve our Services. For broader information regarding our data protection standards and user agreements, please read
+          This Policy explains how Paayh uses local device storage, secure session tokens, and caching technologies to provide,
+          secure, and improve our mobile and web services. For broader information regarding our data protection standards and user agreements, please read
           our{" "}
           <Link href="/privacy" className={styles.link}>
             Privacy Policy
@@ -34,10 +34,7 @@ export default function CookiesPage() {
         <section>
           <h2 className={styles.heading}>1. What Are Cookies and Local Storage?</h2>
           <p>
-            Cookies are small text files placed on your computer or mobile device when you access websites. Local
-            storage and session storage are modern browser based storage mechanisms that allow web applications to store
-            data locally within your browser. Paayh uses these technologies to maintain secure sessions, remember
-            preferences, prevent fraud, and verify human attention.
+            Modern applications utilize secure session tokens, local device storage, and cryptographic keys to maintain authenticated sessions, store user preferences, verify human attention, and prevent fraud without relying on invasive third-party tracking.
           </p>
         </section>
 
@@ -112,30 +109,30 @@ export default function CookiesPage() {
         <section>
           <h2 className={styles.heading}>3. What We Do NOT Do</h2>
           <div className={styles.noticeBox}>
-            <strong>NO THIRD PARTY DATA BROKER TRACKING:</strong> Paayh does NOT use third party behavioral advertising
-            cookies that track you across external websites. We do not sell your browsing history, clicks, or device
-            identifiers to third party ad networks, telemetry trackers, or data brokers.
+            <strong>NO THIRD PARTY DATA BROKER TRACKING:</strong> Paayh operates strictly on a first-party basis. We do NOT track you across third-party apps or external websites, nor do we sell your personal data or device identifiers to third-party data brokers. We fully respect Apple's App Tracking Transparency (ATT) framework.
           </div>
         </section>
 
         <section>
-          <h2 className={styles.heading}>4. How to Control and Manage Cookies</h2>
+          <h2 className={styles.heading}>4. How to Control and Manage Storage &amp; Permissions</h2>
           <p>
-            Most modern web browsers allow you to manage or block cookies through browser settings. You can review and
-            delete cookies stored on your device:
+            You can review, manage, or clear local application storage and device permissions (such as Location) directly through your operating system settings:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Google Chrome:</strong> Settings &gt; Privacy and Security &gt; Cookies and other site data.
+              <strong>Apple iOS Devices:</strong> Settings &gt; Paayh (or Settings &gt; Privacy &amp; Security &gt; Location Services &gt; Paayh).
             </li>
             <li className={styles.listItem}>
-              <strong>Apple Safari:</strong> Preferences &gt; Privacy &gt; Manage Website Data.
+              <strong>Google Android Devices:</strong> Settings &gt; Apps &gt; Paayh &gt; Permissions &amp; Storage.
             </li>
             <li className={styles.listItem}>
-              <strong>Mozilla Firefox:</strong> Options &gt; Privacy &amp; Security &gt; Cookies and Site Data.
-            </li>
-            <li className={styles.listItem}>
-              <strong>Microsoft Edge:</strong> Settings &gt; Cookies and Site Permissions.
+              <strong>Web Browsers (Desktop &amp; Mobile Website):</strong>
+              <ul className={styles.list} style={{ marginTop: "0.5rem", paddingLeft: "1.25rem" }}>
+                <li className={styles.listItem}><strong>Google Chrome:</strong> Settings &gt; Privacy and Security &gt; Third-party cookies &amp; Site data.</li>
+                <li className={styles.listItem}><strong>Apple Safari:</strong> Preferences / Settings &gt; Privacy &gt; Manage Website Data.</li>
+                <li className={styles.listItem}><strong>Mozilla Firefox:</strong> Settings &gt; Privacy &amp; Security &gt; Cookies and Site Data.</li>
+                <li className={styles.listItem}><strong>Microsoft Edge:</strong> Settings &gt; Cookies and Site Permissions.</li>
+              </ul>
             </li>
           </ul>
           <p>

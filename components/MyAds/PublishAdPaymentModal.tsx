@@ -255,6 +255,11 @@ export default function PublishAdPaymentModal({
                   {paymentMethod === "wallet" ? "Wallet" : "Card / Bank Transfer"} to
                   launch directly into the live feed.
                 </p>
+                {paymentMethod === "card" && (
+                  <p style={{ fontSize: "0.8rem", color: "var(--muted-foreground, #888)", marginTop: "8px", lineHeight: 1.45, textAlign: "center" }}>
+                    You will be directed to the secure payment gateway on the web to complete your transaction, and returned directly to your My Ads dashboard.
+                  </p>
+                )}
               </>
             )}
 

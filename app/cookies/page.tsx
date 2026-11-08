@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Cookie Policy | Paayh",
-  description: "Learn how Paayh uses cookies and browser storage technologies to provide and secure our services.",
+  description: "Learn how Paayh uses local storage, secure tokens, and caching technologies to provide and secure our services.",
 };
 
 export default function Cookies() {

@@ -13,7 +13,7 @@ export const faqs: FaqItem[] = [
   {
     question: "What is Paayh and how does it work?",
     answer:
-      "Paayh is an attention exchange and digital content platform that rewards users with promotional incentive rewards in exchange for genuine human attention. Advertisers achieve an industry leading target deliverability of up to 99.99% to real active users, and monetized users can earn a dynamic share ranging up to 50% of net advertising revenue generated from confirmed human impressions."
+      "Paayh is an attention and content discovery platform where viewing content is voluntary, for fun, entertainment, and product discovery, with members receiving decent promotional rewards you won’t wanna miss for verified human focus. Sponsoring content is voluntary, requiring standard service charges for queue placement. Advertisers achieve high target deliverability to real active users, knowing their budget directly rewards audience attention."
   },
   {
     question: "Can I post both Ads and Highlights?",
@@ -23,7 +23,7 @@ export const faqs: FaqItem[] = [
   {
     question: "How does bidding for attention work?",
     answer:
-      "Promoters and advertisers can submit competitive bids for attention to prioritize their campaigns, reach targeted audiences faster, and bypass queue wait times. For listeners, campaigns with higher bids pay out proportionately higher cash rewards directly into their Paayh wallet upon completing the 16 second focus countdown and clicking the Earn button."
+      "Promoters and advertisers can submit competitive bids for attention to prioritize their campaigns and reach targeted audiences faster. For viewers, campaigns with higher bids pay out proportionately higher rewards directly into their Paayh wallet upon completing the 16-second focus countdown and clicking the Earn button."
   },
   {
     question: "How do I become monetized?",
@@ -53,7 +53,7 @@ export const faqs: FaqItem[] = [
   {
     question: "When can I withdraw my earnings?",
     answer:
-      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 (or localized equivalent). You may withdraw any amount from ₦10,000 up to your full available balance (including withdrawing 100% of incentives down to ₦0.00), leaving any remainder in your wallet for future payouts. Withdrawals are authenticated via your verified registered phone number, and Paayh does not lock you to a single static bank account."
+      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 (or localized equivalent). You may withdraw any amount from ₦10,000 up to your full available balance, leaving any remainder in your wallet for future payouts. There are zero account maintenance fees. When you initiate a withdrawal, standard statutory payment processor interbank transfer fees apply with zero platform markup. Withdrawals are authenticated via your verified registered phone number."
   },
   {
     question: "Why should I withdraw my earnings promptly and what is the ATW ceiling?",
@@ -68,12 +68,32 @@ export const faqs: FaqItem[] = [
   {
     question: "How does the Followers, Invites & Agent program work, and is anything deducted from my earnings?",
     answer:
-      "The program is a voluntary follower reward sharing system designed to maximize user earnings. When you become an Agent for free and share your invite link, people who join through your link appear in your Followers list under Invites, and you appear in their Following tab. Once a follower is monetized, 1% of their promotional earnings is deducted and credited to the Agent who invited them (leaving 99% to the follower). If that follower also becomes an Agent, which allows them to invite others and earn from their own followers too, the deduction for the Agent who brought them becomes 2% (marked with an asterisk * beside their earnings, e.g., ₦0.00*). Participation is completely voluntary: if you do not want 1% or 2% deducted for the person who invited you, you can request to Unfollow them (with their permission) or click Opt Out to immediately disconnect, though opting out removes both your referrer and any followers you invited. As long as you remain active and do not violate our platform rules or 7 day or 60 day inactivity policy, your followers' earnings will continue filling your wallet automatically."
+      "The program is a voluntary single-tier direct referral reward sharing system. When you share your invite link, people who join directly through your link become your Followers. Once a follower is monetized, 1% of their promotional earnings is credited to the Agent who directly invited them (leaving 99% to the follower). If that follower also becomes an Agent, the direct referral reward becomes 2% (marked with an asterisk *). This applies strictly to single-tier direct referrals; you do not earn from anyone whom your referrals bring (no multi-level or downlines). Participation is completely voluntary: you can Unfollow or Opt Out at any time."
   },
   {
     question: "How old do I have to be to use Paayh?",
     answer:
       "You must be at least 18 years old to create an account and use Paayh."
+  },
+  {
+    question: "How does Paayh handle objectionable content or abusive users?",
+    answer:
+      "Paayh enforces a strict zero-tolerance End User License Agreement (EULA) against objectionable content and abusive users. All promotions undergo automated and human quality filtering before going live. If you encounter any objectionable material, you can click the three dots (...) on any ad card to select 'Block & report Ad' or 'Block & report Advertiser', or choose 'Don't show this Ad again' to remove it from your feed immediately. Our moderation team reviews and acts on reports within 24 hours to remove violating content and permanently eject offending accounts."
+  },
+  {
+    question: "Is Apple Inc. affiliated with or sponsoring Paayh rewards?",
+    answer:
+      "No. Apple Inc. is not a sponsor of, affiliated with, or responsible for administering or maintaining this application, nor is it involved in any rewards, promotions, or payouts offered on Paayh."
+  },
+  {
+    question: "Can advertisers pay users to download apps or write reviews?",
+    answer:
+      "No. In strict compliance with mobile platform guidelines, Paayh explicitly prohibits any campaign that incentivizes downloading third-party apps, posting app store ratings or reviews, or attempting to manipulate app store charts. Such campaigns are rejected and violators face immediate account termination."
+  },
+  {
+    question: "Is location mandatory to use Paayh?",
+    answer:
+      "Location permissions are voluntary and optional to register and hold an account. However, because sponsored offers and community promotions are strictly localized to physical jurisdictions, disabling device location permissions means our system cannot serve matching content to your feed. If location is disabled, your feed will display an 'Enable Location' button so you can activate it whenever you wish to view content."
   },
   {
     question: "Where can I learn more about privacy, terms, and security?",

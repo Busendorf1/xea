@@ -578,7 +578,38 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         </div>
       )}
       {!loading && !error && ads.length === 0 && (
-        <p className={styles.noAds}>No matching ads found for your profile.</p>
+        <div style={{ textAlign: "center", padding: "48px 20px" }}>
+          <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>No matching sponsored content found in your area.</p>
+          <p style={{ fontSize: "0.85rem", color: "var(--muted-foreground, #888)", marginTop: "8px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+            Promotional content and local community offers are targeted to physical jurisdictions. If location is disabled or uncalibrated, tap below to enable location.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                try {
+                  localStorage.removeItem("paayh_proof_of_location_active");
+                  sessionStorage.removeItem("paayh_location_skipped");
+                } catch {}
+                window.dispatchEvent(new CustomEvent("paayh:manual_location_selected"));
+              }
+            }}
+            style={{
+              marginTop: "16px",
+              padding: "10px 24px",
+              borderRadius: "9999px",
+              background: "var(--foreground, #111)",
+              color: "var(--background, #fff)",
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)"
+            }}
+          >
+            Enable Location
+          </button>
+        </div>
       )}
 
       {!loading && !error && displayFeed.length > 0 && (

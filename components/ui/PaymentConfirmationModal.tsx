@@ -28,6 +28,7 @@ export default function PaymentConfirmationModal({
   onClose,
   onConfirm,
   amountFormatted,
+  paymentMethodText,
   isSubmitting = false,
 }: PaymentConfirmationModalProps) {
   const [acknowledged, setAcknowledged] = useState(false);
@@ -128,6 +129,11 @@ export default function PaymentConfirmationModal({
                 I understand and agree that <strong className={styles.affirmationLabelStrong}>this transaction is strictly non-refundable</strong>.
               </span>
             </label>
+            {paymentMethodText && paymentMethodText.toLowerCase().includes("card") && (
+              <p style={{ fontSize: "0.8rem", color: "var(--muted-foreground, #888)", marginTop: "4px", marginBottom: "12px", textAlign: "center", lineHeight: 1.4 }}>
+                You will be directed to the secure payment gateway on the web to complete checkout, and returned automatically to your dashboard.
+              </p>
+            )}
 
             {/* Action Buttons */}
             <div className={styles.actions}>

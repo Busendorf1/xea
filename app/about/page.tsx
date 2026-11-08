@@ -12,21 +12,21 @@ export default function AboutPage() {
 
       <section className={styles.section}>
         <p className={styles.sectionText}>
-          <strong>Paayh</strong> is pioneering an equitable attention economy where focused human attention is valued, respected, and directly compensated through respectful content engagement.
+          <strong>Paayh</strong> is pioneering an equitable attention and content discovery ecosystem. Viewing content is voluntary, for fun, entertainment, and the discovery of exciting products, services, and local community offers, with members receiving decent rewards for verified human focus. Posting promotional content is voluntary, requiring service fees for queue placement and delivery.
         </p>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Our Mission</h2>
         <p className={styles.sectionText}>
-          We aim to build a fair digital ecosystem where advertisers achieve <strong>industry leading target deliverability of up to 99.99%</strong> to real active users, and listeners receive transparent incentive rewards for providing <strong>genuine human attention</strong>. This is an attention based digital economy rooted in voluntary participation.
+          We aim to build a transparent digital ecosystem where advertisers achieve <strong>high target deliverability</strong> to verified active members, knowing their audience voluntarily receives a transparent reward for their focused attention from their promotional budget. Members voluntarily explore offers without any forced patronage, creating a genuine win-win relationship.
         </p>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>How It Works</h2>
         <p className={styles.sectionText}>
-          When you view ads tailored to your interests, you can earn a dynamic share of <strong>up to 50%</strong> of net ad revenue. The remaining portion supports platform growth, digital operations, and infrastructure. No subscriptions. No tricks. Just fair value for your time.
+          When you voluntarily view content tailored to your preferences, you receive a dynamic share of <strong>up to 50%</strong> of net advertising revenue in the form of attention rewards. Advertisers know their campaign spend directly rewards real human focus. We enforce strict anti-bot kinematics, pre-publication content reviews, and built-in reporting tools to ensure quality and safety. No subscriptions. No tricks. Just fair value for your time.
         </p>
       </section>
 

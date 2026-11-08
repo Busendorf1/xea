@@ -347,9 +347,26 @@ export default function ProofOfLocationModal({
             </div>
 
             <div className={styles.footerRow}>
-              <span className={styles.footerNote}>
-                Required to continue on Paayh
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setVisible(false);
+                  try {
+                    sessionStorage.setItem("paayh_location_skipped", "true");
+                  } catch {}
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--muted-foreground, #888)",
+                  fontSize: "0.78rem",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  padding: "4px 8px"
+                }}
+              >
+                Skip for now (Feed will be empty)
+              </button>
               <motion.a
                 href="/user/logout"
                 className={styles.logoutLink}

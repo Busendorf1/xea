@@ -60,19 +60,10 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
   };
 
   const handleOpenConfirmation = () => {
-    if (!email) return;
-
-    if (!confirmEmailInput || confirmEmailInput.trim().toLowerCase() !== email.trim().toLowerCase()) {
-      setError("Email address does not match your account email.");
+    if (!email) {
+      setError("No active session found.");
       return;
     }
-
-    const validation = deactivationSchema.safeParse({ confirmEmail: confirmEmailInput.trim() });
-    if (!validation.success) {
-      setError(validation.error.issues[0]?.message || "Invalid account email.");
-      return;
-    }
-
     setError("");
     setShowModal(true);
   };
@@ -86,7 +77,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          confirmEmail: confirmEmailInput.trim().toLowerCase(),
+          confirmEmail: (email || "").trim().toLowerCase(),
           forfeitConfirmed: true,
         }),
       });
@@ -149,15 +140,19 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
 
             <div className={styles.inputGroup}>
               <label className={styles.inputLabel}>
-                Type your email address to confirm deactivation:
+                Account to be permanently deleted:
               </label>
-              <input
-                type="email"
-                placeholder="Enter Email"
-                value={confirmEmailInput}
-                onChange={(e) => setConfirmEmailInput(e.target.value)}
-                className={styles.input}
-              />
+              <div style={{
+                padding: "12px 14px",
+                background: "var(--bg-muted, rgba(125,125,125,0.08))",
+                borderRadius: "8px",
+                fontWeight: 600,
+                fontSize: "0.95rem",
+                wordBreak: "break-all",
+                border: "1px solid var(--border-color, rgba(125,125,125,0.2))"
+              }}>
+                {email || "Current Account"}
+              </div>
             </div>
 
             {error && (
@@ -241,7 +236,7 @@ export default function DeactivateAccount({ session }: DeactivateAccountProps) {
                 <div className={styles.modalBody}>
                   <h3 className={styles.modalTitle}>Irreversible Account Deletion</h3>
                   <p className={styles.modalDescription}>
-                    You are about to permanently delete <strong>{confirmEmailInput}</strong>. All remaining wallet balances, campaign credits, and user data will be permanently wiped from the ledger.
+                    You are about to permanently delete <strong>{email}</strong>. All remaining wallet balances, campaign credits, and user data will be permanently wiped from the ledger.
                   </p>
                   <p className={styles.modalWarningNote}>
                     This action cannot be undone. Are you absolutely certain?

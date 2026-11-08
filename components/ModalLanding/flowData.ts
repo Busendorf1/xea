@@ -26,7 +26,7 @@ export const flowNodes: Record<string, FlowNode> = {
   root: {
     id: 'root',
     aiMessage:
-      'Paayh is an attention exchange platform. Our goal is to deliver your content and advert for maximum ROI while rewarding listeners for their attention, which is win-win for businesses and viewers.',
+      'Paayh is an attention and content discovery platform. Viewing content is voluntary, for fun and discovery of products, services, and community updates, with a decent reward you won’t wanna miss for verified human focus. Posting promotional content is voluntary, requiring standard service charges for placement and queue delivery.',
     referralLink: {
       label: 'Read our Platform Terms of Service',
       url: '/terms',
@@ -58,7 +58,7 @@ export const flowNodes: Record<string, FlowNode> = {
   how_works_select: {
     id: 'how_works_select',
     aiMessage:
-      'We deliver your content to people who genuinely want to see it and reward them with earnings. Are you looking to promote your business, or are you here to earn cash for your attention?',
+      'We connect verified community content with people who voluntarily choose to see it. Are you looking to promote your business, or are you here to discover offers and earn rewards for your attention?',
     referralLink: {
       label: 'Review Platform Terms of Service',
       url: '/terms',
@@ -71,7 +71,7 @@ export const flowNodes: Record<string, FlowNode> = {
       },
       {
         id: 'c_hw_listener',
-        text: 'Earn Cash for Attention',
+        text: 'Discover & Earn Rewards',
         nextNodeId: 'listener_l1',
       },
       {
@@ -187,7 +187,7 @@ export const flowNodes: Record<string, FlowNode> = {
   listener_l3: {
     id: 'listener_l3',
     aiMessage:
-    'At an average ₦100 payout per view and 50 views per hour, 8 hours of attention yields ₦40,000 per day, ₦280,000 weekly or ₦1.12M monthly or USD equivalent. Payouts fluctuate with advertiser bidding, making each session rewarding and unpredictable.',
+    'You can earn a decent reward you won’t wanna miss! Rewards fluctuate with advertiser campaign budgets and verified focus, making each session rewarding and worthwhile.',
     referralLink: {
       label: 'Read Payout Rules in Terms',
       url: '/terms',
@@ -195,7 +195,7 @@ export const flowNodes: Record<string, FlowNode> = {
     choices: [
       {
         id: 'c_l3_next',
-        text: 'How and when do I withdraw my earnings?',
+        text: 'How and when do I withdraw my rewards?',
         nextNodeId: 'listener_l4',
       },
       {
@@ -217,7 +217,7 @@ export const flowNodes: Record<string, FlowNode> = {
   listener_l4: {
     id: 'listener_l4',
     aiMessage:
-      'When your balance reaches 10,000 Naira or dollar equivalent and before reaching your ATW limit, tap Request Withdrawal. Enter your bank details and phone number, it is that simple.',
+      'When your balance reaches the minimum threshold of 10,000 Naira (or localized currency equivalent) and before reaching your ATW holding limit, tap Request Withdrawal. Enter your bank details and verified phone number, it is that simple.',
     referralLink: {
       label: 'Read Banking Settlement FAQs',
       url: '/faq',
@@ -247,7 +247,7 @@ export const flowNodes: Record<string, FlowNode> = {
   listener_l5: {
     id: 'listener_l5',
     aiMessage:
-      'Not at all. There are zero maintenance fees and zero deductions. What you earn belongs entirely to you.',
+      'There are zero account maintenance fees. When you initiate a withdrawal, standard statutory payment processor interbank transfer fees apply with zero platform markup, and the net payout is credited to your verified bank account.',
     referralLink: {
       label: 'Read Financial Transparency Terms',
       url: '/terms',
@@ -431,7 +431,7 @@ export const flowNodes: Record<string, FlowNode> = {
   promoter_p1: {
     id: 'promoter_p1',
     aiMessage:
-      'Paayh has a community of listeners who deserves to get a share of the revenue their attention generates. Because they earn, they also have real money to patronize offers that resonate.',
+      'Paayh connects you with verified active community members. Viewing is voluntary and for discovery, with viewers receiving a share of the promotional budget for verified attention. Because they earn rewards, they also have real spending power to patronize offers that resonate.',
     referralLink: {
       label: 'Read Advertiser Guidelines',
       url: '/advertiser-guidelines',
@@ -848,6 +848,6 @@ export const flowNodes: Record<string, FlowNode> = {
   },
 };
 
-// Aliases for backwards compatibility with any persisted user sessions in browser localStorage
+// Aliases for backwards compatibility with any persisted user sessions in local app storage
 flowNodes['path_listener_chosen'] = flowNodes['listener_l1'];
 flowNodes['path_promoter_chosen'] = flowNodes['promoter_p1'];

@@ -68,21 +68,18 @@ export default function TermsPage() {
             and non transferable without Paayh&apos;s express prior written consent.
           </p>
           <p>
-            <strong>1.4 Essential Location Processing, Travel Recalibration &amp; Mandatory Service Condition:</strong> Geographic
-            location processing (via device GPS or network IP geolocation) is an <strong>essential, non negotiable core feature</strong> of
-            the Paayh ecosystem. We require location data to accurately deliver physically relevant community content, serve local neighborhood
-            and business needs, protect commercial advertisers from wasted or misattributed ad spend, and verify authentic audience focus.
-            To achieve this, Paayh requests device location permissions during profile setup and periodically reverifies locality (once daily)
-            during authenticated sessions. Your detected coordinates establish your country, state, and city, locking these geographic attributes
-            as read only to eliminate manual fabrication. When you relocate or travel to another city, state, or country, the platform
-            automatically recalibrates your geographic profile, dynamically adapting your feed queue to deliver community updates, regional events,
-            and merchant offers local to your physical presence. Listeners agree not to employ virtual private networks (VPNs), proxies, or GPS
-            spoofing applications to misrepresent geographic location; doing so constitutes grounds for immediate account suspension and incentive forfeiture.
+            <strong>1.4 Device Location Permissions, Community Geographic Matching &amp; Voluntary Access:</strong> Device
+            location processing is utilized to match and deliver physically relevant community content, support local businesses,
+            and connect commercial sponsors with real audience members present in targeted geographical zones. Granting device
+            location permissions is <strong>voluntary and optional</strong> to register and access your account. However, because
+            sponsored campaigns and local community posts are targeted by geographical jurisdiction, state, and city, if you disable
+            or deny location permissions, our system cannot match or deliver localized content to your feed (your feed will remain
+            empty until location is enabled). When permitted, Paayh requests device location permissions during onboarding and
+            periodically recalibrates locality when you travel to ensure relevant regional delivery. Members agree not to employ
+            virtual private networks (VPNs), proxies, or spoofing applications to misrepresent geographic location.
           </p>
           <div className={`${styles.noticeBox} ${styles.noticeBoxMargin}`}>
-            <strong>MANDATORY LOCATION NOTICE:</strong> Because geographic localization is fundamental to our content delivery, community service,
-            and advertiser matching architecture, <strong>if you are not comfortable with or do not agree to the collection, processing, and
-            periodic recalibration of your geographic location, you should not access the Services and must discontinue using Paayh immediately.</strong>
+            <strong>LOCATION PERMISSIONS ADVISORY:</strong> Location permissions are voluntary. If you choose not to share device location, you can still access your account settings and profile; however, localized community content and sponsored promotions cannot be delivered to your feed without location verification.
           </div>
         </section>
 
@@ -90,9 +87,16 @@ export default function TermsPage() {
         <section>
           <h2 className={styles.heading}>2. The Paayh Platform: Intermediary Content &amp; Attention Exchange</h2>
           <p>
-            Paayh operates as an <strong>intermediary digital technology and content delivery platform</strong> that
-            connects commercial businesses and content creators with real users who voluntarily choose to provide their
-            focused human attention.
+            Paayh operates as an <strong>intermediary digital technology and content discovery platform</strong> that
+            connects commercial businesses, creators, and community members:
+            <br />
+            <strong>(a) Voluntary Promotional Posting &amp; Service Charges:</strong> Submitting promotional content, business campaigns, or highlights is completely voluntary. Standard consumable service fees are required to cover algorithmic queueing, digital infrastructure provisioning, and audience distribution.
+            <br />
+            <strong>(b) Voluntary Content Discovery &amp; Attention Rewards:</strong> Viewing content is voluntary, for fun, entertainment, and the discovery of products, services, and local community updates. Members who voluntarily give verified human focus receive transparent promotional reward credits funded from the advertiser's campaign budget.
+            <br />
+            <strong>(c) Advertiser Awareness &amp; Mutual Understanding:</strong> Commercial advertisers explicitly understand and agree that audience members receive a transparent share of the campaign budget for their verified attention.
+            <br />
+            <strong>(d) Absolute Consumer Sovereignty:</strong> Users are never forced, compelled, or obligated to click promotional links, patronize advertisers, or make any purchase. Viewing and purchasing decisions remain 100% voluntary at all times.
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
@@ -133,7 +137,7 @@ export default function TermsPage() {
             and free of any subscription fees. To activate monetization, an account must demonstrate clear, consistent
             engagement or accumulate at least <strong>300 verified interactions (&quot;Seen&quot; or &quot;Mutual&quot;)</strong>.
             For clarity, a verified &quot;Seen&quot; interaction is registered whenever promotional content or an ad card
-            is rendered within your active viewport or scrolled past in the feed during regular human browsing.
+            is rendered within your active viewport or scrolled past in the feed during regular human engagement.
           </p>
           <p>
             <strong>3.1.1 Non Monetized Content Exclusions:</strong> Users cannot earn cash incentives from viewing mutual content,
@@ -153,9 +157,7 @@ export default function TermsPage() {
             <strong>3.2.1 Unilateral Discretion to Withhold, Adjust, or Cancel Credits:</strong> To protect platform integrity
             and solvency against unforeseen technical failures or fraud, Paayh reserves the absolute, unilateral discretion
             to withhold, freeze, recalculate, adjust, or cancel unredeemed credits at any time without prior notice, liability,
-            or obligation to pay compensation. This includes, without limitation: instances of bot or invalid traffic, unexplained
-            accounting or ledger anomalies, catastrophic database failures, unexpected liquidity shortfalls, security incidents,
-            or terms violations. Paayh is under no legal obligation to disclose internal forensics, proprietary fraud detection
+            or obligation to pay compensation. This includes, without limitation: confirmed instances of bot or invalid traffic, forensic ledger anomalies, technical infrastructure failures, security incidents, or documented terms violations. Paayh is under no legal obligation to disclose internal forensics, proprietary fraud detection
             algorithms, or investigation details to users.
           </p>
           <div className={`${styles.noticeBox} ${styles.noticeBoxMargin}`}>
@@ -308,8 +310,11 @@ export default function TermsPage() {
           <p>
             As part of Paayh&apos;s ongoing commitment to maximizing user earnings, registered users may voluntarily
             participate in the <strong>Followers, Invites &amp; Agent Program</strong> at zero registration cost. The
-            program operates as a transparent peer to peer follower reward sharing system between the Agent who invites a
-            user (<strong>Following</strong>) and the users they bring onto the platform (<strong>Followers</strong>).
+            program operates as a transparent <strong>single-tier direct referral reward sharing system</strong> between the Agent who invites a
+            user (<strong>Following</strong>) and the users they directly introduce onto the platform (<strong>Followers</strong>).
+            <strong>Strict Single-Tier Policy:</strong> Referral rewards (1% from standard followers and 2% from Agent followers) are earned
+            strictly and exclusively from the individuals you directly introduced. You do NOT earn commissions from any second-degree
+            contacts or users whom your followers subsequently bring onto the platform (no multi-level, downline, or pyramid tiers).
             Participation is <strong>entirely voluntary</strong>: by joining through an invite link or activating Agent
             status, you agree to the transparent earning and deduction mechanics below, and if at any time you do not
             wish to have referral percentages deducted from your earnings, you may freely <strong>Unfollow</strong> or{" "}
@@ -393,7 +398,7 @@ export default function TermsPage() {
         {/* SECTION 4 */}
         <section>
           <h2 className={styles.heading}>
-            4. Promotional Content, Regulatory Notice and Takedown &amp; Strict Non Refundable Policy
+            4. Content Standards, EULA, Pre-Screening Review, 24-Hour Moderation SLA &amp; Non-Refundable Service Fees
           </h2>
           <p>
             <strong>4.1 Campaign Delivery &amp; Highlights:</strong> Advertisers and creators may publish standard
@@ -401,10 +406,17 @@ export default function TermsPage() {
             (which rotate every 10 minutes and expire automatically 24 hours following launch).
           </p>
           <p>
-            <strong>4.2 Regulatory Compliance (ARCON &amp; Consumer Laws):</strong> Users publishing promotional content
-            represent and warrant that their creatives comply with all applicable laws, including the Advertising
-            Regulatory Council of Nigeria (ARCON) Act 2022, consumer protection regulations, and intellectual property
-            statutes.
+            <strong>4.2 End User License Agreement (EULA) &amp; Zero Tolerance for Objectionable Content:</strong> Paayh enforces
+            a strict zero-tolerance policy against objectionable content, harassment, hate speech, pornography, violence, or abusive behavior.
+            All user-submitted content undergoes automated and human pre-screening filtering before going live on the platform.
+            <br />
+            <strong>4.2.1 In-Feed Reporting &amp; Content Blocking Mechanisms:</strong> Users have continuous access to built-in tools to manage their feed:
+            <ul className={styles.list} style={{ marginTop: "0.5rem" }}>
+              <li className={styles.listItem}><strong>Reporting Mechanism:</strong> Any user can report offensive, misleading, or abusive content by clicking the three dots (<code>...</code>) on any ad card and selecting <strong>"Block &amp; report Ad"</strong> or <strong>"Block &amp; report Advertiser"</strong>.</li>
+              <li className={styles.listItem}><strong>Immediate In-Feed Blocking:</strong> Users can immediately dismiss content by clicking the three dots (<code>...</code>) and selecting <strong>"Don't show this Ad again"</strong>.</li>
+              <li className={styles.listItem}><strong>24-Hour Moderation Action SLA:</strong> Paayh's compliance team investigates all user reports and acts within <strong>twenty-four (24) hours</strong> by removing offending material and permanently ejecting abusive users.</li>
+            </ul>
+            <strong>4.2.2 Regulatory Compliance:</strong> Users publishing promotional content warrant compliance with the Advertising Regulatory Council of Nigeria (ARCON) Act 2022 and applicable consumer protection statutes.
           </p>
           <p>
             <strong>4.3 Notice and Takedown Protocol:</strong> Paayh operates as an intermediary content hosting
@@ -424,9 +436,11 @@ export default function TermsPage() {
             THEY CAN COMFORTABLY AFFORD BEFORE COMMITTING LARGER BUDGETS.
           </div>
           <p className={styles.paragraphTopMargin}>
-            <strong>4.5 Prohibited Content Categories:</strong> You agree not to upload, promote, or link to deceptive
+            <strong>4.5 Prohibited Content Categories &amp; Ban on Incentivized App Downloads:</strong> You agree not to upload, promote, or link to deceptive
             schemes, counterfeit goods, adult/pornographic content, firearms/weapons, illegal substances, unapproved
             pharmaceuticals, unlicensed betting solicitations, malware, phishing links, or hate speech.
+            <br />
+            <strong>Strict Ban on Incentivized App Downloads &amp; Store Chart Manipulation (Apple Guideline 3.2.2):</strong> Advertisers and promoters are strictly prohibited from publishing campaigns that offer financial rewards, credits, or incentives to users for downloading third-party applications, registering reviews/ratings on the Apple App Store or Google Play Store, or manipulating marketplace rankings. Any campaign violating this rule will be rejected immediately without refund.
           </p>
         </section>
 
@@ -478,7 +492,7 @@ export default function TermsPage() {
             ad view, or reward claim that triggers automated or synthetic risk indicators. Paayh disclaims all liability, and you
             irrevocably waive any right to claim damages, lost anticipated earnings, financial losses, or compensation of any kind
             arising from automated verification rejections, temporary pacing intervals, security holds, or account restrictions.
-            Platform security determinations are final, binding, and not subject to judicial review.
+            Platform verification and fraud mitigation determinations are conducted in good faith in accordance with our documented security heuristics.
           </p>
           <p>
             <strong>6.1.4 Inherent Public Internet Realities &amp; No 100% Guarantee:</strong> You expressly acknowledge
@@ -494,7 +508,7 @@ export default function TermsPage() {
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Automated Viewing &amp; AI Agents:</strong> Utilizing bots, headless browsers, automated scripts, AI agents,
+              <strong>Automated Viewing &amp; AI Agents:</strong> Utilizing bots, emulators, automated scripts, synthetic macros,
               auto clickers, macros, or virtual emulators to simulate attention, generate impressions, or solve verification challenges.
             </li>
             <li className={styles.listItem}>
@@ -696,6 +710,9 @@ export default function TermsPage() {
 
         {/* SECTION 13 */}
         <section>
+          <div className={styles.noticeBox} style={{ marginBottom: "1.5rem" }}>
+            <strong>APPLE INC. NON-AFFILIATION &amp; NON-MAINTENANCE DISCLAIMER:</strong> Apple Inc. is not a sponsor of, affiliated with, or responsible for administering or maintaining the Paayh application, nor is it involved in any manner with the rewards, promotions, campaigns, or payouts offered on Paayh.
+          </div>
           <h2 className={styles.heading}>13. General Provisions</h2>
           <p>
             <strong>13.1 Modifications:</strong> Paayh reserves the right to update these Terms at any time. Continued
