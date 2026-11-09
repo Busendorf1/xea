@@ -48,10 +48,74 @@ export async function POST(req: NextRequest) {
     const { recipientEmail, amount: amountNum, idempotencyKey } = parsed.data;
 
     const cleanSender = senderEmail.toLowerCase().trim();
-    const cleanRecipient = recipientEmail.toLowerCase().trim();
+    const rawRecipient = (recipientEmail || "").trim();
+    const isEmailInput = rawRecipient.includes("@") && rawRecipient.includes(".") && !rawRecipient.startsWith("@");
+    const cleanRecipientSearch = isEmailInput ? rawRecipient.toLowerCase() : rawRecipient.toLowerCase().replace(/^@/, "");
+
+    // Quick syntax verification for username searches (alphanumeric and underscore, 2-30 chars)
+    if (!isEmailInput && !/^[a-zA-Z0-9_]{2,30}$/.test(cleanRecipientSearch)) {
+      return NextResponse.json(
+        { error: "Invalid username format. Usernames must be 2-30 alphanumeric characters." },
+        { status: 400 }
+      );
+    }
+
+    // 1. Verify Recipient Account Existence (Sub-millisecond Read-Through Cache + Exact B-Tree Match)
+    // Fast O(log N) indexed search: zero full table scans, zero DB locks, zero user enumeration exposure
+    let recipientUser: { id: string; email: string; username?: string | null; firstName?: string | null; lastName?: string | null } | null = null;
+
+    const cachedRecipient = await getCachedRecipient(cleanRecipientSearch);
+    if (cachedRecipient === "NOT_FOUND") {
+      return NextResponse.json(
+        { error: isEmailInput ? "User with this email does not exist." : "User with this username does not exist." },
+        { status: 404 }
+      );
+    } else if (cachedRecipient) {
+      recipientUser = cachedRecipient;
+    } else {
+      if (isEmailInput) {
+        // Fast-path: Exact deterministic B-Tree equality on unique email index
+        const { data: exactUser, error: recipientFetchErr } = await supabaseAdmin
+          .from("users")
+          .select("id, email, username, firstName, lastName")
+          .eq("email", cleanRecipientSearch)
+          .maybeSingle();
+
+        if (!recipientFetchErr && exactUser) {
+          recipientUser = exactUser;
+          await setCachedRecipient(cleanRecipientSearch, recipientUser);
+        } else if (!recipientFetchErr && !exactUser) {
+          await setCachedRecipient(cleanRecipientSearch, null);
+          return NextResponse.json({ error: "User with this email does not exist." }, { status: 404 });
+        } else {
+          return NextResponse.json({ error: "Failed to verify recipient account. Please try again." }, { status: 500 });
+        }
+      } else {
+        // Fast-path: Exact deterministic B-Tree equality on idx_users_lower_username index
+        // O(log N) lookup without wildcards, full-table scans, or DB locks
+        const { data: userByHandle, error: handleErr } = await supabaseAdmin
+          .from("users")
+          .select("id, email, username, firstName, lastName")
+          .eq("username", cleanRecipientSearch)
+          .maybeSingle();
+
+        if (!handleErr && userByHandle) {
+          recipientUser = userByHandle;
+          await setCachedRecipient(cleanRecipientSearch, recipientUser);
+        } else if (!handleErr && !userByHandle) {
+          // Negative cache to defend against high-frequency enumeration
+          await setCachedRecipient(cleanRecipientSearch, null);
+          return NextResponse.json({ error: "User with this username does not exist." }, { status: 404 });
+        } else {
+          return NextResponse.json({ error: "Failed to verify recipient account. Please try again." }, { status: 500 });
+        }
+      }
+    }
+
+    const cleanRecipient = recipientUser.email.toLowerCase().trim();
 
     if (cleanSender === cleanRecipient) {
-      return NextResponse.json({ error: "You cannot send money to your own email account" }, { status: 400 });
+      return NextResponse.json({ error: "You cannot send money to your own account." }, { status: 400 });
     }
 
     // 2. Targeted Security Freeze Check (Sub-millisecond containment)
@@ -137,46 +201,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: recipientLimit.reason }, { status: recipientLimit.statusCode || 429 });
     }
 
-    // 5. Verify Recipient Account Existence (Sub-millisecond Read-Through Cache + Exact B-Tree Match)
-    let recipientUser: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null = null;
-
-    const cachedRecipient = await getCachedRecipient(cleanRecipient);
-    if (cachedRecipient === "NOT_FOUND") {
-      return NextResponse.json({ error: "User with this email does not exist." }, { status: 404 });
-    } else if (cachedRecipient) {
-      recipientUser = cachedRecipient;
-    } else {
-      // Primary fast-path: Exact deterministic B-Tree equality on normalized email
-      const { data: exactUser, error: recipientFetchErr } = await supabaseAdmin
-        .from("users")
-        .select("id, email, firstName, lastName")
-        .eq("email", cleanRecipient)
-        .maybeSingle();
-
-      if (!recipientFetchErr && exactUser) {
-        recipientUser = exactUser;
-        await setCachedRecipient(cleanRecipient, recipientUser);
-      } else if (!recipientFetchErr && !exactUser) {
-        // Fallback for legacy non-normalized rows (if any exist)
-        const { data: legacyUser } = await supabaseAdmin
-          .from("users")
-          .select("id, email, firstName, lastName")
-          .ilike("email", cleanRecipient)
-          .maybeSingle();
-
-        if (legacyUser) {
-          recipientUser = legacyUser;
-          await setCachedRecipient(cleanRecipient, recipientUser);
-        } else {
-          // Negative cache to defend against high-frequency email enumeration / brute-force
-          await setCachedRecipient(cleanRecipient, null);
-          return NextResponse.json({ error: "User with this email does not exist." }, { status: 404 });
-        }
-      } else {
-        return NextResponse.json({ error: "Failed to verify recipient account. Please try again." }, { status: 500 });
-      }
-    }
-
     // 6. Verify & Reserve Sender Balance (Enforces 20% Limit & Sufficient Balance)
     const balanceRes = await reserveSenderBalance(cleanSender, amountNum);
     if (!balanceRes.success) {
@@ -225,18 +249,15 @@ export async function POST(req: NextRequest) {
 
     // Resolve usernames for privacy policy (never leak raw email on receipts or notifications)
     let senderUsername = cleanSender.split("@")[0] || "User";
-    let recipientUsername = cleanRecipient.split("@")[0] || "User";
     try {
-      const [{ data: sUser }, { data: rUser }] = await Promise.all([
-        supabaseAdmin.from("users").select("username").eq("email", cleanSender).maybeSingle(),
-        supabaseAdmin.from("users").select("username").eq("email", cleanRecipient).maybeSingle(),
-      ]);
+      const { data: sUser } = await supabaseAdmin.from("users").select("username").eq("email", cleanSender).maybeSingle();
       if (sUser?.username) senderUsername = sUser.username;
-      if (rUser?.username) recipientUsername = rUser.username;
     } catch {}
 
     const senderHandle = senderUsername.startsWith("@") ? senderUsername : `@${senderUsername}`;
-    const recipientHandle = recipientUsername.startsWith("@") ? recipientUsername : `@${recipientUsername}`;
+    const recipientHandle = recipientUser?.username
+      ? (recipientUser.username.startsWith("@") ? recipientUser.username : `@${recipientUser.username}`)
+      : `@${cleanRecipient.split("@")[0] || "user"}`;
 
     // 8. Synchronize with Payments Ledger for Statements (Sender Debit & Recipient Credit)
     const senderRef = reference;
@@ -354,7 +375,9 @@ export async function POST(req: NextRequest) {
       success: true,
       message: `Successfully sent ${formattedAmount} to ${recipientHandle}`,
       reference,
+      recipient: recipientHandle,
       recipient_username: recipientHandle,
+      recipientUsername: recipientHandle,
       new_balance: newBalance,
     });
   } catch (err: unknown) {

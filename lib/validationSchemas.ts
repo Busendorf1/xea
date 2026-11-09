@@ -252,8 +252,17 @@ export const newsSchema = z.object({
 
 // ─── Send Money / P2P Transfer ───────────────────────────────────────────────
 
+const isValidRecipientEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+const isValidRecipientUsername = (v: string) => /^@?[a-zA-Z0-9_]{2,30}$/.test(v);
+
 export const sendMoneySchema = z.object({
-  recipientEmail: z.string().email("Enter a valid recipient email address"),
+  recipientEmail: z
+    .string()
+    .min(2, "Enter a valid recipient email or username")
+    .max(254, "Recipient identifier is too long")
+    .refine((v) => isValidRecipientEmail(v) || isValidRecipientUsername(v), {
+      message: "Enter a valid email address (e.g. user@example.com) or username (e.g. @username)",
+    }),
   amount: z
     .number()
     .min(1, "Minimum transfer amount is ₦1")
@@ -261,7 +270,13 @@ export const sendMoneySchema = z.object({
 });
 
 export const transferApiSchema = z.object({
-  recipientEmail: z.string().email("Enter a valid recipient email address"),
+  recipientEmail: z
+    .string()
+    .min(2, "Enter a valid recipient email or username")
+    .max(254, "Recipient identifier is too long")
+    .refine((v) => isValidRecipientEmail(v) || isValidRecipientUsername(v), {
+      message: "Enter a valid email address (e.g. user@example.com) or username (e.g. @username)",
+    }),
   amount: z
     .union([z.number(), z.string()])
     .transform((val) => (typeof val === "string" ? parseFloat(val) : val))

@@ -596,12 +596,16 @@ export async function POST(request: NextRequest) {
           }, { status: 400 });
         }
 
-        const rateToApply = isMonetized ? Math.round(adCpi * 0.50 * 100) / 100 : 0;
         const { computeAtwTierDetails } = await import("@/lib/attentionTierEngine");
         liveClicks = currentClicks + 1;
         const tierDetails = computeAtwTierDetails(liveClicks, dbUser?.atw_tier, isExemptDbUser);
+        const holdingCap = tierDetails.isUnlimited ? Infinity : tierDetails.holdingCap;
+        let rateToApply = isMonetized ? Math.round(adCpi * 0.50 * 100) / 100 : 0;
+        if (currentBal >= holdingCap) {
+          rateToApply = 0; // ATW Holding Cap reached: overflow forfeited to platform liquidity
+        }
         const uncappedBalance = Math.round((currentBal + rateToApply) * 100) / 100;
-        updatedBalance = isMonetized ? uncappedBalance : currentBal;
+        updatedBalance = isMonetized ? Math.min(holdingCap, uncappedBalance) : currentBal;
         earnedRateNumber = rateToApply;
         rawCpi = adCpi;
 

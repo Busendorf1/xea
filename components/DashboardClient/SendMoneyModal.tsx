@@ -53,8 +53,11 @@ export default function SendMoneyModal({
       return;
     }
 
-    if (cleanEmail === currentUserEmail.toLowerCase().trim()) {
-      setSendMoneyError("You cannot send money to your own email account.");
+    const userHandle = (user?.username || "").toLowerCase().trim().replace(/^@/, "");
+    const cleanSearch = cleanEmail.replace(/^@/, "");
+
+    if (cleanEmail === currentUserEmail.toLowerCase().trim() || (userHandle && cleanSearch === userHandle)) {
+      setSendMoneyError("You cannot send money to your own account.");
       return;
     }
 
@@ -164,16 +167,19 @@ export default function SendMoneyModal({
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Recipient Email Account</label>
+                <label className={styles.formLabel}>Recipient (Username or Email)</label>
                 <input
-                  type="email"
-                  placeholder="Enter recipient registered email (e.g. user@example.com)"
+                  type="text"
+                  placeholder="Enter exact @username or email"
                   value={sendRecipientEmail}
                   onChange={(e) => setSendRecipientEmail(e.target.value)}
                   required
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className={styles.formInput}
                 />
-                <span className={styles.formHintSmall}>Enter the exact email address of the recipient.</span>
+                <span className={styles.formHintSmall}>Enter the exact @username (e.g. @alex) or registered email of the recipient.</span>
               </div>
 
               <div className={styles.formGroup}>

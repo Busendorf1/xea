@@ -41,6 +41,11 @@ export const faqs: FaqItem[] = [
       "No. Both viewing content and claiming rewards are 100% voluntary. You can freely browse and enjoy content purely for discovery, entertainment, and community updates without claiming rewards or participating in monetization. If you choose to earn, you can voluntarily complete the verified focus countdown to claim rewards funded from the advertiser's campaign budget. Clicking \"Seen\" simply clears the ad from your feed."
   },
   {
+    question: "Can I cancel or opt out of monetization, and what happens if I do?",
+    answer:
+      "Yes, monetization is 100% voluntary and you can cancel or opt out at any time from your Monetization settings dashboard. When you cancel, your account switches to browsing-only mode: you can continue discovering and enjoying feed content without restriction, and your existing wallet balance is completely preserved for withdrawal. Your feed \"Seen\" interaction count will continue to increment normally as you browse, but you will NOT be automatically re-monetized upon reaching 300 seens. If you ever wish to earn rewards again, simply return to the Monetization dashboard, click \"Reapply for Monetization\", and complete 300 fresh verified seen interactions."
+  },
+  {
     question: "What is the Earn button?",
     answer:
       "The Earn button is only visible to monetized users. If you are not yet monetized, you will only see the \"Seen\" and \"Mutual\" buttons on each ad card."
@@ -53,12 +58,12 @@ export const faqs: FaqItem[] = [
   {
     question: "When can I withdraw my earnings?",
     answer:
-      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 (or localized equivalent). You may withdraw any amount from ₦10,000 up to your full available balance, leaving any remainder in your wallet for future payouts. There are zero account maintenance fees. When you initiate a withdrawal, standard statutory payment processor interbank transfer fees apply with zero platform markup. Withdrawals are authenticated via your verified registered phone number."
+      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 [approx. $6.67 USD] (or localized equivalent). You may withdraw any amount from ₦10,000 [approx. $6.67 USD] up to your full available balance, leaving any remainder in your wallet for future payouts. There are zero account maintenance fees. When you initiate a withdrawal, standard statutory payment processor interbank transfer fees apply with zero platform markup. Withdrawals are authenticated via your verified registered phone number."
   },
   {
     question: "Why should I withdraw my earnings promptly and what is the ATW ceiling?",
     answer:
-      "Paayh is an advertising and attention exchange, not a bank or savings vault. To safeguard users from unforeseen technical issues or ledger anomalies, we strongly advise users to maintain minimal balances and withdraw promptly once reaching ₦10,000. Furthermore, wallets are governed by ATW tier holding caps (up to ₦90,000 at ATW3). Any earnings generated while at your tier ceiling are voluntarily surrendered to platform liquidity and do not accumulate until you withdraw."
+      "Paayh is an advertising and attention exchange, not a bank or savings vault. To safeguard users from unforeseen technical issues or ledger anomalies, we strongly advise users to maintain minimal balances and withdraw promptly once reaching ₦10,000 [approx. $6.67 USD]. Furthermore, wallets are governed by ATW tier holding caps (up to ₦90,000 [approx. $60 USD] at ATW3). Any earnings generated while at your tier ceiling are voluntarily surrendered to platform liquidity and do not accumulate until you withdraw."
   },
   {
     question: "Can I get a refund on advertising campaigns or deposited funds?",
@@ -68,7 +73,7 @@ export const faqs: FaqItem[] = [
   {
     question: "How does the Followers, Invites & Agent program work, and is anything deducted from my earnings?",
     answer:
-      "The program is a voluntary single-tier direct referral reward sharing system. When you share your invite link, people who join directly through your link become your Followers. Once a follower is monetized, 1% of their promotional earnings is credited to the Agent who directly invited them (leaving 99% to the follower). If that follower also becomes an Agent, the direct referral reward becomes 2% (marked with an asterisk *). This applies strictly to single-tier direct referrals; you do not earn from anyone whom your referrals bring (no multi-level or downlines). Participation is completely voluntary: you can Unfollow or Opt Out at any time."
+      "The program is a voluntary single-tier direct referral reward sharing system. A \"referral\" strictly and exclusively means when you use your personal invite link to invite a personal friend, family member, or trusted member of your close social circle to join the Paayh platform directly, and never applies to any other external platform or application. When you share your invite link, people who join directly through your link become your Followers. Once a follower is monetized, 1% of their promotional earnings is credited to the Agent who directly invited them (leaving 99% to the follower). If that follower also becomes an Agent, the direct referral reward becomes 2% (marked with an asterisk *; this 2% applies strictly and solely to that follower's own direct campaign earnings, and never includes any commissions they earn from their own followers). This applies strictly to single-tier direct referrals; you do not earn from anyone whom your referrals bring (no multi-level or downlines). Participation is completely voluntary: you can Unfollow or Opt Out at any time."
   },
   {
     question: "How old do I have to be to use Paayh?",
@@ -81,9 +86,14 @@ export const faqs: FaqItem[] = [
       "Paayh enforces a strict zero-tolerance End User License Agreement (EULA) against objectionable content and abusive users. All promotions undergo automated and human quality filtering before going live. If you encounter any objectionable material, you can click the three dots (...) on any ad card to select 'Block & report Ad' or 'Block & report Advertiser', or choose 'Don't show this Ad again' to remove it from your feed immediately. Our moderation team reviews and acts on reports within 24 hours to remove violating content and permanently eject offending accounts."
   },
   {
-    question: "Is Apple Inc. affiliated with or sponsoring Paayh rewards?",
+    question: "Are Apple Inc. or Google LLC affiliated with or sponsoring Paayh rewards?",
     answer:
-      "No. Apple Inc. is not a sponsor of, affiliated with, or responsible for administering or maintaining this application, nor is it involved in any rewards, promotions, or payouts offered on Paayh."
+      "No. Neither Apple Inc. nor Google LLC (Alphabet Inc.) is a sponsor of, affiliated with, or responsible for administering or maintaining this application, nor are they involved in any manner with the rewards, promotions, campaigns, or payouts offered on Paayh."
+  },
+  {
+    question: "Does Paayh track me across other apps or websites?",
+    answer:
+      "No. Paayh does not engage in cross-app or cross-site tracking, nor do we sell data to third-party data brokers. If your device operating system displays an Apple App Tracking Transparency (ATT) or Google tracking prompt, granting that permission is voluntary at the OS level and has nothing to do with Paayh. Content targeting on Paayh is strictly first-party: promotions are matched solely from the interest categories, coarse location, and demographic preferences you voluntarily chose during onboarding so you only see what you chose to be interested in. If you enable third-party cross-app tracking for other applications on your device, Paayh is not to be held responsible or legally liable."
   },
   {
     question: "Can advertisers pay users to download apps or write reviews?",

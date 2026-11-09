@@ -42,7 +42,11 @@ export async function GET(req: NextRequest) {
           parsed.atwLevel = tierDetails.level;
           parsed.isUnlimited = tierDetails.isUnlimited;
           parsed.holdingCap = tierDetails.isUnlimited ? null : tierDetails.holdingCap;
-          if (effectiveClicks >= 300 || isExempt) parsed.isMonetized = true;
+          if (parsed.hasCancelled) {
+            parsed.isMonetized = false;
+          } else if (effectiveClicks >= 300 || isExempt) {
+            parsed.isMonetized = true;
+          }
           return NextResponse.json(parsed, {
             headers: {
               "Cache-Control": "no-store, max-age=0",
@@ -64,7 +68,7 @@ export async function GET(req: NextRequest) {
     const [{ data: uData, error: uErr }, rawLiveClicks] = await Promise.all([
       supabaseReadOnly
         .from("users")
-        .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, is_affiliate, is_career")
+        .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, is_affiliate, is_career, has_cancelled_monetization")
         .ilike("email", emailLower)
         .maybeSingle(),
       isRedisReady()
@@ -79,14 +83,15 @@ export async function GET(req: NextRequest) {
       // Fallback to baseline columns if optional column is missing
       const { data: fbUser } = await supabaseReadOnly
         .from("users")
-        .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, created_at")
+        .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, created_at, has_cancelled_monetization")
         .ilike("email", emailLower)
         .maybeSingle();
 
       const rClicks = Number(fbUser?.monetization_clicks ?? 0);
       const isExempt = isExemptFromBarriersAndInactivity(emailLower);
       const clicksCount = Math.max(rClicks, liveClicksDelta);
-      const isMonetized = Boolean(
+      const hasCancelled = Boolean(fbUser?.has_cancelled_monetization);
+      const isMonetized = !hasCancelled && Boolean(
         isExempt ||
         fbUser?.monetized === true ||
         fbUser?.monetized === "true" ||
@@ -98,6 +103,7 @@ export async function GET(req: NextRequest) {
       payload = {
         success: true,
         isMonetized,
+        hasCancelled,
         clicksCount,
         clicksRemaining: tierDetails.clicksRemaining,
         targetClicks: tierDetails.currentMilestoneTarget,
@@ -107,7 +113,9 @@ export async function GET(req: NextRequest) {
         holdingCap: tierDetails.isUnlimited ? null : tierDetails.holdingCap,
         balance: Number(fbUser?.balance ?? 0),
         daysInactive: 0,
-        statusMessage: null,
+        statusMessage: hasCancelled
+          ? "You have voluntarily opted out of monetization. Your seen count continues to increment normally for community discovery. You can reapply for monetization at any time."
+          : null,
       };
     } else {
       const isExempt = isExemptFromBarriersAndInactivity(emailLower, uData as any);
@@ -132,7 +140,8 @@ export async function GET(req: NextRequest) {
       }
 
       const clicks = Math.max(dbClicks, liveClicksDelta);
-      const isMonetized = !!(
+      const hasCancelled = Boolean(uData.has_cancelled_monetization);
+      const isMonetized = !hasCancelled && !!(
         isExempt ||
         uData.monetized === "true" ||
         uData.monetized === "yes" ||
@@ -209,6 +218,7 @@ export async function GET(req: NextRequest) {
       payload = {
         success: true,
         isMonetized: effectiveMonetized,
+        hasCancelled,
         clicksCount: effectiveClicks,
         clicksRemaining: tierDetails.clicksRemaining,
         targetClicks: tierDetails.currentMilestoneTarget,
@@ -220,7 +230,9 @@ export async function GET(req: NextRequest) {
         referralCode: uData.referral_code || null,
         daysInactive,
         lastActiveAt: uData.last_active_at || null,
-        statusMessage: daysInactive >= 7 ? "Monetization reset due to 7 days of inactivity" : null,
+        statusMessage: hasCancelled
+          ? "You have voluntarily opted out of monetization. Your seen count continues to increment normally for community discovery. You can reapply for monetization at any time."
+          : (daysInactive >= 7 ? "Monetization reset due to 7 days of inactivity" : null),
       };
     }
 
@@ -263,15 +275,17 @@ export async function POST(req: NextRequest) {
     if (!body?.adId) {
       const { data: uRow } = await supabaseReadOnly
         .from("users")
-        .select("monetized, monetization_clicks")
+        .select("monetized, monetization_clicks, has_cancelled_monetization")
         .eq("email", emailLower)
         .maybeSingle();
       const currentClicks = Number(uRow?.monetization_clicks || 0);
+      const hasCancelled = Boolean(uRow?.has_cancelled_monetization);
       return NextResponse.json({
         success: true,
         clicksCount: currentClicks,
+        hasCancelled,
         clicksRemaining: Math.max(0, 300 - currentClicks),
-        isMonetized: !!(uRow?.monetized === "true" || uRow?.monetized === true || currentClicks >= 300),
+        isMonetized: !hasCancelled && !!(uRow?.monetized === "true" || uRow?.monetized === true || currentClicks >= 300),
       });
     }
 

@@ -31,7 +31,10 @@ export async function POST(req: NextRequest) {
     // Invalidate Redis Caches
     await Promise.all([
       invalidateCachedProfile(cleanUserEmail),
-      redisConnection.del(`monetize:status:${cleanUserEmail}`),
+      redisConnection.del(`monetize:status:${cleanUserEmail}`).catch(() => {}),
+      redisConnection.del(`monetize:status:v2:${cleanUserEmail}`).catch(() => {}),
+      redisConnection.del(`user:live_clicks:${cleanUserEmail}`).catch(() => {}),
+      redisConnection.del(`user:live_clicks:v2:${cleanUserEmail}`).catch(() => {}),
     ]).catch((err) => console.warn("⚠️ Redis cache invalidation error:", err));
 
     return NextResponse.json({

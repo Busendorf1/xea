@@ -297,46 +297,63 @@ export async function invalidateCachedProfile(email: string): Promise<void> {
 export interface CachedRecipientInfo {
   id: string;
   email: string;
+  username?: string | null;
   firstName?: string | null;
   lastName?: string | null;
 }
 
-export async function getCachedRecipient(email: string): Promise<CachedRecipientInfo | null | "NOT_FOUND"> {
-  if (!email) return null;
-  const emailLower = email.toLowerCase().trim();
+export async function getCachedRecipient(identifier: string): Promise<CachedRecipientInfo | null | "NOT_FOUND"> {
+  if (!identifier) return null;
+  const clean = identifier.toLowerCase().trim().replace(/^@/, "");
+  const isEmail = clean.includes("@") && clean.includes(".");
+  const specificKey = isEmail ? `user:recipient:email:${clean}` : `user:recipient:username:${clean}`;
 
-  // Check L1 profile cache first
-  const l1Prof = getL1Profile<any>(emailLower);
-  if (l1Prof && l1Prof.id) {
-    return {
-      id: l1Prof.id,
-      email: l1Prof.email || emailLower,
-      firstName: l1Prof.firstName || null,
-      lastName: l1Prof.lastName || null,
-    };
+  // Check L1 profile cache first if it's an email
+  if (isEmail) {
+    const l1Prof = getL1Profile<any>(clean);
+    if (l1Prof && l1Prof.id) {
+      return {
+        id: l1Prof.id,
+        email: l1Prof.email || clean,
+        username: l1Prof.username || null,
+        firstName: l1Prof.firstName || null,
+        lastName: l1Prof.lastName || null,
+      };
+    }
   }
 
   if (!isRedisReady()) return null;
   try {
-    const raw = await redisConnection.get(`user:recipient:${emailLower}`);
+    // Check specific namespace key first
+    const raw = await redisConnection.get(specificKey);
     if (raw) {
       if (raw === "__NOT_FOUND__") return "NOT_FOUND";
       return JSON.parse(raw) as CachedRecipientInfo;
     }
 
-    // Secondary cache hit: check if the full profile is already cached in Redis
-    const profileRaw = await redisConnection.get(`user:profile:${emailLower}`);
-    if (profileRaw) {
-      const profile = JSON.parse(profileRaw);
-      if (profile && profile.id) {
-        const info: CachedRecipientInfo = {
-          id: profile.id,
-          email: profile.email || emailLower,
-          firstName: profile.firstName || null,
-          lastName: profile.lastName || null,
-        };
-        await redisConnection.set(`user:recipient:${emailLower}`, JSON.stringify(info), "EX", 300);
-        return info;
+    // Check legacy key: user:recipient:${clean}
+    const legacyRaw = await redisConnection.get(`user:recipient:${clean}`);
+    if (legacyRaw) {
+      if (legacyRaw === "__NOT_FOUND__") return "NOT_FOUND";
+      return JSON.parse(legacyRaw) as CachedRecipientInfo;
+    }
+
+    // Secondary cache hit: check if the full profile is already cached in Redis (by email)
+    if (isEmail) {
+      const profileRaw = await redisConnection.get(`user:profile:${clean}`);
+      if (profileRaw) {
+        const profile = JSON.parse(profileRaw);
+        if (profile && profile.id) {
+          const info: CachedRecipientInfo = {
+            id: profile.id,
+            email: profile.email || clean,
+            username: profile.username || null,
+            firstName: profile.firstName || null,
+            lastName: profile.lastName || null,
+          };
+          await setCachedRecipient(clean, info, 300);
+          return info;
+        }
       }
     }
 
@@ -350,17 +367,37 @@ export async function getCachedRecipient(email: string): Promise<CachedRecipient
 }
 
 export async function setCachedRecipient(
-  email: string,
+  identifier: string,
   recipient: CachedRecipientInfo | null,
   ttlSeconds = 300 // 5-minute standard TTL for verified recipient accounts
 ): Promise<void> {
-  if (!isRedisReady() || !email) return;
-  const emailLower = email.toLowerCase().trim();
+  if (!isRedisReady() || !identifier) return;
+  const clean = identifier.toLowerCase().trim().replace(/^@/, "");
+  const isEmail = clean.includes("@") && clean.includes(".");
+  const primaryKey = isEmail ? `user:recipient:email:${clean}` : `user:recipient:username:${clean}`;
+
   try {
     if (!recipient) {
-      await redisConnection.set(`user:recipient:${emailLower}`, "__NOT_FOUND__", "EX", 30);
+      const pipeline = redisConnection.pipeline();
+      pipeline.set(primaryKey, "__NOT_FOUND__", "EX", 30);
+      pipeline.set(`user:recipient:${clean}`, "__NOT_FOUND__", "EX", 30);
+      await pipeline.exec();
     } else {
-      await redisConnection.set(`user:recipient:${emailLower}`, JSON.stringify(recipient), "EX", ttlSeconds);
+      const payload = JSON.stringify(recipient);
+      const pipeline = redisConnection.pipeline();
+      pipeline.set(primaryKey, payload, "EX", ttlSeconds);
+      pipeline.set(`user:recipient:${clean}`, payload, "EX", ttlSeconds);
+      if (recipient.email) {
+        const cleanEmail = recipient.email.toLowerCase().trim();
+        pipeline.set(`user:recipient:email:${cleanEmail}`, payload, "EX", ttlSeconds);
+        pipeline.set(`user:recipient:${cleanEmail}`, payload, "EX", ttlSeconds);
+      }
+      if (recipient.username) {
+        const cleanUsername = recipient.username.toLowerCase().trim().replace(/^@/, "");
+        pipeline.set(`user:recipient:username:${cleanUsername}`, payload, "EX", ttlSeconds);
+        pipeline.set(`user:recipient:${cleanUsername}`, payload, "EX", ttlSeconds);
+      }
+      await pipeline.exec();
     }
   } catch (err: any) {
     if (err?.message !== "Connection is closed.") {

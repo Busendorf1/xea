@@ -297,6 +297,13 @@ describe("Zod Validation Schemas", () => {
       expect(transferApiSchema.safeParse({ recipientEmail: "friend@example.com", amount: -500 }).success).toBe(false);
       expect(transferApiSchema.safeParse({ recipientEmail: "invalid-email", amount: 1000 }).success).toBe(false);
     });
+
+    it("should accept valid recipient username with @ or without @", () => {
+      expect(transferApiSchema.safeParse({ recipientEmail: "@sarah_dev", amount: 1000 }).success).toBe(true);
+      expect(transferApiSchema.safeParse({ recipientEmail: "sarah_dev", amount: 1000 }).success).toBe(true);
+      expect(transferApiSchema.safeParse({ recipientEmail: "a", amount: 1000 }).success).toBe(false);
+      expect(transferApiSchema.safeParse({ recipientEmail: "@invalid user", amount: 1000 }).success).toBe(false);
+    });
   });
 
   describe("initiateWithdrawalApiSchema", () => {

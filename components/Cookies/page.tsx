@@ -107,9 +107,9 @@ export default function CookiesPage() {
         </section>
 
         <section>
-          <h2 className={styles.heading}>3. What We Do NOT Do</h2>
+          <h2 className={styles.heading}>3. What We Do NOT Do: Zero Cross-App Tracking &amp; Voluntary OS Tracking Disclaimers</h2>
           <div className={styles.noticeBox}>
-            <strong>NO THIRD PARTY DATA BROKER TRACKING:</strong> Paayh operates strictly on a first-party basis. We do NOT track you across third-party apps or external websites, nor do we sell your personal data or device identifiers to third-party data brokers. We fully respect Apple's App Tracking Transparency (ATT) framework.
+            <strong>NO THIRD PARTY DATA BROKER TRACKING &amp; FIRST-PARTY ONLY TARGETING:</strong> Paayh operates strictly and exclusively on a first-party basis. We do NOT track you across third-party apps or external websites, nor do we sell, rent, or trade your personal data or device identifiers to third-party data brokers. When your device displays an Apple App Tracking Transparency (ATT) or Google tracking prompt, granting or denying that permission is voluntary at your operating system level and has nothing to do with Paayh. All feed targeting on Paayh is derived solely from the interest categories you voluntarily selected during onboarding, your coarse voluntary device location, and your profile preferences, just to make sure you get to see only what you choose to be interested in. We do not track you to offer you services, and if you voluntarily allow third-party cross-app tracking for other applications on your device, Paayh is not to be held responsible or legally liable.
           </div>
         </section>
 

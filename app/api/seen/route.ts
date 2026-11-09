@@ -298,33 +298,51 @@ export async function POST(request: NextRequest) {
             ? Number(rpcRes.data[0].new_click_count)
             : null;
 
+        const { data: userRow } = await supabaseAdmin
+          .from("users")
+          .select("id, monetization_clicks, monetized, has_cancelled_monetization")
+          .eq("email", emailKey)
+          .maybeSingle();
+
+        const hasCancelled = Boolean(userRow?.has_cancelled_monetization);
+        const currentDbClicks = Number(userRow?.monetization_clicks || 0);
+
         if (rpcCount !== null && rpcCount > 0) {
           clicksCount = Math.max(rpcCount, liveVal || 0);
-          isMonetized = !!rpcRes.data[0].is_now_monetized || clicksCount >= 300;
+          isMonetized = hasCancelled
+            ? false
+            : Boolean(rpcRes.data[0]?.is_now_monetized || clicksCount >= 300);
         } else {
-          const { data: userRow } = await supabaseAdmin
-            .from("users")
-            .select("id, monetization_clicks, monetized")
-            .eq("email", emailKey)
-            .maybeSingle();
-          const currentDbClicks = Number(userRow?.monetization_clicks || 0);
           const nextDbClicks = Math.max(currentDbClicks + 1, liveVal || 0);
-          const nextMon =
-            userRow?.monetized === true ||
-            userRow?.monetized === "true" ||
-            userRow?.monetized === "yes" ||
-            nextDbClicks >= 300;
+          const nextMon = hasCancelled
+            ? false
+            : (userRow?.monetized === true ||
+               userRow?.monetized === "true" ||
+               userRow?.monetized === "yes" ||
+               nextDbClicks >= 300);
+
           if (userRow?.id) {
             await supabaseAdmin
               .from("users")
               .update({
                 monetization_clicks: nextDbClicks,
-                ...(nextMon ? { monetized: "true" } : {}),
+                monetized: nextMon ? "true" : "false",
               })
               .eq("id", userRow.id);
           }
           clicksCount = nextDbClicks;
           isMonetized = nextMon;
+        }
+
+        // If user manually cancelled monetization, guarantee they remain unmonetized
+        if (hasCancelled && userRow?.id) {
+          isMonetized = false;
+          await supabaseAdmin
+            .from("users")
+            .update({
+              monetized: "false",
+            })
+            .eq("id", userRow.id);
         }
 
         const isExempt = isExemptFromBarriersAndInactivity(emailKey);
@@ -335,7 +353,7 @@ export async function POST(request: NextRequest) {
           .from("users")
           .update({
             atw_tier: nextAtwTier,
-            ...(isMonetized || isExempt ? { monetized: "true" } : {}),
+            monetized: !hasCancelled && (isMonetized || isExempt) ? "true" : "false",
           })
           .eq("email", emailKey)
           .then(() => {});

@@ -12,20 +12,35 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { confirmEmail } = body;
+    const { confirmEmail, holdConfirmed } = body;
 
     const cleanUserEmail = userEmail.toLowerCase().trim();
-    const cleanConfirmEmail = confirmEmail ? String(confirmEmail).toLowerCase().trim() : "";
+    let isConfirmed = Boolean(holdConfirmed);
 
-    // Human Verification: Ensure email matches
-    if (!cleanConfirmEmail || cleanConfirmEmail !== cleanUserEmail) {
+    if (!isConfirmed && confirmEmail) {
+      const cleanConfirm = String(confirmEmail).toLowerCase().trim().replace(/^@/, "");
+      if (cleanConfirm === cleanUserEmail) {
+        isConfirmed = true;
+      } else {
+        const { data: u } = await supabaseAdmin
+          .from("users")
+          .select("username")
+          .ilike("email", cleanUserEmail)
+          .maybeSingle();
+        if (u?.username && cleanConfirm === u.username.toLowerCase().trim().replace(/^@/, "")) {
+          isConfirmed = true;
+        }
+      }
+    }
+
+    if (!isConfirmed) {
       return NextResponse.json(
-        { error: "Email verification failed. Please type your exact email address to confirm cancellation." },
+        { error: "Confirmation required. Please confirm your email, username, or hold to confirm cancellation." },
         { status: 400 }
       );
     }
 
-    // Update user record: Cancel monetization & reset 300 clicks progress (Balance is preserved!)
+    // Update user record: Cancel monetization & reset progress (Balance is preserved!)
     const { error: updateErr } = await supabaseAdmin
       .from("users")
       .update({
@@ -44,7 +59,9 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       invalidateCachedProfile(cleanUserEmail),
       redisConnection.del(`monetize:status:${cleanUserEmail}`).catch(() => {}),
+      redisConnection.del(`monetize:status:v2:${cleanUserEmail}`).catch(() => {}),
       redisConnection.del(`user:live_clicks:${cleanUserEmail}`).catch(() => {}),
+      redisConnection.del(`user:live_clicks:v2:${cleanUserEmail}`).catch(() => {}),
     ]).catch((err) => console.warn("⚠️ Redis cache invalidation error:", err));
 
     return NextResponse.json({

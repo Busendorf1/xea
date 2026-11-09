@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, useRef } from "react";
 import { cancelMonetizationSchema } from "@/lib/validationSchemas";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Calendar,
   X,
+  Sparkles,
 } from "lucide-react";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
@@ -43,6 +44,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
   const [initialCache] = useState<{
     hasCached: boolean;
     isMonetized?: boolean;
+    hasCancelled?: boolean;
     clicksCount?: number;
     clicksRemaining?: number;
     atwTier?: string;
@@ -56,6 +58,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
             return {
               hasCached: true,
               isMonetized: typeof parsed.isMonetized === "boolean" ? parsed.isMonetized : undefined,
+              hasCancelled: Boolean(parsed.hasCancelled),
               clicksCount: typeof parsed.clicksCount === "number" ? parsed.clicksCount : undefined,
               clicksRemaining: typeof parsed.clicksRemaining === "number" ? parsed.clicksRemaining : undefined,
               atwTier: parsed.atwTier || undefined,
@@ -73,12 +76,101 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
     return initialCache.hasCached;
   });
 
+  const [hasCancelled, setHasCancelled] = useState(() => {
+    if (typeof initialCache.hasCancelled === "boolean") return initialCache.hasCancelled;
+    return false;
+  });
+
   const [isMonetized, setIsMonetized] = useState(() => {
     if (isExempt) return true;
+    if (initialCache.hasCancelled) return false;
     if (typeof initialMonetized === "boolean") return initialMonetized;
     if (typeof initialCache.isMonetized === "boolean") return initialCache.isMonetized;
     return true;
   });
+
+  const [isResuming, setIsResuming] = useState(false);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startHold = () => {
+    if (isSubmittingCancel) return;
+    setHoldProgress(0);
+    const startTime = Date.now();
+    const duration = 2000;
+
+    holdIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(100, (elapsed / duration) * 100);
+      setHoldProgress(progress);
+      if (elapsed >= duration) {
+        if (holdIntervalRef.current) {
+          clearInterval(holdIntervalRef.current);
+          holdIntervalRef.current = null;
+        }
+        executeCancel({ holdConfirmed: true });
+      }
+    }, 25);
+  };
+
+  const cancelHold = () => {
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+    setHoldProgress(0);
+  };
+
+  const executeCancel = async (payload: { confirmEmail?: string; holdConfirmed?: boolean }) => {
+    try {
+      setIsSubmittingCancel(true);
+      setCancelError("");
+      const res = await fetch("/api/monetize/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setCancelError(data.error || "Failed to cancel monetization.");
+        return;
+      }
+      setShowCancelModal(false);
+      setConfirmEmailInput("");
+      setHoldProgress(0);
+      setHasCancelled(true);
+      setIsMonetized(false);
+      fetchStatus();
+    } catch (err: any) {
+      setCancelError(err.message || "Network error.");
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  };
+
+  const handleResumeMonetization = async () => {
+    setIsResuming(true);
+    try {
+      const res = await fetch("/api/monetize/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setHasCancelled(false);
+        setIsMonetized(false);
+        setClicksCount(0);
+        setClicksRemaining(300);
+        await fetchStatus();
+      } else {
+        alert(data.error || "Failed to reapply for monetization.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Network error.");
+    } finally {
+      setIsResuming(false);
+    }
+  };
 
   const [clicksCount, setClicksCount] = useState(() => {
     if (typeof initialClicks === "number") return initialClicks;
@@ -125,8 +217,10 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
           isExempt || Boolean(data.isUnlimited)
         );
         const resolvedRemaining = data.clicksRemaining ?? details.clicksRemaining;
+        const isCancelled = Boolean(data.hasCancelled);
         startTransition(() => {
-          setIsMonetized(Boolean(isExempt || data.isMonetized || resolvedClicks >= 300));
+          setHasCancelled(isCancelled);
+          setIsMonetized(Boolean(isExempt || (!isCancelled && (data.isMonetized || resolvedClicks >= 300))));
           setClicksCount(resolvedClicks);
           setClicksRemaining(resolvedRemaining);
           setAtwTier(details.tierCode);
@@ -137,7 +231,8 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
         try {
           const cachePayload = JSON.stringify({
             email: email.toLowerCase(),
-            isMonetized: Boolean(isExempt || data.isMonetized || resolvedClicks >= 300),
+            hasCancelled: isCancelled,
+            isMonetized: Boolean(isExempt || (!isCancelled && (data.isMonetized || resolvedClicks >= 300))),
             clicksCount: resolvedClicks,
             clicksRemaining: resolvedRemaining,
             atwTier: details.tierCode,
@@ -171,13 +266,14 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
           const merged = computeAtwTierDetails(totalClicks, tier || prev, isExempt);
           return merged.tierCode;
         });
-        const finalMon = Boolean(isExempt || (typeof isMon === "boolean" ? isMon : totalClicks >= 300));
+        const finalMon = !hasCancelled && Boolean(isExempt || (typeof isMon === "boolean" ? isMon : totalClicks >= 300));
         if (finalMon) setIsMonetized(true);
 
         if (email) {
           try {
             const cachePayload = JSON.stringify({
               email: email.toLowerCase(),
+              hasCancelled,
               isMonetized: finalMon || isMonetized,
               clicksCount: totalClicks,
               clicksRemaining: details.clicksRemaining,
@@ -203,7 +299,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
           const details = computeAtwTierDetails(next, undefined, isExempt);
           setClicksRemaining(details.clicksRemaining);
           setAtwTier((prevTier) => computeAtwTierDetails(next, prevTier, isExempt).tierCode);
-          if (next >= 300 || isExempt) setIsMonetized(true);
+          if (!hasCancelled && (next >= 300 || isExempt)) setIsMonetized(true);
           return next;
         });
       }
@@ -274,14 +370,18 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 </div>
                 <div>
                   <h2 className={styles.statusTitle}>
-                    {isMonetized
+                    {hasCancelled
+                      ? "Opted Out • Browsing Only"
+                      : isMonetized
                       ? isUnlimited
                         ? "Active • Unlimited Tier"
                         : `Active • ATW Level ${atwLevelNum}`
                       : "Not Monetized"}
                   </h2>
                   <p className={styles.statusSub}>
-                    {isMonetized
+                    {hasCancelled
+                      ? "You voluntarily opted out of monetization. You can continue discovering and enjoying feed content freely. Your Seen count continues to advance, but monetization remains off until you reapply."
+                      : isMonetized
                       ? isUnlimited
                         ? "Your account is monetized at Unlimited Tier (Unlimited holding balance cap)."
                         : `Your account is monetized at ATW Tier ${displayAtwTier} (${tierDetails.holdingCapFormatted} holding cap).`
@@ -290,16 +390,31 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 </div>
               </div>
               <div className={styles.statusActionsRow}>
-                <span className={isMonetized ? styles.badgeActive : styles.badgeProgress}>
-                  {isMonetized ? "Monetized" : `${clicksPercent}% Complete`}
-                </span>
-                {isMonetized && (
-                  <button
-                    onClick={() => setShowCancelModal(true)}
-                    className={styles.cancelBtn}
-                  >
-                    <AlertTriangle size={14} /> Cancel
-                  </button>
+                {hasCancelled ? (
+                  <>
+                    <span className={styles.badgeOptedOut}>Browsing Only</span>
+                    <button
+                      onClick={handleResumeMonetization}
+                      disabled={isResuming}
+                      className={styles.resumeBtn}
+                    >
+                      <Sparkles size={14} /> {isResuming ? "Reapplying..." : "Reapply for Monetization"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className={isMonetized ? styles.badgeActive : styles.badgeProgress}>
+                      {isMonetized ? "Monetized" : `${clicksPercent}% Complete`}
+                    </span>
+                    {isMonetized && (
+                      <button
+                        onClick={() => setShowCancelModal(true)}
+                        className={styles.cancelBtn}
+                      >
+                        <AlertTriangle size={14} /> Cancel
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -332,15 +447,59 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 
                 <div className={styles.modalFieldGroup}>
                   <label className={styles.modalLabel}>
-                    Type your email address to confirm:
+                    Type your email or username to confirm:
                   </label>
                   <input
-                    type="email"
-                    placeholder="Enter Email"
+                    type="text"
+                    placeholder="Enter Email or Username"
                     value={confirmEmailInput}
                     onChange={(e) => setConfirmEmailInput(e.target.value)}
                     className={styles.modalInput}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
+                </div>
+
+                <div className={styles.modalOrDivider}>
+                  <span>OR</span>
+                </div>
+
+                <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                  {(() => {
+                    const radius = 9;
+                    const circumference = 2 * Math.PI * radius;
+                    const strokeDashoffset = circumference - (holdProgress / 100) * circumference;
+
+                    return (
+                      <button
+                        type="button"
+                        onMouseDown={startHold}
+                        onMouseUp={cancelHold}
+                        onMouseLeave={cancelHold}
+                        onTouchStart={startHold}
+                        onTouchEnd={cancelHold}
+                        disabled={isSubmittingCancel}
+                        className={styles.holdCancelBtn}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
+                          <circle cx="12" cy="12" r={radius} stroke="rgba(239,68,68,0.25)" strokeWidth="2.5" fill="none" />
+                          <circle
+                            cx="12"
+                            cy="12"
+                            r={radius}
+                            stroke="var(--danger)"
+                            strokeWidth="2.5"
+                            fill="none"
+                            strokeDasharray={circumference}
+                            strokeDashoffset={strokeDashoffset}
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span>{holdProgress > 0 ? "Hold to confirm..." : "Hold 2s to Cancel"}</span>
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {cancelError && (
@@ -353,6 +512,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 <div className={styles.modalFooter}>
                   <button
                     onClick={() => {
+                      cancelHold();
                       setShowCancelModal(false);
                       setCancelError("");
                       setConfirmEmailInput("");
@@ -363,38 +523,18 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                   </button>
 
                   <button
-                    disabled={isSubmittingCancel}
+                    disabled={isSubmittingCancel || !confirmEmailInput.trim()}
                     onClick={async () => {
-                      const validation = cancelMonetizationSchema.safeParse({ email: confirmEmailInput });
-                      if (!validation.success) {
-                        setCancelError(validation.error.issues[0]?.message || "Please type a valid email address.");
+                      const input = confirmEmailInput.trim();
+                      if (!input) {
+                        setCancelError("Please enter your email or username.");
                         return;
                       }
-                      try {
-                        setIsSubmittingCancel(true);
-                        setCancelError("");
-                        const res = await fetch("/api/monetize/cancel", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ confirmEmail: confirmEmailInput }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok || data.error) {
-                          setCancelError(data.error || "Failed to cancel monetization.");
-                          return;
-                        }
-                        setShowCancelModal(false);
-                        setConfirmEmailInput("");
-                        fetchStatus();
-                      } catch (err: any) {
-                        setCancelError(err.message || "Network error.");
-                      } finally {
-                        setIsSubmittingCancel(false);
-                      }
+                      await executeCancel({ confirmEmail: input });
                     }}
                     className={styles.modalConfirmBtn}
                   >
-                    {isSubmittingCancel ? "Cancelling..." : "Confirm Cancellation"}
+                    {isSubmittingCancel ? "Cancelling..." : "Confirm with Input"}
                   </button>
                 </div>
               </div>
@@ -423,7 +563,11 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
               </div>
 
               <p className={styles.cardInstructionText}>
-                {isUnlimited ? (
+                {hasCancelled ? (
+                  <>
+                    You are currently in <strong>browsing-only mode</strong>. Feed browsing and discovery are completely active and voluntary. Your seen count will continue advancing, but monetization remains off. To re-qualify for rewards, click <strong>Reapply for Monetization</strong> above and complete 300 verified seen interactions from the time of reapplication.
+                  </>
+                ) : isUnlimited ? (
                   <>
                     Your account has <strong>Unlimited Tier</strong> and <strong>Unlimited holding balance cap</strong>. Every <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> click in the feed advances your live seen count across each 300-click milestone.
                   </>

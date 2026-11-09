@@ -81,6 +81,9 @@ export default function TermsPage() {
           <div className={`${styles.noticeBox} ${styles.noticeBoxMargin}`}>
             <strong>LOCATION PERMISSIONS ADVISORY:</strong> Location permissions are voluntary. If you choose not to share device location, you can still access your account settings and profile; however, localized community content and sponsored promotions cannot be delivered to your feed without location verification.
           </div>
+          <p>
+            <strong>1.5 Zero Cross-App Tracking &amp; Operating System Tracking Disclaimers (Apple ATT &amp; Google Advertising ID):</strong> Paayh does not engage in cross-app or cross-site tracking, nor do we track your activity across external applications or the web to offer you our services. Any tracking permission requested by your device operating system (such as Apple's App Tracking Transparency framework or Google Advertising identifiers) is granted voluntarily by you at the device OS level and operates independently of Paayh; it has nothing to do with our platform. Feed targeting and ad curation within Paayh are driven strictly by the first-party interest categories, voluntary device location, and demographic preferences you voluntarily selected during account onboarding, ensuring you only receive content matching your chosen interests. If you enable or permit third-party cross-app tracking on your mobile device for other applications, you acknowledge that such tracking is strictly between you and those third parties, and Paayh, its directors, and affiliates shall bear zero liability or responsibility for any third-party tracking, profiling, or external ad targeting.
+          </p>
         </section>
 
         {/* SECTION 2 */}
@@ -146,6 +149,23 @@ export default function TermsPage() {
             brand jingles, and business daily highlights carry zero advertiser impression budget, so no cash credits accrue from them.
           </p>
           <p>
+            <strong>3.1.2 Voluntary Monetization Cancellation, Continued Feed Browsing &amp; Reapplication Rules:</strong> Users may voluntarily cancel or opt out of monetization at any time directly from the Monetization settings dashboard without penalty or fee. Because platform participation is built entirely around user choice, opting out operates under the following rules:
+          </p>
+          <ul className={styles.list}>
+            <li className={styles.listItem}>
+              <strong>Uninterrupted Feed Services &amp; Full Balance Preservation:</strong> You retain complete, unrestricted access to browse, discover community promotions, view media, and enjoy all feed services. Any promotional incentive balance previously earned and accumulated in your wallet is fully preserved and remains accessible for withdrawal in accordance with standard settlement guidelines.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Continuation of Seen Interactions:</strong> While your account remains opted out of monetization, your feed interaction (&quot;Seen&quot;) count will continue to increment normally as you view content for content curation, feed refreshing, and discovery tracking.
+            </li>
+            <li className={styles.listItem}>
+              <strong>No Automatic Remonetization at 300 Seens:</strong> Accumulating three hundred (300) or more seen interactions will <strong>NEVER</strong> automatically re-monetize an account that was manually opted out. Once cancelled, your account strictly remains unmonetized to honor and protect your choice.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Explicit Reapplication &amp; Fresh 300 Seen Requirement:</strong> If an opted-out user subsequently decides to resume earning attention rewards, they must return to the Monetization settings dashboard and explicitly submit a reapplication. Upon reapplication, the user must complete a fresh, full milestone of <strong>three hundred (300) verified human seen interactions</strong> from the time of reapplication before monetization rewards and ATW tier advancement reactivate.
+            </li>
+          </ul>
+          <p>
             <strong>3.2 Legal Nature of Earnings: Discretionary Promotional Incentive Credits:</strong> All earnings,
             wallet figures, and monetary amounts displayed on your dashboard represent{" "}
             <strong>conditional, unvested promotional incentive credits</strong> granted solely at Paayh&apos;s discretion,
@@ -187,7 +207,7 @@ export default function TermsPage() {
             <li className={styles.listItem}>
               <strong>Prompt Redemption Mandate &amp; Anti Hoarding Directive:</strong> Paayh is NOT a bank, electronic wallet,
               savings depository, or store of value. Users are strongly urged, instructed, and warned to always withdraw their
-              incentives promptly as soon as the minimum settlement threshold (₦10,000) is reached and to maintain minimal balances
+              incentives promptly as soon as the minimum settlement threshold (₦10,000 [approx. $6.67 USD]) is reached and to maintain minimal balances
               at all times. Maintaining low balances is your primary personal safeguard against unforeseen technical anomalies,
               system resets, or security events.
             </li>
@@ -217,13 +237,13 @@ export default function TermsPage() {
           <ul className={styles.list}>
             <li className={styles.listItem}>
               <strong>Minimum Settlement Threshold &amp; Currency Localization:</strong> Incentive credits may be redeemed
-              for fiat payout once an account reaches the minimum threshold of <strong>Ten Thousand Nigerian Naira (₦10,000.00 NGN)</strong>.
+              for fiat payout once an account reaches the minimum threshold of <strong>Ten Thousand Nigerian Naira (₦10,000.00 NGN [approx. $6.67 USD])</strong>.
               All monetary thresholds, incentive balances, and withdrawal options automatically adjust and localize to your
               geographical jurisdiction and local currency equivalents based on prevailing international exchange rates.
             </li>
             <li className={styles.listItem}>
-              <strong>Flexible Balance Withdrawals:</strong> Users may withdraw any amount from ₦10,000 up to their full
-              available balance (including withdrawing 100% of accumulated incentives down to ₦0.00). Requested amounts are
+              <strong>Flexible Balance Withdrawals:</strong> Users may withdraw any amount from ₦10,000 [approx. $6.67 USD] up to their full
+              available balance (including withdrawing 100% of accumulated incentives down to ₦0.00 [$0.00 USD]). Requested amounts are
               deducted from the wallet balance, leaving any remainder preserved for future redemptions.
             </li>
             <li className={styles.listItem}>
@@ -232,8 +252,8 @@ export default function TermsPage() {
               Korapay Technologies Limited). Interbank electronic fund transfer charges imposed by payment processors under prevailing
               Central Bank of Nigeria (CBN) and NIBSS electronic transfer fee regulations (plus statutory 7.5% Value Added Tax) are
               deducted directly from the requested withdrawal amount at the point of disbursement. Current statutory transfer fee
-              tiers are: <strong>₦10.75</strong> for withdrawals up to ₦5,000; <strong>₦26.88</strong> for withdrawals between
-              ₦5,001 and ₦50,000; and <strong>₦53.75</strong> for withdrawals exceeding ₦50,000 (or equivalent processor contract
+              tiers are: <strong>₦10.75 [approx. $0.007 USD]</strong> for withdrawals up to ₦5,000 [approx. $3.33 USD]; <strong>₦26.88 [approx. $0.018 USD]</strong> for withdrawals between
+              ₦5,001 [approx. $3.33 USD] and ₦50,000 [approx. $33.33 USD]; and <strong>₦53.75 [approx. $0.036 USD]</strong> for withdrawals exceeding ₦50,000 [approx. $33.33 USD] (or equivalent processor contract
               tariffs in foreign jurisdictions). The gross amount is debited from your dashboard balance, and the exact net remainder
               is credited to your bank account with zero platform markup. Paayh retains zero portion of gateway transfer fees.
             </li>
@@ -312,9 +332,7 @@ export default function TermsPage() {
             participate in the <strong>Followers, Invites &amp; Agent Program</strong> at zero registration cost. The
             program operates as a transparent <strong>single-tier direct referral reward sharing system</strong> between the Agent who invites a
             user (<strong>Following</strong>) and the users they directly introduce onto the platform (<strong>Followers</strong>).
-            <strong>Strict Single-Tier Policy:</strong> Referral rewards (1% from standard followers and 2% from Agent followers) are earned
-            strictly and exclusively from the individuals you directly introduced. You do NOT earn commissions from any second-degree
-            contacts or users whom your followers subsequently bring onto the platform (no multi-level, downline, or pyramid tiers).
+            <strong>Strict Single-Tier Policy &amp; Definition of Referral:</strong> On Paayh, a &quot;referral&quot; strictly and exclusively means when you use your personal invite link to invite a personal friend, family member, or trusted member of your close social circle to register and join the <strong>Paayh platform directly</strong>. Referrals apply strictly and solely to onboarding new genuine members onto Paayh and NEVER apply to, nor can they be used for, promoting, redirecting to, or onboarding users onto any other external platform, third-party service, or other applications. Referral rewards (1% from standard followers and 2% from Agent followers) are earned strictly and exclusively from the individuals you directly introduced. You do NOT earn commissions from any second-degree contacts or users whom your followers subsequently bring onto the platform (no multi-level, downline, or pyramid tiers).
             Participation is <strong>entirely voluntary</strong>: by joining through an invite link or activating Agent
             status, you agree to the transparent earning and deduction mechanics below, and if at any time you do not
             wish to have referral percentages deducted from your earnings, you may freely <strong>Unfollow</strong> or{" "}
@@ -329,10 +347,9 @@ export default function TermsPage() {
               (300+ verified interactions) and earns from promotional campaigns, you automatically earn{" "}
               <strong>one percent (1%)</strong> from their account lifetime earnings, credited directly into your Paayh
               wallet. When a follower you invited also becomes an Agent, allowing them to invite their own followers and earn from others too, your earning rate from that follower upgrades to{" "}
-              <strong>two percent (2%)</strong> of their earnings (including 2% of the commissions they earn from their
-              own followers). Both standard followers and Agent followers remain visible in your{" "}
+              <strong>two percent (2%)</strong> of their direct promotional earnings (the 2% applies strictly and exclusively to that follower's own direct campaign earnings, and does NOT include any commissions they earn from their own followers). Both standard followers and Agent followers remain visible in your{" "}
               <strong>Followers</strong> list, with a black asterisk (<strong>*</strong>) beside the monetary amount
-              (e.g., <code>₦0.00*</code>) identifying followers who are Agents and generating 2% for you. Unmonetized
+              (e.g., <code>₦0.00* [approx. $0.00 USD]</code>) identifying followers who are Agents and generating 2% for you. Unmonetized
               followers show zero earnings until they become monetized.
             </li>
             <li className={styles.listItem}>
@@ -406,7 +423,7 @@ export default function TermsPage() {
             (which rotate every 10 minutes and expire automatically 24 hours following launch).
           </p>
           <p>
-            <strong>4.2 End User License Agreement (EULA) &amp; Zero Tolerance for Objectionable Content:</strong> Paayh enforces
+            <strong>4.2 End User License Agreement (EULA) &amp; Zero Tolerance for Objectionable Content (Apple Guideline 1.2 &amp; Google Play UGC Policy):</strong> Paayh enforces
             a strict zero-tolerance policy against objectionable content, harassment, hate speech, pornography, violence, or abusive behavior.
             All user-submitted content undergoes automated and human pre-screening filtering before going live on the platform.
           </p>
@@ -443,7 +460,7 @@ export default function TermsPage() {
             schemes, counterfeit goods, adult/pornographic content, firearms/weapons, illegal substances, unapproved
             pharmaceuticals, unlicensed betting solicitations, malware, phishing links, or hate speech.
             <br />
-            <strong>Strict Ban on Incentivized App Downloads &amp; Store Chart Manipulation (Apple Guideline 3.2.2):</strong> Advertisers and promoters are strictly prohibited from publishing campaigns that offer financial rewards, credits, or incentives to users for downloading third-party applications, registering reviews/ratings on the Apple App Store or Google Play Store, or manipulating marketplace rankings. Any campaign violating this rule will be rejected immediately without refund.
+            <strong>Strict Ban on Incentivized App Downloads &amp; Store Chart Manipulation (Apple Guideline 3.2.2 &amp; Google Play Incentivized Actions Policy):</strong> Advertisers and promoters are strictly prohibited from publishing campaigns that offer financial rewards, credits, or incentives to users for downloading third-party applications, registering reviews/ratings on the Apple App Store or Google Play Store, or manipulating marketplace rankings. Any campaign violating this rule will be rejected immediately without refund.
           </p>
         </section>
 
@@ -692,7 +709,7 @@ export default function TermsPage() {
             </li>
             <li className={styles.listItem}>
               Withdrawable earnings may be disbursed only to the user&apos;s verified Nigerian settlement bank account, or
-              transferred internally to another registered user inside the platform via verified user email. Accrued
+              transferred internally to another registered user inside the platform via verified user email or unique public handle (<code>@username</code>). Accrued
               balances can NEVER be transferred to external third party bank accounts or utilized for third party
               settlement.
             </li>
@@ -713,7 +730,7 @@ export default function TermsPage() {
         {/* SECTION 13 */}
         <section>
           <div className={styles.noticeBox} style={{ marginBottom: "1.5rem" }}>
-            <strong>APPLE INC. NON-AFFILIATION &amp; NON-MAINTENANCE DISCLAIMER:</strong> Apple Inc. is not a sponsor of, affiliated with, or responsible for administering or maintaining the Paayh application, nor is it involved in any manner with the rewards, promotions, campaigns, or payouts offered on Paayh.
+            <strong>APPLE INC. &amp; GOOGLE LLC NON-AFFILIATION &amp; NON-MAINTENANCE DISCLAIMER:</strong> Neither Apple Inc. nor Google LLC (Alphabet Inc.) is a sponsor of, affiliated with, or responsible for administering or maintaining the Paayh application, nor are they involved in any manner with the rewards, promotions, campaigns, or payouts offered on Paayh.
           </div>
           <h2 className={styles.heading}>13. General Provisions</h2>
           <p>
