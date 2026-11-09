@@ -7,17 +7,17 @@ const faqs = [
   {
     question: "Know More About Us",
     answer:
-      "Paayh is a platform that turns your attention into earnings. We deliver ads with 99.99% deliverability and transparency, and you earn for engaging with content you actually care about.",
+      "Paayh is a fair attention economy and community discovery platform. We deliver promotional content with high deliverability and transparency, where members voluntarily discover offers and earn attention rewards for verified human focus.",
   },
   {
     question: "What is UBI?",
     answer:
-      "UBI (Universal Basic Income) is a consistent income provided to all individuals regardless of status. At Paayh, we contribute to this by rewarding users for their time and attention.",
+      "UBI (Universal Basic Income) is the concept of regular economic participation. Paayh embraces this vision through a transparent attention economy, empowering members to earn fair attention rewards for their verified focus.",
   },
   {
     question: "Why Shared Revenue?",
     answer:
-      "We believe viewers deserve a share of the advertising revenue their attention generates. It's a fair, human-centered economic model.",
+      "We believe audiences deserve a transparent share of the advertising budget their attention generates. Advertisers connect with genuine human audiences, creating a sustainable, human-centered economic model.",
   },
   {
     question: "How Long is Monetization?",
@@ -27,7 +27,7 @@ const faqs = [
   {
     question: "Who is Eligible?",
     answer:
-      "Anyone above the age of 18 with a valid email can use Paayh. Monetization becomes available once you meet basic engagement and authenticity checks.",
+      "Anyone above the age of 18 with a valid Google account or Apple ID can use Paayh. Monetization becomes available once you meet basic engagement and authenticity checks.",
   },
   {
     question: "Where Services are Available?",

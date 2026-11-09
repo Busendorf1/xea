@@ -12,7 +12,7 @@ export default function AboutPage() {
 
       <section className={styles.section}>
         <p className={styles.sectionText}>
-          <strong>Paayh</strong> is pioneering an equitable attention and content discovery ecosystem. Viewing content is voluntary, for fun, entertainment, and the discovery of exciting products, services, and local community offers, with members receiving decent rewards for verified human focus. Posting promotional content is voluntary, requiring service fees for queue placement and delivery.
+          <strong>Paayh</strong> is pioneering an equitable attention and content discovery ecosystem. Viewing content is voluntary, for fun, entertainment, and the discovery of exciting products, services, and local community offers. Earning rewards is completely voluntary: users can explore content purely for discovery, while members who choose to provide verified human focus can receive decent attention rewards. Posting promotional content is voluntary, requiring service fees for queue placement and delivery.
         </p>
       </section>
 

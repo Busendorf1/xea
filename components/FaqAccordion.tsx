@@ -13,7 +13,7 @@ export const faqs: FaqItem[] = [
   {
     question: "What is Paayh and how does it work?",
     answer:
-      "Paayh is an attention and content discovery platform where viewing content is voluntary, for fun, entertainment, and product discovery, with members receiving decent promotional rewards you won’t wanna miss for verified human focus. Sponsoring content is voluntary, requiring standard service charges for queue placement. Advertisers achieve high target deliverability to real active users, knowing their budget directly rewards audience attention."
+      "Paayh is an attention and content discovery platform where viewing content is voluntary, for fun, entertainment, and product discovery. Claiming rewards is completely voluntary: members who choose to provide verified human focus receive decent promotional rewards you won’t wanna miss, while users who prefer not to earn can freely explore content purely for discovery. Sponsoring content is voluntary, requiring standard service charges for queue placement. Advertisers achieve high target deliverability to real active users, knowing their budget directly rewards audience attention."
   },
   {
     question: "Can I post both Ads and Highlights?",
@@ -36,9 +36,9 @@ export const faqs: FaqItem[] = [
       "When you view an ad card, scroll past it in your feed, or click \"Seen,\" \"Earn,\" or \"Mutual,\" that counts as a verified impression confirming the promotion was successfully served to a real person. After the impression is recorded, the ad is cleared from your active feed. Each ad is only shown to you once per campaign, unless you are retargeted."
   },
   {
-    question: "Do I have to watch ads?",
+    question: "Do I have to claim rewards or watch ads?",
     answer:
-      "No, watching ads is not mandatory. However, clicking \"Seen,\" \"Earn,\" or \"Mutual\" is how you generate income and how advertisers confirm delivery. Even if you are not interested in earning, we encourage clicking \"Seen\" so the ad registers as delivered and is cleared from your feed."
+      "No. Both viewing content and claiming rewards are 100% voluntary. You can freely browse and enjoy content purely for discovery, entertainment, and community updates without claiming rewards or participating in monetization. If you choose to earn, you can voluntarily complete the verified focus countdown to claim rewards funded from the advertiser's campaign budget. Clicking \"Seen\" simply clears the ad from your feed."
   },
   {
     question: "What is the Earn button?",

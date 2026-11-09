@@ -58,7 +58,7 @@ export default function AdvertiserGuidelinesPage() {
               <strong>Competitive Queue Delivery:</strong> Higher bids receive preferential delivery weight within active user feeds and flash highlight rotations.
             </li>
             <li className={styles.listItem}>
-              <strong>Listener Reward Alignment:</strong> A variable portion of your attention bid (up to 50%) is disbursed directly to verified monetized listeners who complete the required engagement countdown, ensuring genuine interest and high recall.
+              <strong>Audience Reward Alignment:</strong> A variable portion of your attention bid (up to 50%) is disbursed directly to verified monetized community members who voluntarily complete the required engagement countdown, ensuring genuine interest and high recall.
             </li>
             <li className={styles.listItem}>
               <strong>Consumable Bid Fees:</strong> All funds committed to attention bids are consumable infrastructure fees governed strictly by our non refundable policy once impressions are queued or delivered.
@@ -96,6 +96,9 @@ export default function AdvertiserGuidelinesPage() {
             <li className={styles.listItem}>
               <strong>Deceptive &amp; Fraudulent Schemes:</strong> False promises of guaranteed returns, Ponzi/pyramid
               schemes, fabricated customer reviews, fake celebrity endorsements, or deceptive MLM solicitations.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Incentivized App Downloads, Reviews &amp; Ratings:</strong> Campaigns that pay, reward, or incentivize users to download third-party applications, rate mobile apps, or post reviews on digital storefronts (such as the Apple App Store or Google Play Store) are strictly prohibited.
             </li>
             <li className={styles.listItem}>
               <strong>Counterfeits &amp; IP Infringement:</strong> Knockoff luxury items, unauthorized replicas, pirated
@@ -154,20 +157,24 @@ export default function AdvertiserGuidelinesPage() {
 
         {/* SECTION 6 */}
         <section>
-          <h2 className={styles.heading}>6. Fast Notice and Takedown Protocol</h2>
+          <h2 className={styles.heading}>6. Pre-Screening Review, In-Feed Reporting &amp; 24-Hour Moderation SLA</h2>
           <p>
-            Paayh acts swiftly upon receiving formal notice from ARCON, consumer protection agencies (FCCPC), law
-            enforcement, or intellectual property rights holders:
+            All submitted creatives undergo automated and human pre-screening review before entering active circulation. Paayh acts swiftly upon community reports and formal notices:
           </p>
           <ul className={styles.list}>
             <li className={styles.listItem}>
-              <strong>Immediate Suspension:</strong> Violating campaigns will be throttled or removed immediately from
-              the active delivery queue without prior warning.
+              <strong>Pre-Publication Screening:</strong> Campaigns are verified against community standards and prohibited category rules prior to queuing.
+            </li>
+            <li className={styles.listItem}>
+              <strong>24-Hour Moderation Action SLA:</strong> Any campaign flagged via in-feed user reporting (three dots <code>...</code>) is reviewed and acted upon within twenty-four (24) hours, with offending materials purged immediately.
+            </li>
+            <li className={styles.listItem}>
+              <strong>Immediate Regulatory Suspension:</strong> Violating campaigns identified by ARCON, law enforcement, or intellectual property rights holders are terminated without prior warning.
             </li>
             <li className={styles.listItem}>
               <strong>No Liability to Advertiser:</strong> Paayh bears zero liability to the advertiser for lost
               impressions, sales, or business interruption arising from good faith compliance with regulatory takedown
-              demands.
+              demands or content moderation actions.
             </li>
           </ul>
         </section>

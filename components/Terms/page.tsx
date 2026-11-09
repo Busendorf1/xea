@@ -37,7 +37,7 @@ export default function TermsPage() {
           </p>
           <p>
             <strong>1.2 Account Security, Public Handles &amp; Email Privacy:</strong> Paayh utilizes federated authentication
-            (including Google OAuth via Auth0). Your registered account email address is kept strictly private for session
+            (including Google OAuth and Sign in with Apple via Auth0, with full support for Apple Private Relay addresses). Your registered account email address is kept strictly private for session
             authentication, peer to peer wallet routing, and settlement notifications, and is never publicly displayed to other
             users on the promotional feed. Conversely, your chosen <code>@username</code> and optional business name operate as
             your public, unencrypted display handle visible across the platform. <strong>Your @username is what people see on the feed.
@@ -92,7 +92,7 @@ export default function TermsPage() {
             <br />
             <strong>(a) Voluntary Promotional Posting &amp; Service Charges:</strong> Submitting promotional content, business campaigns, or highlights is completely voluntary. Standard consumable service fees are required to cover algorithmic queueing, digital infrastructure provisioning, and audience distribution.
             <br />
-            <strong>(b) Voluntary Content Discovery &amp; Attention Rewards:</strong> Viewing content is voluntary, for fun, entertainment, and the discovery of products, services, and local community updates. Members who voluntarily give verified human focus receive transparent promotional reward credits funded from the advertiser's campaign budget.
+            <strong>(b) Voluntary Content Discovery &amp; Attention Rewards:</strong> Viewing content is voluntary, for fun, entertainment, and the discovery of products, services, and local community updates. Participating in rewards is completely voluntary: users who choose not to claim rewards can freely browse and participate in viewing content purely for discovery, while members who voluntarily choose to provide verified human focus can receive transparent promotional reward credits funded from the advertiser's campaign budget.
             <br />
             <strong>(c) Advertiser Awareness &amp; Mutual Understanding:</strong> Commercial advertisers explicitly understand and agree that audience members receive a transparent share of the campaign budget for their verified attention.
             <br />
@@ -133,8 +133,8 @@ export default function TermsPage() {
         <section>
           <h2 className={styles.heading}>3. Attention Monetization, Incentive Credits &amp; Payout Terms</h2>
           <p>
-            <strong>3.1 Voluntary Participation &amp; Interaction Tracking:</strong> Monetization is completely optional
-            and free of any subscription fees. To activate monetization, an account must demonstrate clear, consistent
+            <strong>3.1 Voluntary Participation &amp; Interaction Tracking:</strong> Monetization and earning rewards are completely optional
+            and free of any subscription fees. Users who choose not to earn rewards can freely browse, view, and enjoy content across the feed for discovery without participating in monetization or claiming credits. To activate monetization, an account must voluntarily choose to participate and demonstrate clear, consistent
             engagement or accumulate at least <strong>300 verified interactions (&quot;Seen&quot; or &quot;Mutual&quot;)</strong>.
             For clarity, a verified &quot;Seen&quot; interaction is registered whenever promotional content or an ad card
             is rendered within your active viewport or scrolled past in the feed during regular human engagement.
@@ -409,13 +409,16 @@ export default function TermsPage() {
             <strong>4.2 End User License Agreement (EULA) &amp; Zero Tolerance for Objectionable Content:</strong> Paayh enforces
             a strict zero-tolerance policy against objectionable content, harassment, hate speech, pornography, violence, or abusive behavior.
             All user-submitted content undergoes automated and human pre-screening filtering before going live on the platform.
-            <br />
+          </p>
+          <p>
             <strong>4.2.1 In-Feed Reporting &amp; Content Blocking Mechanisms:</strong> Users have continuous access to built-in tools to manage their feed:
-            <ul className={styles.list} style={{ marginTop: "0.5rem" }}>
-              <li className={styles.listItem}><strong>Reporting Mechanism:</strong> Any user can report offensive, misleading, or abusive content by clicking the three dots (<code>...</code>) on any ad card and selecting <strong>"Block &amp; report Ad"</strong> or <strong>"Block &amp; report Advertiser"</strong>.</li>
-              <li className={styles.listItem}><strong>Immediate In-Feed Blocking:</strong> Users can immediately dismiss content by clicking the three dots (<code>...</code>) and selecting <strong>"Don't show this Ad again"</strong>.</li>
-              <li className={styles.listItem}><strong>24-Hour Moderation Action SLA:</strong> Paayh's compliance team investigates all user reports and acts within <strong>twenty-four (24) hours</strong> by removing offending material and permanently ejecting abusive users.</li>
-            </ul>
+          </p>
+          <ul className={styles.list} style={{ marginTop: "0.5rem", marginBottom: "0.75rem" }}>
+            <li className={styles.listItem}><strong>Reporting Mechanism:</strong> Any user can report offensive, misleading, or abusive content by clicking the three dots (<code>...</code>) on any ad card and selecting <strong>"Block &amp; report Ad"</strong> or <strong>"Block &amp; report Advertiser"</strong>.</li>
+            <li className={styles.listItem}><strong>Immediate In-Feed Blocking:</strong> Users can immediately dismiss content by clicking the three dots (<code>...</code>) and selecting <strong>"Don't show this Ad again"</strong>.</li>
+            <li className={styles.listItem}><strong>24-Hour Moderation Action SLA:</strong> Paayh's compliance team investigates all user reports and acts within <strong>twenty-four (24) hours</strong> by removing offending material and permanently ejecting abusive users.</li>
+          </ul>
+          <p>
             <strong>4.2.2 Regulatory Compliance:</strong> Users publishing promotional content warrant compliance with the Advertising Regulatory Council of Nigeria (ARCON) Act 2022 and applicable consumer protection statutes.
           </p>
           <p>
@@ -541,12 +544,11 @@ export default function TermsPage() {
         <section>
           <h2 className={styles.heading}>7. Account Deletion &amp; Termination</h2>
           <p>
-            You may deactivate or request deletion of your account at any time through your dashboard settings or the{" "}
+            You may deactivate or delete your account at any time through your dashboard settings or our{" "}
             <Link href="/help" className={styles.link}>
               Help Center
             </Link>
-            . If you authenticated using Google OAuth, you may also revoke token permissions via Google Security
-            Settings. Upon deletion, your personal data will be purged in accordance with our{" "}
+            . In-app account deletion is accessible directly in your account settings and features a 2-second hold-to-confirm mechanism so that all users—including members authenticated via Apple Private Relay (<code>@privaterelay.appleid.com</code>)—can effortlessly delete their account without being blocked by manual address typing. If you authenticated using Google OAuth or Sign in with Apple, you may also revoke permissions via your Google Security Settings or iOS device settings (<code>Settings &gt; Apple ID &gt; Sign in with Apple &gt; Paayh &gt; Stop using Apple ID</code>). Upon deletion, your personal data will be permanently purged in accordance with our{" "}
             <Link href="/privacy" className={styles.link}>
               Privacy Policy
             </Link>
@@ -740,7 +742,7 @@ export default function TermsPage() {
         </section>
 
         <div className={styles.warningBox}>
-          <strong>NOTICE REGARDING DISPUTE RESOLUTION &amp; LIABILITY LIMITATION:</strong> Section 10 contains an
+          <strong>NOTICE REGARDING DISPUTE RESOLUTION &amp; LIABILITY LIMITATION:</strong> Section 9 contains an
           exclusive aggregate liability cap limiting Paayh&apos;s maximum cumulative liability to Fifty United States
           Dollars ($50.00 USD) or its direct equivalent in Nigerian Naira (₦75,000.00 NGN). Section 11 contains a
           mandatory individual arbitration agreement and class action waiver under the Arbitration and Mediation Act
