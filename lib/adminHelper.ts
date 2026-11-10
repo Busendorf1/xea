@@ -28,7 +28,6 @@ export const PRECONFIGURED_SPECIAL_ROLES: Record<string, SpecialRoleConfig> = {
 export const DEFAULT_ADMIN_EMAILS = [
   "nonsom019@gmail.com",
   "nonsom2023@gmail.com",
-  "admin@xea.com",
   "admin@paayh.com",
   "support@paayh.com",
 ];

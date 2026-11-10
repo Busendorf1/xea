@@ -640,7 +640,7 @@
 
 @media screen and (max-width: 480px) {
   .profileContainer {
-    padding: 1rem 0.75rem 2.5rem 0.75rem;
+    padding: 1.25rem 1.15rem 3rem 1.15rem;
     margin-top: 0;
     margin-bottom: 0;
     border-radius: 0;

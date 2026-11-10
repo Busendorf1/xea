@@ -9,6 +9,15 @@ export interface JobDefinition {
 }
 
 const JOBS: Record<string, JobDefinition> = {
+  "flush-impression-buffer": {
+    name: "flush-impression-buffer",
+    maxIntervalSeconds: 10, // 10 seconds fail-safe
+    lockTtlSeconds: 8,
+    run: async () => {
+      const { flushImpressionBuffersToDB } = await import("@/lib/impressionBuffer");
+      return flushImpressionBuffersToDB();
+    },
+  },
   "approved-campaigns-cleanup": {
     name: "approved-campaigns-cleanup",
     maxIntervalSeconds: 300, // 5 minutes

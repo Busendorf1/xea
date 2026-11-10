@@ -282,6 +282,7 @@ export const transferApiSchema = z.object({
     .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
     .refine((n) => !isNaN(n) && n > 0, "Transfer amount must be greater than 0"),
   idempotencyKey: z.string().min(8, "Idempotency key must be at least 8 characters").optional(),
+  pin: z.string().optional(),
 });
 export type TransferApiPayload = z.infer<typeof transferApiSchema>;
 
@@ -308,6 +309,7 @@ export const initiateWithdrawalApiSchema = z.object({
     .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
     .refine((n) => !isNaN(n) && n > 0, "Withdrawal amount must be greater than 0"),
   phone: z.string().min(7, "Phone number is required"),
+  pin: z.string().optional(),
 });
 export type InitiateWithdrawalApiPayload = z.infer<typeof initiateWithdrawalApiSchema>;
 

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeRedirectUrl } from "@/lib/security/redirectHelper";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
-  const rawRedirect = searchParams.get("redirect") || "xea-auth://payment-callback";
+  const sanitizedBase = sanitizeRedirectUrl(searchParams.get("redirect"));
 
   // Preserve all payment gateway query parameters (reference, trxref, boost_ref, status, etc.)
   const forwardParams = new URLSearchParams();
@@ -15,10 +16,10 @@ export async function GET(req: NextRequest) {
   });
 
   const queryString = forwardParams.toString();
-  const separator = rawRedirect.includes("?") ? "&" : "?";
-  const targetDeepLink = queryString ? `${rawRedirect}${separator}${queryString}` : rawRedirect;
+  const separator = sanitizedBase.includes("?") ? "&" : "?";
+  const targetDeepLink = queryString ? `${sanitizedBase}${separator}${queryString}` : sanitizedBase;
 
-  const safeHref = targetDeepLink.replace(/"/g, "&quot;");
+  const safeHref = targetDeepLink.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const safeJsUrl = JSON.stringify(targetDeepLink);
 
   const html = `<!DOCTYPE html>

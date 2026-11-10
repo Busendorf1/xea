@@ -4,6 +4,7 @@ import { invalidateCachedProfile, invalidateAllHighlights } from "./utils/cache"
 import { env } from "./env";
 import { streamImpressionsToClickHouse, getClickHouseClient } from "./clickhouse";
 import { flushAtwScoreBufferToDB } from "./atwBuffer";
+import { isAdminEmail } from "./adminHelper";
 
 const connectionOptions = {
   host: env.REDIS_HOST,
@@ -400,8 +401,9 @@ export const campaignsWorker = new Worker<CampaignJobData>(
     console.log(`👷 Campaigns Worker: Creating ${type} for user: ${payload.user_email}`);
 
     try {
+      const isAuthorizedAdminPost = Boolean(payload.is_admin_post) && isAdminEmail(payload.user_email);
       if (type === "ad") {
-        const targetTable = payload.is_admin_post ? "addsactive" : "adds";
+        const targetTable = isAuthorizedAdminPost ? "addsactive" : "adds";
         const { data: insertedRows, error } = await supabaseAdmin.from(targetTable).insert([payload]).select("*");
         if (error) throw new Error(error.message);
         if (targetTable === "addsactive" && insertedRows?.[0]) {
@@ -409,10 +411,10 @@ export const campaignsWorker = new Worker<CampaignJobData>(
           dispatchFeedDropWebhook(insertedRows[0]).catch(() => {});
         }
       } else if (type === "highlight") {
-        const targetTable = payload.is_admin_post ? "newsactive" : "news";
+        const targetTable = isAuthorizedAdminPost ? "newsactive" : "news";
         const { error } = await supabaseAdmin.from(targetTable).insert([payload]);
         if (error) throw new Error(error.message);
-        if (payload.is_admin_post) {
+        if (isAuthorizedAdminPost) {
           await invalidateAllHighlights();
         }
       }

@@ -8,6 +8,26 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-user-email, x-user-authorization",
 };
 
+async function verifyHmacToken(token: string, payload: string, secret: string): Promise<boolean> {
+  try {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+    const hashArray = Array.from(new Uint8Array(signature));
+    const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    return hex.toLowerCase() === token.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -102,7 +122,54 @@ serve(async (req: Request) => {
       });
     }
 
-    // 3. Proof-of-Human Telemetry Sanity Check
+    // 3. Cryptographic HMAC Token & 12s Dwell Time Check (for earn actions)
+    let viewDuration = 0;
+    if (actionType === "earn") {
+      const token = body?.token;
+      const servedAt = body?.servedAt;
+      const secret = Deno.env.get("EARN_TOKEN_SECRET") || Deno.env.get("AUTH0_SECRET") || "";
+
+      if (secret && (token || servedAt || Deno.env.get("ENVIRONMENT") === "production")) {
+        if (!token || !servedAt) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Verification token and timestamp required to claim reward." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const payloads = [
+          `${adId}:${cleanEmail}:${servedAt}`,
+          `${adId}:${requestedEmail}:${servedAt}`,
+        ];
+
+        let isValid = false;
+        for (const p of payloads) {
+          if (await verifyHmacToken(token, p, secret)) {
+            isValid = true;
+            break;
+          }
+        }
+
+        if (!isValid) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Cryptographic token verification failed. Reward rejected." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const now = Date.now();
+        const parsedServedAt = parseInt(servedAt, 10);
+        viewDuration = now - parsedServedAt;
+        if (isNaN(parsedServedAt) || viewDuration < 12000) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Minimum attention duration not met (12s required). Please view ad completely." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+    }
+
+    // 4. Proof-of-Human Telemetry Sanity Check
     const telemetry = Array.isArray(body?.telemetry) ? body.telemetry : [];
     if (telemetry.length > 0) {
       const untrusted = telemetry.some((v: any) => v?.isTrusted === false);
@@ -186,7 +253,13 @@ serve(async (req: Request) => {
       adRow?.cost_per_impression && Number(adRow.cost_per_impression) > 0
         ? Number(adRow.cost_per_impression)
         : 25.0;
-    const earnedRate = Math.max(12.5, Math.round(rawCpi * 0.5 * 100) / 100);
+    // Dynamic attention share: 30% base (16s focus) scaling up to 50% max (32s focus)
+    const clientBonusSeconds =
+      typeof body?.bonusSeconds === "number" && Number.isFinite(body.bonusSeconds) ? body.bonusSeconds : 0;
+    const serverMaxBonusSeconds = Math.max(0, Math.floor(viewDuration / 1000) - 16);
+    const bonusSeconds = Math.max(0, Math.min(16, clientBonusSeconds, serverMaxBonusSeconds));
+    const attentionSharePercent = 0.30 + (bonusSeconds / 16.0) * 0.20;
+    const earnedRate = Math.round(rawCpi * attentionSharePercent * 100) / 100;
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc(
       "claim_ad_earning_atomic",

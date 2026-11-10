@@ -19,6 +19,7 @@ import {
 import { dispatchEarningWebhook } from "@/lib/webhookDispatcher";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { getEarnTokenSecret } from "@/lib/targetingEngine";
+import { bufferAdImpression } from "@/lib/impressionBuffer";
 
 function logToTerminal(message: string) {
   if (process.env.NODE_ENV !== "production") {
@@ -51,6 +52,9 @@ export async function POST(request: NextRequest) {
     const session = await auth0.getSession();
     const body = await request.json();
     const { adId, token, servedAt, type, deviceId, telemetry, turnstileToken } = body;
+    // Server-verified elapsed attention (ms) since the HMAC-signed servedAt timestamp.
+    // Used to cap the client-reported attention bonus so it can never exceed real elapsed time.
+    let verifiedViewDurationMs = 0;
 
     if (!adId || !type) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -115,6 +119,7 @@ export async function POST(request: NextRequest) {
 
       const parsedServedAt = parseInt(servedAt, 10);
       const viewDuration = now - parsedServedAt;
+      verifiedViewDurationMs = isNaN(viewDuration) ? 0 : viewDuration;
       if (isNaN(parsedServedAt) || viewDuration < 12000) {
         return NextResponse.json(
           { error: "Minimum attention duration not met. Please view the ad completely before claiming." },
@@ -414,9 +419,17 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    let earnedRateNumber = Math.round(rawCpi * 0.50 * 100) / 100;
+    // Dynamic attention share: 30% base (16s focus) scaling linearly to 50% max (32s total focus).
+    // Client-reported bonus is clamped to [0,16] AND to the server-verified elapsed time beyond the 16s base,
+    // so a scripted client cannot claim the 50% tier without the attention time actually elapsing.
+    const clientBonusSeconds =
+      typeof body.bonusSeconds === "number" && Number.isFinite(body.bonusSeconds) ? body.bonusSeconds : 0;
+    const serverMaxBonusSeconds = Math.max(0, Math.floor(verifiedViewDurationMs / 1000) - 16);
+    const bonusSeconds = Math.max(0, Math.min(16, clientBonusSeconds, serverMaxBonusSeconds));
+    const attentionSharePercent = 0.30 + (bonusSeconds / 16.0) * 0.20;
+    let earnedRateNumber = Math.round(rawCpi * attentionSharePercent * 100) / 100;
     if (earnedRateNumber <= 0) {
-      earnedRateNumber = 12.50;
+      earnedRateNumber = Math.round(25.0 * attentionSharePercent * 100) / 100;
     }
 
     let updatedBalance: number | null = null;
@@ -448,7 +461,7 @@ export async function POST(request: NextRequest) {
         adIdToUnlock = adId;
       }
 
-      logToTerminal(`\n========================================================================\n🟢 [EARN CLAIM INITIATED]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   📊 Base CPI   : ₦${rawCpi.toFixed(2)}\n   💰 50% Rate   : ₦${earnedRateNumber.toFixed(2)}\n========================================================================\n`);
+      logToTerminal(`\n========================================================================\n🟢 [EARN CLAIM INITIATED]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   📊 Base CPI   : ₦${rawCpi.toFixed(2)}\n   ⏱️ Focus Bonus: +${bonusSeconds}s (${Math.round(attentionSharePercent * 100)}% Rate: ₦${earnedRateNumber.toFixed(2)})\n========================================================================\n`);
 
       // 6. Authoritative Atomic Transaction in PostgreSQL (Single ACID RPC)
       atomicViews = 1;
@@ -459,6 +472,7 @@ export async function POST(request: NextRequest) {
         p_user_email: emailKey,
         p_expected_rate: earnedRateNumber,
         p_device_id: deviceId || null,
+        p_skip_ad_counter: isRedisReady(),
       });
 
       const isLegitRejection =
@@ -513,6 +527,7 @@ export async function POST(request: NextRequest) {
         let adCompleted = false;
         let impressionsTarget = 0;
         let impressionCount = 0;
+        let adOwnerEmail: string | null = null;
 
         try {
           let { data: adRow } = await supabaseAdmin
@@ -531,6 +546,7 @@ export async function POST(request: NextRequest) {
           }
 
           if (adRow) {
+            adOwnerEmail = adRow.user_email || null;
             const isPlatformDb = Boolean(
               isAdminEmail(adRow.user_email) ||
               adRow.is_admin_post ||
@@ -600,7 +616,8 @@ export async function POST(request: NextRequest) {
         liveClicks = currentClicks + 1;
         const tierDetails = computeAtwTierDetails(liveClicks, dbUser?.atw_tier, isExemptDbUser);
         const holdingCap = tierDetails.isUnlimited ? Infinity : tierDetails.holdingCap;
-        let rateToApply = isMonetized ? Math.round(adCpi * 0.50 * 100) / 100 : 0;
+        const dynamicFallbackShare = 0.30 + (bonusSeconds / 16.0) * 0.20;
+        let rateToApply = isMonetized ? Math.round(adCpi * dynamicFallbackShare * 100) / 100 : 0;
         if (currentBal >= holdingCap) {
           rateToApply = 0; // ATW Holding Cap reached: overflow forfeited to platform liquidity
         }
@@ -609,7 +626,7 @@ export async function POST(request: NextRequest) {
         earnedRateNumber = rateToApply;
         rawCpi = adCpi;
 
-        console.log(`📊 [POST /api/earn] Fallback DB calculation: 50PctRate=${rateToApply} (CPI=${adCpi}), prevBal=${currentBal}, newBalance=${updatedBalance} (ATW Tier=${tierDetails.tierCode}, Cap=${tierDetails.holdingCapFormatted}), newClicks=${liveClicks}, views=${existingViews + 1}/${userFreqCap}`);
+        console.log(`📊 [POST /api/earn] Fallback DB calculation: DynamicRate=${rateToApply} (${Math.round(dynamicFallbackShare * 100)}%, CPI=${adCpi}), prevBal=${currentBal}, newBalance=${updatedBalance} (ATW Tier=${tierDetails.tierCode}, Cap=${tierDetails.holdingCapFormatted}), newClicks=${liveClicks}, views=${existingViews + 1}/${userFreqCap}`);
 
         if (existingImp) {
           await supabaseAdmin
@@ -633,44 +650,51 @@ export async function POST(request: NextRequest) {
         const isNowExhausted = impressionsTarget > 0 && (impressionCount + 1) >= impressionsTarget;
         const completedIso = isNowExhausted ? new Date().toISOString() : null;
 
-        // Increment impression count on addsactive and mirror to adds
-        const { data: updatedAdRow } = await supabaseAdmin
-          .from("addsactive")
-          .update({
-            impression_count: impressionCount + 1,
-            completed_at: completedIso,
-          })
-          .eq("id", adId)
-          .select("*")
-          .maybeSingle();
+        let updatedAdRow: any = null;
+        if (isRedisReady()) {
+          // Hot-row decoupling: buffer in Redis for 5s batch flush (eliminates hot-row locking)
+          bufferAdImpression(adId).catch(() => {});
+        } else {
+          // Synchronous fallback only when Redis is unavailable
+          const adUpdateRes = await supabaseAdmin
+            .from("addsactive")
+            .update({
+              impression_count: impressionCount + 1,
+              completed_at: completedIso,
+            })
+            .eq("id", adId)
+            .select("*")
+            .maybeSingle();
+          updatedAdRow = adUpdateRes.data;
 
-        await supabaseAdmin
-          .from("adds")
-          .update({ impression_count: impressionCount + 1 })
-          .eq("id", adId);
+          await supabaseAdmin
+            .from("adds")
+            .update({ impression_count: impressionCount + 1 })
+            .eq("id", adId);
 
-        // If ad is exhausted, move it out of addsactive into completed_ads and evict from L1/L2 caches
-        if (isNowExhausted) {
-          try {
-            if (updatedAdRow) {
-              await supabaseAdmin.from("completed_ads").upsert([updatedAdRow], { onConflict: "id" });
-            }
-            await supabaseAdmin.from("addsactive").delete().eq("id", adId);
-            await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId).then(() => {}, () => {});
-            await supabaseAdmin.from("adds").update({ completed_at: completedIso, impression_count: impressionCount + 1 }).eq("id", adId);
+          if (isNowExhausted) {
             try {
-              const { evictAdFromL1FeedCaches } = await import("@/lib/utils/cache");
-              evictAdFromL1FeedCaches(adId);
+              if (updatedAdRow) {
+                await supabaseAdmin.from("completed_ads").upsert([updatedAdRow], { onConflict: "id" });
+              }
+              await supabaseAdmin.from("addsactive").delete().eq("id", adId);
+              await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId).then(() => {}, () => {});
+              await supabaseAdmin.from("adds").update({ completed_at: completedIso, impression_count: impressionCount + 1 }).eq("id", adId);
+              try {
+                const { evictAdFromL1FeedCaches } = await import("@/lib/utils/cache");
+                evictAdFromL1FeedCaches(adId);
+              } catch {}
+              if (isRedisReady()) {
+                await redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
+              }
             } catch {}
-            if (isRedisReady()) {
-              await redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
-            }
-          } catch {}
+          }
         }
 
-        if (updatedAdRow?.user_email) {
+        const adOwnerToInvalidate = updatedAdRow?.user_email || adOwnerEmail;
+        if (adOwnerToInvalidate) {
           const { invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
-          invalidateCachedUserCampaigns(updatedAdRow.user_email).catch(() => {});
+          invalidateCachedUserCampaigns(adOwnerToInvalidate).catch(() => {});
         }
 
         const { error: userUpdateErr } = await supabaseAdmin
@@ -700,7 +724,7 @@ export async function POST(request: NextRequest) {
         if (userUpdateErr) {
           console.error("❌ DB fallback error updating user balance:", userUpdateErr);
         } else {
-          logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Direct Fallback)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 50% Amount : ₦${earnedRateNumber.toFixed(2)}\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n========================================================================\n`);
+          logToTerminal(`\n========================================================================\n💰 [EARN SUCCESS -> DB COMMITTED (Direct Fallback)]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   💵 Earned Rate: ₦${earnedRateNumber.toFixed(2)} (${Math.round(attentionSharePercent * 100)}% attention share)\n   🏦 DB Balance : ₦${Number(updatedBalance).toFixed(2)}\n   🎯 DB Clicks  : ${liveClicks}\n========================================================================\n`);
         }
 
         // Credit 10% of ad CPI to each active Affiliate from the Platform's 50% share
@@ -736,6 +760,9 @@ export async function POST(request: NextRequest) {
           if (isRedisReady()) {
             redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
           }
+        }
+        if (isRedisReady()) {
+          bufferAdImpression(adId).catch(() => {});
         }
         // If legacy claim_ad_earning_atomic RPC was executed without affiliate_credited flag, ensure affiliates are credited
         if (!atomicResult.affiliate_credited) {
@@ -946,16 +973,30 @@ export async function POST(request: NextRequest) {
           const nextImp = Number(adRow.impression_count || 0) + 1;
           const nextMutAdds = Number(adRow.mutual_adds_count || 0) + 1;
           updatedImpressionCount = nextImp;
-          await Promise.all([
+          if (isRedisReady()) {
+            bufferAdImpression(adId).catch(() => {});
             supabaseAdmin
               .from("addsactive")
-              .update({ impression_count: nextImp, mutual_adds_count: nextMutAdds })
-              .eq("id", adId),
+              .update({ mutual_adds_count: nextMutAdds })
+              .eq("id", adId)
+              .then(() => {}, () => {});
             supabaseAdmin
               .from("adds")
-              .update({ impression_count: nextImp, mutual_adds_count: nextMutAdds })
-              .eq("id", adId),
-          ]);
+              .update({ mutual_adds_count: nextMutAdds })
+              .eq("id", adId)
+              .then(() => {}, () => {});
+          } else {
+            await Promise.all([
+              supabaseAdmin
+                .from("addsactive")
+                .update({ impression_count: nextImp, mutual_adds_count: nextMutAdds })
+                .eq("id", adId),
+              supabaseAdmin
+                .from("adds")
+                .update({ impression_count: nextImp, mutual_adds_count: nextMutAdds })
+                .eq("id", adId),
+            ]);
+          }
         }
 
         await Promise.resolve(
@@ -1030,7 +1071,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (type === "earn") {
-      logToTerminal(`🎉 [POST /api/earn 200 OK] Enforced 50%: ₦${earnedRateNumber.toFixed(2)} sent to DB for ${emailKey} | New DB Balance: ₦${Number(updatedBalance).toFixed(2)}\n`);
+      logToTerminal(`🎉 [POST /api/earn 200 OK] Rate (${Math.round(attentionSharePercent * 100)}%): ₦${earnedRateNumber.toFixed(2)} sent to DB for ${emailKey} | New DB Balance: ₦${Number(updatedBalance).toFixed(2)}\n`);
     }
 
     const { computeAtwTierDetails } = await import("@/lib/attentionTierEngine");

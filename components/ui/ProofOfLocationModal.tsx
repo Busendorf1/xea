@@ -26,6 +26,8 @@ interface ProofOfLocationModalProps {
   onVerified?: (verified: { country: string; state: string; location: string }) => void;
 }
 
+export const LOCATION_SKIPPED_KEY = "paayh_location_skipped";
+
 export default function ProofOfLocationModal({
   email,
   user,
@@ -56,6 +58,12 @@ export default function ProofOfLocationModal({
     if (!cleanEmail) return;
 
     try {
+      // Respect "Skip for now" for the rest of this session; the feed shows an Enable Location card instead
+      if (sessionStorage.getItem(LOCATION_SKIPPED_KEY) === "true") {
+        setVisible(false);
+        return;
+      }
+
       const manualPending = localStorage.getItem(MANUAL_LOCATION_PENDING_KEY);
       if (manualPending === "true") {
         setVisible(true);
@@ -105,6 +113,20 @@ export default function ProofOfLocationModal({
       window.removeEventListener("paayh:manual_location_selected", handleManualSelected);
     };
   }, [checkProofStatus]);
+
+  // Explicit re-open request (e.g. "Enable Location" card in the feed after skipping)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleOpen = () => {
+      try {
+        sessionStorage.removeItem(LOCATION_SKIPPED_KEY);
+      } catch {}
+      setErrorMsg(null);
+      setVisible(true);
+    };
+    window.addEventListener("paayh:open_location_modal", handleOpen);
+    return () => window.removeEventListener("paayh:open_location_modal", handleOpen);
+  }, []);
 
   // Lock background scroll & block Escape key while Proof of Location modal is active
   useEffect(() => {
@@ -189,6 +211,10 @@ export default function ProofOfLocationModal({
       });
 
       localStorage.setItem("paayh_last_geo_recalibrate", String(Date.now()));
+      try {
+        sessionStorage.removeItem(LOCATION_SKIPPED_KEY);
+      } catch {}
+      window.dispatchEvent(new CustomEvent("paayh:location_verified"));
 
       onVerified?.({
         country: verifiedCountry,
@@ -352,8 +378,10 @@ export default function ProofOfLocationModal({
                 onClick={() => {
                   setVisible(false);
                   try {
-                    sessionStorage.setItem("paayh_location_skipped", "true");
+                    sessionStorage.setItem(LOCATION_SKIPPED_KEY, "true");
                   } catch {}
+                  // Tell the feed to hide sponsored content and show the Enable Location card
+                  window.dispatchEvent(new CustomEvent("paayh:location_skipped"));
                 }}
                 style={{
                   background: "none",

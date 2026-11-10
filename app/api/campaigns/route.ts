@@ -5,7 +5,7 @@ import { getCachedUserCampaigns, setCachedUserCampaigns } from "@/lib/utils/cach
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
 import { triggerSelfHealingJobsIfDue } from "@/lib/services/cronOrchestrator";
-import { overlayPendingBufferedDeltas } from "@/lib/impressionBuffer";
+import { overlayPendingBufferedDeltas, getPendingImpressionDeltas } from "@/lib/impressionBuffer";
 
 export const dynamic = "force-dynamic";
 
@@ -139,10 +139,18 @@ export async function GET(req: NextRequest) {
 
     const ratedAdIds = (ratingsData.data || []).map((r: { ad_id: string }) => r.ad_id);
     const todayUtc = new Date().toISOString().slice(0, 10);
+    const pendingRedisDeltas: Record<string, number> = await getPendingImpressionDeltas(adIds).catch(() => ({}));
 
     const sanitizeItem = (item: any) => {
       if (!item) return item;
       let normalized = overlayPendingBufferedDeltas(item);
+      const pendingCount = (pendingRedisDeltas as Record<string, number>)[String(item.id)] || 0;
+      if (pendingCount > 0) {
+        normalized = {
+          ...normalized,
+          impression_count: Number(normalized.impression_count || 0) + pendingCount,
+        };
+      }
       const boostInfo = item.id ? boostMap[String(item.id)] : undefined;
       if (boostInfo) {
         normalized = {

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import styles from "../Feed/page.module.css";
@@ -76,6 +76,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   const [isMobile, setIsMobile] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Location skipped ("Skip for now" in Proof of Location): sponsored content is hidden and an
+  // Enable Location card is shown, since ads are geo-targeted and payouts require proof of location.
+  const [locationSkipped, setLocationSkipped] = useState(false);
   const hasAdsRef = useRef<boolean>(ads.length > 0);
   hasAdsRef.current = ads.length > 0;
   const inFlightFeedKeyRef = useRef<string | null>(null);
@@ -96,6 +99,24 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     return () => {
       window.removeEventListener("xea:toast", handleGlobalToast);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      setLocationSkipped(sessionStorage.getItem("paayh_location_skipped") === "true");
+    } catch {}
+    const onSkipped = () => setLocationSkipped(true);
+    const onVerified = () => {
+      setLocationSkipped(false);
+      if (typeof window !== "undefined") (window as any).__xea_force_refresh = true;
+      fetchRelevantAdsRef.current?.(0, false, false);
+    };
+    window.addEventListener("paayh:location_skipped", onSkipped);
+    window.addEventListener("paayh:location_verified", onVerified);
+    return () => {
+      window.removeEventListener("paayh:location_skipped", onSkipped);
+      window.removeEventListener("paayh:location_verified", onVerified);
     };
   }, []);
 
@@ -221,7 +242,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
         // Resilient progressive retry for initial feed load (e.g. serverless cold starts)
         if (!response.ok && pageNum === 0 && !isLoadMore) {
-          console.warn("⚠️ Feed initial fetch non-OK status:", response.status, "- Retrying with warm cache...");
+          console.warn("âš ï¸ Feed initial fetch non-OK status:", response.status, "- Retrying with warm cache...");
           await new Promise((r) => setTimeout(r, 1000));
           response = await fetch(fetchUrl, { headers });
 
@@ -272,10 +293,13 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           }
           const existingIds = new Set(prev.map((a) => a.id));
           const newUnique = feedAds.filter((a) => !existingIds.has(a.id));
+          // Inventory exhausted: the server only returned ads already on screen. Stop paginating,
+          // otherwise infinite scroll keeps re-requesting the same campaigns forever.
+          if (newUnique.length === 0) setHasMore(false);
           return [...prev, ...newUnique];
         });
       } catch (err) {
-        console.error("❌ Error loading feed:", err);
+        console.error("âŒ Error loading feed:", err);
         if (!hasAdsRef.current) {
           setError(true);
         }
@@ -289,6 +313,8 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     },
     [userEmail, setSeenAds]
   );
+  const fetchRelevantAdsRef = useRef<typeof fetchRelevantAds | null>(null);
+  fetchRelevantAdsRef.current = fetchRelevantAds;
 
   // Persist SSR-preloaded initialAds into sessionStorage so subsequent tab switches are 0ms
   useEffect(() => {
@@ -335,6 +361,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
   const parentRef = useRef<HTMLDivElement>(null);
   const displayFeed = useMemo(() => {
+    if (locationSkipped) return [];
     const rawFeed = buildDisplayFeed(ads);
     const seen = new Set<string>();
     return rawFeed.filter((item) => {
@@ -342,7 +369,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       seen.add(item.id);
       return true;
     });
-  }, [ads, buildDisplayFeed]);
+  }, [ads, buildDisplayFeed, locationSkipped]);
 
   const virtualizer = useVirtualizer({
     count: displayFeed.length,
@@ -564,7 +591,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           </div>
         </div>
       )}
-      <NewPostsPill count={pendingCount} onClick={handlePillClick} />
+      {!locationSkipped && <NewPostsPill count={pendingCount} onClick={handlePillClick} />}
       {loading && <FeedSkeleton count={3} />}
       {!loading && error && (
         <div className={styles.errorContainer}>
@@ -577,11 +604,15 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           </button>
         </div>
       )}
-      {!loading && !error && ads.length === 0 && (
+      {!loading && !error && (ads.length === 0 || locationSkipped) && (
         <div style={{ textAlign: "center", padding: "48px 20px" }}>
-          <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>No matching sponsored content found in your area.</p>
+          <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>
+            {locationSkipped ? "Enable location to see your feed" : "No matching sponsored content found in your area."}
+          </p>
           <p style={{ fontSize: "0.85rem", color: "var(--muted-foreground, #888)", marginTop: "8px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-            Promotional content and local community offers are targeted to physical jurisdictions. If location is disabled or uncalibrated, tap below to enable location.
+            {locationSkipped
+              ? "Sponsored content and local community offers are matched to your area. You skipped location verification, so your feed is empty. Tap below to enable location."
+              : "Promotional content and local community offers are targeted to physical jurisdictions. If location is disabled or uncalibrated, tap below to enable location."}
           </p>
           <button
             type="button"
@@ -591,7 +622,8 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
                   localStorage.removeItem("paayh_proof_of_location_active");
                   sessionStorage.removeItem("paayh_location_skipped");
                 } catch {}
-                window.dispatchEvent(new CustomEvent("paayh:manual_location_selected"));
+                // Opens the same Proof of Location modal shown at sign-in
+                window.dispatchEvent(new CustomEvent("paayh:open_location_modal"));
               }
             }}
             style={{

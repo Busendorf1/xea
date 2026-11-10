@@ -45,3 +45,42 @@ export async function invalidateAgentCaches(emails: (string | null | undefined)[
     await redisConnection.del(...keys).catch(() => {});
   }
 }
+
+/**
+ * Removes a deleted account from every agent-network cache layer (L1 memory, Redis edge/downline
+ * sets, network payload caches) for the user, their referrer, their referees and anyone who had
+ * them as a mutual. Costs O(k) Redis ops in the number of affected neighbours; there is no scan.
+ */
+export async function purgeDeletedUserFromAgentCaches(params: {
+  email: string;
+  referrerEmail?: string | null;
+  refereeEmails?: string[];
+  mutualHolderEmails?: string[];
+}) {
+  const email = params.email.toLowerCase().trim();
+  const referrer = (params.referrerEmail || "").toLowerCase().trim() || null;
+  const referees = (params.refereeEmails || []).map((e) => e.toLowerCase().trim()).filter(Boolean);
+  const holders = (params.mutualHolderEmails || []).map((e) => e.toLowerCase().trim()).filter(Boolean);
+
+  // L1 memory (this worker)
+  memoryReferralEdges.delete(email);
+  for (const ref of referees) {
+    const edge = memoryReferralEdges.get(ref);
+    if (edge && edge.referrerEmail === email) memoryReferralEdges.delete(ref);
+  }
+  memoryAgentFlags.delete(email);
+  for (const [code, mapped] of memoryCodeToEmail.entries()) {
+    if (mapped === email) memoryCodeToEmail.delete(code);
+  }
+
+  await invalidateAgentCaches([email, referrer, ...referees, ...holders]);
+
+  if (!isRedisReady()) return;
+  try {
+    const pipeline = redisConnection.pipeline();
+    pipeline.del(`agent:edge:${email}`, `agent:downline:${email}`, `agent:status:${email}`);
+    if (referrer) pipeline.srem(`agent:downline:${referrer}`, email);
+    for (const ref of referees) pipeline.del(`agent:edge:${ref}`);
+    await pipeline.exec();
+  } catch {}
+}

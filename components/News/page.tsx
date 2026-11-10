@@ -38,6 +38,28 @@ const steps = ["Media", "Title", "Content", "Targeting", "Preview"];
 
 const getCategoryIcon = (_category: string) => null;
 
+const HIGHLIGHT_MAX_WORDS = 50;
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
+/** Keeps at most `max` words while preserving the user's spacing on the kept part. */
+function clampToWords(text: string, max: number): string {
+  if (countWords(text) <= max) return text;
+  const re = /\S+/g;
+  let match: RegExpExecArray | null;
+  let n = 0;
+  let end = 0;
+  while ((match = re.exec(text)) !== null) {
+    n += 1;
+    end = match.index + match[0].length;
+    if (n === max) break;
+  }
+  return text.slice(0, end);
+}
+
 export default function News({ session }: NewsProps) {
   const isAdmin = useMemo(() => {
     return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(session?.user?.email));
@@ -833,22 +855,21 @@ export default function News({ session }: NewsProps) {
                       fontSize: "0.78rem",
                       fontWeight: 600,
                       fontVariantNumeric: "tabular-nums",
-                      color: content.length >= 1000 ? "#ef4444" : content.length >= 850 ? "var(--foreground)" : "var(--text-muted)",
+                      color: countWords(content) >= HIGHLIGHT_MAX_WORDS ? "#ef4444" : countWords(content) >= 42 ? "var(--foreground)" : "var(--text-muted)",
                       transition: "color 0.2s ease"
                     }}>
-                      {content.length} / 1000
+                      {countWords(content)} / {HIGHLIGHT_MAX_WORDS} words
                     </span>
                   </div>
                   <textarea
                     value={content}
                     onChange={(e) => {
-                      setContent(e.target.value);
+                      setContent(clampToWords(e.target.value, HIGHLIGHT_MAX_WORDS));
                       if (stepError) setStepError(null);
                     }}
-                    placeholder="Share full details of your highlight announcement..."
+                    placeholder="Share the key details of your highlight (max 50 words)..."
                     className={styles.textareaBox}
-                    rows={6}
-                    maxLength={1000}
+                    rows={4}
                   />
                   {content.trim().length > 0 && content.trim().length < 10 && (
                     <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px", display: "flex", alignItems: "center", gap: "5px" }}>

@@ -13,7 +13,7 @@ export interface CurrencyConfig {
   locale: string;
 }
 
-const NIGERIAN_REGIONS = [
+export const NIGERIAN_REGIONS = [
   "nigeria", "ng", "nga", "ngn", "lagos", "abuja", "fct", "fct-abuja",
   "abia", "adamawa", "akwa ibom", "anambra", "bauchi", "bayelsa", "benue", "borno",
   "cross river", "delta", "ebonyi", "edo", "ekiti", "enugu", "gombe", "imo",
@@ -22,6 +22,8 @@ const NIGERIAN_REGIONS = [
   "taraba", "yobe", "zamfara", "port harcourt", "portharcourt", "ibadan", "calabar",
   "asaba", "warri", "benin city", "onitsha", "aba", "uyo", "nnewi", "enugu"
 ];
+
+export const NGN_PER_USD = 1500; // Pegged platform reference rate: $1 USD = ₦1,500 NGN
 
 /**
  * Resolves currency code from user country
@@ -60,17 +62,55 @@ export function getCurrencyConfig(country?: string | null): CurrencyConfig {
 }
 
 /**
- * Formats a monetary amount according to the user's regional currency
+ * Converts standard NGN amount to USD at the platform reference rate ($1 = ₦1,500)
  */
-export function formatCurrency(amount: number | string | null | undefined, country?: string | null): string {
+export function convertNgnToUsd(amountNgn: number): number {
+  return Math.round((amountNgn / NGN_PER_USD) * 100) / 100;
+}
+
+/**
+ * Converts USD amount to NGN at the platform reference rate ($1 = ₦1,500)
+ */
+export function convertUsdToNgn(amountUsd: number): number {
+  return Math.round(amountUsd * NGN_PER_USD * 100) / 100;
+}
+
+/**
+ * Formats a monetary amount according to the user's regional currency.
+ * If user is outside Nigeria, converts base NGN amounts to USD ($).
+ */
+export function formatCurrency(
+  amount: number | string | null | undefined,
+  country?: string | null,
+  options?: { convertFromNgn?: boolean; showBoth?: boolean }
+): string {
   const val = typeof amount === "string" ? parseFloat(amount) : amount ?? 0;
+  const isUSD = getUserCurrency(country) === "USD";
+
   if (isNaN(val)) {
-    const config = getCurrencyConfig(country);
-    return `${config.symbol}0.00`;
+    return isUSD ? "$0.00" : "₦0.00";
   }
 
-  const config = getCurrencyConfig(country);
-  return `${config.symbol}${val.toLocaleString(config.locale, {
+  if (isUSD) {
+    // Only NGN-denominated ledger values (wallet balances, earnings, withdrawals) are converted.
+    // Amounts already priced in USD (e.g. localized advertiser floor rates) are shown as-is.
+    const isAlreadyUsd = !options?.convertFromNgn;
+    const usdVal = isAlreadyUsd ? val : val / NGN_PER_USD;
+    const formattedUsd = `$${usdVal.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+    if (options?.showBoth) {
+      const ngnVal = isAlreadyUsd ? val * NGN_PER_USD : val;
+      return `${formattedUsd} (~₦${ngnVal.toLocaleString("en-NG", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })})`;
+    }
+    return formattedUsd;
+  }
+
+  return `₦${val.toLocaleString("en-NG", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -134,4 +174,3 @@ export function getLocalizedMonetizationRate(type: "standard" | "instant", count
   }
   return type === "instant" ? 3000.00 : 1000.00;
 }
-

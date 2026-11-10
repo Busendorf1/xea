@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ShieldCheck, AlertCircle } from "lucide-react";
+import { X, AlertCircle } from "lucide-react";
 import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
 import styles from "./SignInModal.module.css";
 
@@ -16,6 +17,11 @@ export default function SignInModal({ isOpen, onClose }: SignInModalProps) {
   const [termsAgreed, setTermsAgreed] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<"google" | "apple" | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close on ESC key press
   useEffect(() => {
@@ -56,7 +62,7 @@ export default function SignInModal({ isOpen, onClose }: SignInModalProps) {
     window.location.href = href;
   };
 
-  return (
+  const modalContent = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -90,10 +96,6 @@ export default function SignInModal({ isOpen, onClose }: SignInModalProps) {
             </button>
 
             <div className={styles.header}>
-              <div className={styles.brandBadge}>
-                <ShieldCheck size={13} />
-                <span>Verified Access</span>
-              </div>
               <h2 id="signin-title" className={styles.title}>
                 Sign In to Paayh
               </h2>
@@ -203,4 +205,7 @@ export default function SignInModal({ isOpen, onClose }: SignInModalProps) {
       )}
     </AnimatePresence>
   );
+
+  if (!mounted || typeof document === "undefined") return null;
+  return createPortal(modalContent, document.body);
 }

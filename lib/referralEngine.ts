@@ -148,11 +148,12 @@ export async function registerReferralInvite({
       return { success: false, error: insertErr.message || "Failed to link referral." };
     }
 
-    // 5. Update user's referred_by column
+    // 5. Update user's referred_by column strictly if currently unassigned (prevent referral hijacking)
     await supabaseAdmin
       .from("users")
       .update({ referred_by: referrerEmail })
-      .eq("email", cleanReferee);
+      .eq("email", cleanReferee)
+      .is("referred_by", null);
 
     return { success: true, referrerEmail };
   } catch (err: any) {

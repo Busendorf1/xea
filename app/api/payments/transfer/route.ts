@@ -20,6 +20,7 @@ import {
 } from "@/lib/security/discrepancyAuditor";
 import { captureApiException } from "@/lib/logger";
 import { transferApiSchema } from "@/lib/validationSchemas";
+import { verifyTransactionPin } from "@/lib/security/walletPinHelper";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
@@ -45,9 +46,33 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { recipientEmail, amount: amountNum, idempotencyKey } = parsed.data;
+    const { recipientEmail, amount: amountNum, idempotencyKey, pin } = parsed.data;
 
     const cleanSender = senderEmail.toLowerCase().trim();
+
+    // Verify Sender 4-Digit Wallet PIN (if configured)
+    const { data: senderPinData } = await supabaseAdmin
+      .from("users")
+      .select("wallet_pin_hash")
+      .eq("email", cleanSender)
+      .maybeSingle();
+
+    const pinCheck = await verifyTransactionPin({
+      email: cleanSender,
+      pin,
+      storedPinHash: senderPinData?.wallet_pin_hash,
+    });
+
+    if (!pinCheck.valid) {
+      return NextResponse.json(
+        {
+          error: pinCheck.error,
+          attemptsRemaining: pinCheck.attemptsRemaining,
+          retryAfter: pinCheck.retryAfter,
+        },
+        { status: pinCheck.statusCode || 401 }
+      );
+    }
     const rawRecipient = (recipientEmail || "").trim();
     const isEmailInput = rawRecipient.includes("@") && rawRecipient.includes(".") && !rawRecipient.startsWith("@");
     const cleanRecipientSearch = isEmailInput ? rawRecipient.toLowerCase() : rawRecipient.toLowerCase().replace(/^@/, "");

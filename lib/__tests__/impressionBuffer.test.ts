@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { bufferAdImpression, bufferAdClick, flushImpressionBuffersToDB } from "../impressionBuffer";
+import { bufferAdImpression, bufferAdClick, flushImpressionBuffersToDB, getPendingImpressionDeltas } from "../impressionBuffer";
 import redisConnection from "../redis";
 import supabaseAdmin from "../utils/dbAdmin";
 
@@ -8,9 +8,11 @@ vi.mock("../redis", () => ({
   default: {
     status: "ready",
     hincrby: vi.fn().mockResolvedValue(1),
+    hmget: vi.fn().mockResolvedValue([]),
     del: vi.fn().mockResolvedValue(1),
     eval: vi.fn(),
   },
+  isRedisReady: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock("../utils/dbAdmin", () => ({
@@ -45,7 +47,17 @@ describe("Impression Buffer Engine", () => {
 
       await bufferAdImpression("ad-456");
 
-      expect(supabaseAdmin.rpc).toHaveBeenCalledWith("increment_ad_impression", { p_ad_id: "ad-456" });
+      expect(supabaseAdmin.rpc).toHaveBeenCalledWith("increment_ad_impressions_bulk", { p_ad_id: "ad-456", p_count: 1 });
+    });
+  });
+
+  describe("getPendingImpressionDeltas", () => {
+    it("should return pending deltas from Redis when ready", async () => {
+      (redisConnection.hmget as any).mockResolvedValueOnce(["12", "7"]);
+      const deltas = await getPendingImpressionDeltas(["ad-1", "ad-2"]);
+      expect(redisConnection.hmget).toHaveBeenCalledWith("buffer:ad_impressions", "ad-1", "ad-2");
+      expect(deltas["ad-1"]).toBe(12);
+      expect(deltas["ad-2"]).toBe(7);
     });
   });
 

@@ -50,6 +50,20 @@ async function creditSingleAffiliateDirect(email: string, amount: number): Promi
   const cleanEmail = email.trim().toLowerCase();
   const preset = PRECONFIGURED_SPECIAL_ROLES[cleanEmail];
 
+  // 1. Try atomic database increment RPC to eliminate read-modify-write race condition at 500M+ scale
+  const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("increment_user_balance_atomic", {
+    p_email: cleanEmail,
+    p_amount: amount,
+    p_source: "affiliate",
+    p_is_affiliate: preset ? preset.isAffiliate : false,
+    p_is_career: preset ? preset.isCareer : false,
+    p_affiliate_role: preset ? preset.affiliateRole : null,
+  });
+
+  if (!atomicErr && atomicResult && (atomicResult as any).success) {
+    return;
+  }
+
   const { data: row } = await supabaseAdmin
     .from("users")
     .select("id, balance, affiliate_earned_total, is_affiliate, is_career, affiliate_role")

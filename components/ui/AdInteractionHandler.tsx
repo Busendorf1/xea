@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Eye, Coins, UserPlus, Lock, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 import styles from "./AdCard.module.css";
 import EarningCooldownNotice from "./EarningCooldownNotice";
@@ -115,6 +115,8 @@ export default function AdInteractionHandler({
 }: AdInteractionHandlerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [localSecondsLeft, setLocalSecondsLeft] = useState(16);
+  const [bonusSecondsLeft, setBonusSecondsLeft] = useState(16);
+  const bonusTimerCancelled = useRef(false);
   const [observedInView, setObservedInView] = useState(false);
   const [tabVisible, setTabVisible] = useState(true);
   const [localStage, setLocalStage] = useState<"countdown" | "challenge" | "unlocked">("countdown");
@@ -139,7 +141,9 @@ export default function AdInteractionHandler({
   const [challengeType, setChallengeType] = useState<ChallengeType>("swipe");
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0);
+  const holdProgressRef = useRef(0);
   const [tapCount, setTapCount] = useState(0);
+  const tapCountRef = useRef(0);
   const lastTapTime = useRef<number>(0);
   const isHolding = useRef(false);
   const holdInterval = useRef<NodeJS.Timeout | null>(null);
@@ -171,6 +175,11 @@ export default function AdInteractionHandler({
 
   // Dynamic Scroll-Away Seen Registration
   const isAutoSeenTriggered = useRef(false);
+
+  useEffect(() => {
+    setBonusSecondsLeft(16);
+    bonusTimerCancelled.current = false;
+  }, [ad.id]);
   const hasTakenAction = useRef(false);
 
   // Auto-register seen when user unlocks interaction buttons but scrolls away without clicking
@@ -240,7 +249,6 @@ export default function AdInteractionHandler({
     if (inView && tabVisible && secondsLeft > 0) {
       timer = setTimeout(() => {
         if (Date.now() - lastFastScrollTimestamp < 250) {
-          setSecondsLeft((prev) => prev);
           return;
         }
         setSecondsLeft((prev) => prev - 1);
@@ -266,6 +274,49 @@ export default function AdInteractionHandler({
     };
   }, [stage, challengeType]);
 
+  // Dynamic attention bonus timer (scales earning share from 30% base to 50% max over 16 seconds)
+  useEffect(() => {
+    if (
+      stage !== "unlocked" ||
+      !viewerProfile?.monetized ||
+      isCooldownActive ||
+      successAction ||
+      activeAction ||
+      bonusTimerCancelled.current
+    ) {
+      return;
+    }
+    if (bonusSecondsLeft <= 0) return;
+
+    let timer: NodeJS.Timeout;
+    if (inView && tabVisible && bonusSecondsLeft > 0) {
+      timer = setTimeout(() => {
+        if (Date.now() - lastFastScrollTimestamp < 250) {
+          return;
+        }
+        setBonusSecondsLeft((prev) => Math.max(0, prev - 1));
+      }, 1000);
+    }
+
+    return () => clearTimeout(timer);
+  }, [
+    stage,
+    viewerProfile?.monetized,
+    isCooldownActive,
+    successAction,
+    activeAction,
+    inView,
+    tabVisible,
+    bonusSecondsLeft,
+  ]);
+
+  const handleChallengeSuccess = useCallback(() => {
+    // Dispatch state update asynchronously to avoid setState-during-render collision
+    setTimeout(() => {
+      setStage("unlocked");
+    }, 0);
+  }, [setStage]);
+
   // Platform ads (from admin) do not show the interaction button — only their registered CTAs
   if (
     isPlatformPost ||
@@ -278,20 +329,23 @@ export default function AdInteractionHandler({
     return null;
   }
 
-  const handleChallengeSuccess = () => {
-    setStage("unlocked");
-  };
-
   const handleRetryChallenge = () => {
     isDragging.current = false;
     isHolding.current = false;
-    if (holdInterval.current) clearInterval(holdInterval.current);
+    if (holdInterval.current) {
+      clearInterval(holdInterval.current);
+      holdInterval.current = null;
+    }
     setSwipeOffset(0);
+    holdProgressRef.current = 0;
     setHoldProgress(0);
+    tapCountRef.current = 0;
     setTapCount(0);
     lastTapTime.current = 0;
     kinematicsRef.current.reset();
     recordedTelemetryRef.current = [];
+    setBonusSecondsLeft(16);
+    bonusTimerCancelled.current = false;
 
     const types: ChallengeType[] = ["swipe", "hold", "tap"];
     const otherTypes = types.filter((t) => t !== challengeType);
@@ -353,18 +407,22 @@ export default function AdInteractionHandler({
     kinematicsRef.current.start(clientX, clientY, 1.0, "hold", isTrusted);
     holdInterval.current = setInterval(() => {
       kinematicsRef.current.record(holdCoords.current.x, holdCoords.current.y);
-      setHoldProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(holdInterval.current!);
-          recordedTelemetryRef.current = kinematicsRef.current.finish(
-            holdCoords.current.x,
-            holdCoords.current.y
-          );
-          handleChallengeSuccess();
-          return 100;
+      holdProgressRef.current = Math.min(100, holdProgressRef.current + 5);
+      const currentProgress = holdProgressRef.current;
+      setHoldProgress(currentProgress);
+
+      if (currentProgress >= 100) {
+        if (holdInterval.current) {
+          clearInterval(holdInterval.current);
+          holdInterval.current = null;
         }
-        return prev + 5;
-      });
+        isHolding.current = false;
+        recordedTelemetryRef.current = kinematicsRef.current.finish(
+          holdCoords.current.x,
+          holdCoords.current.y
+        );
+        handleChallengeSuccess();
+      }
     }, 50);
   };
 
@@ -379,7 +437,9 @@ export default function AdInteractionHandler({
     isHolding.current = false;
     if (holdInterval.current) {
       clearInterval(holdInterval.current);
+      holdInterval.current = null;
     }
+    holdProgressRef.current = 0;
     setHoldProgress(0);
   };
 
@@ -390,7 +450,7 @@ export default function AdInteractionHandler({
     const clientY = e ? e.clientY : 0;
     const isTrusted = e && "isTrusted" in e ? (e as any).isTrusted : true;
 
-    if (tapCount === 0) {
+    if (tapCountRef.current === 0) {
       kinematicsRef.current.start(clientX, clientY, 1.0, "tap", isTrusted);
     } else {
       kinematicsRef.current.record(clientX, clientY);
@@ -404,14 +464,14 @@ export default function AdInteractionHandler({
     }
 
     lastTapTime.current = now;
-    setTapCount((prev) => {
-      const next = prev + 1;
-      if (next >= 3) {
-        recordedTelemetryRef.current = kinematicsRef.current.finish(clientX, clientY);
-        handleChallengeSuccess();
-      }
-      return next;
-    });
+    tapCountRef.current += 1;
+    const currentTap = tapCountRef.current;
+    setTapCount(currentTap);
+
+    if (currentTap >= 3) {
+      recordedTelemetryRef.current = kinematicsRef.current.finish(clientX, clientY);
+      handleChallengeSuccess();
+    }
   };
 
   const radius = 9;
@@ -421,6 +481,9 @@ export default function AdInteractionHandler({
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
   const isMonetizedUser = Boolean(viewerProfile?.monetized);
+  const bonusElapsed = Math.min(16, Math.max(0, 16 - bonusSecondsLeft));
+  const currentShareRate = 0.30 + (bonusElapsed / 16.0) * 0.20;
+  const currentPercent = Math.round(currentShareRate * 100);
 
   return (
     <div ref={containerRef} className={styles.interactionContainer}>
@@ -549,6 +612,7 @@ export default function AdInteractionHandler({
                 type="button"
                 disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
                 onClick={() => {
+                  bonusTimerCancelled.current = true;
                   hasTakenAction.current = true;
                   handleAction("seen", () => onMarkSeen(ad));
                 }}
@@ -569,17 +633,21 @@ export default function AdInteractionHandler({
                 )}
               </button>
 
-              {/* Earn+ Button — visible to monetized users on paid ads */}
+              {/* Earn+ Button */}
               {isMonetizedUser && !isMutualTarget && (
                 <button
                   className={`${styles.earnBtn} ${successAction === "earn" ? styles.successBtn : ""}`}
                   type="button"
                   disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
                   onClick={() => {
+                    bonusTimerCancelled.current = true;
                     hasTakenAction.current = true;
+                    const finalBonusSecs = 16 - bonusSecondsLeft;
                     handleAction("earn", async () => {
                       const success = await onAdEarn(ad, {
                         telemetry: recordedTelemetryRef.current,
+                        bonusSeconds: finalBonusSecs,
+                        focusDurationSeconds: 16 + finalBonusSecs,
                       });
                       if (!success) {
                         handleRetryChallenge();
@@ -587,7 +655,7 @@ export default function AdInteractionHandler({
                       return success;
                     });
                   }}
-                  title="Earn from this ad"
+                  title="Claim attention reward"
                 >
                   {activeAction === "earn" ? (
                     <>
@@ -616,6 +684,7 @@ export default function AdInteractionHandler({
                   type="button"
                   disabled={isProcessing || !!activeAction || isAutoSeenTriggered.current}
                   onClick={() => {
+                    bonusTimerCancelled.current = true;
                     hasTakenAction.current = true;
                     if (viewerProfile && viewerProfile.mutual_count >= 50) {
                       if (typeof window !== "undefined") {
@@ -645,6 +714,26 @@ export default function AdInteractionHandler({
                     </>
                   )}
                 </button>
+              )}
+
+              {/* Dynamic Attention Bonus Timer (second 16s countdown): At the end of the row */}
+              {isMonetizedUser && !isMutualTarget && (
+                bonusSecondsLeft > 0 ? (
+                  <div
+                    className={styles.bonusTimerPill}
+                    title={"Attention timer: " + bonusSecondsLeft + "s"}
+                  >
+                    <span className={styles.bonusTimerPulseDot} />
+                    <span className={styles.bonusTimerText}>{bonusSecondsLeft}s</span>
+                  </div>
+                ) : (
+                  <div
+                    className={styles.bonusMaxPill}
+                    title="Attention timer completed"
+                  >
+                    <span className={styles.bonusTimerText}>0s</span>
+                  </div>
+                )
               )}
             </>
           )}

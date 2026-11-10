@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, AlertCircle } from "lucide-react";
 import { withdrawalSchema } from "@/lib/validationSchemas";
-import { getCurrencyConfig } from "@/lib/utils/currency";
+import { getCurrencyConfig, getUserCurrency, NGN_PER_USD } from "@/lib/utils/currency";
 import { UserProfile, DEFAULT_NIGERIAN_BANKS } from "./types";
 import { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
 import styles from "./page.module.css";
@@ -18,6 +18,13 @@ interface WithdrawalModalProps {
   onUpdateBalance: (newBalance: number, newWithdrawal: number) => void;
   onRefreshProfile: () => void;
   onFetchNotifications: () => void;
+}
+
+
+function formatWithdrawalErrorMsg(msg: string): string {
+  if (!msg) return "Withdrawal failed. Disbursements are processed via Nigerian clearing rails; please try using a verified Nigerian bank account (NUBAN).";
+  if (msg.toLowerCase().includes("nigeria")) return msg;
+  return `${msg}. Disbursements are processed via Nigerian clearing rails; please check your details or try using a Nigerian bank account (NUBAN).`;
 }
 
 export default function WithdrawalModal({
@@ -39,6 +46,7 @@ export default function WithdrawalModal({
   const [resolvingAccount, setResolvingAccount] = useState(false);
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState("");
+  const isUSD = getUserCurrency(user?.country) === "USD";
 
   useEffect(() => {
     if (isOpen) {
@@ -83,10 +91,10 @@ export default function WithdrawalModal({
           if (res.ok) {
             setResolvedAccountName(data.account_name);
           } else {
-            setWithdrawalError(data.error || "Could not resolve account details");
+            setWithdrawalError(formatWithdrawalErrorMsg(data.error || "Could not resolve account details"));
           }
         } catch (e: any) {
-          setWithdrawalError(e.message || "Error resolving account details");
+          setWithdrawalError(formatWithdrawalErrorMsg(e.message || "Error resolving account details"));
         } finally {
           setResolvingAccount(false);
         }
@@ -181,10 +189,10 @@ export default function WithdrawalModal({
         onRefreshProfile();
         onFetchNotifications();
       } else {
-        setWithdrawalError(data.error || "Failed to process withdrawal");
+        setWithdrawalError(formatWithdrawalErrorMsg(data.error || "Failed to process withdrawal"));
       }
     } catch (e: any) {
-      setWithdrawalError(e.message || "Failed to process withdrawal");
+      setWithdrawalError(formatWithdrawalErrorMsg(e.message || "Failed to process withdrawal"));
     } finally {
       setSubmittingWithdrawal(false);
     }
@@ -213,7 +221,11 @@ export default function WithdrawalModal({
               <div className={styles.modalTitleGroup}>
                 <h3 className={styles.modalTitle}>Request Bank Withdrawal</h3>
                 <div className={styles.modalSubtitle}>
-                  Available: <span className={styles.balanceHighlight}>{formatCurrency(user.balance ?? 0)}</span>
+                  Available: <span className={styles.balanceHighlight}>
+                    {isUSD
+                      ? `₦${(user.balance ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })} ($${((user.balance ?? 0) / NGN_PER_USD).toFixed(2)} USD)`
+                      : `₦${(user.balance ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`}
+                  </span>
                 </div>
               </div>
               <button onClick={onClose} className={styles.closeBtn} aria-label="Close">
@@ -266,18 +278,23 @@ export default function WithdrawalModal({
 
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>
-                  Withdrawal Amount ({getCurrencyConfig(user?.country).symbol})
+                  Withdrawal Amount (₦ NGN)
                 </label>
                 <input
                   type="number"
                   min={10000}
                   max={user.balance}
-                  placeholder={`Min ${formatCurrency(10000)}`}
+                  placeholder={`Min ₦10,000.00${isUSD ? " (~$6.67 USD)" : ""}`}
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
                   required
                   className={styles.formInput}
                 />
+                {isUSD && (
+                  <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "0.25rem", lineHeight: 1.35 }}>
+                    Disbursements are cleared in Nigerian Naira (₦). Global reference: $1.00 USD = ₦1,500 NGN.
+                  </p>
+                )}
               </div>
 
               <div className={styles.formGroup}>
@@ -318,7 +335,8 @@ export default function WithdrawalModal({
                     <div className={styles.feeSummaryTotalRow}>
                       <span className={styles.receiveLabel}>You will receive:</span>
                       <span className={styles.receiveAmount}>
-                        {formatCurrency(netReceive)}
+                        ₦{netReceive.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                        {isUSD && ` (~$${(netReceive / NGN_PER_USD).toFixed(2)} USD)`}
                       </span>
                     </div>
                   </div>

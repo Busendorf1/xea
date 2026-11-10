@@ -1546,6 +1546,28 @@ img.profileImg {
   .rightSidebar {
     transform: translateX(100%);
   }
+  .rightSidebar .sidebarContent {
+    padding: 0.75rem 1rem 3.5rem 1rem !important;
+    gap: 1.25rem !important;
+    box-sizing: border-box !important;
+  }
+
+  .profileCard,
+  .profileSectionCard {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    box-sizing: border-box;
+  }
+
+  .avatarRow {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  .profileInfo {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
 
   .showMobileFull {
     transform: translateX(0) !important;

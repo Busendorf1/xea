@@ -7,6 +7,14 @@ export async function register() {
       tracesSampleRate: process.env.NODE_ENV === "production" ? 0.2 : 1.0,
       debug: false,
     });
+
+    // Start background impression flush worker for high-throughput 500M+ batching
+    try {
+      const { startImpressionFlushWorker } = await import("@/lib/services/impressionFlushWorker");
+      startImpressionFlushWorker();
+    } catch (e) {
+      console.warn("⚠️ Failed to start impression flush worker in instrumentation:", e);
+    }
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

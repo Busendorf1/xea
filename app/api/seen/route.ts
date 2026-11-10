@@ -51,8 +51,14 @@ export async function POST(request: NextRequest) {
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
 
-    // 2. Cryptographic HMAC Token Verification (when present)
-    if (token && servedAt) {
+    // 2. Cryptographic HMAC Token Verification
+    if (token || servedAt || process.env.NODE_ENV === "production") {
+      if (!token || !servedAt) {
+        return NextResponse.json(
+          { error: "Verification token and timestamp required." },
+          { status: 403 }
+        );
+      }
       const secretKey = getEarnTokenSecret();
       const fallbackAuth0Key = env.AUTH0_SECRET || process.env.AUTH0_SECRET || "";
       const candidateKeys = Array.from(new Set([secretKey, fallbackAuth0Key].filter(Boolean)));
@@ -65,7 +71,11 @@ export async function POST(request: NextRequest) {
         payloads.some((p) => crypto.createHmac("sha256", k).update(p).digest("hex") === token)
       );
       if (!isValidToken) {
-        console.warn("⚠️ Invalid or expired verification token on ad seen:", adId);
+        console.warn("🚨 Potential fraud: Invalid verification token on ad seen:", adId, "user:", emailKey);
+        return NextResponse.json(
+          { error: "Cryptographic token verification failed. Seen rejected." },
+          { status: 403 }
+        );
       }
     }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { isAdminEmail } from "@/lib/adminHelper";
 import { campaignsQueue } from "@/lib/queue";
 
 export async function POST(request: NextRequest) {
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { type, payload } = body;
 
-    if (!type || !payload) {
+    if (!type || !payload || typeof payload !== "object") {
       return NextResponse.json({ error: "Missing type or payload" }, { status: 400 });
     }
 
@@ -21,7 +22,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Force lower case email validation
-    payload.user_email = email.toLowerCase().trim();
+    const cleanEmail = email.toLowerCase().trim();
+    payload.user_email = cleanEmail;
+
+    // Security Hardening: Prevent unprivileged users from injecting admin flags or pre-filled metrics
+    const userIsAdmin = isAdminEmail(cleanEmail);
+    if (!userIsAdmin) {
+      payload.is_admin_post = false;
+      payload.status = "pending";
+      payload.payment_status = "pending";
+      delete payload.approved;
+      delete payload.approved_at;
+      delete payload.impression_count;
+      delete payload.impressions_delivered;
+      delete payload.clicks_count;
+    } else {
+      payload.is_admin_post = Boolean(payload.is_admin_post);
+    }
 
     // Enqueue the creation request
     await campaignsQueue.add(`create-${type}`, {

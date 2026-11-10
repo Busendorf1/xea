@@ -369,12 +369,50 @@ export function overlayPendingBufferedDeltas<T extends Record<string, any>>(item
 }
 
 /**
+ * Reads pending in-memory / in-Redis impression buffer deltas for a list of ad IDs
+ * so read endpoints (/api/campaigns, /myAds, /api/admin/campaigns) always reflect 100% real-time counts.
+ */
+export async function getPendingImpressionDeltas(adIds: string[]): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  if (!adIds || adIds.length === 0) return result;
+
+  // 1. Overlay L1 pending seen counts
+  for (const id of adIds) {
+    const l1Batch = l1PendingSeen.get(id);
+    if (l1Batch && l1Batch.delta > 0) {
+      result[id] = (result[id] || 0) + l1Batch.delta;
+    }
+  }
+
+  // 2. Overlay Redis buffer counts if Redis is ready
+  if (isRedisReady() && redisConnection) {
+    try {
+      const redisCounts = await redisConnection.hmget(REDIS_KEY_IMPRESSIONS, ...adIds);
+      if (Array.isArray(redisCounts)) {
+        for (let i = 0; i < adIds.length; i++) {
+          const raw = redisCounts[i];
+          if (raw) {
+            const count = parseInt(raw, 10);
+            if (!isNaN(count) && count > 0) {
+              result[adIds[i]] = (result[adIds[i]] || 0) + count;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return result;
+}
+
+/**
  * Record an ad view asynchronously in Redis (Sub-millisecond latency).
  */
-export async function bufferAdImpression(adId: string): Promise<void> {
+export async function bufferAdImpression(adId: string, count: number = 1): Promise<void> {
+  if (count <= 0) return;
   try {
     if (redisConnection && redisConnection.status === "ready") {
-      await redisConnection.hincrby(REDIS_KEY_IMPRESSIONS, adId, 1);
+      await redisConnection.hincrby(REDIS_KEY_IMPRESSIONS, adId, count);
       return;
     }
   } catch (e) {
@@ -383,7 +421,7 @@ export async function bufferAdImpression(adId: string): Promise<void> {
 
   // Fallback to direct DB update if Redis is unavailable
   try {
-    await supabaseAdmin.rpc("increment_ad_impression", { p_ad_id: adId });
+    await supabaseAdmin.rpc("increment_ad_impressions_bulk", { p_ad_id: adId, p_count: count });
   } catch (_e) {
     const { data: currentAd } = await supabaseAdmin
       .from("addsactive")
@@ -393,7 +431,7 @@ export async function bufferAdImpression(adId: string): Promise<void> {
     if (currentAd) {
       await supabaseAdmin
         .from("addsactive")
-        .update({ impression_count: Number(currentAd.impression_count || 0) + 1 })
+        .update({ impression_count: Number(currentAd.impression_count || 0) + count })
         .eq("id", adId);
     }
   }
@@ -485,11 +523,21 @@ export async function flushImpressionBuffersToDB(): Promise<{ flushedImpressions
           await Promise.all(
             chunk.map(async ({ adId, delta }) => {
               try {
-                await supabaseAdmin.rpc("increment_ad_impressions_bulk", {
+                const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc("increment_ad_impressions_bulk", {
                   p_ad_id: adId,
                   p_count: delta,
                 });
+                if (rpcErr) throw rpcErr;
                 flushedImpressions += delta;
+                if (rpcRes && typeof rpcRes === "object" && (rpcRes as any).completed) {
+                  try {
+                    const { evictAdFromL1FeedCaches } = await import("./utils/cache");
+                    evictAdFromL1FeedCaches(adId);
+                  } catch {}
+                  if (isRedisReady() && redisConnection) {
+                    redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
+                  }
+                }
               } catch {
                 const { data: current } = await supabaseAdmin
                   .from("addsactive")

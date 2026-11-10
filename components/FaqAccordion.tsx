@@ -46,9 +46,9 @@ export const faqs: FaqItem[] = [
       "Yes, monetization is 100% voluntary and you can cancel or opt out at any time from your Monetization settings dashboard. When you cancel, your account switches to browsing-only mode: you can continue discovering and enjoying feed content without restriction, and your existing wallet balance is completely preserved for withdrawal. Your feed \"Seen\" interaction count will continue to increment normally as you browse, but you will NOT be automatically re-monetized upon reaching 300 seens. If you ever wish to earn rewards again, simply return to the Monetization dashboard, click \"Reapply for Monetization\", and complete 300 fresh verified seen interactions."
   },
   {
-    question: "What is the Earn button?",
+    question: "What is the Earn button and how are attention rewards calculated?",
     answer:
-      "The Earn button is only visible to monetized users. If you are not yet monetized, you will only see the \"Seen\" and \"Mutual\" buttons on each ad card."
+      "The Earn+ button is available exclusively to monetized users, and your revenue share is determined by a transparent two-stage countdown system:\n\n1. The First Countdown (Baseline 30%): When you view a sponsored campaign, an initial 16-second human verification focus countdown begins. Completing this first 16 seconds and finishing the verification challenge unlocks the action buttons and establishes your qualification for the baseline 30% revenue share of the ad budget.\n\n2. The Second Countdown (Determines Earning Up to 50%): As soon as the buttons unlock, a second countdown timer appears right beside the Earn+ button, counting down from 16 seconds to 0 seconds. This second countdown timer is what directly measures and determines your qualification to earn up to the maximum 50% revenue share:\n- On the ad card, only the clean numerical seconds (counting down from 16s down to 0s) are displayed; percentages are not displayed on the ad card.\n- If you tap \"Earn+\" while this second countdown is running, the timer cancels immediately, and the seconds spent during this second countdown are used to calculate your earning (prorated between 30% and 50%).\n- If you let this second countdown run all the way to 0s (spending double the baseline time, or 32 seconds total focus on the ad), you qualify for the maximum 50% revenue share."
   },
   {
     question: "What happens to inactive accounts?",
@@ -58,7 +58,7 @@ export const faqs: FaqItem[] = [
   {
     question: "When can I withdraw my earnings?",
     answer:
-      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 [approx. $6.67 USD] (or localized equivalent). You may withdraw any amount from ₦10,000 [approx. $6.67 USD] up to your full available balance, leaving any remainder in your wallet for future payouts. There are zero account maintenance fees. When you initiate a withdrawal, standard statutory payment processor interbank transfer fees apply with zero platform markup. Withdrawals are authenticated via your verified registered phone number."
+      "You can withdraw your earnings once your balance meets the minimum withdrawal threshold of ₦10,000 [approx. $6.67 USD] (or localized equivalent). You may withdraw any amount from ₦10,000 [approx. $6.67 USD] up to your full available balance, leaving any remainder in your wallet for future payouts. Disbursements are cleared in Nigerian Naira (₦ NGN) via licensed Nigerian banking rails (Paystack/Korapay). Global members viewing estimated balances in US Dollars ($ USD, reference rate $1.00 USD = ₦1,500 NGN) will receive their payouts to a verified Nigerian bank account (NUBAN). If any banking error or settlement anomaly occurs, please verify your details or try using a valid Nigerian bank account. There are zero account maintenance fees, and withdrawals are authenticated via your verified registered phone number."
   },
   {
     question: "Why should I withdraw my earnings promptly and what is the ATW ceiling?",

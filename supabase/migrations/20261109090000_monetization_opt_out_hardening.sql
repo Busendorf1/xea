@@ -355,10 +355,15 @@ BEGIN
     );
   END IF;
 
-  -- 5. Calculate 50% Revenue Share
-  v_earn_rate := ROUND((v_raw_cpi * 0.50)::numeric, 2);
+  -- 5. Calculate Revenue Share (Dynamic attention share: 30% base up to 50% max)
+  IF p_expected_rate IS NOT NULL AND p_expected_rate > 0 THEN
+    v_earn_rate := GREATEST(ROUND((v_raw_cpi * 0.30)::numeric, 2), LEAST(ROUND((v_raw_cpi * 0.50)::numeric, 2), p_expected_rate));
+  ELSE
+    v_earn_rate := ROUND((v_raw_cpi * 0.30)::numeric, 2);
+  END IF;
+
   IF v_earn_rate <= 0 THEN
-    v_earn_rate := 12.50;
+    v_earn_rate := 7.50; -- Base 30% of default 25.00 CPI
   END IF;
 
   IF NOT v_is_monetized THEN

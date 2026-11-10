@@ -177,6 +177,7 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
       profileImage: string | null;
       profile: AdvertiserProfileData;
       isAgent: boolean;
+      missing?: boolean;
     }
   >
 > {
@@ -188,8 +189,11 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
       profileImage: string | null;
       profile: AdvertiserProfileData;
       isAgent: boolean;
+      /** True only when the DB lookup succeeded and no account exists (deleted user). */
+      missing?: boolean;
     }
   > = {};
+  let dbLookupSucceeded = false;
 
   const uniqueEmails = Array.from(new Set(emails.map((e) => e.toLowerCase().trim()).filter(Boolean)));
   if (uniqueEmails.length === 0) return result;
@@ -217,6 +221,7 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
       'email, username, "firstName", "lastName", business_name, "profileImage", bio, location, country, monetized, monetization_clicks, created_at, gender, is_agent, is_career, is_affiliate, affiliate_role';
     const { data: rows, error } = await supabaseAdmin.from("users").select(selectCols).in("email", uniqueEmails);
 
+    if (!error && Array.isArray(rows)) dbLookupSucceeded = true;
     const finalRows =
       !error && Array.isArray(rows)
         ? rows
@@ -285,6 +290,7 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
         username: fallbackName,
         displayName: fallbackName,
         profileImage: null,
+        missing: dbLookupSucceeded,
         isAgent: Boolean(memoryAgentFlags.get(e)?.isAgent),
         profile: {
           username: fallbackName,
@@ -488,6 +494,8 @@ export async function getAgentNetworkData(email: string, bypassCache = false): P
   let pendingOptOutRequestsCount = 0;
 
   for (const [refEmail, edge] of downlineMap.entries()) {
+    // Deleted accounts must never appear as followers, even if a stale cache edge survives
+    if (profileMap[refEmail]?.missing) continue;
     const prof = profileMap[refEmail] || {
       username: refEmail.split("@")[0],
       displayName: refEmail.split("@")[0],
@@ -525,7 +533,7 @@ export async function getAgentNetworkData(email: string, bypassCache = false): P
   }
 
   let uplineAgent: UplineAgentInfo | null = null;
-  if (uplineEdge && uplineEdge.referrerEmail) {
+  if (uplineEdge && uplineEdge.referrerEmail && !profileMap[uplineEdge.referrerEmail]?.missing) {
     const upProf = profileMap[uplineEdge.referrerEmail] || {
       username: uplineEdge.referrerEmail.split("@")[0],
       displayName: uplineEdge.referrerEmail.split("@")[0],
@@ -553,7 +561,8 @@ export async function getAgentNetworkData(email: string, bypassCache = false): P
     };
   }
 
-  const mutuals: MutualUserItem[] = rawMutualEmails.map((mEmail) => {
+  const liveMutualEmails = rawMutualEmails.filter((mEmail) => !profileMap[mEmail]?.missing);
+  const mutuals: MutualUserItem[] = liveMutualEmails.map((mEmail) => {
     const mProf = profileMap[mEmail] || {
       username: mEmail.split("@")[0],
       displayName: mEmail.split("@")[0],
@@ -570,7 +579,11 @@ export async function getAgentNetworkData(email: string, bypassCache = false): P
     };
   });
 
-  const mutualsCount = Math.max(Number(userMutualRes.data?.mutual_count || 0), mutuals.length);
+  // If any mutual was a deleted account, trust the filtered live list over the stored counter
+  const mutualsCount =
+    liveMutualEmails.length < rawMutualEmails.length
+      ? mutuals.length
+      : Math.max(Number(userMutualRes.data?.mutual_count || 0), mutuals.length);
 
   const totalActiveCount =
     typeof dlRes.count === "number" && dlRes.count > invites.length ? dlRes.count : invites.length;

@@ -8,6 +8,7 @@ import {
   spendWalletBalanceAtomic,
   refundWalletDeductionAtomic,
 } from "@/lib/services/payoutSettlementService";
+import { verifyTransactionPin } from "@/lib/security/walletPinHelper";
 
 export async function POST(req: NextRequest) {
   let walletLockKey: string | null = null;
@@ -37,6 +38,30 @@ export async function POST(req: NextRequest) {
 
     if (!isAdmin && (!Number.isFinite(amountNum) || amountNum <= 0)) {
       return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
+    }
+
+    // Verify 4-Digit Wallet PIN (if configured)
+    const { data: userPinData } = await supabaseAdmin
+      .from("users")
+      .select("wallet_pin_hash")
+      .eq("email", emailLower)
+      .maybeSingle();
+
+    const pinCheck = await verifyTransactionPin({
+      email: emailLower,
+      pin: body?.pin,
+      storedPinHash: userPinData?.wallet_pin_hash,
+    });
+
+    if (!pinCheck.valid) {
+      return NextResponse.json(
+        {
+          error: pinCheck.error,
+          attemptsRemaining: pinCheck.attemptsRemaining,
+          retryAfter: pinCheck.retryAfter,
+        },
+        { status: pinCheck.statusCode || 401 }
+      );
     }
 
     // 1. Pre-validate payload & rate limits BEFORE touching user balance

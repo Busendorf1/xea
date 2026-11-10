@@ -26,14 +26,14 @@ export default function AboutPage() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>How It Works</h2>
         <p className={styles.sectionText}>
-          When you voluntarily view content tailored to your preferences, you receive a dynamic share of <strong>up to 50%</strong> of net advertising revenue in the form of attention rewards. Advertisers know their campaign spend directly rewards real human focus. We enforce strict anti-bot kinematics, pre-publication content reviews, and built-in reporting tools to ensure quality and safety. No subscriptions. No tricks. Just fair value for your time.
+          When you voluntarily view content tailored to your preferences, you receive a dynamic share of <strong>up to 50%</strong> of net advertising revenue in the form of attention rewards. Earning is governed by a transparent two-stage countdown: an initial 16-second focus period qualifies you for a baseline 30% share, followed by a second countdown timer beside the Earn+ button (displaying clean seconds from 16s down to 0s) that directly determines your additional earnings up to the maximum 50% share if you spend double the time. Tapping early cancels the second countdown and prorates your reward to the exact seconds spent. Advertisers know their campaign spend directly rewards real human focus. We enforce strict anti-bot kinematics, pre-publication content reviews, and built-in reporting tools to ensure quality and safety. No subscriptions. No tricks. Just fair value for your time.
         </p>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Why Paayh Matters</h2>
         <p className={styles.sectionText}>
-          AI is transforming industries and replacing traditional jobs. At Paayh, we believe there is still one thing AI cannot do: pay attention like a human. We built Paayh so that your presence, your preferences, and your choices become sources of income, not just data for someone else to monetise.
+          In a digital landscape often dominated by automated bots and synthetic clicks, genuine human attention is truly unique. At Paayh, we believe viewers deserve tangible appreciation when engaging with content. We built Paayh so that your voluntary focus and consumer preferences are recognized through transparent promotional reward sharing, rather than treating your time as passive data.
         </p>
       </section>
 
@@ -53,7 +53,7 @@ export default function AboutPage() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Looking Ahead</h2>
         <p className={styles.sectionText}>
-          As the platform grows, so does your earning power. Paayh is more than a product, it is a movement toward equitable, accessible income. We hope to inspire a new generation of platforms to follow suit.
+          As the community grows, we continue expanding transparent promotional reward sharing and ethical advertising. Paayh is dedicated to creating a balanced content discovery marketplace where both advertisers and viewers derive genuine value. We hope to inspire a new standard of transparency across digital media.
         </p>
         <p className={styles.sectionText}>
           <strong>Your data and privacy are safe with us.</strong> We never sell your information, and all data is handled with care. Review our{' '}

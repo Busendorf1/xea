@@ -54,7 +54,9 @@ export default function DashboardClient({
   const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<UserProfile>(initialUser);
 
-  const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, user?.country);
+  // Wallet values are stored in NGN; convert to USD for users outside Nigeria (display only).
+  const formatCurrency = (amount: number | string) =>
+    globalFormatCurrency(amount, user?.country, { convertFromNgn: true });
 
   useEffect(() => {
     setUser(initialUser);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerReferralInvite } from "@/lib/referralEngine";
+import { getAuthenticatedEmail } from "@/lib/authHelper";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Missing required fields (referrerCode, refereeEmail, deviceHash)" },
         { status: 400 }
+      );
+    }
+
+    const cleanReferee = String(refereeEmail).toLowerCase().trim();
+
+    // If the request carries an authenticated session, ensure the caller is registering themselves
+    const sessionEmail = await getAuthenticatedEmail(req);
+    if (sessionEmail && sessionEmail.toLowerCase().trim() !== cleanReferee) {
+      return NextResponse.json(
+        { error: "Forbidden: You can only register referrals for your own authenticated account." },
+        { status: 403 }
       );
     }
 

@@ -88,8 +88,9 @@ export async function handleGetAgentsList(searchParams: URLSearchParams) {
     .from("users")
     .select('id, username, email, "firstName", "lastName", "profileImage", balance, referral_code, suspended_until, created_at, is_agent, agent_registered_at, agent_banned_until, agent_ban_reason');
 
-  if (search) {
-    usersQuery = usersQuery.or(`email.ilike.%${search}%,username.ilike.%${search}%,firstName.ilike.%${search}%,lastName.ilike.%${search}%,referral_code.ilike.%${search}%`);
+  const cleanSearch = search.replace(/[,()]/g, "").trim();
+  if (cleanSearch) {
+    usersQuery = usersQuery.or(`email.ilike.%${cleanSearch}%,username.ilike.%${cleanSearch}%,firstName.ilike.%${cleanSearch}%,lastName.ilike.%${cleanSearch}%,referral_code.ilike.%${cleanSearch}%`);
   } else {
     usersQuery = usersQuery.or("is_agent.eq.true,referral_code.not.is.null");
   }
@@ -175,15 +176,16 @@ export async function handleGetFollowersList(searchParams: URLSearchParams) {
   const search = searchParams.get("search")?.trim() || "";
   const agentEmail = searchParams.get("agentEmail")?.trim().toLowerCase() || "";
 
+  const cleanSearch = search.replace(/[,()]/g, "").trim();
   let query = supabaseAdmin
     .from("referrals")
-    .select("id, referrer_email, referee_email, commission_rate, total_commission_earned, status, opt_out_status, created_at, interactions_count", { count: "exact" });
+    .select("id, referrer_email, referee_email, commission_rate, total_commission_earned, status, opt_out_status, created_at, interactions_count", { count: "planned" });
 
   if (agentEmail) {
     query = query.ilike("referrer_email", agentEmail);
   }
-  if (search) {
-    query = query.or(`referee_email.ilike.%${search}%,referrer_email.ilike.%${search}%`);
+  if (cleanSearch) {
+    query = query.or(`referee_email.ilike.%${cleanSearch}%,referrer_email.ilike.%${cleanSearch}%`);
   }
 
   const { data: rows, count, error } = await query
@@ -271,13 +273,14 @@ export async function handleGetAffiliatesList(searchParams: URLSearchParams) {
   }
 
   const dbClient = supabaseReadOnly || supabaseAdmin;
+  const cleanSearch = search.replace(/[,()]/g, "").trim();
   let affQuery = dbClient
     .from("users")
-    .select('id, username, email, "firstName", "lastName", "profileImage", balance, is_career, is_affiliate, affiliate_role, affiliate_earned_total, referral_code, monetized, created_at, phone, country', { count: "exact" })
+    .select('id, username, email, "firstName", "lastName", "profileImage", balance, is_career, is_affiliate, affiliate_role, affiliate_earned_total, referral_code, monetized, created_at, phone, country', { count: "planned" })
     .eq("is_affiliate", true);
 
-  if (search) {
-    affQuery = affQuery.or(`email.ilike.%${search}%,username.ilike.%${search}%,firstName.ilike.%${search}%,lastName.ilike.%${search}%,affiliate_role.ilike.%${search}%`);
+  if (cleanSearch) {
+    affQuery = affQuery.or(`email.ilike.%${cleanSearch}%,username.ilike.%${cleanSearch}%,firstName.ilike.%${cleanSearch}%,lastName.ilike.%${cleanSearch}%,affiliate_role.ilike.%${cleanSearch}%`);
   }
 
   const { data: affUsers, count: affCount, error: affErr } = await affQuery
@@ -367,7 +370,8 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
 
   const dbClient = supabaseReadOnly || supabaseAdmin;
   const selectedColumns = 'id, username, email, "firstName", "lastName", "profileImage", business_name, phone, state, country, location, bio, industry, interest, lifestyle, behavior, personality, gender, balance, withdrawal, monetized, monetization_type, monetized_until, monetized_at, monetization_clicks, referral_code, referred_by, suspended_until, ad_account_status, ad_ban_until, ad_ban_reason, mutual_count, created_at, last_active_at, atw_tier, employment, is_career, is_affiliate, affiliate_role, affiliate_earned_total';
-  let query = dbClient.from("users").select(selectedColumns, { count: "exact" });
+  const cleanSearch = search.replace(/[,()]/g, "").trim();
+  let query = dbClient.from("users").select(selectedColumns, { count: "planned" });
 
   if (filter === "affiliates") {
     query = query.eq("is_affiliate", true);
@@ -377,8 +381,8 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
     query = query.or("monetized.eq.yes,monetized.eq.true");
   }
 
-  if (search) {
-    query = query.or(`email.ilike.%${search}%,username.ilike.%${search}%,firstName.ilike.%${search}%,lastName.ilike.%${search}%,business_name.ilike.%${search}%`);
+  if (cleanSearch) {
+    query = query.or(`email.ilike.%${cleanSearch}%,username.ilike.%${cleanSearch}%,firstName.ilike.%${cleanSearch}%,lastName.ilike.%${cleanSearch}%,business_name.ilike.%${cleanSearch}%`);
   }
 
   const { data: users, count, error } = await query

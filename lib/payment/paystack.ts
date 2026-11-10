@@ -1,5 +1,6 @@
 // lib/payment/paystack.ts
 import redisConnection from "@/lib/redis";
+import crypto from "crypto";
 
 export interface PaystackInitializeResponse {
   authorization_url: string;
@@ -66,7 +67,7 @@ export class PaystackService {
     channels?: string[]
   ): Promise<PaystackInitializeResponse> {
     const amountInKobo = Math.round(amountInNaira * 100);
-    const reference = `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const reference = `ref_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").substring(0, 10)}`;
 
     if (this.isMock()) {
       console.log(`⚠️ Paystack MOCK mode: Initializing mock transaction ref=${reference}`);

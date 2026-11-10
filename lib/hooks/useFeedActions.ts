@@ -8,6 +8,8 @@ import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 export interface InteractionData {
   telemetry?: KinematicVector[];
   turnstileToken?: string;
+  bonusSeconds?: number;
+  focusDurationSeconds?: number;
 }
 
 interface UseFeedActionsProps {
@@ -147,7 +149,9 @@ export function useFeedActions({
       setProcessingAds((prev) => [...prev, ad.id]);
 
       const rawCpi = ad.cost_per_impression && Number(ad.cost_per_impression) > 0 ? Number(ad.cost_per_impression) : 25;
-      const expectedRate = Math.round(rawCpi * 0.50 * 100) / 100;
+      const bonusSecs = Math.min(16, Math.max(0, interactionData?.bonusSeconds ?? 0));
+      const shareRate = 0.30 + (bonusSecs / 16.0) * 0.20;
+      const expectedRate = Math.round(rawCpi * shareRate * 100) / 100;
 
       // 1. INSTANT OPTIMISTIC UI: Trigger balance & click progress update immediately (0ms delay)
       if (expectedRate > 0) {
@@ -180,6 +184,8 @@ export function useFeedActions({
             type: "earn",
             telemetry: interactionData?.telemetry || [],
             turnstileToken: interactionData?.turnstileToken || undefined,
+            bonusSeconds: bonusSecs,
+            focusDurationSeconds: 16 + bonusSecs,
           }),
         });
 

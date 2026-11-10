@@ -44,7 +44,6 @@ export const getEnv = () => {
     NEXT_PUBLIC_SUPABASE_ANON_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
       "",
   };
   const result = envSchema.safeParse(envObj);
@@ -56,7 +55,6 @@ export const getEnv = () => {
       NEXT_PUBLIC_SUPABASE_ANON_KEY:
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
         process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
         "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
       REDIS_HOST: redisHost || "127.0.0.1",

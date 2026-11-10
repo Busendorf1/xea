@@ -189,7 +189,7 @@ export default function SendMoneyModal({
                   step="0.01"
                   min={1}
                   max={user.balance * 0.2}
-                  placeholder={`Max ${formatCurrency((user.balance ?? 0) * 0.2)}`}
+                  placeholder={`Max ₦${((user.balance ?? 0) * 0.2).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   value={sendAmount}
                   onChange={(e) => setSendAmount(e.target.value)}
                   required

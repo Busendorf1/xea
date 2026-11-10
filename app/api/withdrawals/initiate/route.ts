@@ -9,6 +9,8 @@ import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 import { initiateWithdrawalApiSchema } from "@/lib/validationSchemas";
 import { decryptSensitiveField } from "@/lib/security/piiCrypto";
+import { verifyTransactionPin } from "@/lib/security/walletPinHelper";
+import crypto from "crypto";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
 const l1WithdrawalMutex = new Map<string, number>();
@@ -74,7 +76,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { bankCode, bankName, accountNumber, amount: withdrawAmount, phone } = parsed.data;
+    const { bankCode, bankName, accountNumber, amount: withdrawAmount, phone, pin } = parsed.data;
 
     // 1. Flush any buffered/sharded affiliate yield first and fetch user's profile
     const emailLower = email.toLowerCase().trim();
@@ -86,13 +88,31 @@ export async function POST(req: NextRequest) {
 
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career")
+      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career, wallet_pin_hash")
       .eq("email", emailLower)
       .maybeSingle();
 
     if (userFetchErr || !user) {
       console.error("❌ Error fetching user for withdrawal:", userFetchErr);
       return NextResponse.json({ error: "Failed to verify account balance" }, { status: 500 });
+    }
+
+    // Verify 4-Digit Wallet PIN (if configured)
+    const pinCheck = await verifyTransactionPin({
+      email: emailLower,
+      pin,
+      storedPinHash: (user as any).wallet_pin_hash,
+    });
+
+    if (!pinCheck.valid) {
+      return NextResponse.json(
+        {
+          error: pinCheck.error,
+          attemptsRemaining: pinCheck.attemptsRemaining,
+          retryAfter: pinCheck.retryAfter,
+        },
+        { status: pinCheck.statusCode || 401 }
+      );
     }
 
     const currentBalance = parseFloat(user.balance || 0);
@@ -203,7 +223,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate unique transaction reference
-    const reference = `trsf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const reference = `trsf_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").substring(0, 12)}`;
 
     // Dynamic Gateway Payout Fee Breakdown: User is responsible for active gateway (Paystack/Kora) interbank charges
     const activeGateway = PayoutProvider.getActiveGateway();
@@ -409,7 +429,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({
-        error: `Bank rejected beneficiary account (${errMsg}). Your full ₦${withdrawAmount.toLocaleString("en-NG")} balance has been restored to your wallet.`,
+        error: `Bank rejected beneficiary account (${errMsg}). Your full ₦${withdrawAmount.toLocaleString("en-NG")} balance has been restored to your wallet. Disbursements are settled via Nigerian clearing rails; please verify your bank details or try using a Nigerian bank account (NUBAN).`,
       }, { status: 400 });
     }
 
@@ -435,6 +455,9 @@ export async function POST(req: NextRequest) {
       route: "POST /api/withdrawals/initiate",
       email: email || undefined,
     });
-    return NextResponse.json({ error: err.message || "Failed to process withdrawal request" }, { status: 500 });
+    const errText = err.message || "Failed to process withdrawal request";
+    return NextResponse.json({
+      error: `${errText}. Disbursements are settled via Nigerian clearing rails; please verify your bank details or try using a Nigerian bank account (NUBAN).`,
+    }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Send, Lock, KeyRound, X, Check } from "lucide-react";
 import RollingCounter from "@/components/ui/RollingCounter";
+import { getUserCurrency, getCurrencyConfig, NGN_PER_USD } from "@/lib/utils/currency";
 import { UserProfile } from "./types";
 import styles from "./page.module.css";
 
@@ -32,6 +33,11 @@ export default function DashboardWalletCard({
   onOpenSendMoneyModal,
   onSelectTab,
 }: DashboardWalletCardProps) {
+  const isUSD = getUserCurrency(user?.country) === "USD";
+  const currencyConfig = getCurrencyConfig(user?.country);
+  const displayBalance = isUSD ? (user.balance ?? 0) / NGN_PER_USD : (user.balance ?? 0);
+  const currencySymbol = currencyConfig.symbol;
+
   const isMonetized = Boolean(
     user.monetized === "yes" ||
       user.monetized === "true" ||
@@ -489,21 +495,21 @@ export default function DashboardWalletCard({
 
       <div className={styles.walletBalance}>
         {showBalance ? (
-          <RollingCounter value={user.balance ?? 0} currencyPrefix="₦" />
+          <RollingCounter value={displayBalance} currencyPrefix={currencySymbol} />
         ) : (
           <span
             onClick={() => openPinPrompt("none")}
             className={styles.pinCodePlaceholder}
             title="Click to enter 4-digit PIN"
           >
-            ₦••••••••
+            {currencySymbol}••••••••
           </span>
         )}
       </div>
 
       {user.withdrawal > 0 && (
         <p className={styles.pendingWithdrawal}>
-          Pending Withdrawal: {showBalance ? formatCurrency(user.withdrawal) : "₦••••"}
+          Pending Withdrawal: {showBalance ? formatCurrency(user.withdrawal) : `${currencySymbol}••••`}
         </p>
       )}
 

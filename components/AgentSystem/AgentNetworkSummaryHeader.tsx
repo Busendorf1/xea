@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { X } from "lucide-react";
+import { X, Users } from "lucide-react";
 import type { AgentNetworkPayload } from "@/lib/agentSystem";
 import { formatCompactCount } from "./useAgentNetwork";
 import styles from "./AgentSystem.module.css";
@@ -42,9 +42,10 @@ export default function AgentNetworkSummaryHeader({
                 disabled={actionLoading}
                 className={styles.headerAgentBtn}
                 onClick={onBecomeAgent}
-                title="Register as an official platform agent"
+                title="Become an Agent"
+                aria-label="Become an Agent"
               >
-                Become an Agent
+                <Users size={13} strokeWidth={2} />
               </button>
             )}
           </div>

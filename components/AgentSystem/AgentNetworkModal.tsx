@@ -128,7 +128,7 @@ export default function AgentNetworkModal({
             <button
               type="button"
               disabled={actionLoading}
-              className={styles.primaryAgentBtn}
+              className={styles.modalFooterAgentBtn}
               onClick={handleBecomeAgentClick}
             >
               <span>Become an Agent</span>

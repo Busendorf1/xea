@@ -156,23 +156,36 @@ export async function creditAgentWalletAndEdge({
   const cleanAgent = agentEmail.toLowerCase().trim();
   const cleanReferee = refereeEmail.toLowerCase().trim();
 
-  const [{ data: agentUser }, { data: refRow }] = await Promise.all([
-    supabaseAdmin.from("users").select("balance").eq("email", cleanAgent).maybeSingle(),
-    supabaseAdmin
-      .from("referrals")
-      .select("id, total_commission_earned")
-      .eq("referee_email", cleanReferee)
-      .eq("referrer_email", cleanAgent)
-      .maybeSingle(),
-  ]);
+  // Atomically credit Agent Wallet balance without JavaScript read-modify-write race condition
+  let newBal = 0;
+  const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("increment_user_balance_atomic", {
+    p_email: cleanAgent,
+    p_amount: creditToWallet,
+    p_source: "agent_commission",
+  });
 
-  if (agentUser) {
-    const prevBal = Number(agentUser.balance) || 0;
-    const newBal = Math.round((prevBal + creditToWallet) * 100) / 100;
-    await supabaseAdmin.from("users").update({ balance: newBal }).eq("email", cleanAgent);
+  if (!atomicErr && atomicResult && (atomicResult as any).success) {
+    newBal = Number((atomicResult as any).newBalance) || 0;
     invalidateCachedProfile(cleanAgent).catch(() => {});
     publishLiveBalanceUpdate(cleanAgent, { delta: creditToWallet, newBalance: newBal }).catch(() => {});
+  } else {
+    // Fallback if migration is pending in current environment
+    const { data: agentUser } = await supabaseAdmin.from("users").select("balance").eq("email", cleanAgent).maybeSingle();
+    if (agentUser) {
+      const prevBal = Number(agentUser.balance) || 0;
+      newBal = Math.round((prevBal + creditToWallet) * 100) / 100;
+      await supabaseAdmin.from("users").update({ balance: newBal }).eq("email", cleanAgent);
+      invalidateCachedProfile(cleanAgent).catch(() => {});
+      publishLiveBalanceUpdate(cleanAgent, { delta: creditToWallet, newBalance: newBal }).catch(() => {});
+    }
   }
+
+  const { data: refRow } = await supabaseAdmin
+    .from("referrals")
+    .select("id, total_commission_earned")
+    .eq("referee_email", cleanReferee)
+    .eq("referrer_email", cleanAgent)
+    .maybeSingle();
 
   let updatedEdgeTotal = grossCommissionFromReferee;
   if (refRow) {

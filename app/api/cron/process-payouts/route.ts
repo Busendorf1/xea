@@ -27,10 +27,10 @@ async function handleCron(req: NextRequest) {
   let lockAcquired = false;
 
   try {
-    // 1. Mandatory CRON_SECRET verification in production
+    // 1. Mandatory CRON_SECRET verification
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    if ((process.env.NODE_ENV === "production" && !cronSecret) || (cronSecret && authHeader !== `Bearer ${cronSecret}`)) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       console.warn("⚠️ Unauthorized cron trigger attempt.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
