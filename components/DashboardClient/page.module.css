@@ -506,7 +506,7 @@
   box-shadow: none !important;
   outline: none !important;
   border-bottom: 1px solid var(--card-border) !important;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -522,7 +522,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 0 1rem;
+  padding: 0 0.5rem;
   margin-top: -35px;
   margin-bottom: 0.75rem;
   position: relative;
@@ -604,7 +604,7 @@ img.profileImg {
 }
 
 .profileInfo {
-  padding: 0 1rem 1rem 1rem;
+  padding: 0 0.5rem 0.5rem 0.5rem;
 }
 
 .profileName {
@@ -1547,26 +1547,26 @@ img.profileImg {
     transform: translateX(100%);
   }
   .rightSidebar .sidebarContent {
-    padding: 0.75rem 1rem 3.5rem 1rem !important;
+    padding: 0.38rem 0.5rem 3.5rem 0.5rem !important;
     gap: 1.25rem !important;
     box-sizing: border-box !important;
   }
 
   .profileCard,
   .profileSectionCard {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
     box-sizing: border-box;
   }
 
   .avatarRow {
-    padding-left: 0.75rem !important;
-    padding-right: 0.75rem !important;
+    padding-left: 0.38rem !important;
+    padding-right: 0.38rem !important;
   }
 
   .profileInfo {
-    padding-left: 0.75rem !important;
-    padding-right: 0.75rem !important;
+    padding-left: 0.38rem !important;
+    padding-right: 0.38rem !important;
   }
 
   .showMobileFull {
