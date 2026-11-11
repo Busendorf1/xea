@@ -623,22 +623,50 @@ serve(async (req: Request) => {
           .replace(/-/g, "")
           .slice(0, 6)
           .toUpperCase()}`;
-        const newProfilePayload = {
-          email: cleanEmail,
-          balance: 0,
-          monetized: "false",
-          monetization_clicks: 0,
-          country: "PLACEHOLDER",
-          state: "PLACEHOLDER",
-          location: "PLACEHOLDER",
-          referral_code: referralCode,
-          created_at: new Date().toISOString(),
-        };
+        const dummyPhone = `PLACEHOLDER_PHONE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const dummyPassphrase = `PLACEHOLDER_PASS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const defaultUsername = cleanEmail.split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || `user_${Date.now()}`;
+
+        // 1. Try calling the authoritative auto_provision_user RPC
+        const { error: rpcErr } = await supabase.rpc("auto_provision_user", {
+          p_email: cleanEmail,
+          p_first_name: cleanEmail.split("@")[0] || "User",
+          p_last_name: "User",
+          p_profile_image: "",
+          p_business_name: "",
+          p_phone: dummyPhone,
+          p_passphrase: dummyPassphrase,
+        });
+
+        // 2. If RPC had an error or wasn't available, perform direct service_role INSERT with all required schema fields
+        if (rpcErr) {
+          console.warn("⚠️ auto_provision_user RPC error in user-action edge function:", rpcErr?.message || rpcErr);
+          const newProfilePayload: Record<string, any> = {
+            email: cleanEmail,
+            username: defaultUsername,
+            phone: dummyPhone,
+            passphrase: dummyPassphrase,
+            dob: "1970-01-01",
+            country: "PLACEHOLDER",
+            state: "PLACEHOLDER",
+            location: "PLACEHOLDER",
+            balance: 0,
+            monetized: "false",
+            monetization_clicks: 0,
+            referral_code: referralCode,
+            has_updated_profile: false,
+            created_at: new Date().toISOString(),
+          };
+
+          await supabase
+            .from("users")
+            .insert([newProfilePayload]);
+        }
 
         const { data: created } = await supabase
           .from("users")
-          .insert([newProfilePayload])
           .select("*")
+          .ilike("email", cleanEmail)
           .maybeSingle();
 
         userRow = created;

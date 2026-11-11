@@ -15,8 +15,8 @@ $g.FillRectangle($bgBrush, 0, 0, $width, $height)
 
 # Elegant white brand typography for "Paayh"
 $fontFamily = New-Object System.Drawing.FontFamily("Arial")
-# Try Segoe UI or Arial or Montserrat
-$font = New-Object System.Drawing.Font($fontFamily, 150, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+# Increased font size slightly from 150 to 185 for clean TestFlight app icon visibility
+$font = New-Object System.Drawing.Font($fontFamily, 185, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
 $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
 
 $stringFormat = New-Object System.Drawing.StringFormat
@@ -26,9 +26,16 @@ $stringFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
 $rect = New-Object System.Drawing.RectangleF(0, 0, $width, $height)
 $g.DrawString("Paayh", $font, $textBrush, $rect, $stringFormat)
 
-$outputPath = "C:\Users\USER\Desktop\xea-mobile\assets\icon-dark-brand.png"
-$bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$paths = @(
+    "C:\Users\USER\Desktop\xea-mobile\assets\icon-dark-brand.png",
+    "C:\Users\USER\Desktop\xea-mobile\assets\icon.png",
+    "C:\Users\USER\Desktop\xea-mobile\assets\adaptive-icon.png"
+)
+
+foreach ($outputPath in $paths) {
+    $bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    Write-Host "Created dark icon at $outputPath"
+}
 
 $g.Dispose()
 $bmp.Dispose()
-Write-Host "Created dark icon at $outputPath"

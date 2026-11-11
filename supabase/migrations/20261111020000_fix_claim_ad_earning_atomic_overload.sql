@@ -1,0 +1,405 @@
+-- Migration: 20261111020000_fix_claim_ad_earning_atomic_overload.sql
+-- ============================================================================
+-- Resolve RPC Ambiguity & Multiple Overload Failure on claim_ad_earning_atomic
+--
+-- Issue:
+-- Previous migrations (20261109100000 and 20261110090000) created two co-existing
+-- function signatures in public schema:
+--   1. claim_ad_earning_atomic(UUID, TEXT, NUMERIC, TEXT)
+--   2. claim_ad_earning_atomic(UUID, TEXT, NUMERIC, TEXT, BOOLEAN)
+-- When clients/edge functions call claim_ad_earning_atomic without passing all 
+-- default arguments, PostgREST fails with error 42725:
+-- "Could not choose a best candidate function. You might need to add explicit type casts."
+--
+-- Fix:
+-- Drop all legacy/overloaded signatures and re-assert the single authoritative
+-- 5-argument function signature.
+-- ============================================================================
+
+-- 1. Drop all legacy conflicting signatures
+DROP FUNCTION IF EXISTS public.claim_ad_earning_atomic(uuid, text, numeric, text) CASCADE;
+DROP FUNCTION IF EXISTS public.claim_ad_earning_atomic(uuid, text, numeric) CASCADE;
+DROP FUNCTION IF EXISTS public.claim_ad_earning_atomic(uuid, text) CASCADE;
+
+-- 2. Define single authoritative atomic RPC
+CREATE OR REPLACE FUNCTION public.claim_ad_earning_atomic(
+  p_ad_id UUID,
+  p_user_email TEXT,
+  p_expected_rate NUMERIC DEFAULT 12.50,
+  p_device_id TEXT DEFAULT NULL,
+  p_skip_ad_counter BOOLEAN DEFAULT FALSE
+) RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_email_lower        TEXT;
+  v_user_id            UUID;
+  v_current_bal        NUMERIC(14,2);
+  v_current_clicks     INT;
+  v_monetized_val      TEXT;
+  v_has_cancelled      BOOLEAN := FALSE;
+  v_ref_downloads      INT;
+  v_suspended_until    TIMESTAMP WITH TIME ZONE;
+  v_is_affiliate       BOOLEAN := FALSE;
+  v_is_career          BOOLEAN := FALSE;
+  v_is_exempt          BOOLEAN := FALSE;
+  v_is_monetized       BOOLEAN;
+  v_raw_cpi            NUMERIC(12,2);
+  v_earn_rate          NUMERIC(12,2);
+  v_holding_cap        NUMERIC(14,2);
+  v_is_capped          BOOLEAN := FALSE;
+  v_next_bal           NUMERIC(14,2);
+  v_next_clicks        INT;
+  v_next_monetized     TEXT;
+  v_existing_views     INT;
+  v_user_freq_cap      INT;
+  v_impressions_target INT;
+  v_impressions_count  INT;
+  v_ad_completed       BOOLEAN;
+BEGIN
+  v_email_lower := lower(trim(p_user_email));
+
+  -- 1. Row Lock on Viewer Profile
+  SELECT 
+    id, 
+    COALESCE(balance, 0.00), 
+    COALESCE(monetization_clicks, 0), 
+    COALESCE(monetized::text, 'false'), 
+    COALESCE(has_cancelled_monetization, false),
+    COALESCE(referral_downloads_count, 0),
+    suspended_until,
+    COALESCE(is_affiliate, FALSE),
+    COALESCE(is_career, FALSE)
+  INTO 
+    v_user_id,
+    v_current_bal,
+    v_current_clicks,
+    v_monetized_val,
+    v_has_cancelled,
+    v_ref_downloads,
+    v_suspended_until,
+    v_is_affiliate,
+    v_is_career
+  FROM public.users
+  WHERE lower(trim(email)) = v_email_lower
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'USER_NOT_FOUND',
+      'error', 'Viewer profile not found.'
+    );
+  END IF;
+
+  v_is_exempt := (
+    v_is_affiliate
+    OR v_is_career
+    OR v_email_lower IN ('nonsom019@gmail.com', 'nonsom2023@gmail.com')
+  );
+
+  v_is_monetized := (
+    v_is_exempt
+    OR (
+      NOT v_has_cancelled AND (
+        v_monetized_val IN ('true', 'yes', '1', 't')
+        OR v_current_clicks >= 300
+        OR v_ref_downloads >= 12
+      )
+    )
+  );
+
+  -- 2. Check Suspension Status
+  IF NOT v_is_exempt AND v_suspended_until IS NOT NULL AND v_suspended_until > now() THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'USER_SUSPENDED',
+      'error', 'Account is currently suspended.',
+      'suspended_until', v_suspended_until
+    );
+  END IF;
+
+  -- 3. Resolve Ad Details (Non-locking read)
+  SELECT 
+    cost_per_impression,
+    COALESCE(user_frequency_cap, 1),
+    COALESCE(impressions, 0),
+    COALESCE(impression_count, 0),
+    (completed_at IS NOT NULL)
+  INTO 
+    v_raw_cpi,
+    v_user_freq_cap,
+    v_impressions_target,
+    v_impressions_count,
+    v_ad_completed
+  FROM public.addsactive
+  WHERE id = p_ad_id;
+
+  IF NOT FOUND THEN
+    SELECT 
+      cost_per_impression,
+      COALESCE(user_frequency_cap, 1),
+      COALESCE(impressions, 0),
+      COALESCE(impression_count, 0),
+      (completed_at IS NOT NULL)
+    INTO 
+      v_raw_cpi,
+      v_user_freq_cap,
+      v_impressions_target,
+      v_impressions_count,
+      v_ad_completed
+    FROM public.adds
+    WHERE id = p_ad_id;
+  END IF;
+
+  IF v_ad_completed OR (v_impressions_target > 0 AND v_impressions_count >= v_impressions_target) THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'CAMPAIGN_COMPLETED',
+      'error', 'This ad campaign has completed its impression budget.'
+    );
+  END IF;
+
+  IF v_raw_cpi IS NULL OR v_raw_cpi <= 0 THEN
+    v_raw_cpi := GREATEST(COALESCE(p_expected_rate / 0.50, 25.00), 25.00);
+  END IF;
+
+  -- 4. Check Frequency Cap per User (Unique to this viewer, zero cross-user lock contention)
+  SELECT COALESCE(view_count, 0) INTO v_existing_views
+  FROM public.ad_impressions
+  WHERE ad_id = p_ad_id AND lower(user_email) = v_email_lower
+  FOR UPDATE;
+
+  IF FOUND AND v_existing_views >= v_user_freq_cap THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'ALREADY_EARNED',
+      'error', 'Frequency cap reached for this ad campaign.',
+      'views', v_existing_views,
+      'cap', v_user_freq_cap
+    );
+  END IF;
+
+  -- 5. Calculate Revenue Share (Dynamic attention share: 30% base up to 50% max)
+  IF p_expected_rate IS NOT NULL AND p_expected_rate > 0 THEN
+    v_earn_rate := GREATEST(ROUND((v_raw_cpi * 0.30)::numeric, 2), LEAST(ROUND((v_raw_cpi * 0.50)::numeric, 2), p_expected_rate));
+  ELSE
+    v_earn_rate := ROUND((v_raw_cpi * 0.30)::numeric, 2);
+  END IF;
+
+  IF v_earn_rate <= 0 THEN
+    v_earn_rate := 7.50; -- Base 30% of default 25.00 CPI
+  END IF;
+
+  IF NOT v_is_monetized THEN
+    v_earn_rate := 0.00;
+  END IF;
+
+  -- 6. ATW Holding Cap Enforcement (Terms Section 3.3)
+  -- ATW1: ₦30,000, ATW2: ₦60,000, ATW3: ₦90,000. Exempt/Career/Affiliate: Unlimited.
+  v_holding_cap := CASE
+    WHEN v_is_exempt THEN 999999999.00
+    ELSE GREATEST(1, LEAST(3, FLOOR((v_current_clicks + 1) / 300.0)::int + 1)) * 30000.00
+  END;
+
+  -- If user's balance already meets or exceeds holding cap, earnings are forfeited to platform liquidity
+  IF v_current_bal >= v_holding_cap THEN
+    v_is_capped := true;
+    v_earn_rate := 0.00;
+  END IF;
+
+  -- 7. Upsert Impression Record (Per-user impression tracking)
+  IF FOUND THEN
+    UPDATE public.ad_impressions
+    SET 
+      view_count = COALESCE(view_count, 0) + 1,
+      today_view_count = CASE 
+        WHEN last_viewed_at::date = CURRENT_DATE THEN COALESCE(today_view_count, 0) + 1 
+        ELSE 1 
+      END,
+      last_viewed_at = now()
+    WHERE ad_id = p_ad_id AND lower(user_email) = v_email_lower;
+  ELSE
+    INSERT INTO public.ad_impressions (
+      ad_id,
+      user_email,
+      view_count,
+      today_view_count,
+      last_viewed_at
+    ) VALUES (
+      p_ad_id,
+      v_email_lower,
+      1,
+      1,
+      now()
+    );
+  END IF;
+
+  -- Hot-row decoupling: Only update addsactive synchronously if caller did NOT request decoupling
+  IF NOT p_skip_ad_counter THEN
+    UPDATE public.addsactive
+    SET 
+      impression_count = COALESCE(impression_count, 0) + 1,
+      completed_at = CASE 
+        WHEN (impressions > 0 AND (COALESCE(impression_count, 0) + 1) >= impressions) THEN now() 
+        ELSE completed_at 
+      END
+    WHERE id = p_ad_id;
+  END IF;
+
+  -- 8. Atomically Update Viewer Balance, Clicks & ATW Tier
+  v_next_bal := LEAST(v_holding_cap, ROUND((v_current_bal + v_earn_rate)::numeric, 2));
+  v_next_clicks := v_current_clicks + 1;
+  v_next_monetized := CASE 
+    WHEN v_has_cancelled THEN 'false'
+    WHEN (v_is_monetized OR v_next_clicks >= 300) THEN 'true' 
+    ELSE 'false' 
+  END;
+
+  UPDATE public.users
+  SET 
+    balance = v_next_bal,
+    monetization_clicks = v_next_clicks,
+    atw_tier = CASE
+      WHEN v_is_exempt THEN 'Unlimited'
+      ELSE 'ATW' || GREATEST(1, LEAST(3, FLOOR(v_next_clicks / 300.0)::int + 1))
+    END,
+    monetized = v_next_monetized,
+    last_active_at = now()
+  WHERE id = v_user_id;
+
+  -- 9. Credit Affiliate Platform Share (Lock-Free)
+  PERFORM public.credit_affiliate_platform_share_atomic(v_raw_cpi, p_ad_id, v_email_lower);
+
+  IF v_is_affiliate OR v_email_lower IN ('nonsom019@gmail.com', 'nonsom2023@gmail.com') THEN
+    SELECT COALESCE(balance, v_next_bal) INTO v_next_bal
+    FROM public.users
+    WHERE id = v_user_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'code', 'EARN_SUCCESS',
+    'amount', v_earn_rate,
+    'raw_cpi', v_raw_cpi,
+    'balance', v_next_bal,
+    'clicks', v_next_clicks,
+    'views', COALESCE(v_existing_views, 0) + 1,
+    'cap', v_user_freq_cap,
+    'holding_cap', v_holding_cap,
+    'is_capped', v_is_capped,
+    'monetized', (v_next_monetized = 'true'),
+    'device_id', p_device_id,
+    'affiliate_credited', true,
+    'counter_decoupled', p_skip_ad_counter
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'DB_ERROR',
+      'error', SQLERRM
+    );
+END;
+$$;
+
+-- 3. Lock down permissions: service_role only
+REVOKE ALL ON FUNCTION public.claim_ad_earning_atomic(UUID, TEXT, NUMERIC, TEXT, BOOLEAN) FROM anon, authenticated, PUBLIC;
+GRANT EXECUTE ON FUNCTION public.claim_ad_earning_atomic(UUID, TEXT, NUMERIC, TEXT, BOOLEAN) TO service_role;
+
+-- 4. Harden auto_provision_user for new user registrations (including Apple Sign In)
+CREATE OR REPLACE FUNCTION public.auto_provision_user(
+  p_email text,
+  p_first_name text,
+  p_last_name text,
+  p_profile_image text,
+  p_business_name text,
+  p_phone text,
+  p_passphrase text
+)
+RETURNS void AS $$
+DECLARE
+  v_normalized_email text := lower(trim(p_email));
+  v_default_username text;
+  v_ref_code text;
+BEGIN
+  -- Strict guard: If user already exists under ANY email casing, do NOT insert placeholder
+  IF EXISTS (SELECT 1 FROM public.users WHERE lower(email) = v_normalized_email) THEN
+    RETURN;
+  END IF;
+
+  v_default_username := split_part(v_normalized_email, '@', 1);
+  IF length(v_default_username) < 3 THEN
+    v_default_username := 'user_' || substr(md5(random()::text), 1, 6);
+  END IF;
+
+  -- Ensure username is unique
+  IF EXISTS (SELECT 1 FROM public.users WHERE lower(username) = lower(v_default_username)) THEN
+    v_default_username := v_default_username || '_' || substr(md5(random()::text), 1, 4);
+  END IF;
+
+  v_ref_code := 'PAAYH-' || upper(substr(md5(v_normalized_email || random()::text), 1, 6));
+
+  INSERT INTO public.users (
+    email,
+    username,
+    business_name,
+    "firstName",
+    "lastName",
+    "profileImage",
+    dob,
+    country,
+    state,
+    location,
+    phone,
+    passphrase,
+    industry,
+    interest,
+    behavior,
+    lifestyle,
+    personality,
+    intl_travel,
+    local_travel,
+    balance,
+    withdrawal,
+    mutual_count,
+    mutuals,
+    monetized,
+    has_updated_profile,
+    referral_code
+  ) VALUES (
+    v_normalized_email,
+    v_default_username,
+    COALESCE(p_business_name, ''),
+    COALESCE(p_first_name, 'User'),
+    COALESCE(p_last_name, ''),
+    COALESCE(p_profile_image, ''),
+    '1970-01-01',
+    'PLACEHOLDER',
+    'PLACEHOLDER',
+    'PLACEHOLDER',
+    COALESCE(NULLIF(trim(p_phone), ''), 'PLACEHOLDER_PHONE_' || floor(random() * 10000000)::text),
+    COALESCE(NULLIF(trim(p_passphrase), ''), 'PLACEHOLDER_PASS_' || floor(random() * 10000000)::text),
+    '{}',
+    '{}',
+    '{}',
+    '{}',
+    '{}',
+    false,
+    false,
+    0.00,
+    0.00,
+    0,
+    '{}',
+    false,
+    false,
+    v_ref_code
+  )
+  ON CONFLICT (email) DO NOTHING;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION public.auto_provision_user(text, text, text, text, text, text, text) FROM anon, authenticated, PUBLIC;
+GRANT EXECUTE ON FUNCTION public.auto_provision_user(text, text, text, text, text, text, text) TO service_role;

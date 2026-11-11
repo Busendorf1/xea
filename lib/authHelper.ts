@@ -112,6 +112,12 @@ export async function getAuthenticatedEmail(
         });
 
         email = (payload["https://xea.app/email"] || payload.email) as string | undefined;
+        if (!email && payload.sub && String(payload.sub).startsWith("apple|")) {
+          const sanitizedSub = String(payload.sub)
+            .replace(/^apple\|/, "")
+            .replace(/[^a-zA-Z0-9._-]/g, "_");
+          email = `${sanitizedSub}@privaterelay.appleid.com`.toLowerCase();
+        }
         if (payload.exp) {
           expiresAt = payload.exp * 1000;
         }
@@ -135,7 +141,13 @@ export async function getAuthenticatedEmail(
 
             if (res.ok) {
               const userInfo = await res.json();
-              email = userInfo.email;
+              email = userInfo.email || userInfo["https://xea.app/email"];
+              if (!email && userInfo.sub && String(userInfo.sub).startsWith("apple|")) {
+                const sanitizedSub = String(userInfo.sub)
+                  .replace(/^apple\|/, "")
+                  .replace(/[^a-zA-Z0-9._-]/g, "_");
+                email = `${sanitizedSub}@privaterelay.appleid.com`.toLowerCase();
+              }
               break;
             } else if (res.status === 401 || res.status === 403) {
               // Invalid or expired token; do not retry
