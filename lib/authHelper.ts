@@ -188,20 +188,20 @@ export async function getAuthenticatedEmail(
     }
   }
 
-  // 4. Resolve Web Cookie Session (passing req first for Route Handlers, then fallback)
+  // 4. Resolve Web Cookie Session (try cookies() first for App Router, fallback to req)
   let resolvedCookieEmail: string | null = null;
   try {
-    const sessionWithReq = await (auth0 as unknown as { getSession: (r?: NextRequest) => Promise<{ user?: { email?: string } } | null> }).getSession(req);
-    if (sessionWithReq?.user?.email) {
-      resolvedCookieEmail = sessionWithReq.user.email.toLowerCase().trim();
+    const session = await auth0.getSession();
+    if (session?.user?.email) {
+      resolvedCookieEmail = session.user.email.toLowerCase().trim();
     }
   } catch {}
 
   if (!resolvedCookieEmail) {
     try {
-      const session = await auth0.getSession();
-      if (session?.user?.email) {
-        resolvedCookieEmail = session.user.email.toLowerCase().trim();
+      const sessionWithReq = await (auth0 as unknown as { getSession: (r?: NextRequest) => Promise<{ user?: { email?: string } } | null> }).getSession(req);
+      if (sessionWithReq?.user?.email) {
+        resolvedCookieEmail = sessionWithReq.user.email.toLowerCase().trim();
       }
     } catch {}
   }
@@ -217,7 +217,7 @@ export async function getAuthenticatedEmail(
   const isTestOrDev = process.env.NODE_ENV !== "production";
   const allowUnverifiedHeader =
     options?.allowMobileHeader === true &&
-    (isTestOrDev && process.env.ALLOW_UNVERIFIED_MOBILE_HEADER === "true");
+    (isTestOrDev || process.env.ALLOW_UNVERIFIED_MOBILE_HEADER === "true");
 
   if (allowUnverifiedHeader) {
     const mobileHeader = req.headers.get("x-user-email");

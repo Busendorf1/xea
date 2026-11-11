@@ -250,17 +250,17 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           headers["x-user-email"] = userEmail;
         }
         const fetchUrl = `/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`;
-        let response = await fetch(fetchUrl, { headers });
+        let response = await fetch(fetchUrl, { headers, credentials: "same-origin" });
 
         // Resilient progressive retry for initial feed load (e.g. serverless cold starts)
         if (!response.ok && pageNum === 0 && !isLoadMore) {
           console.warn("âš ï¸ Feed initial fetch non-OK status:", response.status, "- Retrying with warm cache...");
           await new Promise((r) => setTimeout(r, 1000));
-          response = await fetch(fetchUrl, { headers });
+          response = await fetch(fetchUrl, { headers, credentials: "same-origin" });
 
           if (!response.ok) {
             await new Promise((r) => setTimeout(r, 2000));
-            response = await fetch(fetchUrl, { headers });
+            response = await fetch(fetchUrl, { headers, credentials: "same-origin" });
           }
         }
 
