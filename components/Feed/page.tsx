@@ -350,17 +350,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
   useEffect(() => {
     if (!initialAds || initialAds.length === 0) {
-      // Hydrate from sessionStorage after mount (preserving 100% SSR/Client hydration parity)
-      const cached = readFeedClientCache(userEmail);
-      const hasWarmClientCache = Boolean(cached?.ads && cached.ads.length > 0);
-      if (hasWarmClientCache && cached) {
-        setAds(cached.ads);
-        if (cached.profiles && Object.keys(cached.profiles).length > 0) {
-          setAdvertiserProfiles((prev) => ({ ...prev, ...cached.profiles }));
-        }
-        setLoading(false);
-      }
-      fetchRelevantAds(0, false, hasWarmClientCache);
+      // Keep skeleton loading active while verifying fresh feed to prevent ghost ad flashes
+      setLoading(true);
+      fetchRelevantAds(0, false, false);
     }
   }, [fetchRelevantAds, initialAds, userEmail]);
 
@@ -675,15 +667,14 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           </button>
         </div>
       )}
-      {!loading && !error && (ads.length === 0 || locationSkipped) && (
+      {/* Case 1: Location is explicitly not enabled / skipped -> show Enable Location card */}
+      {!loading && !error && locationSkipped && (
         <div style={{ textAlign: "center", padding: "48px 20px" }}>
           <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>
-            {locationSkipped ? "Enable location to see your feed" : "No matching sponsored content found in your area."}
+            Enable location to see your feed
           </p>
           <p style={{ fontSize: "0.85rem", color: "var(--muted-foreground, #888)", marginTop: "8px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-            {locationSkipped
-              ? "Sponsored content and local community offers are matched to your area. You skipped location verification, so your feed is empty. Tap below to enable location."
-              : "Promotional content and local community offers are targeted to physical jurisdictions. If location is disabled or uncalibrated, tap below to enable location."}
+            Sponsored content and local community offers are matched to your area. You skipped location verification, so your feed is empty. Tap below to enable location.
           </p>
           <button
             type="button"
@@ -712,6 +703,18 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           >
             Enable Location
           </button>
+        </div>
+      )}
+
+      {/* Case 2: Location is enabled, but no matching campaigns exist right now -> clean empty state without button */}
+      {!loading && !error && !locationSkipped && ads.length === 0 && (
+        <div style={{ textAlign: "center", padding: "48px 20px" }}>
+          <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>
+            No active ad campaigns available right now.
+          </p>
+          <p style={{ fontSize: "0.85rem", color: "var(--muted-foreground, #888)", marginTop: "8px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+            You're all caught up! Check back soon for new campaigns targeted to your area.
+          </p>
         </div>
       )}
 

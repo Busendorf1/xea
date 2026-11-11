@@ -571,6 +571,7 @@ export default function DashboardWalletCard({
                       type="button"
                       onClick={() => {
                         resetPinInputs();
+                        setResetEmail(user.email || "");
                         setPinMode("forgot");
                       }}
                       className={styles.pinTextLink}
@@ -627,24 +628,34 @@ export default function DashboardWalletCard({
               {pinMode === "forgot" && (
                 <form onSubmit={handleForgotPinSubmit} className={styles.pinFormSection}>
                   <p className={styles.pinSubText}>
-                    Verify your account email and registered phone number to set a new 4-digit PIN.
+                    Verify your registered account email and phone number to set a new 4-digit PIN.
                   </p>
-                  <input
-                    type="email"
-                    placeholder="Account email address"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    className={styles.pinRecoveryInput}
-                    required
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Registered phone number"
-                    value={resetPhone}
-                    onChange={(e) => setResetPhone(e.target.value)}
-                    className={styles.pinRecoveryInput}
-                    required
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label className={styles.pinFieldLabel}>Registered Account Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      placeholder="e.g. name@example.com"
+                      value={resetEmail || user.email || ""}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      className={styles.pinRecoveryInput}
+                      required
+                    />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>
+                    <label className={styles.pinFieldLabel}>Registered Phone Number</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      autoComplete="tel"
+                      placeholder="e.g. +234 801 234 5678"
+                      value={resetPhone}
+                      onChange={(e) => setResetPhone(e.target.value)}
+                      className={styles.pinRecoveryInput}
+                      required
+                    />
+                  </div>
 
                   <span className={styles.pinFieldLabel}>New 4-Digit PIN</span>
                   {renderFourDigitBoxes(
@@ -722,6 +733,7 @@ export default function DashboardWalletCard({
                       type="button"
                       onClick={() => {
                         resetPinInputs();
+                        setResetEmail(user.email || "");
                         setPinMode("forgot");
                       }}
                       className={styles.pinTextLink}
