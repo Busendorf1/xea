@@ -1462,7 +1462,35 @@ serve(async (req: Request) => {
           new Date(a.created_at || 0).getTime()
       );
 
-      return new Response(JSON.stringify(combined), {
+      // Robust deduplication across duplicate emits or overlapping time windows
+      const seenIds = new Set<string>();
+      const seenContentKeys = new Set<string>();
+      const deduplicated: any[] = [];
+
+      for (const item of combined) {
+        if (!item || !item.id) continue;
+        const strId = String(item.id);
+        if (seenIds.has(strId)) continue;
+        seenIds.add(strId);
+
+        const normTitle = String(item.title || "")
+          .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
+          .trim()
+          .toLowerCase();
+        const normMsg = String(item.message || "")
+          .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
+          .trim()
+          .toLowerCase();
+        const notifTime = item.created_at ? new Date(item.created_at).getTime() : 0;
+        const timeWindow = notifTime > 0 ? Math.floor(notifTime / (30 * 60 * 1000)) : 0;
+        const contentKey = `${normTitle}:::${normMsg}:::${timeWindow}`;
+
+        if (seenContentKeys.has(contentKey)) continue;
+        seenContentKeys.add(contentKey);
+        deduplicated.push(item);
+      }
+
+      return new Response(JSON.stringify(deduplicated), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

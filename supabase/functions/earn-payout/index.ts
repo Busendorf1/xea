@@ -542,10 +542,11 @@ serve(async (req: Request) => {
       });
     }
 
+    const reportedError = rpcError?.message || rpcResult?.error || "Unable to process reward right now. Please try again.";
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Unable to process reward right now. Please try again.",
+        error: reportedError,
       }),
       {
         status: 200,
@@ -560,7 +561,7 @@ serve(async (req: Request) => {
         error: err?.message || "Unable to process reward right now. Please try again.",
       }),
       {
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );

@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   Calendar,
   X,
-  Sparkles,
 } from "lucide-react";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
@@ -469,7 +468,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                       disabled={isResuming}
                       className={styles.resumeBtn}
                     >
-                      <Sparkles size={14} /> {isResuming ? "Reapplying..." : "Reapply for Monetization"}
+                      {isResuming ? "Reapplying..." : "Reapply for Monetization"}
                     </button>
                   </>
                 ) : (

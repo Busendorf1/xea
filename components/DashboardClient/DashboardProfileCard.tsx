@@ -293,7 +293,20 @@ export default function DashboardProfileCard({
             )}
           </AnimatePresence>
 
-          {isMonetized && (
+          {user.has_cancelled_monetization ? (
+            <>
+              <span className={styles.profileStatDot}>·</span>
+              <Link
+                href="/logged-in"
+                onClick={() => onSelectTab("monetize")}
+                className={styles.profileStatItem}
+                style={{ textDecoration: "none" }}
+              >
+                <strong className={styles.profileStatValue} style={{ color: "#f59e0b" }}>Opted Out</strong>
+                <span className={styles.profileStatLabel}>Status</span>
+              </Link>
+            </>
+          ) : isMonetized ? (
             <>
               <span className={styles.profileStatDot}>·</span>
               <div className={styles.profileStatItem}>
@@ -306,7 +319,7 @@ export default function DashboardProfileCard({
                 <strong className={styles.profileStatValue}>Monetized</strong>
               </div>
             </>
-          )}
+          ) : null}
         </div>
 
         {typeof user.monetization_clicks !== "number" ? (
@@ -318,6 +331,23 @@ export default function DashboardProfileCard({
             <div className={styles.monetizeProgressTrack} style={{ marginTop: 8 }}>
               <Skeleton variant="rect" width="100%" height={6} style={{ borderRadius: 9999 }} />
             </div>
+          </div>
+        ) : user.has_cancelled_monetization ? (
+          <div className={styles.renewalSection}>
+            <div className={styles.monetizeProgressHeader}>
+              <span style={{ color: "#f59e0b", fontWeight: 700 }}>Monetization Opted Out</span>
+              <span className={styles.monetizeProgressValue}>Browsing Only</span>
+            </div>
+            <p className={styles.monetizeProgressNote}>
+              You have voluntarily opted out of monetization. Your wallet balance is preserved. You can reapply anytime.
+            </p>
+            <Link
+              href="/logged-in"
+              onClick={() => onSelectTab("monetize")}
+              className={`${styles.renewBtn} ${styles.monetizeProgressLink}`}
+            >
+              Reapply in Monetization Hub
+            </Link>
           </div>
         ) : !isMonetized && (
           <div className={styles.renewalSection}>

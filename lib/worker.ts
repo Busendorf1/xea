@@ -576,16 +576,6 @@ export const paymentWorker = new Worker<PaymentJobData>(
             },
             { onConflict: "reference" }
           ),
-          supabaseAdmin.from("notifications").insert({
-            user_email: senderEmail,
-            title: "Money Sent",
-            message: `You successfully sent ${formattedAmount} to ${recipientEmail}`,
-          }),
-          supabaseAdmin.from("notifications").insert({
-            user_email: recipientEmail,
-            title: "Money Received",
-            message: `You received ${formattedAmount} from ${senderEmail}`,
-          }),
         ]);
 
         await Promise.all([
