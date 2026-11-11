@@ -11,29 +11,92 @@ import { AgentProfileStats } from "@/components/AgentSystem/AgentSystem";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { UserProfile } from "./types";
+import Skeleton from "@/components/ui/Skeleton";
 import styles from "./page.module.css";
 
+export function ProfileCardSkeleton() {
+  return (
+    <div className={styles.profileCard} aria-busy="true" aria-label="Loading profile details">
+      <div className={styles.profileBanner}>
+        <Skeleton variant="rect" width="100%" height={85} />
+      </div>
+      <div className={styles.avatarRow}>
+        <div className={styles.profileImgContainer}>
+          <Skeleton variant="avatar" width={70} height={70} style={{ borderRadius: "50%" }} />
+        </div>
+        <Skeleton variant="rect" width={90} height={32} style={{ borderRadius: 9999 }} />
+      </div>
+
+      <div className={styles.profileInfo}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Skeleton variant="title" width={140} height={20} />
+          <Skeleton variant="rect" width={18} height={18} style={{ borderRadius: "50%" }} />
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <Skeleton variant="text" width={90} height={14} />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Skeleton variant="text" width="90%" height={13} />
+          <Skeleton variant="text" width="60%" height={13} style={{ marginTop: 4 }} />
+        </div>
+
+        <div className={styles.profileMetaRow} style={{ marginTop: 14 }}>
+          <Skeleton variant="text" width={110} height={14} />
+          <Skeleton variant="text" width={90} height={14} />
+        </div>
+
+        <div className={styles.profileStatsRow} style={{ marginTop: 14 }}>
+          <Skeleton variant="text" width={60} height={16} />
+          <span className={styles.profileStatDot}>·</span>
+          <Skeleton variant="text" width={60} height={16} />
+          <span className={styles.profileStatDot}>·</span>
+          <Skeleton variant="text" width={55} height={16} />
+          <span className={styles.profileStatDot}>·</span>
+          <Skeleton variant="text" width={70} height={16} />
+        </div>
+
+        <div className={styles.renewalSection} style={{ marginTop: 16 }}>
+          <div className={styles.monetizeProgressHeader}>
+            <Skeleton variant="text" width={130} height={13} />
+            <Skeleton variant="text" width={80} height={13} />
+          </div>
+          <div className={styles.monetizeProgressTrack} style={{ marginTop: 8 }}>
+            <Skeleton variant="rect" width="100%" height={6} style={{ borderRadius: 9999 }} />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <Skeleton variant="text" width="70%" height={12} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface DashboardProfileCardProps {
-  user: UserProfile;
+  user?: UserProfile | null;
   formatCurrency: (amount: number | string) => string;
   onSelectTab: (tab: string) => void;
+  isLoading?: boolean;
 }
 
 export default function DashboardProfileCard({
   user,
   formatCurrency,
   onSelectTab,
+  isLoading = false,
 }: DashboardProfileCardProps) {
   const [showAtwTooltip, setShowAtwTooltip] = useState(false);
+
+  if (isLoading || !user || !user.email) {
+    return <ProfileCardSkeleton />;
+  }
 
   const clicksCount = Number(user.monetization_clicks ?? 0);
   const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
   const isMonetized = Boolean(
-    isExempt ||
-      user.monetized === "yes" ||
-      user.monetized === "true" ||
-      user.monetized === true ||
-      clicksCount >= 300
+    !user.has_cancelled_monetization &&
+      (isExempt || clicksCount >= 300)
   );
   const progressPct = Math.min(100, Math.round((clicksCount / 300) * 100));
 
@@ -101,7 +164,9 @@ export default function DashboardProfileCard({
             <span>
               {user.business_name && user.business_name.trim() !== ""
                 ? user.business_name
-                : `${user.firstName} ${user.lastName}`}
+                : user.firstName && user.lastName
+                ? `${user.firstName} ${user.lastName}`
+                : user.firstName || (user.username ? `@${user.username.replace(/^@/, "")}` : `@${(user.email || "").split("@")[0]}`)}
             </span>
             {isMonetized && <VerifiedBadge size={19} title="Verified Partner" />}
             <RoleStarBadges
@@ -112,7 +177,7 @@ export default function DashboardProfileCard({
               size={17}
             />
           </h4>
-        <p className={styles.usernameText}>@{user.username.split("@")[0]}</p>
+        <p className={styles.usernameText}>@{user.username ? user.username.replace(/^@/, "") : (user.email || "").split("@")[0]}</p>
 
         {user.business_name && user.business_name.trim() !== "" && (
           <p className={styles.representativeBadge}>
@@ -244,7 +309,17 @@ export default function DashboardProfileCard({
           )}
         </div>
 
-        {!isMonetized && (
+        {typeof user.monetization_clicks !== "number" ? (
+          <div className={styles.renewalSection} aria-busy="true">
+            <div className={styles.monetizeProgressHeader}>
+              <Skeleton variant="text" width={130} height={13} />
+              <Skeleton variant="text" width={75} height={13} />
+            </div>
+            <div className={styles.monetizeProgressTrack} style={{ marginTop: 8 }}>
+              <Skeleton variant="rect" width="100%" height={6} style={{ borderRadius: 9999 }} />
+            </div>
+          </div>
+        ) : !isMonetized && (
           <div className={styles.renewalSection}>
             <div className={styles.monetizeProgressHeader}>
               <span>Monetization Progress</span>

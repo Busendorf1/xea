@@ -1504,6 +1504,10 @@ img.profileImg {
 
 /* Mobile View (Screens <= 768px) */
 @media screen and (max-width: 768px) {
+  .appSub {
+    display: none !important;
+  }
+
   .dashboardContainer {
     padding-left: 0;
     padding-right: 0;

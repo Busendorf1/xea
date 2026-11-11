@@ -153,22 +153,14 @@ export function useFeedActions({
       const shareRate = 0.30 + (bonusSecs / 16.0) * 0.20;
       const expectedRate = Math.round(rawCpi * shareRate * 100) / 100;
 
-      // 1. INSTANT OPTIMISTIC UI: Trigger balance & click progress update immediately (0ms delay)
-      if (expectedRate > 0) {
-        updateBalance(expectedRate);
-        onEarnSuccess?.(expectedRate);
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("xea:live-balance-sync", {
-              detail: { delta: expectedRate, earnedAmount: expectedRate },
-            })
-          );
-          window.dispatchEvent(
-            new CustomEvent("xea:live-balance-earned", {
-              detail: { delta: expectedRate, earnedAmount: expectedRate },
-            })
-          );
-        }
+      // 1. INSTANT OPTIMISTIC UI: Only monetized users receive balance increment
+      const isExempt = isExemptFromBarriersAndInactivity(userEmail);
+      const isMonetized = Boolean(isExempt || viewerProfile?.monetized === true || (viewerProfile?.monetization_clicks || 0) >= 300);
+      const effectiveRate = isMonetized ? expectedRate : 0;
+
+      if (effectiveRate > 0) {
+        updateBalance(effectiveRate);
+        onEarnSuccess?.(effectiveRate);
       }
       incrementClicks?.(1);
       setSeenAds((prev) => [...prev, ad.id]);
@@ -192,9 +184,9 @@ export function useFeedActions({
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
           console.error("❌ Earn API rejected claim:", response.status, errData);
-          if (expectedRate > 0) {
-            updateBalance(-expectedRate);
-            onEarnSuccess?.(-expectedRate);
+          if (effectiveRate > 0) {
+            updateBalance(-effectiveRate);
+            onEarnSuccess?.(-effectiveRate);
           }
           if (errData?.code === "ALREADY_EARNED" || (errData?.error && String(errData.error).includes("already been claimed"))) {
             setSeenAds((prev) => (prev.includes(ad.id) ? prev : [...prev, ad.id]));
@@ -238,9 +230,9 @@ export function useFeedActions({
 
         if (resData.code === "COOLDOWN_ACTIVE") {
           setSeenAds((prev) => prev.filter((id) => id !== ad.id));
-          if (expectedRate > 0) {
-            updateBalance(-expectedRate);
-            onEarnSuccess?.(-expectedRate);
+          if (effectiveRate > 0) {
+            updateBalance(-effectiveRate);
+            onEarnSuccess?.(-effectiveRate);
           }
           if (setViewerProfile) {
             setViewerProfile((prev) =>
@@ -262,18 +254,20 @@ export function useFeedActions({
             : expectedRate;
 
         if (rate === -1 || rate === -2) {
-          if (expectedRate > 0) {
-            updateBalance(-expectedRate);
-            onEarnSuccess?.(-expectedRate);
+          if (effectiveRate > 0) {
+            updateBalance(-effectiveRate);
+            onEarnSuccess?.(-effectiveRate);
           }
           suspendAccount(2);
           return false;
         }
 
         if (rate !== expectedRate) {
-          const diff = rate - expectedRate;
-          updateBalance(diff);
-          onEarnSuccess?.(diff);
+          const diff = isMonetized ? rate - expectedRate : 0;
+          if (diff !== 0) {
+            updateBalance(diff);
+            onEarnSuccess?.(diff);
+          }
         }
 
         if (typeof resData.balance === "number" && !isNaN(resData.balance)) {
@@ -290,6 +284,16 @@ export function useFeedActions({
                     monetized: (typeof authClicks === "number" && authClicks >= 300) || prev.monetized,
                   }
                 : null
+            );
+          }
+
+          // Authoritative sync to DashboardClient user state and live balance listeners
+          onEarnSuccess?.(undefined, authBal, authClicks);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("xea:live-balance-sync", {
+                detail: { newBalance: authBal, clicks: authClicks },
+              })
             );
           }
 

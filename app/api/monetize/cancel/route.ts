@@ -12,10 +12,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { confirmEmail, holdConfirmed } = body;
+    const { confirmEmail, holdConfirmed, confirmText } = body;
 
     const cleanUserEmail = userEmail.toLowerCase().trim();
     let isConfirmed = Boolean(holdConfirmed);
+
+    const inputConfirm = String(confirmText || confirmEmail || "").trim();
+    if (inputConfirm.toUpperCase() === "DEACTIVATE") {
+      isConfirmed = true;
+    }
 
     if (!isConfirmed && confirmEmail) {
       const cleanConfirm = String(confirmEmail).toLowerCase().trim().replace(/^@/, "");
@@ -35,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     if (!isConfirmed) {
       return NextResponse.json(
-        { error: "Confirmation required. Please confirm your email, username, or hold to confirm cancellation." },
+        { error: "Confirmation required. Type DEACTIVATE, confirm your email, or hold to confirm cancellation." },
         { status: 400 }
       );
     }

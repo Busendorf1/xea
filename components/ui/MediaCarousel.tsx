@@ -1,3 +1,4 @@
+import { toVercelCdnUrl } from "@/lib/utils/cdnUrl";
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { Volume2, VolumeX } from "lucide-react";
@@ -6,14 +7,7 @@ import styles from "./AdCard.module.css";
 import VideoControlBar from "./VideoControlBar";
 import AsymmetricMediaGrid from "./AsymmetricMediaGrid";
 
-const HlsVideoPlayer = dynamic(() => import("./HlsVideoPlayer"), {
-  ssr: false,
-  loading: () => (
-    <div style={{ width: "100%", height: "100%", minHeight: 260, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--card-bg)" }}>
-      <AppleSpinner size={28} />
-    </div>
-  ),
-});
+import HlsVideoPlayer from "./HlsVideoPlayer";
 
 interface MediaCarouselProps {
   adMedia: string | null;
@@ -198,7 +192,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   const mediaUrls = useMemo(() => {
     return adMedia
-      ? adMedia.split(",").map((url) => url.trim()).filter(Boolean)
+      ? adMedia.split(",").map((url) => toVercelCdnUrl(url.trim())).filter(Boolean)
       : [];
   }, [adMedia]);
 
@@ -270,25 +264,25 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       if (isCardVisible && idx === targetVideoIdx) {
         video.muted = isMuted;
         video.defaultMuted = isMuted;
-        const p = video.play();
-        if (p !== undefined) {
-          p.then(() => {
-            setPlayingStates((prev) => ({ ...prev, [idx]: true }));
-            if (isFullscreen) showControlsTemporarily(idx);
-          }).catch(() => {
-            // If browser blocked unmuted autoplay without direct gesture, fall back to muted playback
-            if (!video.muted) {
-              video.muted = true;
-              video.defaultMuted = true;
-              video.play().then(() => {
-                setPlayingStates((prev) => ({ ...prev, [idx]: true }));
-              }).catch(() => {
-                setPlayingStates((prev) => ({ ...prev, [idx]: false }));
-              });
-            } else {
-              setPlayingStates((prev) => ({ ...prev, [idx]: false }));
-            }
-          });
+        // Only trigger manual play if video is ready and HlsVideoPlayer hasn't started it
+        if (video.paused && video.readyState >= 2) {
+          const p = video.play();
+          if (p !== undefined) {
+            p.then(() => {
+              setPlayingStates((prev) => ({ ...prev, [idx]: true }));
+              if (isFullscreen) showControlsTemporarily(idx);
+            }).catch(() => {
+              if (!video.muted) {
+                video.muted = true;
+                video.defaultMuted = true;
+                video.play().then(() => {
+                  setPlayingStates((prev) => ({ ...prev, [idx]: true }));
+                }).catch(() => {
+                  setPlayingStates((prev) => ({ ...prev, [idx]: false }));
+                });
+              }
+            });
+          }
         }
       } else {
         if (!video.paused) {
@@ -462,7 +456,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
             loop
             playsInline
             autoPlay={isCardVisible && index === activeIndex}
-            preload={isPreloadWarm && shouldEagerLoad ? "auto" : "metadata"}
+            preload="auto"
             muted={isMuted}
             controls={false}
             className={styles.mediaVideo}

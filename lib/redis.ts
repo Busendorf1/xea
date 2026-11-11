@@ -92,8 +92,8 @@ function createRawRedisClient(): Redis {
     }
   });
 
-  client.on("connect", () => {
-    console.log("⚡ Upstash Redis connected successfully");
+  client.on("ready", () => {
+    console.log("⚡ Upstash Redis connected & ready");
     enforceRedisMemoryPolicy(client).catch(() => {});
   });
 
@@ -143,7 +143,9 @@ export async function enforceRedisMemoryPolicy(client: Redis): Promise<void> {
       msg.includes("unknown command") ||
       msg.includes("ERR unknown") ||
       msg.includes("NOPERM") ||
-      msg.includes("disabled")
+      msg.includes("disabled") ||
+      msg.includes("Stream isn't writeable") ||
+      msg.includes("enableOfflineQueue")
     ) {
       // Managed Redis providers (like Upstash) restrict CONFIG command by default
       return;

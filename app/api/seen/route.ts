@@ -214,6 +214,15 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
+    // Server-side guard: Ad owners viewing their own ad do not deplete their impressions or qualify referral bonuses
+    if (adOwnerEmail && adOwnerEmail.toLowerCase().trim() === emailKey) {
+      return NextResponse.json({
+        success: true,
+        message: "Owner preview recorded (impressions and budget preserved).",
+        isOwner: true,
+      });
+    }
+
     // Token and dwell time soft verification for paid advertiser campaigns
     if (!isPlatformPost && (!token || !servedAt)) {
       console.log("ℹ️ Seen recorded via client feed interaction without verification token for ad:", adId);
@@ -308,21 +317,18 @@ export async function POST(request: NextRequest) {
             ? Number(rpcRes.data[0].new_click_count)
             : null;
 
-        const { data: userRow } = await supabaseAdmin
-          .from("users")
-          .select("id, monetization_clicks, monetized, has_cancelled_monetization")
-          .eq("email", emailKey)
-          .maybeSingle();
-
-        const hasCancelled = Boolean(userRow?.has_cancelled_monetization);
-        const currentDbClicks = Number(userRow?.monetization_clicks || 0);
-
         if (rpcCount !== null && rpcCount > 0) {
           clicksCount = Math.max(rpcCount, liveVal || 0);
-          isMonetized = hasCancelled
-            ? false
-            : Boolean(rpcRes.data[0]?.is_now_monetized || clicksCount >= 300);
+          isMonetized = Boolean(rpcRes.data[0]?.is_now_monetized);
         } else {
+          const { data: userRow } = await supabaseAdmin
+            .from("users")
+            .select("id, monetization_clicks, monetized, has_cancelled_monetization")
+            .eq("email", emailKey)
+            .maybeSingle();
+
+          const hasCancelled = Boolean(userRow?.has_cancelled_monetization);
+          const currentDbClicks = Number(userRow?.monetization_clicks || 0);
           const nextDbClicks = Math.max(currentDbClicks + 1, liveVal || 0);
           const nextMon = hasCancelled
             ? false
@@ -344,29 +350,19 @@ export async function POST(request: NextRequest) {
           isMonetized = nextMon;
         }
 
-        // If user manually cancelled monetization, guarantee they remain unmonetized
-        if (hasCancelled && userRow?.id) {
-          isMonetized = false;
-          await supabaseAdmin
-            .from("users")
-            .update({
-              monetized: "false",
-            })
-            .eq("id", userRow.id);
-        }
-
         const isExempt = isExemptFromBarriersAndInactivity(emailKey);
         const tierDetails = computeAtwTierDetails(clicksCount || 0, undefined, isExempt);
         const nextAtwTier = tierDetails.tierCode;
 
-        supabaseAdmin
-          .from("users")
-          .update({
-            atw_tier: nextAtwTier,
-            monetized: !hasCancelled && (isMonetized || isExempt) ? "true" : "false",
-          })
-          .eq("email", emailKey)
-          .then(() => {});
+        if (nextAtwTier) {
+          supabaseAdmin
+            .from("users")
+            .update({
+              atw_tier: nextAtwTier,
+            })
+            .eq("email", emailKey)
+            .then(() => {});
+        }
 
         if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
           redisConnection.set(`user:live_clicks:v2:${emailKey}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});

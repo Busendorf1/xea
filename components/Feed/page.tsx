@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import styles from "../Feed/page.module.css";
 import adCardStyles from "../ui/AdCard.module.css";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import AdCard, { type Ad } from "../ui/AdCard";
+import { isVideoUrl } from "../ui/MediaCarousel";
 import Skeleton from "../ui/Skeleton";
 import FeedSkeleton from "../ui/FeedSkeleton";
 import NewPostsPill from "../ui/NewPostsPill";
@@ -29,6 +30,10 @@ function readFeedClientCache(email?: string): { ads: Ad[]; profiles: Record<stri
     const raw = sessionStorage.getItem(`paayh_feed_cache_${email.toLowerCase().trim()}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    // Ignore stale cache older than 5 minutes to prevent ghost ad flashes
+    if (parsed?.timestamp && Date.now() - parsed.timestamp > 5 * 60 * 1000) {
+      return null;
+    }
     if (Array.isArray(parsed?.ads) && parsed.ads.length > 0) {
       return {
         ads: parsed.ads,
@@ -78,7 +83,14 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Location skipped ("Skip for now" in Proof of Location): sponsored content is hidden and an
   // Enable Location card is shown, since ads are geo-targeted and payouts require proof of location.
-  const [locationSkipped, setLocationSkipped] = useState(false);
+  const [locationSkipped, setLocationSkipped] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return sessionStorage.getItem("paayh_location_skipped") === "true";
+      } catch {}
+    }
+    return false;
+  });
   const hasAdsRef = useRef<boolean>(ads.length > 0);
   hasAdsRef.current = ads.length > 0;
   const inFlightFeedKeyRef = useRef<string | null>(null);
@@ -285,6 +297,10 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         setAds((prev) => {
           if (!isLoadMore) {
             if (isSilentRefresh && prev.length > 0) {
+              // If server confirmed 0 active ads available, cleanly update to empty feed
+              if (feedAds.length === 0) {
+                return [];
+              }
               const incomingIds = new Set(feedAds.map((a) => a.id));
               const remainingExisting = prev.filter((a) => !incomingIds.has(a.id));
               return [...feedAds, ...remainingExisting];
@@ -431,6 +447,61 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   }, []);
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  // Dynamic Symmetrical Bidirectional Headroom Video Pre-warming:
+  // Pre-buffers initial chunks of upcoming feed videos in BOTH scroll directions:
+  // 1) Forward scroll (downward): 4 items ahead of the current viewport bottom
+  // 2) Opposite scroll (upward/back): 4 items ahead of the current viewport top
+  useEffect(() => {
+    if (typeof window === "undefined" || displayFeed.length === 0 || virtualItems.length === 0) return;
+
+    const prewarmed = (window as any).__xea_prewarmed_videos || new Set<string>();
+    (window as any).__xea_prewarmed_videos = prewarmed;
+
+    const firstIndex = virtualItems[0].index;
+    const lastIndex = virtualItems[virtualItems.length - 1].index;
+
+    // Symmetrical bidirectional window: 4 items above (opposite scroll) and 4 items below (forward scroll)
+    const upwardStart = Math.max(0, firstIndex - 4);
+    const upwardEnd = firstIndex;
+    const downwardStart = lastIndex;
+    const downwardEnd = Math.min(displayFeed.length, lastIndex + 5);
+
+    const itemsToPrewarm = [
+      ...displayFeed.slice(upwardStart, upwardEnd),
+      ...displayFeed.slice(downwardStart, downwardEnd),
+    ];
+
+    const prewarmVideos = () => {
+      itemsToPrewarm.forEach((item) => {
+        const mediaStr = item.ad_media;
+        if (!mediaStr) return;
+        const urls = mediaStr.split(",").map((u: string) => u.trim());
+        urls.forEach((url: string) => {
+          if (!url || prewarmed.has(url)) return;
+          if (isVideoUrl(url) || (item.hls_url && url === urls[0])) {
+            prewarmed.add(url);
+            try {
+              const probe = document.createElement("video");
+              probe.preload = "auto";
+              probe.muted = true;
+              probe.playsInline = true;
+              probe.src = url;
+              probe.load();
+            } catch {}
+          }
+        });
+      });
+    };
+
+    if ("requestIdleCallback" in window) {
+      const handle = (window as any).requestIdleCallback(prewarmVideos, { timeout: 600 });
+      return () => (window as any).cancelIdleCallback(handle);
+    } else {
+      const timer = setTimeout(prewarmVideos, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [virtualItems, displayFeed]);
 
   useEffect(() => {
     if (virtualItems.length > 0 && hasMore && !loadingMore && !loading) {

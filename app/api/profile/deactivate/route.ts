@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
@@ -29,11 +29,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const forfeitConfirmed = body?.forfeitConfirmed === true;
     const confirmEmail = body?.confirmEmail ? String(body.confirmEmail).toLowerCase().trim() : "";
+    const confirmText = body?.confirmText ? String(body.confirmText).trim().toUpperCase() : "";
 
-    // Human Action Verification: Ensure confirmEmail matches authenticated email
-    if (!confirmEmail || confirmEmail !== emailLower) {
+    // Human Action Verification: Ensure confirmEmail matches authenticated email OR confirmText is DEACTIVATE
+    const isConfirmed = confirmText === "DEACTIVATE" || confirmEmail === "deactivate" || (confirmEmail && confirmEmail === emailLower);
+    if (!isConfirmed) {
       return NextResponse.json(
-        { error: "Email verification failed. Please type your exact email address to confirm account deactivation." },
+        { error: "Confirmation error. Type DEACTIVATE or your exact email address to confirm account deactivation." },
         { status: 400 }
       );
     }
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: "FORFEIT_REQUIRED",
-          message: `Your balance of ${formattedBal} is below the â‚¦10,000 minimum withdrawal limit. You must confirm that you willingly forfeit these remaining funds before deactivating your account.`,
+          message: `Your balance of ${formattedBal} is below the ₦10,000 minimum withdrawal limit. You must confirm that you willingly forfeit these remaining funds before deactivating your account.`,
           balance: currentBalance,
         },
         { status: 400 }
@@ -80,12 +82,12 @@ export async function POST(req: NextRequest) {
             username,
             amount: currentBalance,
             currency: "NGN",
-            reason: `Account deactivation forfeiture (Balance: â‚¦${currentBalance.toFixed(2)})`,
+            reason: `Account deactivation forfeiture (Balance: ₦${currentBalance.toFixed(2)})`,
             status: "PENDING",
           }]);
 
         if (forfeitErr) {
-          console.warn("âš ï¸ Warning: Could not insert into forfeited_balances:", forfeitErr.message);
+          console.warn("⚠️ Warning: Could not insert into forfeited_balances:", forfeitErr.message);
         }
 
         // 0b. Notify all system administrators
@@ -115,7 +117,7 @@ export async function POST(req: NextRequest) {
           try {
             await supabaseAdmin.from("notifications").insert(notificationRows);
           } catch (nErr) {
-            console.warn("âš ï¸ Warning: Failed to send admin notifications for forfeited balance:", nErr);
+            console.warn("⚠️ Warning: Failed to send admin notifications for forfeited balance:", nErr);
           }
         }
 
@@ -126,16 +128,16 @@ export async function POST(req: NextRequest) {
             total_credits_kobo: Math.round(currentBalance * 100),
             total_debits_kobo: 0,
             variance_kobo: Math.round(currentBalance * 100),
-            notes: `Account deactivation forfeiture: @${username} (${emailLower}) forfeited â‚¦${currentBalance.toFixed(2)}. Awaiting admin resolution to platform balance.`,
+            notes: `Account deactivation forfeiture: @${username} (${emailLower}) forfeited ₦${currentBalance.toFixed(2)}. Awaiting admin resolution to platform balance.`,
           }]);
         } catch {}
 
       } catch (forfeitProcessingErr) {
-        console.error("âŒ Error tracking forfeited balance during deactivation:", forfeitProcessingErr);
+        console.error("❌ Error tracking forfeited balance during deactivation:", forfeitProcessingErr);
       }
     }
 
-    console.log(`ðŸ‘¤ Permanently deactivating and deleting account for: ${emailLower} (Forfeited Balance: â‚¦${currentBalance})`);
+    console.log(`👤 Permanently deactivating and deleting account for: ${emailLower} (Forfeited Balance: ₦${currentBalance})`);
 
     // 1. Asynchronous Media Cleanup: Schedule storage asset purging in background without delaying user response
     (async () => {
@@ -187,7 +189,7 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin.storage.from("news").remove(Array.from(new Set(newsFilesToRemove))).catch(() => {});
         }
       } catch (storageErr) {
-        console.warn("âš ï¸ Background storage cleanup notice:", storageErr);
+        console.warn("⚠️ Background storage cleanup notice:", storageErr);
       }
     })().catch(() => {});
 
@@ -217,10 +219,10 @@ export async function POST(req: NextRequest) {
           mutualHolderEmails: Array.isArray(r.mutual_holder_emails) ? r.mutual_holder_emails : [],
         };
       } else if (rpcErr) {
-        console.warn("âš ï¸ deactivate_user_atomic RPC unavailable or failed, switching to direct fallback:", rpcErr.message);
+        console.warn("⚠️ deactivate_user_atomic RPC unavailable or failed, switching to direct fallback:", rpcErr.message);
       }
     } catch (rpcEx: any) {
-      console.warn("âš ï¸ deactivate_user_atomic RPC exception, running direct fallback:", rpcEx?.message || rpcEx);
+      console.warn("⚠️ deactivate_user_atomic RPC exception, running direct fallback:", rpcEx?.message || rpcEx);
     }
 
     // 2b. Zero-Downtime Fallback: Execute comprehensive direct table deletions if RPC is not yet applied
@@ -270,7 +272,7 @@ export async function POST(req: NextRequest) {
         .eq("email", emailLower);
 
       if (deleteUserErr) {
-        console.error("âŒ Error deleting user from users table:", deleteUserErr);
+        console.error("❌ Error deleting user from users table:", deleteUserErr);
         return NextResponse.json({ error: deleteUserErr.message }, { status: 500 });
       }
     }
@@ -280,10 +282,27 @@ export async function POST(req: NextRequest) {
       purgeDeletedUserFromAgentCaches({ email: emailLower, ...graph }),
       // Delete the sign-in identity too (Apple 5.1.1(v) / Google Play account deletion policy)
       deleteAuth0IdentitiesByEmail(emailLower).then((ok) => {
-        if (!ok) console.warn(`âš ï¸ Auth0 identity for ${emailLower} not deleted (configure AUTH0_MGMT_CLIENT_ID/SECRET).`);
+        if (!ok) console.warn(`⚠️ Auth0 identity for ${emailLower} not deleted (configure AUTH0_MGMT_CLIENT_ID/SECRET).`);
       }),
       redisConnection.del(`agent:net_cache:${emailLower}`),
-      redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 86400),
+      // Delete the Supabase Auth identity so user cannot authenticate with old credentials
+      (async () => {
+        try {
+          await supabaseAdmin.rpc('delete_auth_user_by_email', { p_email: emailLower });
+        } catch (authErr) {
+          console.warn("Notice deleting Supabase auth user:", authErr);
+        }
+      })(),
+      // Upsert permanent tombstone in deactivated_users table
+      (async () => {
+        try {
+          await supabaseAdmin.from("deactivated_users").upsert({
+            email: emailLower,
+            deactivated_at: new Date().toISOString(),
+          });
+        } catch {}
+      })(),
+      redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 2592000),
       invalidateCachedProfile(emailLower),
       invalidateAllHighlights(),
       redisConnection.del(`campaigns:${emailLower}`),
@@ -311,7 +330,7 @@ export async function POST(req: NextRequest) {
 
     return res;
   } catch (err: any) {
-    console.error("âŒ Unexpected error in POST /api/profile/deactivate:", err);
+    console.error("❌ Unexpected error in POST /api/profile/deactivate:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

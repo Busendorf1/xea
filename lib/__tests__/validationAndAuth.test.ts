@@ -21,6 +21,7 @@ describe("Zod Validation Schemas", () => {
   describe("profileSetupStep1Schema", () => {
     it("should accept valid adult user profiles", () => {
       const validData = {
+        username: "johndoe",
         dob: "1995-05-15",
         phone: "+1234567890",
         gender: "male",
@@ -39,6 +40,7 @@ describe("Zod Validation Schemas", () => {
       const underAgeDob = `${today.getFullYear() - 15}-01-01`;
 
       const underAgeData = {
+        username: "janedoe",
         dob: underAgeDob,
         phone: "+1234567890",
         gender: "female",
@@ -57,6 +59,7 @@ describe("Zod Validation Schemas", () => {
 
     it("should reject invalid phone numbers", () => {
       const invalidPhoneData = {
+        username: "johndoe",
         dob: "1990-01-01",
         phone: "invalid-phone-abc",
         gender: "male",

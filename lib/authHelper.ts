@@ -25,13 +25,32 @@ const JWKS = createRemoteJWKSet(
 
 // Helper to check deactivated tombstone without pulling ioredis into client bundles
 async function isEmailDeactivated(email: string): Promise<boolean> {
+  const cleanEmail = email.toLowerCase().trim();
   try {
     const { default: redisConnection, isRedisReady } = await import("./redis");
     if (isRedisReady()) {
-      const isDeactivated = await redisConnection.get(`deactivated:${email}`);
-      return !!isDeactivated;
+      const isDeactivated = await redisConnection.get(`deactivated:${cleanEmail}`);
+      if (isDeactivated) return true;
     }
   } catch {}
+
+  try {
+    const { default: supabaseAdmin } = await import("./utils/dbAdmin");
+    const { data: deact } = await supabaseAdmin
+      .from("deactivated_users")
+      .select("email")
+      .eq("email", cleanEmail)
+      .maybeSingle();
+    if (deact) return true;
+
+    const { data: userRow } = await supabaseAdmin
+      .from("users")
+      .select("ad_account_status")
+      .eq("email", cleanEmail)
+      .maybeSingle();
+    if (userRow?.ad_account_status === "deactivated") return true;
+  } catch {}
+
   return false;
 }
 

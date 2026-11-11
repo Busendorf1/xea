@@ -19,7 +19,7 @@ function withTimeout<T>(promise: PromiseLike<T>, ms = CHECK_TIMEOUT_MS): Promise
 async function checkDatabase(): Promise<CheckStatus> {
   try {
     const { error } = await withTimeout(
-      supabaseAdmin.from("users").select("email", { count: "exact", head: true }).limit(1)
+      supabaseAdmin.from("users").select("id").limit(1).maybeSingle()
     );
     return error ? "down" : "ok";
   } catch {

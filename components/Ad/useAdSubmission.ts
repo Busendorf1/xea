@@ -128,6 +128,25 @@ export function useAdSubmission({
             } catch (vidOptErr) {
               console.warn("Video compression notice:", vidOptErr);
             }
+
+            // Enterprise Fast-Start MP4 Remux & Vercel CDN Upload
+            try {
+              const videoFormData = new FormData();
+              videoFormData.append("file", optimizedFile);
+              videoFormData.append("bucket", "ad-media");
+              const vidRes = await fetch("/api/campaigns/upload-video", {
+                method: "POST",
+                body: videoFormData,
+              });
+              if (vidRes.ok) {
+                const vidJson = await vidRes.json();
+                if (vidJson?.publicUrl) {
+                  return vidJson.publicUrl as string;
+                }
+              }
+            } catch (vidUploadErr) {
+              console.warn("Faststart video upload notice, falling back to signed URL:", vidUploadErr);
+            }
           }
 
           const resolvedContentType = file.type || (isVid ? "video/mp4" : "image/jpeg");

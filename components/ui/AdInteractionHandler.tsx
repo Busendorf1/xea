@@ -127,6 +127,9 @@ export default function AdInteractionHandler({
   const setStage = onStageChange || setLocalStage;
   const inView = forceInView || observedInView;
 
+  const resolvedViewerEmail = (_userEmail || (viewerProfile as any)?.email || "").toLowerCase().trim();
+  const isOwner = Boolean(resolvedViewerEmail && ad?.user_email && ad.user_email.toLowerCase().trim() === resolvedViewerEmail);
+
   const isCooldownActive = useMemo(() => {
     if (viewerProfile?.cooldown_until) {
       return new Date(viewerProfile.cooldown_until).getTime() > Date.now();
@@ -185,6 +188,8 @@ export default function AdInteractionHandler({
   // Auto-register seen when user unlocks interaction buttons but scrolls away without clicking
   useEffect(() => {
     if (
+      !isPlatformPost &&
+      !isOwner &&
       stage === "unlocked" &&
       !inView &&
       !activeAction &&
@@ -216,6 +221,8 @@ export default function AdInteractionHandler({
         clearInterval(holdInterval.current);
       }
       if (
+        !isPlatformPost &&
+        !isOwner &&
         stageRef.current === "unlocked" &&
         !activeActionRef.current &&
         !successActionRef.current &&
@@ -243,7 +250,7 @@ export default function AdInteractionHandler({
 
   // 3. Countdown timer (pauses automatically during fast-scroll flings or backgrounded tab)
   useEffect(() => {
-    if (stage !== "countdown") return;
+    if (isPlatformPost || isOwner || stage !== "countdown") return;
 
     let timer: NodeJS.Timeout;
     if (inView && tabVisible && secondsLeft > 0) {
@@ -277,6 +284,8 @@ export default function AdInteractionHandler({
   // Dynamic attention bonus timer (scales earning share from 30% base to 50% max over 16 seconds)
   useEffect(() => {
     if (
+      isPlatformPost ||
+      isOwner ||
       stage !== "unlocked" ||
       !viewerProfile?.monetized ||
       isCooldownActive ||
@@ -484,6 +493,10 @@ export default function AdInteractionHandler({
   const bonusElapsed = Math.min(16, Math.max(0, 16 - bonusSecondsLeft));
   const currentShareRate = 0.30 + (bonusElapsed / 16.0) * 0.20;
   const currentPercent = Math.round(currentShareRate * 100);
+
+  if (isPlatformPost || isOwner) {
+    return null;
+  }
 
   return (
     <div ref={containerRef} className={styles.interactionContainer}>

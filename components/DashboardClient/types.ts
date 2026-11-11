@@ -36,10 +36,12 @@ export interface UserProfile {
   last_active_at?: string | null;
   attention_worth_score?: number | null;
   daysInactive?: number;
+  has_updated_profile?: boolean;
   has_wallet_pin?: boolean;
   is_career?: boolean;
   is_affiliate?: boolean;
   affiliate_role?: string | null;
+  has_cancelled_monetization?: boolean;
 }
 
 export interface DashboardClientProps {

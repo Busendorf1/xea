@@ -576,11 +576,45 @@ serve(async (req: Request) => {
     // 1. GET OR CREATE PROFILE (with AES-256-GCM Decryption)
     // -------------------------------------------------------------------------
     if (action === "get_profile") {
+      // 0. High-speed tombstone check to block deactivated accounts (<0.5ms)
+      try {
+        const { data: deact } = await supabase
+          .from("deactivated_users")
+          .select("email")
+          .ilike("email", cleanEmail)
+          .maybeSingle();
+        if (deact) {
+          return new Response(
+            JSON.stringify({
+              error: "This account has been deactivated and cannot be accessed.",
+              code: "ACCOUNT_DEACTIVATED",
+            }),
+            {
+              status: 403,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      } catch {}
+
       let { data: userRow, error: fetchErr } = await supabase
         .from("users")
         .select("*")
         .ilike("email", cleanEmail)
         .maybeSingle();
+
+      if (userRow?.ad_account_status === "deactivated") {
+        return new Response(
+          JSON.stringify({
+            error: "This account has been deactivated and cannot be accessed.",
+            code: "ACCOUNT_DEACTIVATED",
+          }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
       if (!fetchErr && !userRow) {
         // Autonomous first-login creation using service_role (bypasses anon INSERT lockdown)
@@ -1633,13 +1667,13 @@ serve(async (req: Request) => {
     }
 
     if (action === "cancel_monetization") {
-      const confirmEmail = String(body?.confirmEmail || "")
-        .toLowerCase()
-        .trim();
-      if (confirmEmail && confirmEmail !== cleanEmail) {
+      const confirmText = String(body?.confirmText || "").trim().toUpperCase();
+      const confirmEmail = String(body?.confirmEmail || "").toLowerCase().trim();
+      const isConfirmed = confirmText === "DEACTIVATE" || (confirmEmail && confirmEmail === cleanEmail);
+      if (!isConfirmed) {
         return new Response(
           JSON.stringify({
-            error: "Confirmation email does not match your account.",
+            error: "Confirmation error. Type DEACTIVATE to cancel monetization.",
           }),
           {
             status: 400,
@@ -1650,25 +1684,76 @@ serve(async (req: Request) => {
 
       await supabase
         .from("users")
-        .update({ monetized: "false", monetization_clicks: 0, atw_tier: "ATW1" })
+        .update({ monetized: "false", monetization_clicks: 0, atw_tier: "ATW1", has_cancelled_monetization: true })
         .ilike("email", cleanEmail);
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ success: true, message: "Monetization cancelled successfully." }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // -------------------------------------------------------------------------
-    // 8. DEACTIVATE ACCOUNT
+    // 8. DEACTIVATE ACCOUNT (Atomic Purge & User Data Deletion)
     // -------------------------------------------------------------------------
     if (action === "deactivate_account") {
-      await supabase
-        .from("users")
-        .update({ ad_account_status: "deactivated" })
-        .ilike("email", cleanEmail);
+      const confirmText = String(body?.confirmText || "").trim().toUpperCase();
+      const confirmEmail = String(body?.confirmEmail || "").toLowerCase().trim();
+      const isConfirmed = confirmText === "DEACTIVATE" || (confirmEmail && confirmEmail === cleanEmail);
+      if (!isConfirmed) {
+        return new Response(
+          JSON.stringify({
+            error: "Confirmation error. Type DEACTIVATE to confirm account deactivation.",
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
-      return new Response(JSON.stringify({ success: true }), {
+      // 1. High-speed atomic stored procedure (PostgreSQL single transaction with row-level locks, ~10ms)
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc("deactivate_user_atomic", {
+        p_email: cleanEmail,
+      });
+
+      // 2. Direct fallback deletion if RPC fails or is missing
+      if (rpcErr || (rpcResult && !rpcResult.success)) {
+        console.warn("deactivate_user_atomic fallback:", rpcErr || rpcResult?.error);
+        await Promise.allSettled([
+          supabase.from("adds").delete().ilike("user_email", cleanEmail),
+          supabase.from("addsactive").delete().ilike("user_email", cleanEmail),
+          supabase.from("completed_ads").delete().ilike("user_email", cleanEmail),
+          supabase.from("addscompleted").delete().ilike("user_email", cleanEmail),
+          supabase.from("bidded_ads").delete().ilike("user_email", cleanEmail),
+          supabase.from("news").delete().ilike("user_email", cleanEmail),
+          supabase.from("newsactive").delete().ilike("user_email", cleanEmail),
+          supabase.from("bidded_highlights").delete().ilike("user_email", cleanEmail),
+          supabase.from("notifications").delete().ilike("user_email", cleanEmail),
+          supabase.from("ad_impressions").delete().ilike("user_email", cleanEmail),
+          supabase.from("read_announcements").delete().ilike("user_email", cleanEmail),
+          supabase.from("referrals").delete().or(`referrer_email.ilike.${cleanEmail},referee_email.ilike.${cleanEmail}`),
+          supabase.from("users").delete().ilike("email", cleanEmail),
+        ]);
+      }
+
+      // 3. Record permanent tombstone in deactivated_users table
+      try {
+        await supabase
+          .from("deactivated_users")
+          .upsert({ email: cleanEmail, deactivated_at: new Date().toISOString() });
+      } catch (deactErr) {
+        console.warn("Notice recording deactivated_users tombstone:", deactErr);
+      }
+
+      // 4. Delete from Supabase Auth auth.users so the user cannot log back in with old auth session
+      try {
+        await supabase.rpc('delete_auth_user_by_email', { p_email: cleanEmail });
+      } catch (authErr) {
+        console.warn("Notice deleting auth user:", authErr);
+      }
+
+      return new Response(JSON.stringify({ success: true, message: "Account and all associated user data permanently deleted." }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

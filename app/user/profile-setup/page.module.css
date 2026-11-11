@@ -8,9 +8,9 @@
     radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.03) 0px, transparent 50%);
   display: flex;
   justify-content: center;
-  align-items: center;
-  padding: 2.5rem 1.5rem 3rem 1.5rem;
-  overflow: hidden;
+  align-items: flex-start;
+  padding: 3.5rem 2rem 5rem 2rem;
+  overflow-x: hidden;
   transition: background-color 0.3s ease;
 }
 
@@ -30,12 +30,12 @@
 
 .setupCard {
   width: 100%;
-  max-width: 650px;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-card, 22px);
-  box-shadow: var(--shadow-surface);
-  padding: 3rem;
+  max-width: 760px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
   z-index: 1;
   transition: all 0.3s ease;
   box-sizing: border-box;

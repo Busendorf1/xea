@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import Skeleton from "@/components/ui/Skeleton";
 
 interface Session {
   user?: {
@@ -72,8 +73,9 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
 
   // Instant SWR state initialization from client storage or props for 0ms load
   const [hasResolved, setHasResolved] = useState(() => {
-    if (typeof initialMonetized === "boolean") return true;
-    return initialCache.hasCached;
+    if (typeof initialClicks === "number" && typeof initialMonetized === "boolean") return true;
+    if (initialCache.hasCached && typeof initialCache.clicksCount === "number") return true;
+    return false;
   });
 
   const [hasCancelled, setHasCancelled] = useState(() => {
@@ -84,9 +86,11 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
   const [isMonetized, setIsMonetized] = useState(() => {
     if (isExempt) return true;
     if (initialCache.hasCancelled) return false;
+    if (typeof initialClicks === "number") return initialClicks >= 300;
+    if (typeof initialCache.clicksCount === "number") return initialCache.clicksCount >= 300;
     if (typeof initialMonetized === "boolean") return initialMonetized;
     if (typeof initialCache.isMonetized === "boolean") return initialCache.isMonetized;
-    return true;
+    return false;
   });
 
   const [isResuming, setIsResuming] = useState(false);
@@ -220,7 +224,7 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
         const isCancelled = Boolean(data.hasCancelled);
         startTransition(() => {
           setHasCancelled(isCancelled);
-          setIsMonetized(Boolean(isExempt || (!isCancelled && (data.isMonetized || resolvedClicks >= 300))));
+          setIsMonetized(Boolean(isExempt || (!isCancelled && resolvedClicks >= 300)));
           setClicksCount(resolvedClicks);
           setClicksRemaining(resolvedRemaining);
           setAtwTier(details.tierCode);
@@ -342,8 +346,71 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
   const atwLevelNum = tierDetails.level;
   const displayAtwTier = tierDetails.tierCode;
   const isUnlimited = tierDetails.isUnlimited;
+  const isMaxTier = tierDetails.isMaxTier;
   const nextAtwLevel = tierDetails.nextAtwLevel;
   const nextHoldingCap = tierDetails.nextHoldingCap;
+
+  if (!hasResolved) {
+    return (
+      <div className={styles.container} aria-busy="true" aria-label="Loading monetization status">
+        <main className={styles.main}>
+          <div className={styles.header}>
+            <Skeleton variant="title" width={180} height={32} />
+            <div style={{ marginTop: 8 }}>
+              <Skeleton variant="text" width="75%" height={16} />
+            </div>
+          </div>
+
+          <div className={styles.contentGrid}>
+            <div className={styles.statusCard} style={{ background: "var(--card-bg)" }}>
+              <div className={styles.statusHeaderRow}>
+                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  <Skeleton variant="rect" width={44} height={44} style={{ borderRadius: "50%" }} />
+                  <div>
+                    <Skeleton variant="title" width={220} height={20} />
+                    <div style={{ marginTop: 6 }}>
+                      <Skeleton variant="text" width={280} height={14} />
+                    </div>
+                  </div>
+                </div>
+                <Skeleton variant="rect" width={90} height={28} style={{ borderRadius: 9999 }} />
+              </div>
+            </div>
+
+            <div className={styles.progressGrid} style={{ marginTop: 24 }}>
+              <div className={styles.progressCard}>
+                <div className={styles.progressHeaderRow}>
+                  <Skeleton variant="title" width={240} height={20} />
+                  <Skeleton variant="rect" width={52} height={24} style={{ borderRadius: 8 }} />
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <Skeleton variant="text" width="92%" height={14} />
+                  <Skeleton variant="text" width="65%" height={14} style={{ marginTop: 6 }} />
+                </div>
+                <div className={styles.metricsGrid} style={{ marginTop: 20 }}>
+                  <div className={styles.metricBox}>
+                    <Skeleton variant="text" width={75} height={12} />
+                    <div style={{ marginTop: 6 }}>
+                      <Skeleton variant="title" width={95} height={22} />
+                    </div>
+                  </div>
+                  <div className={styles.metricBox}>
+                    <Skeleton variant="text" width={75} height={12} />
+                    <div style={{ marginTop: 6 }}>
+                      <Skeleton variant="title" width={95} height={22} />
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.progressBarWrapper} style={{ marginTop: 20 }}>
+                  <Skeleton variant="rect" width="100%" height={10} style={{ borderRadius: 9999 }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
@@ -375,6 +442,8 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                       : isMonetized
                       ? isUnlimited
                         ? "Active • Unlimited Tier"
+                        : isMaxTier
+                        ? "Active • ATW Level 14 (Peak Tier)"
                         : `Active • ATW Level ${atwLevelNum}`
                       : "Not Monetized"}
                   </h2>
@@ -384,6 +453,8 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                       : isMonetized
                       ? isUnlimited
                         ? "Your account is monetized at Unlimited Tier (Unlimited holding balance cap)."
+                        : isMaxTier
+                        ? "Your account is monetized at ATW Tier ATW14 with platform peak holding cap (₦420,000). Lifetime milestone counting continues 300 by 300."
                         : `Your account is monetized at ATW Tier ${displayAtwTier} (${tierDetails.holdingCapFormatted} holding cap).`
                       : "Complete 300 ad clicks in the feed to unlock monetization."}
                   </p>
@@ -554,6 +625,8 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                       ? `Next Milestone: ${currentMilestoneTarget} Ad Clicks (Unlimited Tier • Unlimited Cap)`
                       : clicksCount < 300
                       ? "Requirement: 300 Ad Clicks"
+                      : isMaxTier
+                      ? `Next Milestone: ${currentMilestoneTarget} Ad Clicks (ATW14 Peak Tier • ₦420,000 cap)`
                       : `Next Milestone: ${currentMilestoneTarget} Ad Clicks (ATW${nextAtwLevel} • ₦${nextHoldingCap.toLocaleString()} cap)`}
                   </span>
                 </h3>
@@ -574,6 +647,10 @@ export default function Monetize({ session, initialMonetized, initialClicks, ini
                 ) : clicksCount < 300 ? (
                   <>
                     Click <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> on ads to unlock monetization and ATW1 (₦30,000 cap).
+                  </>
+                ) : isMaxTier ? (
+                  <>
+                    You unlocked <strong>Earn+</strong> and achieved the <strong>Peak ATW Tier (ATW14 • ₦420,000 holding cap)</strong>! Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach your next milestone target of <strong>{currentMilestoneTarget} clicks</strong>. Milestone cycles continue 300 by 300 for the lifetime of your account to maintain active monetization and reward engagement.
                   </>
                 ) : (
                   <>

@@ -34,6 +34,7 @@ interface AdvertiserHoverCardProps {
   customLogo?: string;
   customBio?: string;
   isPlatformPost?: boolean;
+  userEmail?: string;
 }
 
 export default function AdvertiserHoverCard({
@@ -44,6 +45,7 @@ export default function AdvertiserHoverCard({
   customLogo,
   customBio,
   isPlatformPost = false,
+  userEmail,
 }: AdvertiserHoverCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLogoZoomed, setIsLogoZoomed] = useState(false);
@@ -180,6 +182,10 @@ export default function AdvertiserHoverCard({
       return `${profile.firstName} ${profile.lastName || ""}`.trim();
     }
     if (profile?.username && profile.username.trim() !== "") return profile.username;
+    const emailToUse = profile?.email || userEmail;
+    if (emailToUse && !isPlatformPost) {
+      return emailToUse.split("@")[0];
+    }
     if (isPlatformPost) return "Paayh";
     return "Advertiser";
   })();
@@ -195,8 +201,12 @@ export default function AdvertiserHoverCard({
     if (profile?.firstName && profile.firstName.trim() !== "") {
       return `@${profile.firstName.toLowerCase().replace(/\s+/g, "")}`;
     }
+    const emailToUse = profile?.email || userEmail;
+    if (emailToUse && !isPlatformPost) {
+      return `@${emailToUse.split("@")[0].toLowerCase()}`;
+    }
     if (isPlatformPost) return "@paayh";
-    return "@Sponsored";
+    return "@user";
   })();
 
   const avatarSrc = customLogo || profile?.profileImage || null;

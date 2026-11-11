@@ -29,6 +29,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/careers" ||
     pathname === "/join" ||
     pathname.startsWith("/api/feed") ||
+    pathname.startsWith("/api/media") ||
+    pathname.startsWith("/cdn/storage") ||
     pathname === "/api/health" ||
     pathname.startsWith("/api/highlights") ||
     pathname.startsWith("/api/payments/webhook") ||

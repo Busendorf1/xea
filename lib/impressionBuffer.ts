@@ -116,23 +116,29 @@ export async function recordCoalescedAdSeen(
   // Record user-level ad_impressions row asynchronously / concurrently (isolated per user, no hot-row lock)
   const userImpPromise = (async () => {
     try {
-      const { data: existingImp } = await supabaseAdmin
-        .from("ad_impressions")
-        .select("id, view_count")
-        .eq("ad_id", adId)
-        .ilike("user_email", emailKey)
-        .maybeSingle();
+      const { error } = await supabaseAdmin.rpc("record_user_ad_impression_atomic", {
+        p_ad_id: adId,
+        p_user_email: emailKey,
+      });
+      if (error) {
+        const { data: existingImp } = await supabaseAdmin
+          .from("ad_impressions")
+          .select("id, view_count")
+          .eq("ad_id", adId)
+          .ilike("user_email", emailKey)
+          .maybeSingle();
 
-      const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
-      if (existingImp?.id) {
-        await supabaseAdmin
-          .from("ad_impressions")
-          .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
-          .eq("id", existingImp.id);
-      } else {
-        await supabaseAdmin
-          .from("ad_impressions")
-          .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
+        const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
+        if (existingImp?.id) {
+          await supabaseAdmin
+            .from("ad_impressions")
+            .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
+            .eq("id", existingImp.id);
+        } else {
+          await supabaseAdmin
+            .from("ad_impressions")
+            .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
+        }
       }
     } catch {}
   })();

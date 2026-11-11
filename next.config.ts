@@ -24,12 +24,10 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   async rewrites() {
-    const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
-    if (!supabaseUrl) return [];
     return [
       {
         source: "/cdn/storage/:path*",
-        destination: `${supabaseUrl}/storage/v1/object/public/:path*`,
+        destination: "/api/media/:path*",
       },
     ];
   },

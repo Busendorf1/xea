@@ -239,11 +239,8 @@ export default function DashboardClient({
         const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
         const tierDetails = computeAtwTierDetails(clicks, user.atw_tier, isExempt);
         const isMon = Boolean(
-          isExempt ||
-            user.monetized === true ||
-            user.monetized === "yes" ||
-            user.monetized === "true" ||
-            clicks >= 300
+          !user.has_cancelled_monetization &&
+            (isExempt || clicks >= 300)
         );
         const cachePayload = JSON.stringify({
           email: user.email.toLowerCase(),

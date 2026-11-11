@@ -57,21 +57,26 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     const playPromise = video.play();
     if (playPromise !== undefined) {
       playPromise.catch((err) => {
-        // If blocked by browser user gesture policy, unlock on first touch/scroll
-        if (err.name === "NotAllowedError" || err.name === "AbortError") {
-          const unlockGesture = () => {
-            if (internalVideoRef.current && autoPlayRef.current) {
-              internalVideoRef.current.muted = true;
-              internalVideoRef.current.play().catch(() => {});
-            }
-            window.removeEventListener("touchstart", unlockGesture);
-            window.removeEventListener("click", unlockGesture);
-            window.removeEventListener("scroll", unlockGesture);
-          };
+        if (err.name === "AbortError") return; // Handled: harmless race when switching or scrubbing
+        if (err.name === "NotAllowedError") {
+          // Autoplay with sound prohibited: instantly enforce muted playback
+          video.muted = true;
+          video.defaultMuted = true;
+          video.play().catch(() => {
+            const unlockGesture = () => {
+              if (internalVideoRef.current && autoPlayRef.current) {
+                internalVideoRef.current.muted = true;
+                internalVideoRef.current.play().catch(() => {});
+              }
+              window.removeEventListener("touchstart", unlockGesture);
+              window.removeEventListener("click", unlockGesture);
+              window.removeEventListener("scroll", unlockGesture);
+            };
 
-          window.addEventListener("touchstart", unlockGesture, { once: true, passive: true });
-          window.addEventListener("click", unlockGesture, { once: true, passive: true });
-          window.addEventListener("scroll", unlockGesture, { once: true, passive: true });
+            window.addEventListener("touchstart", unlockGesture, { once: true, passive: true });
+            window.addEventListener("click", unlockGesture, { once: true, passive: true });
+            window.addEventListener("scroll", unlockGesture, { once: true, passive: true });
+          });
         }
       });
     }
@@ -201,7 +206,13 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       }
     } else if (fallbackSource || src) {
       const directSrc = fallbackSource || src;
-      if (video.src !== directSrc) {
+      const currentSrc = video.currentSrc || video.src || "";
+      const isSameSrc =
+        currentSrc === directSrc ||
+        (directSrc && currentSrc.endsWith(directSrc)) ||
+        (directSrc && typeof window !== "undefined" && currentSrc === new URL(directSrc, window.location.href).href);
+
+      if (!isSameSrc) {
         video.src = directSrc;
       }
       if (autoPlayRef.current) {
@@ -217,18 +228,34 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     };
   }, [targetSource, fallbackSource, src, safePlay, triggerFallback]);
 
+  // Prime frame 0 immediately upon metadata ready so GPU decodes the image without waiting for play
+  const handleLoadedMetadata = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const v = e.currentTarget;
+      if (v.paused && v.currentTime === 0 && !v.seeking) {
+        try {
+          v.currentTime = 0.001;
+        } catch {}
+      }
+      restProps.onLoadedMetadata?.(e);
+    },
+    [restProps.onLoadedMetadata]
+  );
+
   return (
     <video
       ref={internalVideoRef}
+      src={targetSource ? undefined : (fallbackSource || src)}
       autoPlay={autoPlay}
       loop={loop}
       muted={muted}
       controls={false}
       playsInline
-      preload="auto"
+      preload={restProps.preload || "auto"}
       className={className}
       poster={poster}
       onError={handleVideoError}
+      onLoadedMetadata={handleLoadedMetadata}
       disablePictureInPicture
       controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
       style={{

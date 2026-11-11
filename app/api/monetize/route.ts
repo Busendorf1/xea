@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
       supabaseReadOnly
         .from("users")
         .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, last_active_at, created_at, is_affiliate, is_career, has_cancelled_monetization")
-        .ilike("email", emailLower)
+        .eq("email", emailLower)
         .maybeSingle(),
       isRedisReady()
         ? redisConnection.get(`user:live_clicks:v2:${emailLower}`).catch(() => null)
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       const { data: fbUser } = await supabaseReadOnly
         .from("users")
         .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, created_at, has_cancelled_monetization")
-        .ilike("email", emailLower)
+        .eq("email", emailLower)
         .maybeSingle();
 
       const rClicks = Number(fbUser?.monetization_clicks ?? 0);
@@ -92,11 +92,7 @@ export async function GET(req: NextRequest) {
       const clicksCount = Math.max(rClicks, liveClicksDelta);
       const hasCancelled = Boolean(fbUser?.has_cancelled_monetization);
       const isMonetized = !hasCancelled && Boolean(
-        isExempt ||
-        fbUser?.monetized === true ||
-        fbUser?.monetized === "true" ||
-        fbUser?.monetized === "yes" ||
-        clicksCount >= 300
+        isExempt || clicksCount >= 300
       );
 
       const tierDetails = computeAtwTierDetails(clicksCount, fbUser?.atw_tier, isExempt);
@@ -119,34 +115,11 @@ export async function GET(req: NextRequest) {
       };
     } else {
       const isExempt = isExemptFromBarriersAndInactivity(emailLower, uData as any);
-      let dbClicks = Number(uData.monetization_clicks || 0);
-
-      // Self-heal if dbClicks was polluted with the legacy 300 floor on an exempt account
-      if (isExempt && dbClicks === 300) {
-        try {
-          const { data: impRows } = await supabaseReadOnly
-            .from("ad_impressions")
-            .select("view_count")
-            .ilike("user_email", emailLower);
-          const actualImpSum = (impRows || []).reduce((acc, r: any) => acc + (Number(r.view_count) || 1), 0);
-          if (actualImpSum < 290) {
-            dbClicks = actualImpSum;
-            await supabaseAdmin
-              .from("users")
-              .update({ monetization_clicks: dbClicks })
-              .eq("id", uData.id);
-          }
-        } catch {}
-      }
-
+      const dbClicks = Number(uData.monetization_clicks || 0);
       const clicks = Math.max(dbClicks, liveClicksDelta);
       const hasCancelled = Boolean(uData.has_cancelled_monetization);
-      const isMonetized = !hasCancelled && !!(
-        isExempt ||
-        uData.monetized === "true" ||
-        uData.monetized === "yes" ||
-        uData.monetized === true ||
-        clicks >= 300
+      const isMonetized = !hasCancelled && Boolean(
+        isExempt || clicks >= 300
       );
 
       // Fast in-memory calculation of inactive days (Exempt accounts never accrue inactivity penalties)
@@ -204,7 +177,8 @@ export async function GET(req: NextRequest) {
         redisConnection.set(`user:live_clicks:v2:${emailLower}`, String(effectiveClicks), "EX", 86400 * 30).catch(() => {});
       }
 
-      if (effectiveAtwTier !== uData.atw_tier || (effectiveMonetized && uData.monetized !== "true" && uData.monetized !== true)) {
+      const dbIsMonetized = uData.monetized === "true" || uData.monetized === "yes" || uData.monetized === true;
+      if (effectiveAtwTier !== uData.atw_tier || effectiveMonetized !== dbIsMonetized) {
         supabaseAdmin
           .from("users")
           .update({

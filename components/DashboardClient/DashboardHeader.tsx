@@ -327,7 +327,7 @@ export default function DashboardHeader({
         >
           <div className={styles.nameBlock}>
             <span className={styles.appName}>Paayh</span>
-            {!isMobile && <span className={styles.appSub}>Your feeds are ads</span>}
+            <span className={styles.appSub}>Your feeds are ads</span>
           </div>
         </div>
 

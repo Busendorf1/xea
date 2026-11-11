@@ -27,6 +27,12 @@ export async function GET(req: NextRequest) {
     // 1. Attempt to fetch from Two-Tier (L1 Memory + L2 Redis) cache first (<0.1ms)
     let user = await getCachedProfile(emailLower);
     if (user) {
+      if (user.ad_account_status === "deactivated") {
+        return NextResponse.json(
+          { error: "This account has been deactivated and cannot be accessed.", code: "ACCOUNT_DEACTIVATED" },
+          { status: 403 }
+        );
+      }
       touchUserActivity(emailLower, user).catch(() => {});
 
       if (isRedisReady()) {
@@ -53,8 +59,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(sanitizeProfileResponse(user));
     }
 
-    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, wallet_pin_hash`;
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, wallet_pin_hash, suspended_until`;
+    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, wallet_pin_hash, ad_account_status`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, wallet_pin_hash, suspended_until, ad_account_status`;
 
     let error: any = null;
     const attempts = 3;
@@ -116,7 +122,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error?.message || "Database connection failure" }, { status: 500 });
     }
 
+    if (user?.ad_account_status === "deactivated") {
+      return NextResponse.json(
+        { error: "This account has been deactivated and cannot be accessed.", code: "ACCOUNT_DEACTIVATED" },
+        { status: 403 }
+      );
+    }
+
     if (!user) {
+      // Tombstone check before auto provisioning
+      try {
+        const { data: deact } = await supabaseAdmin
+          .from("deactivated_users")
+          .select("email")
+          .eq("email", emailLower)
+          .maybeSingle();
+        if (deact) {
+          return NextResponse.json(
+            { error: "This account has been deactivated and cannot be accessed.", code: "ACCOUNT_DEACTIVATED" },
+            { status: 403 }
+          );
+        }
+      } catch {}
+
       const dummyPhone = `PLACEHOLDER_PHONE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const dummyPassphrase = `PLACEHOLDER_PASS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 

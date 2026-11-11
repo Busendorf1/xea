@@ -7,6 +7,7 @@ import { Eye, EyeOff, Send, Lock, KeyRound, X, Check } from "lucide-react";
 import RollingCounter from "@/components/ui/RollingCounter";
 import { getUserCurrency, getCurrencyConfig, NGN_PER_USD } from "@/lib/utils/currency";
 import { UserProfile } from "./types";
+import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import styles from "./page.module.css";
 
 interface DashboardWalletCardProps {
@@ -38,11 +39,11 @@ export default function DashboardWalletCard({
   const displayBalance = isUSD ? (user.balance ?? 0) / NGN_PER_USD : (user.balance ?? 0);
   const currencySymbol = currencyConfig.symbol;
 
+  const clicksCount = Number(user.monetization_clicks ?? 0);
+  const isExempt = isExemptFromBarriersAndInactivity(user.email, user as any);
   const isMonetized = Boolean(
-    user.monetized === "yes" ||
-      user.monetized === "true" ||
-      user.monetized === true ||
-      (user.monetization_clicks ?? 0) >= 300
+    !user.has_cancelled_monetization &&
+      (isExempt || clicksCount >= 300)
   );
 
   const [hasPin, setHasPin] = useState<boolean>(Boolean(user.has_wallet_pin));

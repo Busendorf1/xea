@@ -1,8 +1,8 @@
 .profileContainer {
   background: transparent;
   border: none;
-  padding: 2.25rem 1.5rem 5rem 1.5rem;
-  max-width: 880px;
+  padding: 2.5rem 2rem 5rem 2rem;
+  max-width: 960px;
   margin: 0 auto;
   border-radius: 0;
   box-shadow: none;
@@ -500,10 +500,11 @@
 }
 
 .reviewCard {
-  background-color: var(--input-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-inner, 12px);
-  padding: 1.2rem;
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  padding: 1.25rem 0;
 }
 
 .reviewCardTitle {

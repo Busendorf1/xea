@@ -62,12 +62,10 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
   const clicks = Number(profileResult.user.monetization_clicks) || 0;
   const invites = Number(profileResult.user.referral_downloads_count) || 0;
   const initialAtwTier = profileResult.user.atw_tier || "ATW1";
+  const isExemptAccount = isAdmin || Boolean(profileResult.user.is_career || profileResult.user.is_affiliate);
   const initialMonetized = Boolean(
-    profileResult.user.monetized === true ||
-    profileResult.user.monetized === "true" ||
-    profileResult.user.monetized === "yes" ||
-    clicks >= 300 ||
-    invites >= 12
+    !profileResult.user.has_cancelled_monetization &&
+    (isExemptAccount || clicks >= 300)
   );
 
   return (

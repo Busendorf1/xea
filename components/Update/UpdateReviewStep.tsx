@@ -47,8 +47,10 @@ export function UpdateReviewStep({
             </span>
           </div>
           <div className={styles.reviewItem}>
-            <span className={styles.reviewLabel}>Email:</span>
-            <span className={styles.reviewValue}>{formData.email || dbProfile.email || "None"}</span>
+            <span className={styles.reviewLabel}>Username:</span>
+            <span className={styles.reviewValue}>
+              {formData.username ? `@${formData.username.replace(/^@/, "")}` : dbProfile.username ? `@${dbProfile.username.replace(/^@/, "")}` : "None"}
+            </span>
           </div>
           <div className={styles.reviewItem}>
             <span className={styles.reviewLabel}>Phone:</span>
@@ -114,7 +116,7 @@ export function UpdateReviewStep({
       {dbProfile && !dbProfile.has_updated_profile && (
         <p className={styles.cooldownWarningNote}>
           <Clock size={15} className={styles.flexShrink0} />
-          <span>Note: Once confirmed, you can only update your profile once every 30 days.</span>
+          <span>Note: Once confirmed, you can only update your profile once every 15 days.</span>
         </p>
       )}
 

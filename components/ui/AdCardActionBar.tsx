@@ -148,7 +148,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
           </button>
         </div>
 
-        {!isPlatformPost && (
+        {!isPlatformPost && !isOwner && (
           <div className={styles.productRightGroup}>
             {!seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
               <AdInteractionHandler
@@ -257,7 +257,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
         </button>
       </div>
 
-      {!isPlatformPost && (
+      {!isPlatformPost && !isOwner && (
         <div className={styles.interactionButtonGroup}>
           {!seenAds.includes(ad.id) || activeAction !== null || successAction !== null ? (
             <AdInteractionHandler

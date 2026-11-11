@@ -353,9 +353,14 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
   }
 
   // 3. If user has not completed initial profile setup, redirect
-  const hasPlaceholders = user.country === "PLACEHOLDER" || user.state === "PLACEHOLDER" || user.location === "PLACEHOLDER";
+  const hasPlaceholders = !user.country || user.country === "PLACEHOLDER" || !user.state || user.state === "PLACEHOLDER" || !user.location || user.location === "PLACEHOLDER";
   if (hasPlaceholders && !user.has_updated_profile) {
     return { redirectUrl: "/user/profile-setup" };
+  }
+
+  // Ensure username exists for registered users (fallback to email handle if not explicitly set)
+  if (!user.username && email) {
+    user.username = email.split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase();
   }
 
   const parsedInterest = safeParseArray(user.interest);
@@ -375,13 +380,26 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     ).catch(() => null);
 
     if (prefetchedAdIdsStr && isRedisReady()) {
-      const adIds: string[] = JSON.parse(prefetchedAdIdsStr).slice(0, 10);
+      // Check cooldown first: if user is on active cooldown, do not preload ad candidates
+      let isUserOnCooldown = false;
+      if (prefetchedCooldownStr) {
+        try {
+          const cd = JSON.parse(prefetchedCooldownStr);
+          if (cd?.cooldownUntil && new Date(cd.cooldownUntil).getTime() > Date.now()) {
+            isUserOnCooldown = true;
+          }
+        } catch {}
+      }
+
+      const adIds: string[] = isUserOnCooldown ? [] : JSON.parse(prefetchedAdIdsStr).slice(0, 10);
       if (adIds.length > 0) {
         const detailKeys = adIds.map((id) => `ad:detail:${id}`);
-        const [rawDetails, cachedHighlights] = await Promise.all([
+        const [rawDetails, cachedHighlights, seenAdIds] = await Promise.all([
           redisConnection.mget(detailKeys).catch(() => []),
           highlightsPromise,
+          redisConnection.smembers(`seen:ads:${email.toLowerCase().trim()}`).catch(() => []),
         ]);
+        const seenSet = new Set<string>(seenAdIds || []);
         if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
           initialHighlights = cachedHighlights;
         }
@@ -392,6 +410,12 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
             if (!raw) return null;
             try {
               const ad = JSON.parse(raw);
+              if (!ad || !ad.id) return null;
+              if (ad.completed_at || ad.is_paused === true) return null;
+              if (seenSet.has(String(ad.id))) return null;
+              const impressionsTarget = Number(ad.impressions || 0);
+              const impressionCount = Number(ad.impression_count ?? ad.view_count ?? 0);
+              if (impressionsTarget > 0 && impressionCount >= impressionsTarget) return null;
               const targetCheck = evaluateAdTargeting(ad, user as any, { allowRolloverPsychographics: true });
               if (!targetCheck.matches) return null;
 

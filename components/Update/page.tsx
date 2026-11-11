@@ -246,7 +246,7 @@ export default function Update({ email }: Props) {
     }
 
     const lastUpdated = new Date(dbProfile.lastUpdated || 0);
-    const targetMs = lastUpdated.getTime() + 30 * 24 * 60 * 60 * 1000;
+    const targetMs = lastUpdated.getTime() + 15 * 24 * 60 * 60 * 1000;
     const diff = targetMs - Date.now();
 
     if (diff <= 0) {
@@ -310,7 +310,7 @@ export default function Update({ email }: Props) {
     }
 
     if (!isAdmin && timeRemaining !== null && timeRemaining > 0) {
-      setStatus("You can only update your profile once every 30 days.");
+      setStatus("You can only update your profile once every 15 days.");
       return;
     }
 
@@ -338,13 +338,13 @@ export default function Update({ email }: Props) {
       const diffDays =
         (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
 
-      if (diffDays < 30) {
+      if (diffDays < 15) {
         console.warn(
           "Update blocked: Only",
           Math.floor(diffDays),
           "days passed"
         );
-        setStatus("You can only update your profile once every 30 days.");
+        setStatus("You can only update your profile once every 15 days.");
         setLoading(false);
         return;
       }
@@ -473,7 +473,7 @@ export default function Update({ email }: Props) {
       {isAdmin && (
         <div className={styles.adminPrivilegeBanner}>
           <ShieldCheck size={15} className={styles.flexShrink0} />
-          <span>Admin Privilege: Unlimited profile updates (30-day cooldown bypassed)</span>
+          <span>Admin Privilege: Unlimited profile updates (15-day cooldown bypassed)</span>
         </div>
       )}
 

@@ -302,11 +302,9 @@ export async function POST(req: NextRequest) {
       await invalidateUserNotifCache(emailLower);
       return NextResponse.json({ success: true, message: "All notifications marked as read." });
     } else if (notificationId) {
-      const { data: isGlobal } = await supabaseAdmin
-        .from("global_announcements")
-        .select("id")
-        .eq("id", notificationId)
-        .maybeSingle();
+      const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+      const activeGlobals = await loadGlobalAnnouncements(fifteenDaysAgo);
+      const isGlobal = activeGlobals.some((g) => String(g.id) === String(notificationId));
 
       if (isGlobal) {
         await supabaseAdmin

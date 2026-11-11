@@ -563,6 +563,13 @@ export async function POST(request: NextRequest) {
               }, { status: 400 });
             }
 
+            if (adOwnerEmail && adOwnerEmail.toLowerCase().trim() === emailKey) {
+              return NextResponse.json({
+                success: false,
+                error: "You cannot earn from your own advertisement.",
+              }, { status: 400 });
+            }
+
             if (adRow.cost_per_impression !== undefined && adRow.cost_per_impression !== null) {
               adCpi = Number(adRow.cost_per_impression) || 0;
             }
@@ -916,6 +923,12 @@ export async function POST(request: NextRequest) {
         ]);
 
         publisherEmail = adRow?.user_email ? String(adRow.user_email).toLowerCase().trim() : null;
+        if (publisherEmail && publisherEmail === emailKey) {
+          return NextResponse.json({
+            success: false,
+            error: "You cannot add mutual from your own advertisement.",
+          }, { status: 400 });
+        }
 
         await Promise.resolve(
           supabaseAdmin.rpc("handle_mutual_click", {

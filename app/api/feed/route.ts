@@ -1,3 +1,4 @@
+import { transformMediaUrlsToCdn } from "@/lib/utils/cdnUrl";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
@@ -21,8 +22,8 @@ const AD_DETAIL_TTL_SECONDS = 1800;    // 30 minutes TTL for shared ad details
 const L1_USER_FEED_TTL_MS = 120 * 1000; // 2 minutes L1 fallback cache (absorbs repeat fetches even when Redis is over quota)
 const L1_SHARED_ADS_POOL_TTL_MS = 25 * 1000; // 25s shared active campaign pool
 
-const AD_SELECT_FIELDS = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, bid_price, is_bidded, is_boosted, boosted_amount, boosted_at, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, approved_at, scheduled_start_at, scheduled_end_at, is_ai_content";
-const AD_SELECT_FIELDS_FALLBACK = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, is_ai_content";
+const AD_SELECT_FIELDS = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, bid_price, is_bidded, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, is_ai_content";
+const AD_SELECT_FIELDS_FALLBACK = "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, is_ai_content, bid_price, is_bidded";
 
 // Circuit breaker when DB RPC get_user_feed has a return-type mismatch (avoids wasted 500ms roundtrip per request)
 let rpcGetFeedBrokenUntil = 0;
@@ -719,16 +720,18 @@ export async function GET(req: NextRequest) {
         new Set(orderedCandidateAds.map((ad: Ad) => ad.user_email).filter(Boolean))
       ) as string[];
 
-      const missingPublisherEmails: string[] = [];
+      const emailLookupSet = new Set<string>();
       for (const pubEmail of publisherEmails) {
-        const lower = pubEmail.toLowerCase();
+        const lower = pubEmail.toLowerCase().trim();
         const cachedPub = l1PublisherProfilesCache.get(lower);
         if (cachedPub && Date.now() < cachedPub.expiresAt) {
           profilesMap[lower] = cachedPub.profile;
         } else {
-          missingPublisherEmails.push(pubEmail);
+          emailLookupSet.add(pubEmail);
+          emailLookupSet.add(lower);
         }
       }
+      const missingPublisherEmails = Array.from(emailLookupSet);
 
       if (missingPublisherEmails.length > 0) {
         const { data: profiles, error: profilesError } = await supabaseReadOnly
@@ -745,7 +748,7 @@ export async function GET(req: NextRequest) {
               const rawLast = typeof p.lastName === "string" && !p.lastName.startsWith("enc:v1:") ? p.lastName : "";
               const formatted: AdvertiserProfile = {
                 email: p.email,
-                username: p.username || "",
+                username: p.username || (p.email ? p.email.split("@")[0] : "Advertiser"),
                 business_name: p.business_name || "",
                 firstName: rawFirst,
                 lastName: rawLast,
@@ -835,6 +838,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Sign each ad in the page slice using unified signAdImpressionToken for deterministic verification
+    const origin = req.nextUrl.origin || "https://paayh.com";
     const signedAds = pageAds.map((ad: Ad) => {
       const isPlatformPost = Boolean(
         ad.is_admin_post ||
@@ -847,6 +851,7 @@ export async function GET(req: NextRequest) {
       const token = signAdImpressionToken(String(ad.id), emailKey, servedAt);
       return {
         ...ad,
+        ad_media: transformMediaUrlsToCdn(ad.ad_media, origin),
         is_admin_post: isPlatformPost,
         cost_per_impression: isPlatformPost ? 0 : Number(ad.cost_per_impression || 0),
         impressions: isPlatformPost ? 0 : Number(ad.impressions || 0),

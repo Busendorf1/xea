@@ -26,43 +26,49 @@ import RoleStarBadges from "./RoleStarBadges";
 import { AdMediaLightboxModal, AdTextReaderModal } from "./AdCardModals";
 import { AdCardActionBar } from "./AdCardActionBar";
 
-const HlsVideoPlayer = dynamic(() => import("./HlsVideoPlayer"), { ssr: false });
 const FullscreenVideoPlayer = dynamic(() => import("@/components/MyAds/FullscreenVideoPlayer"), { ssr: false });
 
-// Shared pooled IntersectionObservers for 1000+ card feed scrolling without per-card observer GC overhead
+// Shared pooled IntersectionObservers by scroll root for 1000+ card feed scrolling without per-card observer GC overhead
 const preloadCallbacks = new WeakMap<Element, (intersecting: boolean) => void>();
 const playCallbacks = new WeakMap<Element, (intersecting: boolean) => void>();
-let sharedPreloadObserver: IntersectionObserver | null = null;
-let sharedPlayObserver: IntersectionObserver | null = null;
+const preloadObserversByRoot = new Map<Element | null, IntersectionObserver>();
+const playObserversByRoot = new Map<Element | null, IntersectionObserver>();
 
-function getSharedPreloadObserver(): IntersectionObserver | null {
+function getSharedPreloadObserver(root: Element | null = null): IntersectionObserver | null {
   if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
-  if (!sharedPreloadObserver) {
-    sharedPreloadObserver = new IntersectionObserver(
+  let obs = preloadObserversByRoot.get(root);
+  if (!obs) {
+    obs = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           preloadCallbacks.get(entry.target)?.(entry.isIntersecting);
         }
       },
-      { rootMargin: "800px 0px 800px 0px", threshold: 0 }
+      // 1400px pre-warm headroom (~2.5 cards ahead) ensures full video header and first-frame buffer are ready before viewport entry
+      { root, rootMargin: "1400px 0px 1400px 0px", threshold: 0 }
     );
+    preloadObserversByRoot.set(root, obs);
   }
-  return sharedPreloadObserver;
+  return obs;
 }
 
-function getSharedPlayObserver(): IntersectionObserver | null {
+function getSharedPlayObserver(root: Element | null = null): IntersectionObserver | null {
   if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
-  if (!sharedPlayObserver) {
-    sharedPlayObserver = new IntersectionObserver(
+  let obs = playObserversByRoot.get(root);
+  if (!obs) {
+    obs = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          playCallbacks.get(entry.target)?.(entry.isIntersecting);
+          // X / TikTok standard: Only card with majority (>45%) visibility in the active scroll viewport autoplays
+          const isPrimaryInView = entry.isIntersecting && entry.intersectionRatio >= 0.45;
+          playCallbacks.get(entry.target)?.(isPrimaryInView);
         }
       },
-      { rootMargin: "0px 0px 0px 0px", threshold: 0.35 }
+      { root, rootMargin: "0px 0px 0px 0px", threshold: [0, 0.45, 0.8] }
     );
+    playObserversByRoot.set(root, obs);
   }
-  return sharedPlayObserver;
+  return obs;
 }
 
 export type BaseAd = {
@@ -397,14 +403,23 @@ function AdCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Two-tiered shared IntersectionObserver pool:
-  // Tier 1: 800px rootMargin pre-warms video buffer/first-frame in background
-  // Tier 2: Active viewport threshold triggers autoplay with zero latency
+  // Tier 1: 1400px rootMargin pre-warms video buffer/first-frame in background ahead of viewport
+  // Tier 2: 0.15 threshold triggers smooth autoplay the instant card enters visible view
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
 
-    const preloadObs = getSharedPreloadObserver();
-    const playObs = getSharedPlayObserver();
+    // Detect if inside an overflow-y: auto container (<main>) that is genuinely scrollable; fallback to window viewport (null)
+    const candidateRoot = el.closest("main") || null;
+    const isScrollable = Boolean(
+      candidateRoot &&
+      typeof window !== "undefined" &&
+      window.getComputedStyle(candidateRoot).overflowY.match(/(auto|scroll)/i) &&
+      candidateRoot.scrollHeight > candidateRoot.clientHeight
+    );
+    const scrollRoot = isScrollable ? candidateRoot : null;
+    const preloadObs = getSharedPreloadObserver(scrollRoot);
+    const playObs = getSharedPlayObserver(scrollRoot);
 
     preloadCallbacks.set(el, setIsPreloadWarm);
     playCallbacks.set(el, setIsCardVisible);
@@ -553,8 +568,7 @@ function AdCard({
       if (emailLower === "admin@paayh.com" || emailLower === "system@paayh.com" || ad.ad_type === "admin_broadcast") {
         return "Paayh";
       }
-      // Never expose raw user email prefix publicly if username/name is unset
-      return "Sponsored";
+      return ad.user_email.split("@")[0] || "Advertiser";
     }
     return "Paayh";
   }, [ad, advertiserProfile]);
@@ -633,6 +647,7 @@ function AdCard({
           customHandle={ad.custom_sponsor_handle}
           customLogo={ad.custom_sponsor_logo}
           isPlatformPost={isPlatformPost}
+          userEmail={ad.user_email}
         >
           <div className={styles.avatar}>
             <Avatar
@@ -658,6 +673,7 @@ function AdCard({
               customHandle={ad.custom_sponsor_handle}
               customLogo={ad.custom_sponsor_logo}
               isPlatformPost={isPlatformPost}
+              userEmail={ad.user_email}
             >
               <div className={styles.sponsorNameWrapper}>
                 <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>

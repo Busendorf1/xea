@@ -9,11 +9,11 @@ import {
   coarsenDobToBirthYear,
 } from "@/lib/security/piiCrypto";
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req);
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: "Profile photo updated successfully" }, { status: 200 });
     }
 
-    // 1. Server-Side 30-Day Cooldown Enforcement (for users who have already completed initial setup)
+    // 1. Server-Side 15-Day Cooldown Enforcement (for users who have already completed initial setup)
     const { data: existingUser } = await supabaseAdmin
       .from("users")
       .select('id, "lastUpdated", has_updated_profile, "firstName", "lastName", phone')
@@ -51,10 +51,15 @@ export async function POST(req: NextRequest) {
       const lastUpdatedTime = new Date(existingUser.lastUpdated).getTime();
       if (!isNaN(lastUpdatedTime)) {
         const elapsedMs = Date.now() - lastUpdatedTime;
-        if (elapsedMs < THIRTY_DAYS_MS) {
-          const daysLeft = Math.ceil((THIRTY_DAYS_MS - elapsedMs) / (24 * 60 * 60 * 1000));
+        if (elapsedMs < FIFTEEN_DAYS_MS) {
+          const daysLeft = Math.ceil((FIFTEEN_DAYS_MS - elapsedMs) / (24 * 60 * 60 * 1000));
+          const nextAvailableDate = new Date(lastUpdatedTime + FIFTEEN_DAYS_MS).toISOString();
           return NextResponse.json(
-            { error: `You can only update your profile once every 30 days. (${daysLeft} day(s) remaining)` },
+            { 
+              error: `You can only update your profile once every 15 days. (${daysLeft} day(s) remaining)`,
+              nextAvailableDate,
+              daysRemaining: daysLeft
+            },
             { status: 429 }
           );
         }
@@ -166,33 +171,77 @@ export async function POST(req: NextRequest) {
       ? encryptSensitiveField(String(updateData.phone).trim())
       : null;
 
-    const { error } = await supabaseAdmin.rpc("update_user_profile", {
-      p_email: email,
-      p_username: updateData.username || null,
-      p_dob: sanitizedDob,
-      p_country: updateData.country || null,
-      p_state: updateData.state || null,
-      p_location: updateData.location || null,
-      p_phone: encryptedPhone,
-      p_passphrase: encryptedPassphrase,
-      p_industry: updateData.industry || null,
-      p_interest: updateData.interest || null,
-      p_behavior: updateData.behavior || null,
-      p_lifestyle: updateData.lifestyle || null,
-      p_personality: updateData.personality || null,
-      p_gender: updateData.gender || null,
-      p_employment: updateData.employment || null,
-      p_intl_travel: updateData.intl_travel !== undefined ? updateData.intl_travel : null,
-      p_local_travel: updateData.local_travel !== undefined ? updateData.local_travel : null,
-      p_profile_image: updateData.profileImage || null,
-      p_bio: updateData.bio || null,
-      p_business_name: updateData.business_name || null,
-      p_has_updated_profile: true,
-    });
+    let rpcSuccess = false;
+    try {
+      const { error: rpcError } = await supabaseAdmin.rpc("update_user_profile", {
+        p_email: email,
+        p_username: updateData.username || null,
+        p_dob: sanitizedDob,
+        p_country: updateData.country || null,
+        p_state: updateData.state || null,
+        p_location: updateData.location || null,
+        p_phone: encryptedPhone,
+        p_passphrase: encryptedPassphrase,
+        p_industry: updateData.industry || null,
+        p_interest: updateData.interest || null,
+        p_behavior: updateData.behavior || null,
+        p_lifestyle: updateData.lifestyle || null,
+        p_personality: updateData.personality || null,
+        p_gender: updateData.gender || null,
+        p_employment: updateData.employment || null,
+        p_intl_travel: updateData.intl_travel !== undefined ? updateData.intl_travel : null,
+        p_local_travel: updateData.local_travel !== undefined ? updateData.local_travel : null,
+        p_profile_image: updateData.profileImage || null,
+        p_bio: updateData.bio || null,
+        p_business_name: updateData.business_name || null,
+        p_has_updated_profile: true,
+      });
 
-    if (error) {
-      console.error("Update error:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!rpcError) {
+        rpcSuccess = true;
+      } else {
+        console.warn("⚠️ update_user_profile RPC failed, falling back to direct service_role update:", rpcError.message);
+      }
+    } catch (e: any) {
+      console.warn("⚠️ update_user_profile RPC exception:", e?.message || e);
+    }
+
+    if (!rpcSuccess) {
+      // Direct service-role database update (bypasses RLS and RPC permission blocks)
+      const directPayload: Record<string, any> = {
+        lastUpdated: new Date().toISOString(),
+        has_updated_profile: true,
+      };
+
+      if (updateData.username) directPayload.username = updateData.username;
+      if (sanitizedDob) directPayload.dob = sanitizedDob;
+      if (updateData.country) directPayload.country = updateData.country;
+      if (updateData.state) directPayload.state = updateData.state;
+      if (updateData.location) directPayload.location = updateData.location;
+      if (encryptedPhone) directPayload.phone = encryptedPhone;
+      if (encryptedPassphrase) directPayload.passphrase = encryptedPassphrase;
+      if (updateData.industry) directPayload.industry = updateData.industry;
+      if (updateData.interest) directPayload.interest = updateData.interest;
+      if (updateData.behavior) directPayload.behavior = updateData.behavior;
+      if (updateData.lifestyle) directPayload.lifestyle = updateData.lifestyle;
+      if (updateData.personality) directPayload.personality = updateData.personality;
+      if (updateData.gender) directPayload.gender = updateData.gender;
+      if (updateData.employment) directPayload.employment = updateData.employment;
+      if (updateData.intl_travel !== undefined) directPayload.intl_travel = updateData.intl_travel;
+      if (updateData.local_travel !== undefined) directPayload.local_travel = updateData.local_travel;
+      if (updateData.profileImage) directPayload.profileImage = updateData.profileImage;
+      if (updateData.bio !== undefined) directPayload.bio = updateData.bio;
+      if (updateData.business_name !== undefined) directPayload.business_name = updateData.business_name;
+
+      const { error: directErr } = await supabaseAdmin
+        .from("users")
+        .update(directPayload)
+        .ilike("email", emailLower);
+
+      if (directErr) {
+        console.error("❌ Direct service-role update failed:", directErr.message);
+        return NextResponse.json({ error: "Could not save profile updates. Please try again." }, { status: 500 });
+      }
     }
 
     // Persist encrypted firstName / lastName and HMAC blind hashes if provided (or auto-encrypt existing plaintext names)
