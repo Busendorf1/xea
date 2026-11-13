@@ -19,13 +19,15 @@ describe("Enterprise Security Hardening Suite", () => {
   });
 
   describe("Wallet PIN Enforcement", () => {
-    it("should allow transactions when user has not yet configured a PIN (grace period)", async () => {
+    it("should fail closed (403 PIN_NOT_SET) when user has not yet configured a PIN", async () => {
       const result = await verifyTransactionPin({
         email: testEmail,
         pin: undefined,
         storedPinHash: null,
       });
-      expect(result.valid).toBe(true);
+      expect(result.valid).toBe(false);
+      expect(result.statusCode).toBe(403);
+      expect(result.code).toBe("PIN_NOT_SET");
     });
 
     it("should reject transactions when user has a PIN but none is supplied", async () => {

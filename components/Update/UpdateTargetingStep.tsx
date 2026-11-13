@@ -40,7 +40,7 @@ export function UpdateTargetingStep({
   isFormDisabled,
   timeRemaining,
 }: UpdateTargetingStepProps) {
-  const isLocked = timeRemaining !== null && timeRemaining > 0;
+  const isLocked = isFormDisabled;
 
   const renderDropdown = (
     label: string,

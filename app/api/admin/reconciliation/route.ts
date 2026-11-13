@@ -87,19 +87,13 @@ export async function GET(req: NextRequest) {
       if (!rpcErr && rpcMetrics) {
         metrics = rpcMetrics;
       } else {
-        console.warn("⚠️ get_admin_reconciliation_metrics RPC fallback triggered:", rpcErr?.message);
-        // Fallback: bounded query to avoid full memory blowout
-        const [{ data: sentSample }, { data: rcvSample }] = await Promise.all([
-          supabaseAdmin.from("payments").select("amount").eq("type", "transfer_sent").eq("status", "success").limit(1000),
-          supabaseAdmin.from("payments").select("amount").eq("type", "transfer_received").eq("status", "success").limit(1000),
-        ]);
-        const sentTotal = (sentSample || []).reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
-        const rcvTotal = (rcvSample || []).reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+        console.warn("⚠️ get_admin_reconciliation_metrics RPC unavailable:", rpcErr?.message);
         metrics = {
-          total_sent_naira: sentTotal,
-          total_received_naira: rcvTotal,
-          variance_naira: Math.abs(sentTotal - rcvTotal),
-          status: Math.abs(sentTotal - rcvTotal) === 0 ? "HEALTHY" : "FLAGGED",
+          total_sent_naira: 0,
+          total_received_naira: 0,
+          variance_naira: 0,
+          status: "DEGRADED",
+          metricsDegraded: true,
         };
       }
 
@@ -161,15 +155,15 @@ export async function GET(req: NextRequest) {
           pendingForfeituresCount = Number(rpcSummary.pending_count) || 0;
           pendingForfeituresTotal = Number(rpcSummary.pending_total) || 0;
         } else {
-          // Bounded indexed fallback
-          const { count, data } = await supabaseAdmin
+          console.warn("⚠️ get_forfeited_balances_summary RPC unavailable:", rpcSumErr?.message);
+          // Zero-payload head count only (no 1000-row JS reduction)
+          const { count } = await supabaseAdmin
             .from("forfeited_balances")
-            .select("amount", { count: "exact" })
-            .eq("status", "PENDING")
-            .limit(1000);
+            .select("id", { count: "exact", head: true })
+            .eq("status", "PENDING");
 
           pendingForfeituresCount = count || 0;
-          pendingForfeituresTotal = (data || []).reduce((acc: number, f: any) => acc + (parseFloat(f.amount) || 0), 0);
+          pendingForfeituresTotal = 0;
         }
 
         treasurySummary = {
@@ -230,7 +224,10 @@ export async function GET(req: NextRequest) {
         }
 
         if (forfeitSearch) {
-          query = query.or(`user_email.ilike.%${forfeitSearch}%,username.ilike.%${forfeitSearch}%`);
+          const cleanForfeitSearch = forfeitSearch.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+          if (cleanForfeitSearch) {
+            query = query.or(`user_email.ilike.%${cleanForfeitSearch}%,username.ilike.%${cleanForfeitSearch}%`);
+          }
         }
 
         const { data: fList, count: totalCount, error: listErr } = await query

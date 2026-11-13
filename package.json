@@ -9,7 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "worker": "npx tsx scripts/run-worker.ts",
-    "test": "vitest run",
+    "test": "vitest run --pool=forks",
     "db:probe": "node scripts/check_rpc.js"
   },
   "dependencies": {

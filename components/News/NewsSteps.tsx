@@ -165,9 +165,11 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
           </span>
         </div>
         <div className={styles.modernSectionBody}>
-          <p className={styles.sectionDescription}>Select campaign duration (up to 5 days).</p>
+          <p className={styles.sectionDescription}>
+            Select highlight duration (1–90 days). Your highlight automatically expires after its scheduled duration.
+          </p>
           <div className={styles.durationContainer}>
-            {[1, 2, 3, 4, 5].map((num) => (
+            {[1, 3, 5, 7, 14, 30].map((num) => (
               <button
                 key={num}
                 type="button"
@@ -177,6 +179,26 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
                 {num} {num === 1 ? "Day" : "Days"}
               </button>
             ))}
+          </div>
+          <div className={styles.formGroup} style={{ marginTop: 10 }}>
+            <label className={styles.fieldLabel} style={{ fontSize: "0.78rem" }}>
+              Or enter custom duration (1–90 days)
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={campaignDays}
+              onChange={(e) => {
+                const parsed = parseInt(e.target.value, 10);
+                if (isNaN(parsed)) {
+                  setCampaignDays(1);
+                } else {
+                  setCampaignDays(Math.max(1, Math.min(90, parsed)));
+                }
+              }}
+              className={styles.inputBox}
+            />
           </div>
 
           <div className={styles.formGroup} style={{ marginTop: 14 }}>
@@ -246,10 +268,10 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
                     {scheduledStartAt ? fmt(validStart) : `${fmt(validStart)} (Upon Approval)`}
                   </div>
                   <div>
-                    <strong>Ends On:</strong>{" "}
+                    <strong>Scheduled Expiry:</strong>{" "}
                     <span style={{ color: "var(--primary)", fontWeight: 700 }}>{fmt(endDate)}</span>{" "}
                     <span style={{ color: "var(--text-muted)" }}>
-                      ({daysCount} {daysCount === 1 ? "day" : "days"} duration)
+                      ({daysCount} {daysCount === 1 ? "day" : "days"} scheduled window)
                     </span>
                   </div>
                 </div>
@@ -596,10 +618,11 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
       />
 
       <div className={styles.stepActionsBetween}>
-        <button onClick={() => setStep(3)} className={styles.secondaryNavBtn}>
+        <button type="button" disabled={isSubmitting} onClick={() => setStep(3)} className={styles.secondaryNavBtn}>
           Back
         </button>
         <button
+          type="button"
           disabled={isSubmitting || !agreedToPolicy}
           onClick={handleInitiateSubmit}
           className={styles.primaryNavBtn}

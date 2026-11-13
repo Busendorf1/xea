@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Users, User, UserCheck } from "lucide-react";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
 import { AdFormSelections } from "./types";
@@ -43,9 +42,9 @@ export default function Step2Budget({
             <label className={styles.fieldLabelBold}>Gender</label>
             <div className={styles.genderSegmentGroup}>
               {[
-                { value: "", label: "All Genders", icon: <Users size={14} /> },
-                { value: "male", label: "Male Only", icon: <User size={14} /> },
-                { value: "female", label: "Female Only", icon: <UserCheck size={14} /> },
+                { value: "", label: "All Genders" },
+                { value: "male", label: "Male Only" },
+                { value: "female", label: "Female Only" },
               ].map((g) => {
                 const isSelected = formSelections.gender === g.value;
                 return (
@@ -60,7 +59,6 @@ export default function Step2Budget({
                     }
                     className={`${styles.genderSegmentBtn} ${isSelected ? styles.genderSegmentBtnActive : ""}`}
                   >
-                    {g.icon}
                     <span>{g.label}</span>
                   </button>
                 );

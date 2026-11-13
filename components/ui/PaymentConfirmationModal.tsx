@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShieldCheck, Shield, X, Lock } from "lucide-react";
 import AppleSpinner from "@/components/ui/AppleSpinner";
+import WalletPinField from "@/components/ui/WalletPinField";
 import styles from "./PaymentConfirmationModal.module.css";
 
 export interface SummaryItem {
@@ -21,6 +22,10 @@ export interface PaymentConfirmationModalProps {
   paymentMethodText?: string;
   summaryItems?: SummaryItem[];
   isSubmitting?: boolean;
+  requireWalletPin?: boolean;
+  walletPin?: string;
+  onWalletPinChange?: (pin: string) => void;
+  pinError?: string | null;
 }
 
 export default function PaymentConfirmationModal({
@@ -30,8 +35,13 @@ export default function PaymentConfirmationModal({
   amountFormatted,
   paymentMethodText,
   isSubmitting = false,
+  requireWalletPin = false,
+  walletPin = "",
+  onWalletPinChange,
+  pinError = null,
 }: PaymentConfirmationModalProps) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const isWalletPinReady = !requireWalletPin || /^\d{4}$/.test(walletPin);
 
   // Reset acknowledgment whenever modal opens
   useEffect(() => {
@@ -129,6 +139,15 @@ export default function PaymentConfirmationModal({
                 I understand and agree that <strong className={styles.affirmationLabelStrong}>this transaction is strictly non-refundable</strong>.
               </span>
             </label>
+            {requireWalletPin && onWalletPinChange && (
+              <WalletPinField
+                id="confirm-modal-wallet-pin"
+                value={walletPin}
+                onChange={onWalletPinChange}
+                disabled={isSubmitting}
+                error={pinError}
+              />
+            )}
             {paymentMethodText && paymentMethodText.toLowerCase().includes("card") && (
               <p style={{ fontSize: "0.8rem", color: "var(--muted-foreground, #888)", marginTop: "4px", marginBottom: "12px", textAlign: "center", lineHeight: 1.4 }}>
                 You will be directed to the secure payment gateway on the web to complete checkout, and returned automatically to your dashboard.
@@ -149,7 +168,7 @@ export default function PaymentConfirmationModal({
                 type="button"
                 className={styles.confirmBtn}
                 onClick={onConfirm}
-                disabled={!acknowledged || isSubmitting}
+                disabled={!acknowledged || !isWalletPinReady || isSubmitting}
               >
                 {isSubmitting ? (
                   <>

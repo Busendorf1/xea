@@ -578,25 +578,57 @@ img.profileImg {
 }
 
 .editProfileBtn {
-  padding: 6px 15px;
-  border: 1px solid var(--card-border) !important;
-  background-color: transparent;
-  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 6px 14px;
+  border: 1px solid #000000 !important;
+  background-color: #000000;
+  color: #ffffff;
   border-radius: 9999px;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
+  font-family: var(--font-geist-sans), "Geist", sans-serif;
   text-decoration: none;
+  white-space: nowrap;
   transition: background-color 0.16s ease, border-color 0.16s ease;
 }
 
+[data-theme='dark'] .editProfileBtn,
+:global([data-theme='dark']) .editProfileBtn {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.editProfileBtnLocked {
+  border-color: #000000 !important;
+  background-color: #000000;
+  color: #ffffff;
+}
+
+.editProfileCountdownBadge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='white'] .editProfileCountdownBadge,
+[data-theme='light'] .editProfileCountdownBadge {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
 .editProfileBtn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: var(--text-muted) !important;
+  background-color: #18181b;
+  border-color: #18181b !important;
 }
 
 [data-theme='white'] .editProfileBtn:hover,
 [data-theme='light'] .editProfileBtn:hover {
-  background-color: rgba(15, 20, 25, 0.06);
+  background-color: #18181b;
 }
 
 .editProfileBtn:active {
@@ -975,7 +1007,46 @@ img.profileImg {
   background-color: var(--sidebar-bg);
 }
 
-/* 4-Digit Wallet PIN Drawer */
+/* 4-Digit Wallet PIN Drawer & Keyboard-Safe Elevated Overlay */
+.pinModalOverlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100dvh;
+  z-index: 1000050;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(14px, env(safe-area-inset-top)) 14px 16px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.pinModalOverlayTop {
+  align-items: flex-start;
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+@media (max-width: 768px) {
+  .pinModalOverlay {
+    align-items: flex-start;
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+}
+
+.pinModalSheet {
+  width: 100%;
+  max-width: 380px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  margin: 0 auto;
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.55);
+  border-radius: 16px;
+}
+
 .pinDrawerWrap {
   overflow: hidden;
   margin-bottom: 0.75rem;

@@ -328,7 +328,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/notifications:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }
 
@@ -404,6 +404,6 @@ export async function DELETE(req: NextRequest) {
     }
   } catch (err: any) {
     console.error("❌ Unexpected error in DELETE /api/notifications:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

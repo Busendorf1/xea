@@ -9,6 +9,11 @@ import { useTheme } from "@/components/ThemeProvider";
 import { Sun, Moon, ArrowRight, RotateCcw, X, Check } from "lucide-react";
 import DotMatrixBackground from "./backgrounds/DotMatrixBackground";
 import FloatingBadgesBackground from "./backgrounds/FloatingBadgesBackground";
+import {
+  AD_UNAVAILABLE_DISMISS_MS,
+  AD_UNAVAILABLE_MESSAGE,
+  extractSharedAdIdFromSearchParams,
+} from "@/lib/utils/adShare";
 
 type BackgroundVariant = "dots" | "badges" | "both" | "none";
 
@@ -53,8 +58,43 @@ export default function ModalLandingPage() {
   const [stepCount, setStepCount] = useState<number>(1);
   const [savedSession, setSavedSession] = useState<StoredConciergeSession | null>(null);
   const [bgVariant, setBgVariant] = useState<BackgroundVariant>("both");
+  const [adNotice, setAdNotice] = useState<string | null>(null);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const url = new URL(window.location.href);
+      let urlDirty = false;
+      const sharedId = extractSharedAdIdFromSearchParams(url.searchParams);
+      if (sharedId) {
+        localStorage.setItem("sharedAdId", sharedId);
+        url.searchParams.delete("sharedAdId");
+        url.searchParams.delete("adId");
+        url.searchParams.delete("blurb");
+        url.searchParams.delete("Earn Ads by Paayh");
+        urlDirty = true;
+      }
+
+      if (url.searchParams.get("adStatus") === "unavailable") {
+        localStorage.removeItem("sharedAdId");
+        url.searchParams.delete("adStatus");
+        urlDirty = true;
+        setAdNotice(AD_UNAVAILABLE_MESSAGE);
+        noticeTimer = setTimeout(() => {
+          setAdNotice(null);
+        }, AD_UNAVAILABLE_DISMISS_MS);
+      }
+
+      if (urlDirty) {
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      }
+    } catch {}
+    return () => {
+      if (noticeTimer) clearTimeout(noticeTimer);
+    };
+  }, []);
   const timeoutRef = useRef<number | null>(null);
   const closeTimeoutRef = useRef<number | null>(null);
 
@@ -433,6 +473,34 @@ export default function ModalLandingPage() {
           {/* &ldquo;We believe viewers deserve a share of the advertising revenue <br /> their attention generates. It&apos;s a fair, human-centered economic model.&rdquo; */}
         </div>
       </div>
+
+      {adNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            top: "max(16px, env(safe-area-inset-top))",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 1000080,
+            background: "rgba(15, 23, 42, 0.94)",
+            color: "#f8fafc",
+            border: "1px solid rgba(255, 255, 255, 0.16)",
+            borderRadius: "9999px",
+            padding: "10px 18px",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            boxShadow: "0 12px 32px rgba(0, 0, 0, 0.35)",
+            backdropFilter: "blur(10px)",
+            pointerEvents: "auto",
+            maxWidth: "calc(100vw - 32px)",
+            textAlign: "center",
+          }}
+        >
+          {adNotice}
+        </div>
+      )}
 
       {/* Interactive Dialogue Modal */}
       {isModalOpen && (

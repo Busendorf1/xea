@@ -5,12 +5,13 @@ import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Share2 } from "lucide-react";
 import styles from "./AdCard.module.css";
-import AdOptionsMenu from "./AdOptionsMenu";
+import AdOptionsMenu, { type AdReportType } from "./AdOptionsMenu";
 import AdInteractionHandler from "./AdInteractionHandler";
 import Avatar from "./Avatar";
 import VerifiedBadge from "./VerifiedBadge";
 import { isVideoUrl } from "./MediaCarousel";
 import { formatCurrency } from "@/lib/utils/currency";
+import { shareAdToDeviceOrClipboard } from "@/lib/utils/adShare";
 import type { Ad } from "./AdCard";
 import type { InteractionData } from "@/lib/hooks/useFeedActions";
 
@@ -44,7 +45,7 @@ interface SharedModalProps {
   onAdMutual: (ad: Ad) => Promise<boolean>;
   onShare: (id: string) => void;
   handleCtaClick: (clickType: string) => void;
-  handleDismiss: (adId: string) => void;
+  handleDismiss: (adId: string, advertiserEmail?: string, reportType?: AdReportType) => void;
   showToast: (msg: string) => void;
   getHref: (type: string, value: string, ad?: Ad) => string;
   getIcon: (type: string) => React.ReactNode;
@@ -166,6 +167,7 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
               showThreeDotMenu={showLightboxMenu}
               onToggleMenu={setShowLightboxMenu}
               onDismiss={handleDismiss}
+              onShowToast={showToast}
             />
           </div>
         </div>
@@ -456,20 +458,7 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
               className={styles.lightboxActionBtn}
               type="button"
               onClick={() => {
-                try {
-                  const encodedId = btoa(ad.id.toString());
-                  const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
-                  navigator.clipboard
-                    .writeText(shareUrl)
-                    .then(() => {
-                      showToast("Link copied to clipboard");
-                    })
-                    .catch(() => {
-                      onShare(ad.id);
-                    });
-                } catch {
-                  onShare(ad.id);
-                }
+                void shareAdToDeviceOrClipboard(ad, showToast, onShare);
               }}
             >
               <Share2 size={15} strokeWidth={1.7} />
@@ -632,6 +621,7 @@ export const AdTextReaderModal = React.memo(function AdTextReaderModal({
               showThreeDotMenu={showReaderMenu}
               onToggleMenu={setShowReaderMenu}
               onDismiss={handleDismiss}
+              onShowToast={showToast}
             />
           </div>
         </div>
@@ -649,7 +639,7 @@ export const AdTextReaderModal = React.memo(function AdTextReaderModal({
             />
             <div className={styles.textReaderAuthorMeta}>
               <div className={styles.textReaderAuthorNameRow}>
-                <span>{brandName}</span>
+                <span className={styles.textReaderAuthorName}>{brandName}</span>
                 {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
                   <VerifiedBadge size={14} title="Verified Account" />
                 )}
@@ -660,7 +650,7 @@ export const AdTextReaderModal = React.memo(function AdTextReaderModal({
                 )}
               </div>
               <span className={styles.textReaderAuthorSub}>
-                {formatTimestamp(ad.created_at)} · Sponsored Post
+                Sponsored Post
               </span>
             </div>
           </div>
@@ -712,20 +702,7 @@ export const AdTextReaderModal = React.memo(function AdTextReaderModal({
               className={styles.lightboxActionBtn}
               type="button"
               onClick={() => {
-                try {
-                  const encodedId = btoa(ad.id.toString());
-                  const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
-                  navigator.clipboard
-                    .writeText(shareUrl)
-                    .then(() => {
-                      showToast("Link copied to clipboard");
-                    })
-                    .catch(() => {
-                      onShare(ad.id);
-                    });
-                } catch {
-                  onShare(ad.id);
-                }
+                void shareAdToDeviceOrClipboard(ad, showToast, onShare);
               }}
             >
               <Share2 size={15} strokeWidth={1.7} />

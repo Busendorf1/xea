@@ -1,86 +1,68 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   RefreshCw,
   Wallet,
   ArrowUpRight,
   ArrowDownLeft,
-  TrendingUp,
   Search,
   Filter,
   ChevronDown,
-  Copy,
-  Check,
-  CreditCard,
   Building,
   Clock,
   Download,
-  FileText
 } from "lucide-react";
 import styles from "./page.module.css";
 import TransactionReceiptModal from "@/components/Receipt/TransactionReceiptModal";
+import { StatementSkeleton } from "@/components/ui/PageSkeletons";
+import StatementTableViews from "./StatementTableViews";
+import {
+  StatementTransaction,
+  CategoryFilter,
+  readStatementCache,
+  escapeStatementCsvCell,
+  isStatementCredit,
+  formatStatementAmount,
+} from "./statementUtils";
 
-interface Transaction {
-  id: string;
-  reference: string;
-  amount: number;
-  status: string;
-  type: string;
-  description: string;
-  metadata?: Record<string, any>;
-  created_at: string;
-}
-
-export type CategoryFilter = "all" | "pending_withdrawal" | "transfer_sent" | "transfer_received" | "withdrawn";
-
-function readStatementCache(): {
-  profile: any | null;
-  payments: Transaction[];
-  withdrawals: Transaction[];
-  hasCachedLists: boolean;
-} {
-  if (typeof window !== "undefined") {
-    try {
-      const cached = sessionStorage.getItem("paayh_statement_cache");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return {
-          profile: parsed.profile || null,
-          payments: Array.isArray(parsed.payments) ? parsed.payments : [],
-          withdrawals: Array.isArray(parsed.withdrawals) ? parsed.withdrawals : [],
-          hasCachedLists: Boolean(parsed.payments || parsed.withdrawals),
-        };
-      }
-    } catch {}
-  }
-  return { profile: null, payments: [], withdrawals: [], hasCachedLists: false };
-}
+export type { CategoryFilter };
 
 export default function StatementComponent({ initialProfile }: { initialProfile?: any } = {}) {
   const [initialCache] = useState(readStatementCache);
   const [profile, setProfile] = useState<any>(() => initialProfile || initialCache.profile);
-  const [payments, setPayments] = useState<Transaction[]>(initialCache.payments);
-  const [withdrawals, setWithdrawals] = useState<Transaction[]>(initialCache.withdrawals);
+  const [payments, setPayments] = useState<StatementTransaction[]>(initialCache.payments);
+  const [withdrawals, setWithdrawals] = useState<StatementTransaction[]>(initialCache.withdrawals);
   const [loading, setLoading] = useState<boolean>(!initialCache.hasCachedLists);
   const [activeTab, setActiveTab] = useState<"payments" | "withdrawals">("payments");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [copiedRef, setCopiedRef] = useState<string | null>(null);
-  const [selectedReceiptTx, setSelectedReceiptTx] = useState<Transaction | null>(null);
+  const [selectedReceiptTx, setSelectedReceiptTx] = useState<StatementTransaction | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMoreServer, setHasMoreServer] = useState(false);
+  const [loadingMoreServer, setLoadingMoreServer] = useState(false);
   const pageSize = 15;
 
-  const fetchData = async (isRefresh = false) => {
+  const inFlightFetchRef = useRef(false);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+
+  const fetchData = useCallback(async (isRefresh = false, cursorParam: string | null = null) => {
+    if (inFlightFetchRef.current && !cursorParam) return;
+    inFlightFetchRef.current = true;
+    setErrorMessage(null);
+
     try {
       const refreshQuery = isRefresh ? "&refresh=true" : "";
-      const needsProfileFetch = isRefresh || (!profile && !initialProfile);
+      const cursorQuery = cursorParam ? `&cursor=${encodeURIComponent(cursorParam)}` : "";
 
       const [profileRes, unifiedRes] = await Promise.all([
-        fetch("/api/profile").catch(() => null),
-        fetch(`/api/payments/history?type=all${refreshQuery}`),
+        cursorParam ? Promise.resolve(null) : fetch("/api/profile").catch(() => null),
+        fetch(`/api/payments/history?type=all${refreshQuery}${cursorQuery}`),
       ]);
 
       let newProfile = profile || initialProfile;
@@ -88,93 +70,108 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
       let newWithdrawals = withdrawals;
 
       if (profileRes && profileRes.ok) {
-        newProfile = await profileRes.json();
-        setProfile(newProfile);
+        const parsedProfile = await profileRes.json().catch(() => null);
+        if (parsedProfile) {
+          newProfile = parsedProfile;
+          setProfile(parsedProfile);
+        }
       }
 
-      if (unifiedRes.ok) {
-        const unifiedData = await unifiedRes.json();
-        newPayments = Array.isArray(unifiedData?.payments)
-          ? unifiedData.payments
-          : Array.isArray(unifiedData)
-          ? unifiedData
-          : [];
-        newWithdrawals = Array.isArray(unifiedData?.withdrawals) ? unifiedData.withdrawals : [];
+      if (!unifiedRes.ok) {
+        const errPayload = await unifiedRes.json().catch(() => null);
+        throw new Error(errPayload?.error || `Unable to load statement (${unifiedRes.status})`);
+      }
+
+      const unifiedData = await unifiedRes.json().catch(() => null);
+      const fetchedPayments: StatementTransaction[] = Array.isArray(unifiedData?.payments)
+        ? unifiedData.payments
+        : Array.isArray(unifiedData)
+        ? unifiedData
+        : [];
+      const fetchedWithdrawals: StatementTransaction[] = Array.isArray(unifiedData?.withdrawals)
+        ? unifiedData.withdrawals
+        : [];
+
+      if (cursorParam) {
+        setPayments((prev) => {
+          const existing = new Set(prev.map((p) => p.id));
+          return [...prev, ...fetchedPayments.filter((p) => !existing.has(p.id))];
+        });
+        setWithdrawals((prev) => {
+          const existing = new Set(prev.map((w) => w.id));
+          return [...prev, ...fetchedWithdrawals.filter((w) => !existing.has(w.id))];
+        });
+      } else {
+        newPayments = fetchedPayments;
+        newWithdrawals = fetchedWithdrawals;
         setPayments(newPayments);
         setWithdrawals(newWithdrawals);
 
-        // Auto-verify recent pending transactions (last 15 minutes) to ensure immediate "Completed" state
-        const recentPending = (newPayments || []).filter(
-          (p: Transaction) =>
-            (p.status === "pending" || p.status === "processing") &&
-            Date.now() - new Date(p.created_at).getTime() < 15 * 60 * 1000
-        );
-
-        if (recentPending.length > 0) {
-          recentPending.forEach((rp: Transaction) => {
-            fetch(`/api/payments/verify?reference=${encodeURIComponent(rp.reference)}`)
-              .then((r) => r.json())
-              .then((resData) => {
-                if (resData.success || resData.status === "success") {
-                  setPayments((prev) =>
-                    prev.map((item) =>
-                      item.reference === rp.reference ? { ...item, status: "success" } : item
-                    )
-                  );
-                }
-              })
-              .catch(() => {});
-          });
-        }
-
-        // Auto-verify recent pending/processing withdrawals (last 15 minutes) to ensure immediate "Completed" state
-        const recentPendingWithdrawals = (newWithdrawals || []).filter(
-          (w: Transaction) =>
-            (w.status === "pending" || w.status === "processing") &&
-            Date.now() - new Date(w.created_at).getTime() < 15 * 60 * 1000
-        );
-
-        if (recentPendingWithdrawals.length > 0) {
-          recentPendingWithdrawals.forEach((rw: Transaction) => {
-            fetch(`/api/payments/verify?reference=${encodeURIComponent(rw.reference)}`)
-              .then((r) => r.json())
-              .then((resData) => {
-                if (resData.success || resData.status === "success") {
-                  setWithdrawals((prev) =>
-                    prev.map((item) =>
-                      item.reference === rw.reference ? { ...item, status: "success" } : item
-                    )
-                  );
-                } else if (resData.status === "failed") {
-                  setWithdrawals((prev) =>
-                    prev.map((item) =>
-                      item.reference === rw.reference ? { ...item, status: "failed" } : item
-                    )
-                  );
-                }
-              })
-              .catch(() => {});
-          });
-        }
+        try {
+          sessionStorage.setItem(
+            "paayh_statement_cache",
+            JSON.stringify({
+              profile: newProfile,
+              payments: newPayments,
+              withdrawals: newWithdrawals,
+            })
+          );
+        } catch {}
       }
 
-      try {
-        sessionStorage.setItem(
-          "paayh_statement_cache",
-          JSON.stringify({
-            profile: newProfile,
-            payments: newPayments,
-            withdrawals: newWithdrawals,
+      setNextCursor(typeof unifiedData?.nextCursor === "string" ? unifiedData.nextCursor : null);
+      setHasMoreServer(Boolean(unifiedData?.hasMore && unifiedData?.nextCursor));
+
+      // Auto-verify recent pending transactions (last 15 minutes)
+      const recentPending = (fetchedPayments || []).filter(
+        (p) =>
+          (p.status === "pending" || p.status === "processing") &&
+          Date.now() - new Date(p.created_at).getTime() < 15 * 60 * 1000
+      );
+      recentPending.forEach((rp) => {
+        fetch(`/api/payments/verify?reference=${encodeURIComponent(rp.reference)}`)
+          .then((r) => r.json().catch(() => null))
+          .then((resData) => {
+            if (resData?.success || resData?.status === "success") {
+              setPayments((prev) =>
+                prev.map((item) => (item.reference === rp.reference ? { ...item, status: "success" } : item))
+              );
+            }
           })
-        );
-      } catch {}
-    } catch (err) {
+          .catch(() => {});
+      });
+
+      const recentPendingWithdrawals = (fetchedWithdrawals || []).filter(
+        (w) =>
+          (w.status === "pending" || w.status === "processing") &&
+          Date.now() - new Date(w.created_at).getTime() < 15 * 60 * 1000
+      );
+      recentPendingWithdrawals.forEach((rw) => {
+        fetch(`/api/payments/verify?reference=${encodeURIComponent(rw.reference)}`)
+          .then((r) => r.json().catch(() => null))
+          .then((resData) => {
+            if (resData?.success || resData?.status === "success") {
+              setWithdrawals((prev) =>
+                prev.map((item) => (item.reference === rw.reference ? { ...item, status: "success" } : item))
+              );
+            } else if (resData?.status === "failed") {
+              setWithdrawals((prev) =>
+                prev.map((item) => (item.reference === rw.reference ? { ...item, status: "failed" } : item))
+              );
+            }
+          })
+          .catch(() => {});
+      });
+    } catch (err: any) {
       console.error("❌ Error fetching statement data:", err);
+      setErrorMessage(err?.message || "Failed to load statement records. Please try again.");
     } finally {
+      inFlightFetchRef.current = false;
       setLoading(false);
       setRefreshing(false);
+      setLoadingMoreServer(false);
     }
-  };
+  }, [initialProfile, payments, profile, withdrawals]);
 
   useEffect(() => {
     fetchData();
@@ -191,144 +188,42 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
       window.removeEventListener("paayh:transfer_completed", handleStatementRefresh);
       window.removeEventListener("paayh:balance_updated", handleStatementRefresh);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRefresh = () => {
+    if (refreshing) return;
     setRefreshing(true);
     fetchData(true);
   };
 
-  const handleCopy = (ref: string) => {
-    navigator.clipboard.writeText(ref);
-    setCopiedRef(ref);
-    setTimeout(() => setCopiedRef(null), 2000);
+  const handleLoadMoreServer = () => {
+    if (!nextCursor || loadingMoreServer) return;
+    setLoadingMoreServer(true);
+    fetchData(false, nextCursor);
   };
 
-  const handleDownloadCSV = () => {
-    const dataToExport = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
-    if (!dataToExport || dataToExport.length === 0) {
-      return;
-    }
-
-    const headers = activeTab === "payments" 
-      ? ["Date & Time", "Reference", "Type", "Description", "Amount (NGN)", "Status"]
-      : ["Date & Time", "Reference", "Destination Account", "Amount (NGN)", "Status"];
-
-    const rows = dataToExport.map((tx) => {
-      const formattedDate = `"${new Date(tx.created_at).toLocaleString("en-US")}"`;
-      const ref = `"${tx.reference}"`;
-      const desc = `"${(tx.description || "").replace(/"/g, '""')}"`;
-      const status = `"${tx.status}"`;
-      
-      if (activeTab === "payments") {
-        const type = `"${tx.type}"`;
-        const isInflow = ["transfer_received", "refund", "campaign_refund", "wallet_credit", "earning"].includes(
-          String(tx.type || "").toLowerCase()
-        );
-        const amt = isInflow ? tx.amount : -tx.amount;
-        return [formattedDate, ref, type, desc, amt, status].join(",");
-      } else {
-        return [formattedDate, ref, desc, -tx.amount, status].join(",");
-      }
-    });
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    const filename = `Paayh_Statement_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const formatAmount = (amt: number | string) => {
-    const parsed = typeof amt === "string" ? parseFloat(amt) : amt;
-    return isNaN(parsed) ? "₦0.00" : "₦" + parsed.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  };
-
-  const getStatusBadge = (status: string) => {
-    const s = status.toLowerCase();
-    switch (s) {
-      case "success":
-        return <span className={`${styles.status} ${styles.statusSuccess}`}>Completed</span>;
-      case "queued":
-        return <span className={`${styles.status} ${styles.statusPending}`}>Queued</span>;
-      case "processing":
-        return <span className={`${styles.status} ${styles.statusPending}`}>Processing</span>;
-      case "pending":
-        return <span className={`${styles.status} ${styles.statusPending}`}>Pending</span>;
-      case "failed":
-        return <span className={`${styles.status} ${styles.statusFailed}`}>Failed</span>;
-      case "reversed":
-        return <span className={`${styles.status} ${styles.statusReversed}`}>Reversed</span>;
-      default:
-        return <span className={styles.status}>{status}</span>;
+  const handleCopy = async (ref: string) => {
+    try {
+      await navigator.clipboard.writeText(ref);
+      setCopiedRef(ref);
+      setTimeout(() => setCopiedRef(null), 2000);
+    } catch {
+      setErrorMessage("Could not copy reference to clipboard.");
     }
   };
 
-  const getTypeBadge = (type: string) => {
-    const t = type.toLowerCase();
-    if (t === "transfer_sent") {
-      return (
-        <span className={`${styles.typeBadge} ${styles.typeTransferSent}`}>
-          <ArrowUpRight size={13} />
-          Sent Money
-        </span>
-      );
-    }
-    if (t === "transfer_received") {
-      return (
-        <span className={`${styles.typeBadge} ${styles.typeTransferReceived}`}>
-          <ArrowDownLeft size={13} />
-          Received Money
-        </span>
-      );
-    }
-    if (t === "withdrawal") {
-      return (
-        <span className={`${styles.typeBadge} ${styles.typeWithdrawal}`}>
-          <Building size={13} />
-          Withdrawal
-        </span>
-      );
-    }
-    if (t === "ad" || t === "publish_ad") {
-      return (
-        <span className={`${styles.typeBadge} ${styles.typeAd}`}>
-          <TrendingUp size={13} />
-          Ad Campaign
-        </span>
-      );
-    }
-    if (t === "highlight" || t === "publish_highlight") {
-      return (
-        <span className={`${styles.typeBadge} ${styles.typeHighlight}`}>
-          <CreditCard size={13} />
-          Highlight
-        </span>
-      );
-    }
-    return (
-      <span className={styles.typeBadge}>
-        {type.replace("_", " ")}
-      </span>
-    );
+  const scrollToTableTop = () => {
+    try {
+      controlsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch {}
   };
 
   const { totalSent, totalReceived } = useMemo(() => {
     let sent = 0;
     let received = 0;
     for (const p of payments) {
-      if (p.status.toLowerCase() === "success") {
+      if ((p.status || "").toLowerCase() === "success") {
         if (p.type === "transfer_sent") sent += Number(p.amount || 0);
         else if (p.type === "transfer_received") received += Number(p.amount || 0);
       }
@@ -338,7 +233,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
 
   const totalWithdrawn = useMemo(() => {
     return withdrawals
-      .filter((w) => w.status.toLowerCase() === "success")
+      .filter((w) => (w.status || "").toLowerCase() === "success")
       .reduce((sum, w) => sum + Number(w.amount || 0), 0);
   }, [withdrawals]);
 
@@ -357,24 +252,27 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
       }
     }
     setCurrentPage(1);
+    scrollToTableTop();
+  };
+
+  const handleCardKeyDown = (e: React.KeyboardEvent, cat: CategoryFilter) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleCardClick(cat);
+    }
   };
 
   const filteredPayments = useMemo(() => {
     return payments.filter((tx) => {
-      // Category filter sieve
-      if (categoryFilter === "transfer_sent" && tx.type !== "transfer_sent") {
-        return false;
-      }
-      if (categoryFilter === "transfer_received" && tx.type !== "transfer_received") {
-        return false;
-      }
+      if (categoryFilter === "transfer_sent" && tx.type !== "transfer_sent") return false;
+      if (categoryFilter === "transfer_received" && tx.type !== "transfer_received") return false;
       const matchesSearch =
         !normalizedSearch ||
-        tx.reference.toLowerCase().includes(normalizedSearch) ||
+        (tx.reference || "").toLowerCase().includes(normalizedSearch) ||
         (tx.description || "").toLowerCase().includes(normalizedSearch) ||
         (tx.type || "").toLowerCase().includes(normalizedSearch);
       const matchesStatus =
-        normalizedStatus === "all" || tx.status.toLowerCase() === normalizedStatus;
+        normalizedStatus === "all" || (tx.status || "").toLowerCase() === normalizedStatus;
       return matchesSearch && matchesStatus;
     });
   }, [payments, normalizedSearch, normalizedStatus, categoryFilter]);
@@ -382,34 +280,26 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
   const filteredWithdrawals = useMemo(() => {
     return withdrawals.filter((tx) => {
       const s = (tx.status || "").toLowerCase();
-      // Category filter sieve
-      if (categoryFilter === "pending_withdrawal") {
-        if (s !== "pending" && s !== "processing" && s !== "queued") {
-          return false;
-        }
+      if (categoryFilter === "pending_withdrawal" && s !== "pending" && s !== "processing" && s !== "queued") {
+        return false;
       }
-      if (categoryFilter === "withdrawn") {
-        if (s !== "success") {
-          return false;
-        }
-      }
+      if (categoryFilter === "withdrawn" && s !== "success") return false;
       const matchesSearch =
         !normalizedSearch ||
-        tx.reference.toLowerCase().includes(normalizedSearch) ||
+        (tx.reference || "").toLowerCase().includes(normalizedSearch) ||
         (tx.description || "").toLowerCase().includes(normalizedSearch) ||
         (tx.type || "").toLowerCase().includes(normalizedSearch);
-      const matchesStatus =
-        normalizedStatus === "all" || tx.status.toLowerCase() === normalizedStatus;
+      const matchesStatus = normalizedStatus === "all" || s === normalizedStatus;
       return matchesSearch && matchesStatus;
     });
   }, [withdrawals, normalizedSearch, normalizedStatus, categoryFilter]);
 
-  // Pagination calculation
   const currentList = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
   const totalPages = Math.max(1, Math.ceil(currentList.length / pageSize));
   const validPage = Math.min(currentPage, totalPages);
   const startIndex = (validPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, currentList.length);
+
   const paginatedPayments = useMemo(
     () => filteredPayments.slice(startIndex, startIndex + pageSize),
     [filteredPayments, startIndex, pageSize]
@@ -418,6 +308,47 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
     () => filteredWithdrawals.slice(startIndex, startIndex + pageSize),
     [filteredWithdrawals, startIndex, pageSize]
   );
+
+  const handleDownloadCSV = () => {
+    const dataToExport = activeTab === "payments" ? filteredPayments : filteredWithdrawals;
+    if (!dataToExport || dataToExport.length === 0) return;
+
+    const headers =
+      activeTab === "payments"
+        ? ["Date & Time", "Reference", "Type", "Description", "Amount (NGN)", "Status"]
+        : ["Date & Time", "Reference", "Destination Account", "Amount (NGN)", "Status"];
+
+    const rows = dataToExport.map((tx) => {
+      const formattedDate = escapeStatementCsvCell(new Date(tx.created_at).toLocaleString("en-US"));
+      const ref = escapeStatementCsvCell(tx.reference);
+      const desc = escapeStatementCsvCell(tx.description || "");
+      const status = escapeStatementCsvCell(tx.status);
+
+      if (activeTab === "payments") {
+        const type = escapeStatementCsvCell(tx.type);
+        const amt = isStatementCredit(tx.type) ? tx.amount : -tx.amount;
+        return [formattedDate, ref, type, desc, amt, status].join(",");
+      }
+      return [formattedDate, ref, desc, -tx.amount, status].join(",");
+    });
+
+    const blob = new Blob([[headers.join(","), ...rows].join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Paayh_Statement_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    setCurrentPage(nextPage);
+    scrollToTableTop();
+  };
 
   return (
     <main className={styles.container}>
@@ -430,7 +361,9 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
         </div>
         <div className={styles.headerActions}>
           <button
+            type="button"
             onClick={handleDownloadCSV}
+            disabled={loading || currentList.length === 0}
             className={styles.downloadBtn}
             title="Download Statement CSV file"
           >
@@ -438,6 +371,7 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
             <span>Download File</span>
           </button>
           <button
+            type="button"
             onClick={handleRefresh}
             disabled={refreshing}
             className={styles.refreshBtn}
@@ -449,20 +383,54 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
         </div>
       </div>
 
-      {loading ? (
-        <div className={styles.loadingWrapper}>
-          <div className={styles.loadingSpinner} />
-          <p>Loading your statement history...</p>
+      {errorMessage && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: "16px",
+            padding: "12px 16px",
+            borderRadius: "10px",
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "#ef4444",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            fontSize: "0.85rem",
+          }}
+        >
+          <span>{errorMessage}</span>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              background: "transparent",
+              color: "#ef4444",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
         </div>
+      )}
+
+      {loading ? (
+        <StatementSkeleton />
       ) : (
         <>
           <div className={styles.statsGrid}>
             <div
-              className={`${styles.statCard} ${styles.statBalance} ${categoryFilter === "all" ? styles.statCardActive : ""}`}
-              onClick={() => {
-                setCategoryFilter("all");
-                setCurrentPage(1);
-              }}
+              className={`${styles.statCard} ${styles.statBalance} ${
+                categoryFilter === "all" ? styles.statCardActive : ""
+              }`}
+              onClick={() => handleCardClick("all")}
+              onKeyDown={(e) => handleCardKeyDown(e, "all")}
               role="button"
               tabIndex={0}
               title="Click to view all transactions"
@@ -472,13 +440,16 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Available Balance</div>
-                <div className={styles.statValue}>{formatAmount(profile?.balance ?? 0)}</div>
+                <div className={styles.statValue}>{formatStatementAmount(profile?.balance ?? 0)}</div>
               </div>
             </div>
 
             <div
-              className={`${styles.statCard} ${styles.statWithdraw} ${categoryFilter === "pending_withdrawal" ? styles.statCardActive : ""}`}
+              className={`${styles.statCard} ${styles.statWithdraw} ${
+                categoryFilter === "pending_withdrawal" ? styles.statCardActive : ""
+              }`}
               onClick={() => handleCardClick("pending_withdrawal")}
+              onKeyDown={(e) => handleCardKeyDown(e, "pending_withdrawal")}
               role="button"
               tabIndex={0}
               title="Click to sieve statement by Pending Withdrawals"
@@ -488,13 +459,16 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Pending Withdrawal</div>
-                <div className={styles.statValue}>{formatAmount(profile?.withdrawal ?? 0)}</div>
+                <div className={styles.statValue}>{formatStatementAmount(profile?.withdrawal ?? 0)}</div>
               </div>
             </div>
 
             <div
-              className={`${styles.statCard} ${styles.statSent} ${categoryFilter === "transfer_sent" ? styles.statCardActive : ""}`}
+              className={`${styles.statCard} ${styles.statSent} ${
+                categoryFilter === "transfer_sent" ? styles.statCardActive : ""
+              }`}
               onClick={() => handleCardClick("transfer_sent")}
+              onKeyDown={(e) => handleCardKeyDown(e, "transfer_sent")}
               role="button"
               tabIndex={0}
               title="Click to sieve statement by Sent Money"
@@ -504,13 +478,16 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total P2P Sent</div>
-                <div className={styles.statValue}>{formatAmount(totalSent)}</div>
+                <div className={styles.statValue}>{formatStatementAmount(totalSent)}</div>
               </div>
             </div>
 
             <div
-              className={`${styles.statCard} ${styles.statReceived} ${categoryFilter === "transfer_received" ? styles.statCardActive : ""}`}
+              className={`${styles.statCard} ${styles.statReceived} ${
+                categoryFilter === "transfer_received" ? styles.statCardActive : ""
+              }`}
               onClick={() => handleCardClick("transfer_received")}
+              onKeyDown={(e) => handleCardKeyDown(e, "transfer_received")}
               role="button"
               tabIndex={0}
               title="Click to sieve statement by Received Money"
@@ -520,13 +497,16 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total P2P Received</div>
-                <div className={styles.statValue}>{formatAmount(totalReceived)}</div>
+                <div className={styles.statValue}>{formatStatementAmount(totalReceived)}</div>
               </div>
             </div>
 
             <div
-              className={`${styles.statCard} ${styles.statWithdrawn} ${categoryFilter === "withdrawn" ? styles.statCardActive : ""}`}
+              className={`${styles.statCard} ${styles.statWithdrawn} ${
+                categoryFilter === "withdrawn" ? styles.statCardActive : ""
+              }`}
               onClick={() => handleCardClick("withdrawn")}
+              onKeyDown={(e) => handleCardKeyDown(e, "withdrawn")}
               role="button"
               tabIndex={0}
               title="Click to sieve statement by Completed Withdrawals"
@@ -536,33 +516,35 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
               </div>
               <div className={styles.statContent}>
                 <div className={styles.statLabel}>Total Withdrawn</div>
-                <div className={styles.statValue}>{formatAmount(totalWithdrawn)}</div>
+                <div className={styles.statValue}>{formatStatementAmount(totalWithdrawn)}</div>
               </div>
             </div>
           </div>
 
-          <div className={styles.controlsBar}>
+          <div ref={controlsRef} className={styles.controlsBar}>
             <div className={styles.tabsContainer}>
               <button
+                type="button"
                 className={`${styles.tabBtn} ${activeTab === "payments" ? styles.activeTabBtn : ""}`}
                 onClick={() => {
                   setActiveTab("payments");
                   if (categoryFilter === "pending_withdrawal" || categoryFilter === "withdrawn") {
                     setCategoryFilter("all");
                   }
-                  setCurrentPage(1);
+                  handlePageChange(1);
                 }}
               >
-                Payments & Transfers ({payments.length})
+                Payments &amp; Transfers ({payments.length})
               </button>
               <button
+                type="button"
                 className={`${styles.tabBtn} ${activeTab === "withdrawals" ? styles.activeTabBtn : ""}`}
                 onClick={() => {
                   setActiveTab("withdrawals");
                   if (categoryFilter === "transfer_sent" || categoryFilter === "transfer_received") {
                     setCategoryFilter("all");
                   }
-                  setCurrentPage(1);
+                  handlePageChange(1);
                 }}
               >
                 Withdrawals ({withdrawals.length})
@@ -606,287 +588,36 @@ export default function StatementComponent({ initialProfile }: { initialProfile?
             </div>
           </div>
 
-          <div className={styles.tableWrapper}>
-            {activeTab === "payments" ? (
-              filteredPayments.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <div className={styles.emptyTitle}>No Transactions Found</div>
-                  <p>No payment or transfer records match your current filters.</p>
-                </div>
-              ) : (
-                <>
-                  {/* Desktop Table View */}
-                  <table className={`${styles.table} ${styles.desktopTable}`}>
-                    <thead>
-                      <tr>
-                        <th className={styles.th}>Date & Time</th>
-                        <th className={styles.th}>Reference</th>
-                        <th className={styles.th}>Type</th>
-                        <th className={styles.th}>Description</th>
-                        <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
-                        <th className={styles.th}>Status</th>
-                        <th className={styles.th}>Receipt</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedPayments.map((tx) => {
-                        const isCredit = ["transfer_received", "refund", "campaign_refund", "wallet_credit", "earning"].includes(
-                          String(tx.type || "").toLowerCase()
-                        );
-                        return (
-                          <tr key={tx.id} className={styles.row}>
-                            <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
-                            <td className={styles.tdRef}>
-                              <div className={styles.refContainer}>
-                              <span className={styles.refCode}>{tx.reference}</span>
-                              <button
-                                onClick={() => handleCopy(tx.reference)}
-                                className={styles.copyBtn}
-                                title="Copy Reference"
-                              >
-                                {copiedRef === tx.reference ? (
-                                  <Check size={12} color="#4b5e38" />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
-                            </div>
-                            </td>
-                            <td className={styles.td}>{getTypeBadge(tx.type)}</td>
-                            <td className={styles.tdDesc}>{tx.description}</td>
-                            <td className={`${styles.tdAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
-                              {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
-                            </td>
-                            <td className={styles.td}>{getStatusBadge(tx.status)}</td>
-                            <td className={styles.td}>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedReceiptTx(tx)}
-                                className={styles.receiptRowBtn}
-                                title="Download or View Receipt"
-                              >
-                                <Download size={12} />
-                                <span>Receipt</span>
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card List View (matches xea-mobile, no horizontal scroll) */}
-                  <div className={styles.mobileCardList}>
-                    {paginatedPayments.map((tx) => {
-                      const isCredit = ["transfer_received", "refund", "campaign_refund", "wallet_credit", "earning"].includes(
-                        String(tx.type || "").toLowerCase()
-                      );
-                      return (
-                        <div key={tx.id} className={styles.mobileCard}>
-                          <div className={styles.mobileCardLeft}>
-                            <div className={styles.mobileBadgeRow}>
-                              <span className={styles.mobileTypeBadge}>{getTypeBadge(tx.type)}</span>
-                              <span className={styles.mobileStatusBadge}>{getStatusBadge(tx.status)}</span>
-                            </div>
-                            <div className={styles.mobileDesc}>{tx.description}</div>
-                            {tx.reference && (
-                              <div className={styles.mobileRefRow}>
-                                <span className={styles.mobileRefText}>Ref: {tx.reference}</span>
-                                <button
-                                  onClick={() => handleCopy(tx.reference)}
-                                  className={styles.copyBtn}
-                                  title="Copy Reference"
-                                >
-                                  {copiedRef === tx.reference ? (
-                                    <Check size={12} color="#4b5e38" />
-                                  ) : (
-                                    <Copy size={12} />
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                            <div className={styles.mobileTime}>{formatDate(tx.created_at)}</div>
-                          </div>
-                          <div className={styles.mobileCardRight}>
-                            <div className={`${styles.mobileAmount} ${isCredit ? styles.amountCredit : styles.amountDebit}`}>
-                              {isCredit ? `+ ${formatAmount(tx.amount)}` : `- ${formatAmount(tx.amount)}`}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedReceiptTx(tx)}
-                              className={styles.mobileReceiptBtn}
-                              title="Download Receipt"
-                            >
-                              <Download size={11} />
-                              <span>Receipt</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )
-            ) : filteredWithdrawals.length === 0 ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyTitle}>No Withdrawals Found</div>
-                <p>No bank withdrawal records match your current filters.</p>
-              </div>
-            ) : (
-              <>
-                {/* Desktop Table View */}
-                <table className={`${styles.table} ${styles.desktopTable}`}>
-                  <thead>
-                    <tr>
-                      <th className={styles.th}>Date & Time</th>
-                      <th className={styles.th}>Reference</th>
-                      <th className={styles.th}>Destination Account</th>
-                      <th className={`${styles.th} ${styles.thAmount}`}>Amount</th>
-                      <th className={styles.th}>Status</th>
-                      <th className={styles.th}>Receipt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedWithdrawals.map((tx) => (
-                      <tr key={tx.id} className={styles.row}>
-                        <td className={styles.tdDate}>{formatDate(tx.created_at)}</td>
-                        <td className={styles.tdRef}>
-                              <div className={styles.refContainer}>
-                          <span className={styles.refCode}>{tx.reference}</span>
-                          <button
-                            onClick={() => handleCopy(tx.reference)}
-                            className={styles.copyBtn}
-                            title="Copy Reference"
-                          >
-                            {copiedRef === tx.reference ? (
-                              <Check size={12} color="#4b5e38" />
-                            ) : (
-                              <Copy size={12} />
-                            )}
-                          </button>
-                        </div>
-                            </td>
-                        <td className={styles.tdDesc}>{tx.description}</td>
-                        <td className={`${styles.tdAmount} ${styles.amountDebit}`}>
-                          - {formatAmount(tx.amount)}
-                        </td>
-                        <td className={styles.td}>{getStatusBadge(tx.status)}</td>
-                        <td className={styles.td}>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedReceiptTx(tx)}
-                            className={styles.receiptRowBtn}
-                            title="Download or View Receipt"
-                          >
-                            <Download size={12} />
-                            <span>Receipt</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Mobile Card List View (matches xea-mobile, no horizontal scroll) */}
-                <div className={styles.mobileCardList}>
-                  {paginatedWithdrawals.map((tx) => (
-                    <div key={tx.id} className={styles.mobileCard}>
-                      <div className={styles.mobileCardLeft}>
-                        <div className={styles.mobileBadgeRow}>
-                          <span className={styles.mobileTypeBadge}>{getTypeBadge("withdrawal")}</span>
-                          <span className={styles.mobileStatusBadge}>{getStatusBadge(tx.status)}</span>
-                        </div>
-                        <div className={styles.mobileDesc}>{tx.description}</div>
-                        {tx.reference && (
-                          <div className={styles.mobileRefRow}>
-                            <span className={styles.mobileRefText}>Ref: {tx.reference}</span>
-                            <button
-                              onClick={() => handleCopy(tx.reference)}
-                              className={styles.copyBtn}
-                              title="Copy Reference"
-                            >
-                              {copiedRef === tx.reference ? (
-                                <Check size={12} color="#4b5e38" />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                            </button>
-                          </div>
-                        )}
-                        <div className={styles.mobileTime}>{formatDate(tx.created_at)}</div>
-                      </div>
-                      <div className={styles.mobileCardRight}>
-                        <div className={`${styles.mobileAmount} ${styles.amountDebit}`}>
-                          - {formatAmount(tx.amount)}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedReceiptTx(tx)}
-                          className={styles.mobileReceiptBtn}
-                          title="Download Receipt"
-                        >
-                          <Download size={11} />
-                          <span>Receipt</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Pagination Controls Bar */}
-            {currentList.length > 0 && (
-              <div className={styles.paginationBar}>
-                <div className={styles.paginationInfo}>
-                  Showing {startIndex + 1}–{endIndex} of {currentList.length} {activeTab === "payments" ? "transactions" : "withdrawals"}
-                </div>
-                <div className={styles.paginationControls}>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={validPage <= 1}
-                    className={styles.pageBtn}
-                    title="Previous Page"
-                  >
-                    ‹ Prev
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - validPage) <= 2)
-                    .map((p, idx, arr) => (
-                      <React.Fragment key={p}>
-                        {idx > 0 && arr[idx - 1] !== p - 1 && (
-                          <span className={styles.pageEllipsis}>…</span>
-                        )}
-                        <button
-                          onClick={() => setCurrentPage(p)}
-                          className={`${styles.pageBtn} ${validPage === p ? styles.pageBtnActive : ""}`}
-                        >
-                          {p}
-                        </button>
-                      </React.Fragment>
-                    ))}
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={validPage >= totalPages}
-                    className={styles.pageBtn}
-                    title="Next Page"
-                  >
-                    Next ›
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <StatementTableViews
+            activeTab={activeTab}
+            filteredPayments={filteredPayments}
+            filteredWithdrawals={filteredWithdrawals}
+            paginatedPayments={paginatedPayments}
+            paginatedWithdrawals={paginatedWithdrawals}
+            copiedRef={copiedRef}
+            onCopy={handleCopy}
+            onSelectReceipt={setSelectedReceiptTx}
+            currentListLength={currentList.length}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalPages={totalPages}
+            validPage={validPage}
+            onPageChange={handlePageChange}
+            hasMoreServer={hasMoreServer}
+            loadingMoreServer={loadingMoreServer}
+            onLoadMoreServer={handleLoadMoreServer}
+          />
         </>
       )}
 
-      {/* Transaction Receipt Modal */}
       {selectedReceiptTx && (
         <TransactionReceiptModal
           transaction={selectedReceiptTx}
           onClose={() => setSelectedReceiptTx(null)}
           currentUserEmail={profile?.email}
-          currentUserName={profile?.firstName ? `${profile.firstName} ${profile.lastName || ""}`.trim() : undefined}
+          currentUserName={
+            profile?.firstName ? `${profile.firstName} ${profile.lastName || ""}`.trim() : undefined
+          }
         />
       )}
     </main>

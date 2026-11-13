@@ -1,13 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Send, Lock, KeyRound, X, Check } from "lucide-react";
+import { motion } from "framer-motion";
+import { Eye, EyeOff, Send, Lock } from "lucide-react";
 import RollingCounter from "@/components/ui/RollingCounter";
 import { getUserCurrency, getCurrencyConfig, NGN_PER_USD } from "@/lib/utils/currency";
+import { toClientFriendlyApiError, toClientFriendlyError } from "@/lib/utils/clientError";
 import { UserProfile } from "./types";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import WalletPinModal, { PinBoxMode } from "./WalletPinModal";
 import styles from "./page.module.css";
 
 interface DashboardWalletCardProps {
@@ -15,13 +18,13 @@ interface DashboardWalletCardProps {
   showBalance: boolean;
   onToggleShowBalance: (nextState?: boolean) => void;
   onPinConfigured?: () => void;
+  onPinUnlocked?: (pin: string) => void;
   formatCurrency: (amount: number | string) => string;
   onOpenWithdrawModal: () => void;
   onOpenSendMoneyModal: () => void;
   onSelectTab: (tab: string) => void;
 }
 
-type PinBoxMode = "closed" | "verify" | "setup" | "forgot" | "change";
 type PendingWalletAction = "none" | "withdraw" | "send";
 
 export default function DashboardWalletCard({
@@ -29,6 +32,7 @@ export default function DashboardWalletCard({
   showBalance,
   onToggleShowBalance,
   onPinConfigured,
+  onPinUnlocked,
   formatCurrency,
   onOpenWithdrawModal,
   onOpenSendMoneyModal,
@@ -43,35 +47,77 @@ export default function DashboardWalletCard({
   const isExempt = isExemptFromBarriersAndInactivity(user.email, user as any);
   const isMonetized = Boolean(
     !user.has_cancelled_monetization &&
-      (isExempt || clicksCount >= 300)
+      (isExempt || user.monetized || clicksCount >= 300)
   );
 
   const [hasPin, setHasPin] = useState<boolean>(Boolean(user.has_wallet_pin));
   const [pinMode, setPinMode] = useState<PinBoxMode>("closed");
   const [pendingAction, setPendingAction] = useState<PendingWalletAction>("none");
 
-  // 4-digit arrays
   const [pinDigits, setPinDigits] = useState<string[]>(["", "", "", ""]);
   const [confirmDigits, setConfirmDigits] = useState<string[]>(["", "", "", ""]);
   const [currentPinDigits, setCurrentPinDigits] = useState<string[]>(["", "", "", ""]);
-
-  // Forgot PIN recovery fields
   const [resetEmail, setResetEmail] = useState("");
   const [resetPhone, setResetPhone] = useState("");
 
   const [pinLoading, setPinLoading] = useState(false);
   const [pinError, setPinError] = useState("");
   const [pinSuccessMsg, setPinSuccessMsg] = useState("");
+  const [isClientMounted, setIsClientMounted] = useState(false);
+  const [viewportBounds, setViewportBounds] = useState<{
+    top: number;
+    height: number;
+    keyboardOpen: boolean;
+  } | null>(null);
 
   const pinRefs = useRef<Array<HTMLInputElement | null>>([null, null, null, null]);
   const confirmRefs = useRef<Array<HTMLInputElement | null>>([null, null, null, null]);
   const currentPinRefs = useRef<Array<HTMLInputElement | null>>([null, null, null, null]);
 
   useEffect(() => {
+    setIsClientMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (pinMode === "closed" || typeof window === "undefined") {
+      setViewportBounds(null);
+      return;
+    }
+
+    const updateViewport = () => {
+      const vv = window.visualViewport;
+      if (vv) {
+        const keyboardOpen = window.innerHeight - vv.height > 120;
+        setViewportBounds({
+          top: vv.offsetTop,
+          height: vv.height,
+          keyboardOpen,
+        });
+      } else {
+        setViewportBounds({
+          top: 0,
+          height: window.innerHeight,
+          keyboardOpen: false,
+        });
+      }
+    };
+
+    updateViewport();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", updateViewport);
+    vv?.addEventListener("scroll", updateViewport);
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      vv?.removeEventListener("resize", updateViewport);
+      vv?.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, [pinMode]);
+
+  useEffect(() => {
     if (user.has_wallet_pin) {
       setHasPin(true);
     }
-    // Always check server source-of-truth in case profile was cached before PIN was set
     fetch("/api/wallet/pin")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -85,7 +131,6 @@ export default function DashboardWalletCard({
       .catch(() => {});
   }, [user.has_wallet_pin, onPinConfigured]);
 
-  // Auto-close wallet balance after 5 minutes if user did not manually close with the Eye icon
   useEffect(() => {
     if (!showBalance) return;
     const autoLockTimer = setTimeout(() => {
@@ -109,7 +154,6 @@ export default function DashboardWalletCard({
     setPendingAction(actionAfterUnlock);
     let effectiveHasPin = hasPin;
     if (!effectiveHasPin) {
-      // Re-verify with server in case profile state is lagging
       try {
         const r = await fetch("/api/wallet/pin");
         if (r.ok) {
@@ -131,7 +175,6 @@ export default function DashboardWalletCard({
 
   const handleEyeClick = () => {
     if (showBalance) {
-      // Immediately lock wallet and hide balance
       onToggleShowBalance(false);
       setPinMode("closed");
       resetPinInputs();
@@ -161,10 +204,13 @@ export default function DashboardWalletCard({
     onOpenSendMoneyModal();
   };
 
-  const completeUnlock = (configuredNewPin = false) => {
+  const completeUnlock = (configuredNewPin = false, verifiedPin?: string) => {
     if (configuredNewPin) {
       setHasPin(true);
       onPinConfigured?.();
+    }
+    if (verifiedPin) {
+      onPinUnlocked?.(verifiedPin);
     }
     onToggleShowBalance(true);
     setPinMode("closed");
@@ -180,6 +226,7 @@ export default function DashboardWalletCard({
   };
 
   const submitVerifyPin = async (fourDigitPin: string) => {
+    if (pinLoading) return;
     if (!/^\d{4}$/.test(fourDigitPin)) {
       setPinError("Please enter all 4 digits.");
       return;
@@ -192,20 +239,20 @@ export default function DashboardWalletCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "verify", pin: fourDigitPin }),
       });
-      const data = await res.json();
-      if (res.ok && data.verified) {
-        completeUnlock(false);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.verified) {
+        completeUnlock(false, fourDigitPin);
       } else if (data?.error === "PIN_NOT_SET") {
         setHasPin(false);
         resetPinInputs();
         setPinMode("setup");
       } else {
-        setPinError(data?.error || "Incorrect 4-digit PIN.");
+        setPinError(toClientFriendlyApiError(res.status, data, "Incorrect 4-digit PIN."));
         setPinDigits(["", "", "", ""]);
         setTimeout(() => pinRefs.current[0]?.focus(), 40);
       }
-    } catch {
-      setPinError("Network error verifying PIN.");
+    } catch (err) {
+      setPinError(toClientFriendlyError(err, "Try again later"));
     } finally {
       setPinLoading(false);
     }
@@ -213,6 +260,7 @@ export default function DashboardWalletCard({
 
   const handleSetupPinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pinLoading) return;
     const pin = pinDigits.join("");
     const confirmPin = confirmDigits.join("");
     if (!/^\d{4}$/.test(pin)) {
@@ -232,10 +280,13 @@ export default function DashboardWalletCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "setup", pin, confirmPin }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        completeUnlock(true);
-      } else if (data?.error && (data.error.includes("already set") || data.error.includes("already configured"))) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        completeUnlock(true, pin);
+      } else if (
+        data?.error &&
+        (data.error.includes("already set") || data.error.includes("already configured"))
+      ) {
         setHasPin(true);
         onPinConfigured?.();
         resetPinInputs();
@@ -243,10 +294,10 @@ export default function DashboardWalletCard({
         setPinError("Your Wallet PIN is already configured. Please enter your 4-digit PIN below to unlock.");
         setTimeout(() => pinRefs.current[0]?.focus(), 40);
       } else {
-        setPinError(data?.error || "Could not save PIN.");
+        setPinError(toClientFriendlyApiError(res.status, data, "Could not save PIN. Try again later"));
       }
-    } catch {
-      setPinError("Network error saving PIN.");
+    } catch (err) {
+      setPinError(toClientFriendlyError(err, "Try again later"));
     } finally {
       setPinLoading(false);
     }
@@ -254,6 +305,7 @@ export default function DashboardWalletCard({
 
   const handleForgotPinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pinLoading) return;
     const newPin = pinDigits.join("");
     const confirmPin = confirmDigits.join("");
 
@@ -288,16 +340,18 @@ export default function DashboardWalletCard({
           confirmPin,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         setResetEmail("");
         setResetPhone("");
-        completeUnlock(true);
+        completeUnlock(true, newPin);
       } else {
-        setPinError(data?.error || "Verification failed. Could not reset PIN.");
+        setPinError(
+          toClientFriendlyApiError(res.status, data, "Verification failed. Check your email and phone number.")
+        );
       }
-    } catch {
-      setPinError("Network error resetting PIN.");
+    } catch (err) {
+      setPinError(toClientFriendlyError(err, "Try again later"));
     } finally {
       setPinLoading(false);
     }
@@ -305,6 +359,7 @@ export default function DashboardWalletCard({
 
   const handleChangePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pinLoading) return;
     const currentPin = currentPinDigits.join("");
     const newPin = pinDigits.join("");
     const confirmPin = confirmDigits.join("");
@@ -335,121 +390,59 @@ export default function DashboardWalletCard({
           confirmPin,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        onPinUnlocked?.(newPin);
         setPinSuccessMsg("PIN updated!");
         setTimeout(() => {
           setPinMode("closed");
           resetPinInputs();
         }, 900);
       } else {
-        setPinError(data?.error || "Could not change PIN.");
+        setPinError(toClientFriendlyApiError(res.status, data, "Could not update PIN. Try again later"));
       }
-    } catch {
-      setPinError("Network error updating PIN.");
+    } catch (err) {
+      setPinError(toClientFriendlyError(err, "Try again later"));
     } finally {
       setPinLoading(false);
     }
   };
 
-  const handleDigitChange = (
-    index: number,
-    value: string,
-    digits: string[],
-    setDigits: React.Dispatch<React.SetStateAction<string[]>>,
-    refs: React.MutableRefObject<Array<HTMLInputElement | null>>,
-    autoSubmitOnFourth = false,
-    nextGroupFirstRef?: HTMLInputElement | null
-  ) => {
-    const clean = value.replace(/\D/g, "");
-    if (!clean) {
-      const updated = [...digits];
-      updated[index] = "";
-      setDigits(updated);
-      return;
-    }
-
-    // Support pasting 4 digits at once
-    if (clean.length > 1) {
-      const chars = clean.slice(0, 4).split("");
-      const updated = ["", "", "", ""];
-      chars.forEach((ch, idx) => {
-        updated[idx] = ch;
-      });
-      setDigits(updated);
-      const focusIdx = Math.min(3, chars.length - 1);
-      refs.current[focusIdx]?.focus();
-      if (autoSubmitOnFourth && chars.length === 4) {
-        submitVerifyPin(updated.join(""));
-      }
-      return;
-    }
-
-    const digit = clean.slice(-1);
-    const updated = [...digits];
-    updated[index] = digit;
-    setDigits(updated);
-    setPinError("");
-
-    if (index < 3) {
-      refs.current[index + 1]?.focus();
-    } else if (nextGroupFirstRef) {
-      nextGroupFirstRef.focus();
-    } else if (autoSubmitOnFourth && updated.every((d) => d.length === 1)) {
-      submitVerifyPin(updated.join(""));
-    }
-  };
-
-  const handleDigitKeyDown = (
-    index: number,
-    e: React.KeyboardEvent<HTMLInputElement>,
-    digits: string[],
-    setDigits: React.Dispatch<React.SetStateAction<string[]>>,
-    refs: React.MutableRefObject<Array<HTMLInputElement | null>>
-  ) => {
-    if (e.key === "Backspace") {
-      if (digits[index]) {
-        const updated = [...digits];
-        updated[index] = "";
-        setDigits(updated);
-      } else if (index > 0) {
-        refs.current[index - 1]?.focus();
-        const updated = [...digits];
-        updated[index - 1] = "";
-        setDigits(updated);
-      }
-    }
-  };
-
-  const renderFourDigitBoxes = (
-    digits: string[],
-    setDigits: React.Dispatch<React.SetStateAction<string[]>>,
-    refs: React.MutableRefObject<Array<HTMLInputElement | null>>,
-    autoSubmit = false,
-    nextGroupFirstRef?: HTMLInputElement | null
-  ) => (
-    <div className={styles.pinBoxesRow}>
-      {[0, 1, 2, 3].map((idx) => (
-        <input
-          key={idx}
-          ref={(el) => {
-            refs.current[idx] = el;
-          }}
-          type="password"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          maxLength={4}
-          value={digits[idx]}
-          disabled={pinLoading}
-          onChange={(e) =>
-            handleDigitChange(idx, e.target.value, digits, setDigits, refs, autoSubmit, nextGroupFirstRef)
-          }
-          onKeyDown={(e) => handleDigitKeyDown(idx, e, digits, setDigits, refs)}
-          className={`${styles.pinDigitBox} ${digits[idx] ? styles.pinDigitBoxFilled : ""}`}
-          aria-label={`PIN digit ${idx + 1}`}
-        />
-      ))}
-    </div>
+  const pinPromptModal = (
+    <WalletPinModal
+      pinMode={pinMode}
+      pendingAction={pendingAction}
+      pinLoading={pinLoading}
+      pinError={pinError}
+      pinSuccessMsg={pinSuccessMsg}
+      viewportBounds={viewportBounds}
+      pinDigits={pinDigits}
+      setPinDigits={setPinDigits}
+      confirmDigits={confirmDigits}
+      setConfirmDigits={setConfirmDigits}
+      currentPinDigits={currentPinDigits}
+      setCurrentPinDigits={setCurrentPinDigits}
+      pinRefs={pinRefs}
+      confirmRefs={confirmRefs}
+      currentPinRefs={currentPinRefs}
+      resetEmail={resetEmail}
+      setResetEmail={setResetEmail}
+      resetPhone={resetPhone}
+      setResetPhone={setResetPhone}
+      userEmail={user.email}
+      onClose={() => {
+        setPinMode("closed");
+        setPendingAction("none");
+        resetPinInputs();
+      }}
+      onSwitchMode={setPinMode}
+      onSubmitVerify={submitVerifyPin}
+      onSubmitSetup={handleSetupPinSubmit}
+      onSubmitForgot={handleForgotPinSubmit}
+      onSubmitChange={handleChangePinSubmit}
+      onResetInputs={resetPinInputs}
+      onSetPinError={setPinError}
+    />
   );
 
   return (
@@ -514,252 +507,6 @@ export default function DashboardWalletCard({
         </p>
       )}
 
-      {/* 4-Digit Wallet PIN Drawer (Setup / Verify / Forgot / Change) */}
-      <AnimatePresence>
-        {pinMode !== "closed" && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className={styles.pinDrawerWrap}
-          >
-            <div className={styles.pinDrawerBox}>
-              <div className={styles.pinDrawerHeader}>
-                <div className={styles.pinDrawerTitleRow}>
-                  <KeyRound size={14} strokeWidth={2.2} />
-                  <span>
-                    {pinMode === "setup"
-                      ? "Set 4-Digit Wallet PIN"
-                      : pinMode === "verify"
-                      ? "Enter 4-Digit Wallet PIN"
-                      : pinMode === "forgot"
-                      ? "Reset Forgotten PIN"
-                      : "Change Wallet PIN"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPinMode("closed");
-                    setPendingAction("none");
-                    resetPinInputs();
-                  }}
-                  className={styles.pinCloseBtn}
-                  aria-label="Close PIN box"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              {/* MODE 1: VERIFY EXISTING 4-DIGIT PIN */}
-              {pinMode === "verify" && (
-                <div className={styles.pinFormSection}>
-                  <p className={styles.pinSubText}>
-                    {pendingAction === "withdraw"
-                      ? "Enter your 4-digit PIN to unlock withdrawals."
-                      : pendingAction === "send"
-                      ? "Enter your 4-digit PIN to send money."
-                      : "Enter your 4-digit PIN to view balance and unlock transactions."}
-                  </p>
-                  {renderFourDigitBoxes(pinDigits, setPinDigits, pinRefs, true)}
-
-                  {pinError && <p className={styles.pinErrorText}>{pinError}</p>}
-
-                  <div className={styles.pinFooterRow}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetPinInputs();
-                        setResetEmail(user.email || "");
-                        setPinMode("forgot");
-                      }}
-                      className={styles.pinTextLink}
-                    >
-                      Forgot PIN?
-                    </button>
-                    <button
-                      type="button"
-                      disabled={pinLoading || pinDigits.join("").length < 4}
-                      onClick={() => submitVerifyPin(pinDigits.join(""))}
-                      className={styles.pinSubmitBtn}
-                    >
-                      {pinLoading ? "Verifying..." : "Unlock"}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* MODE 2: FIRST-TIME 4-DIGIT PIN SETUP */}
-              {pinMode === "setup" && (
-                <form onSubmit={handleSetupPinSubmit} className={styles.pinFormSection}>
-                  <p className={styles.pinSubText}>
-                    Create a 4-digit PIN to protect your wallet balance, transfers, and withdrawals.
-                  </p>
-                  <span className={styles.pinFieldLabel}>Create 4-Digit PIN</span>
-                  {renderFourDigitBoxes(
-                    pinDigits,
-                    setPinDigits,
-                    pinRefs,
-                    false,
-                    confirmRefs.current[0]
-                  )}
-
-                  <span className={styles.pinFieldLabel}>Confirm 4-Digit PIN</span>
-                  {renderFourDigitBoxes(confirmDigits, setConfirmDigits, confirmRefs, false)}
-
-                  {pinError && <p className={styles.pinErrorText}>{pinError}</p>}
-
-                  <button
-                    type="submit"
-                    disabled={
-                      pinLoading ||
-                      pinDigits.join("").length < 4 ||
-                      confirmDigits.join("").length < 4
-                    }
-                    className={styles.pinPrimaryFullBtn}
-                  >
-                    {pinLoading ? "Saving PIN..." : "Set PIN & Unlock Wallet"}
-                  </button>
-                </form>
-              )}
-
-              {/* MODE 3: FORGOT PIN RECOVERY */}
-              {pinMode === "forgot" && (
-                <form onSubmit={handleForgotPinSubmit} className={styles.pinFormSection}>
-                  <p className={styles.pinSubText}>
-                    Verify your registered account email and phone number to set a new 4-digit PIN.
-                  </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label className={styles.pinFieldLabel}>Registered Account Email</label>
-                    <input
-                      type="email"
-                      name="email"
-                      autoComplete="email"
-                      placeholder="e.g. name@example.com"
-                      value={resetEmail || user.email || ""}
-                      onChange={(e) => setResetEmail(e.target.value)}
-                      className={styles.pinRecoveryInput}
-                      required
-                    />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>
-                    <label className={styles.pinFieldLabel}>Registered Phone Number</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      autoComplete="tel"
-                      placeholder="e.g. +234 801 234 5678"
-                      value={resetPhone}
-                      onChange={(e) => setResetPhone(e.target.value)}
-                      className={styles.pinRecoveryInput}
-                      required
-                    />
-                  </div>
-
-                  <span className={styles.pinFieldLabel}>New 4-Digit PIN</span>
-                  {renderFourDigitBoxes(
-                    pinDigits,
-                    setPinDigits,
-                    pinRefs,
-                    false,
-                    confirmRefs.current[0]
-                  )}
-
-                  <span className={styles.pinFieldLabel}>Confirm New PIN</span>
-                  {renderFourDigitBoxes(confirmDigits, setConfirmDigits, confirmRefs, false)}
-
-                  {pinError && <p className={styles.pinErrorText}>{pinError}</p>}
-
-                  <div className={styles.pinFooterRow}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetPinInputs();
-                        setPinMode("verify");
-                      }}
-                      className={styles.pinTextLink}
-                    >
-                      Back to PIN
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={
-                        pinLoading ||
-                        pinDigits.join("").length < 4 ||
-                        confirmDigits.join("").length < 4
-                      }
-                      className={styles.pinSubmitBtn}
-                    >
-                      {pinLoading ? "Resetting..." : "Reset PIN"}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* MODE 4: CHANGE EXISTING PIN */}
-              {pinMode === "change" && (
-                <form onSubmit={handleChangePinSubmit} className={styles.pinFormSection}>
-                  <span className={styles.pinFieldLabel}>Current 4-Digit PIN</span>
-                  {renderFourDigitBoxes(
-                    currentPinDigits,
-                    setCurrentPinDigits,
-                    currentPinRefs,
-                    false,
-                    pinRefs.current[0]
-                  )}
-
-                  <span className={styles.pinFieldLabel}>New 4-Digit PIN</span>
-                  {renderFourDigitBoxes(
-                    pinDigits,
-                    setPinDigits,
-                    pinRefs,
-                    false,
-                    confirmRefs.current[0]
-                  )}
-
-                  <span className={styles.pinFieldLabel}>Confirm New PIN</span>
-                  {renderFourDigitBoxes(confirmDigits, setConfirmDigits, confirmRefs, false)}
-
-                  {pinError && <p className={styles.pinErrorText}>{pinError}</p>}
-                  {pinSuccessMsg && (
-                    <p className={styles.pinSuccessText}>
-                      <Check size={13} /> {pinSuccessMsg}
-                    </p>
-                  )}
-
-                  <div className={styles.pinFooterRow}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetPinInputs();
-                        setResetEmail(user.email || "");
-                        setPinMode("forgot");
-                      }}
-                      className={styles.pinTextLink}
-                    >
-                      Forgot current PIN?
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={
-                        pinLoading ||
-                        currentPinDigits.join("").length < 4 ||
-                        pinDigits.join("").length < 4 ||
-                        confirmDigits.join("").length < 4
-                      }
-                      className={styles.pinSubmitBtn}
-                    >
-                      {pinLoading ? "Updating..." : "Update PIN"}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className={styles.walletBtnGroup}>
         <motion.button
           whileTap={{ scale: 0.97 }}
@@ -789,6 +536,7 @@ export default function DashboardWalletCard({
       <Link href="/logged-in" onClick={() => onSelectTab("statement")} className={styles.statementLink}>
         View Account Statement
       </Link>
+      {isClientMounted && typeof document !== "undefined" ? createPortal(pinPromptModal, document.body) : null}
     </div>
   );
 }

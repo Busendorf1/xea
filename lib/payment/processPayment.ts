@@ -33,7 +33,7 @@ async function sendIdempotentNotification(userEmail: string, title: string, mess
 export async function processSuccessfulPayment(
   reference: string,
   metadata: Record<string, unknown>,
-  _amount?: number
+  paidAmount?: number
 ) {
   // Distributed Redis mutex to prevent race condition between webhook and client redirect verification
   const procLockKey = `lock:payment_proc:${reference}`;
@@ -45,11 +45,14 @@ export async function processSuccessfulPayment(
     }
   }
 
+  let claimedByWorker = false;
+  let completedSuccessfully = false;
+
   try {
-    // 1. Check if the payment has already been processed successfully
+    // 1. Fetch authoritative server-recorded payment row (fail closed if unknown reference)
     const { data: existingPayment, error: fetchError } = await supabaseAdmin
       .from("payments")
-      .select("status, user_email, type, metadata")
+      .select("id, status, amount, user_email, type, metadata")
       .eq("reference", reference)
       .maybeSingle();
 
@@ -58,14 +61,45 @@ export async function processSuccessfulPayment(
       throw fetchError;
     }
 
-    if (existingPayment && existingPayment.status === "success") {
-      console.log(`ℹ️ Payment with reference ${reference} has already been processed successfully.`);
+    if (!existingPayment) {
+      throw new Error(`Payment record not found for reference ${reference}`);
+    }
+
+    if (existingPayment.status === "success" || existingPayment.status === "processing") {
+      console.log(`ℹ️ Payment with reference ${reference} has already been claimed/processed (${existingPayment.status}).`);
       return { alreadyProcessed: true };
     }
 
-  const mergedMetadata = { ...(existingPayment?.metadata || {}), ...(metadata || {}) };
-  const type = (mergedMetadata.type || existingPayment?.type) as string | undefined;
-  const user_email = (mergedMetadata.user_email || mergedMetadata.userEmail || mergedMetadata.email || existingPayment?.user_email) as string | undefined;
+    // Verify gateway amount paid matches server-expected payment amount
+    const expectedAmount = Number(existingPayment.amount || 0);
+    if (expectedAmount > 0) {
+      if (typeof paidAmount !== "number" || !Number.isFinite(paidAmount) || paidAmount <= 0 || paidAmount < expectedAmount - 0.01) {
+        console.error(`❌ Payment amount mismatch in processSuccessfulPayment for ${reference}: paid=${paidAmount}, expected=${expectedAmount}`);
+        throw new Error("Payment amount mismatch: gateway settled less than expected amount");
+      }
+    }
+
+    // Atomic single-claim DB status transition: prevents double fulfillment if webhook & verify race without Redis
+    const { data: claimedRow, error: claimError } = await supabaseAdmin
+      .from("payments")
+      .update({ status: "processing" })
+      .eq("reference", reference)
+      .in("status", ["pending", "failed"])
+      .select("id")
+      .maybeSingle();
+
+    if (claimError) {
+      throw claimError;
+    }
+    if (!claimedRow) {
+      return { alreadyProcessed: true };
+    }
+    claimedByWorker = true;
+
+  const mergedMetadata = { ...(existingPayment.metadata || {}), ...(metadata || {}) };
+  const type = (mergedMetadata.type || existingPayment.type) as string | undefined;
+  const rawUserEmail = (existingPayment.user_email || mergedMetadata.user_email || mergedMetadata.userEmail || mergedMetadata.email) as string | undefined;
+  const user_email = rawUserEmail ? rawUserEmail.toLowerCase().trim() : undefined;
   if (!type || !user_email) {
     throw new Error("Invalid payment metadata: missing type or user_email");
   }
@@ -81,6 +115,7 @@ export async function processSuccessfulPayment(
       .from("adds")
       .select("*")
       .eq("id", adId)
+      .ilike("user_email", user_email)
       .maybeSingle();
 
     if (fetchErr || !adToPublish) {
@@ -109,7 +144,7 @@ export async function processSuccessfulPayment(
 
     if (insertErr) throw insertErr;
 
-    await supabaseAdmin.from("adds").delete().eq("id", adId);
+    await supabaseAdmin.from("adds").delete().eq("id", adId).ilike("user_email", user_email);
 
     const publishedAd = insertedRows?.[0] || activeAd;
     const { dispatchFeedDropWebhook } = await import("@/lib/webhookDispatcher");
@@ -131,6 +166,7 @@ export async function processSuccessfulPayment(
       .from("news")
       .select("*")
       .eq("id", highlightId)
+      .ilike("user_email", user_email)
       .maybeSingle();
 
     if (fetchErr || !hlToPublish) {
@@ -165,7 +201,7 @@ export async function processSuccessfulPayment(
       throw insertErr;
     }
 
-    await supabaseAdmin.from("news").delete().eq("id", highlightId);
+    await supabaseAdmin.from("news").delete().eq("id", highlightId).ilike("user_email", user_email);
 
     await sendIdempotentNotification(
       user_email,
@@ -197,7 +233,7 @@ export async function processSuccessfulPayment(
     const isAiContent = !!(rawAiContent ?? rawAiContentAlt);
 
     if (editingId) {
-      await Promise.all([
+      const [newsUpd, newsActiveUpd] = await Promise.all([
         supabaseAdmin.from("news").update({
           title,
           content,
@@ -212,7 +248,7 @@ export async function processSuccessfulPayment(
           custom_sponsor_name: custom_sponsor_name || null,
           custom_sponsor_handle: custom_sponsor_handle || null,
           is_ai_content: isAiContent,
-        }).eq("id", editingId),
+        }).eq("id", editingId).ilike("user_email", user_email).select("id"),
         supabaseAdmin.from("newsactive").update({
           title,
           content,
@@ -227,8 +263,12 @@ export async function processSuccessfulPayment(
           custom_sponsor_name: custom_sponsor_name || null,
           custom_sponsor_handle: custom_sponsor_handle || null,
           is_ai_content: isAiContent,
-        }).eq("id", editingId),
+        }).eq("id", editingId).ilike("user_email", user_email).select("id"),
       ]);
+      const updatedRows = (newsUpd.data?.length || 0) + (newsActiveUpd.data?.length || 0);
+      if (updatedRows === 0) {
+        throw new Error("Highlight not found or unauthorized for editing");
+      }
     } else {
       const targetTable = "news";
       const { error: insertError } = await supabaseAdmin.from(targetTable).insert([
@@ -278,14 +318,14 @@ export async function processSuccessfulPayment(
 
     if (ad_id) {
       let isCompletedTable = false;
-      let { data: ad } = await supabaseAdmin.from("addsactive").select("*").eq("id", ad_id).maybeSingle();
+      let { data: ad } = await supabaseAdmin.from("addsactive").select("*").eq("id", ad_id).ilike("user_email", user_email).maybeSingle();
       if (!ad) {
-        const { data: compAd } = await supabaseAdmin.from("completed_ads").select("*").eq("id", ad_id).maybeSingle();
+        const { data: compAd } = await supabaseAdmin.from("completed_ads").select("*").eq("id", ad_id).ilike("user_email", user_email).maybeSingle();
         if (compAd) {
           ad = compAd;
           isCompletedTable = true;
         } else {
-          const { data: queueAd } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).maybeSingle();
+          const { data: queueAd } = await supabaseAdmin.from("adds").select("*").eq("id", ad_id).ilike("user_email", user_email).maybeSingle();
           ad = queueAd;
         }
       }
@@ -328,20 +368,20 @@ export async function processSuccessfulPayment(
           };
           await Promise.all([
             supabaseAdmin.from("addsactive").upsert([reactivatedAd]),
-            supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
-            supabaseAdmin.from("completed_ads").delete().eq("id", ad_id),
+            supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id).ilike("user_email", user_email),
+            supabaseAdmin.from("completed_ads").delete().eq("id", ad_id).ilike("user_email", user_email),
           ]);
         } else {
           await Promise.all([
-            supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id),
-            supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id),
+            supabaseAdmin.from("adds").update(updatePayload).eq("id", ad_id).ilike("user_email", user_email),
+            supabaseAdmin.from("addsactive").update(updatePayload).eq("id", ad_id).ilike("user_email", user_email),
           ]);
         }
 
         if (effectiveCost > 25) {
           try {
             const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
-            await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", ad_id);
+            await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", ad_id).ilike("user_email", user_email);
             await supabaseAdmin.from("bidded_ads").insert({
               ad_id,
               user_email: user_email.toLowerCase().trim(),
@@ -357,9 +397,9 @@ export async function processSuccessfulPayment(
         }
       } else {
         // Check highlight tables
-        let { data: hl } = await supabaseAdmin.from("newsactive").select("*").eq("id", ad_id).maybeSingle();
+        let { data: hl } = await supabaseAdmin.from("newsactive").select("*").eq("id", ad_id).ilike("user_email", user_email).maybeSingle();
         if (!hl) {
-          const { data: qHl } = await supabaseAdmin.from("news").select("*").eq("id", ad_id).maybeSingle();
+          const { data: qHl } = await supabaseAdmin.from("news").select("*").eq("id", ad_id).ilike("user_email", user_email).maybeSingle();
           hl = qHl;
         }
 
@@ -385,8 +425,8 @@ export async function processSuccessfulPayment(
           if (interest) hlUpdate.interest = Array.isArray(interest) ? interest[0] : interest;
 
           await Promise.all([
-            supabaseAdmin.from("news").update(hlUpdate).eq("id", ad_id),
-            supabaseAdmin.from("newsactive").update(hlUpdate).eq("id", ad_id),
+            supabaseAdmin.from("news").update(hlUpdate).eq("id", ad_id).ilike("user_email", user_email),
+            supabaseAdmin.from("newsactive").update(hlUpdate).eq("id", ad_id).ilike("user_email", user_email),
           ]);
         }
       }
@@ -452,14 +492,14 @@ export async function processSuccessfulPayment(
       throw rpcError;
     }
 
-    // Ensure newly submitted ad is only in 'adds' review queue and not in addsactive
-    await supabaseAdmin.from("addsactive").delete().eq("id", adData.id);
+    // Ensure newly submitted ad is only in 'adds' review queue and not in addsactive (ownership-scoped)
+    await supabaseAdmin.from("addsactive").delete().eq("id", adData.id).ilike("user_email", user_email);
 
     if (adData.isAiContent || adData.is_ai_content) {
       try {
         await supabaseAdmin.from("adds").update({
           is_ai_content: true,
-        }).eq("id", adData.id);
+        }).eq("id", adData.id).ilike("user_email", user_email);
       } catch {}
     }
 
@@ -543,12 +583,18 @@ export async function processSuccessfulPayment(
     console.error("❌ Error updating payment record status to success:", updateError);
     throw updateError;
   }
+  completedSuccessfully = true;
 
   // 4. Invalidate cached profile, user campaigns, statement payments, and monetize status in Redis
   try {
     const { invalidateCachedProfile, invalidateCachedUserCampaigns } = await import("@/lib/utils/cache");
-    await invalidateCachedProfile(String(user_email));
-    await invalidateCachedUserCampaigns(String(user_email)).catch(() => {});
+    const emailKey = String(user_email).toLowerCase().trim();
+    await Promise.all([
+      invalidateCachedProfile(emailKey),
+      invalidateCachedUserCampaigns(emailKey).catch(() => {}),
+      redisConnection.incr(`statement:ver:${emailKey}`).catch(() => {}),
+      redisConnection.del(`statement:payments:${emailKey}`, `statement:all:${emailKey}`).catch(() => {}),
+    ]);
   } catch (cacheErr) {
     console.warn("⚠️ Cache invalidation notice in processPayment:", cacheErr);
   }
@@ -556,6 +602,15 @@ export async function processSuccessfulPayment(
   console.log(`✅ Payment successfully recorded and business actions completed for: ${reference}`);
   return { success: true };
   } finally {
+    if (claimedByWorker && !completedSuccessfully) {
+      try {
+        await supabaseAdmin
+          .from("payments")
+          .update({ status: "pending" })
+          .eq("reference", reference)
+          .eq("status", "processing");
+      } catch {}
+    }
     await redisConnection.del(procLockKey).catch(() => {});
   }
 }

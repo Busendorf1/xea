@@ -4,6 +4,7 @@ import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, getCachedHighlights, setCachedHighlights, registerL1HighlightsEvictionHandler } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { safeParseArray } from "@/lib/utils/parsers";
+import { isHighlightCurrentlyActive, sortHighlightsByBidAndRecency } from "@/lib/highlights/highlightLifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -58,17 +59,17 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
         } catch {}
       }
 
-      // Query up to 35 days back so boosted highlights with up to 30 campaign_days are never prematurely excluded
-      const thirtyFiveDaysAgo = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
+      // Query up to 90 days back to match max allowed campaign_days (90)
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
       let rawHighlights: any[] = [];
       const { data: primaryData, error } = await supabaseReadOnly
         .from("newsactive")
         .select(
-          "id, title, content, image_url, interest, created_at, scheduled_start_at, scheduled_end_at, user_email, country, state, province, is_bidded, bid_price, is_boosted, boosted_amount, boosted_at, campaign_days, is_paused, admin_statement, is_ai_content"
+          "id, title, content, image_url, interest, created_at, scheduled_start_at, scheduled_end_at, expires_at, user_email, country, state, province, is_bidded, bid_price, is_boosted, boosted_amount, boosted_at, campaign_days, is_paused, admin_statement, is_ai_content"
         )
         .or("is_paused.eq.false,is_paused.is.null")
-        .gte("created_at", thirtyFiveDaysAgo)
+        .gte("created_at", ninetyDaysAgo)
         .order("is_bidded", { ascending: false })
         .order("bid_price", { ascending: false })
         .order("created_at", { ascending: false })
@@ -81,7 +82,7 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
             "id, title, content, image_url, interest, created_at, user_email, country, state, province, is_bidded, bid_price, campaign_days, is_paused, admin_statement, is_ai_content"
           )
           .or("is_paused.eq.false,is_paused.is.null")
-          .gte("created_at", thirtyFiveDaysAgo)
+          .gte("created_at", ninetyDaysAgo)
           .order("is_bidded", { ascending: false })
           .order("bid_price", { ascending: false })
           .order("created_at", { ascending: false })
@@ -100,8 +101,13 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
         const createdMs = h.created_at ? new Date(h.created_at).getTime() : nowMs;
         const scheduledMs = h.scheduled_start_at ? new Date(h.scheduled_start_at).getTime() : NaN;
         const startMs = !isNaN(scheduledMs) && scheduledMs > 0 ? Math.max(createdMs, scheduledMs) : createdMs;
-        const days = Math.max(1, Number(h.campaign_days || 1));
-        const endMs = startMs + days * 86_400_000;
+        const explicitEndMs = h.expires_at
+          ? new Date(h.expires_at).getTime()
+          : h.scheduled_end_at
+          ? new Date(h.scheduled_end_at).getTime()
+          : NaN;
+        const days = Math.max(1, Math.min(90, Number(h.campaign_days || 1)));
+        const endMs = !isNaN(explicitEndMs) && explicitEndMs > startMs ? explicitEndMs : startMs + days * 86_400_000;
         if (nowMs >= startMs && nowMs > endMs) {
           if (h.id) expiredIds.push(String(h.id));
           return false;
@@ -131,6 +137,9 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
       }
 
       return activeHighlights;
+    } catch (poolErr) {
+      console.error("❌ Unexpected error in loadActiveHighlightsPool:", poolErr);
+      return l1SharedHighlightsPool?.rows || [];
     } finally {
       inFlightPoolPromise = null;
     }
@@ -156,16 +165,18 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        const { data: topBid } = await supabaseReadOnly
+        const { data: topBidRows } = await supabaseReadOnly
           .from("newsactive")
-          .select("bid_price")
+          .select("bid_price, created_at, scheduled_start_at, scheduled_end_at, expires_at, campaign_days, is_paused, admin_statement")
           .eq("interest", interestQuery)
           .eq("is_bidded", true)
+          .or("is_paused.eq.false,is_paused.is.null")
           .order("bid_price", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(10);
 
-        const highestBid = topBid?.bid_price ? parseFloat(topBid.bid_price) : 1000;
+        const nowBidMs = Date.now();
+        const activeTopBid = (topBidRows || []).find((row: any) => isHighlightCurrentlyActive(row, nowBidMs));
+        const highestBid = activeTopBid?.bid_price ? parseFloat(activeTopBid.bid_price) : 1000;
         if (isRedisReady()) {
           await redisConnection.set(interestKey, String(highestBid), "EX", 15).catch(() => {});
         }
@@ -244,16 +255,20 @@ export async function GET(req: NextRequest) {
     }
 
     const userViewsMap: Record<string, number> = {};
-    if (viewsHash) {
+    if (viewsHash && typeof viewsHash === "object") {
       Object.keys(viewsHash).forEach((hlId) => {
-        userViewsMap[hlId] = parseInt(viewsHash[hlId] || "0", 10);
+        userViewsMap[hlId] = parseInt(viewsHash[hlId] || "0", 10) || 0;
       });
     }
 
-    // 1. Check L1/L2 Cache for exact targeting slice
+    // 1. Check L1/L2 Cache for exact targeting slice (filter out newly expired items immediately)
     const cachedData = await getCachedHighlights(interests, resolvedCountry || null, resolvedState || null);
     if (cachedData) {
-      const personalizedCached = cachedData.map((h: any) => ({
+      const cacheNowMs = Date.now();
+      const liveCached = cachedData
+        .filter((h: any) => isHighlightCurrentlyActive(h, cacheNowMs))
+        .sort(sortHighlightsByBidAndRecency);
+      const personalizedCached = liveCached.map((h: any) => ({
         ...h,
         user_render_count: userViewsMap[h.id] || 0,
       }));
@@ -277,11 +292,14 @@ export async function GET(req: NextRequest) {
     // Find max bid_price for each interest group to identify highest bidders
     const maxBidsByInterest: Record<string, number> = {};
     (rawHighlights || []).forEach((h: any) => {
-      if (h.is_bidded && h.interest) {
-        const bid = parseFloat(h.bid_price || 0);
-        const cat = String(h.interest).toLowerCase().trim();
-        if (!maxBidsByInterest[cat] || bid > maxBidsByInterest[cat]) {
-          maxBidsByInterest[cat] = bid;
+      const bid = parseFloat(h.bid_price || 0);
+      if ((h.is_bidded || bid > 0) && h.interest) {
+        const categories = safeParseArray(h.interest);
+        for (const rawCat of categories) {
+          const cat = String(rawCat).toLowerCase().trim();
+          if (cat && (!maxBidsByInterest[cat] || bid > maxBidsByInterest[cat])) {
+            maxBidsByInterest[cat] = bid;
+          }
         }
       }
     });
@@ -301,11 +319,16 @@ export async function GET(req: NextRequest) {
       }
 
       const startMs = !isNaN(scheduledMs) && scheduledMs > 0 ? Math.max(createdAtMs, scheduledMs) : createdAtMs;
-      const scheduledEndMs = h.scheduled_end_at ? new Date(h.scheduled_end_at).getTime() : NaN;
-      const fallbackDurationHours = Math.max(1, Number(h.campaign_days || 1)) * 24;
-      const endMs = !isNaN(scheduledEndMs) && scheduledEndMs > startMs
-        ? scheduledEndMs
-        : startMs + fallbackDurationHours * 3600_000;
+      const explicitEndMs = h.expires_at
+        ? new Date(h.expires_at).getTime()
+        : h.scheduled_end_at
+        ? new Date(h.scheduled_end_at).getTime()
+        : NaN;
+      const fallbackDurationHours = Math.max(1, Math.min(90, Number(h.campaign_days || 1))) * 24;
+      const endMs =
+        !isNaN(explicitEndMs) && explicitEndMs > startMs
+          ? explicitEndMs
+          : startMs + fallbackDurationHours * 3600_000;
 
       const diffHours = Math.max(0, (nowMs - startMs) / (1000 * 60 * 60));
       const totalDurationHours = Math.max(1, (endMs - startMs) / (1000 * 60 * 60));
@@ -369,24 +392,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Rank Bidded highlights at the top sorted by bid_price DESC, then standard highlights by created_at DESC
-    const sortByBidAndRecency = (a: any, b: any) => {
-      const aIsBidded = !!a.is_bidded;
-      const bIsBidded = !!b.is_bidded;
-      if (aIsBidded && !bIsBidded) return -1;
-      if (!aIsBidded && bIsBidded) return 1;
-      if (aIsBidded && bIsBidded) {
-        const aBid = parseFloat(a.bid_price || 0);
-        const bBid = parseFloat(b.bid_price || 0);
-        if (aBid !== bBid) return bBid - aBid;
-      }
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    };
-
-    const sortedHighlights = [...strictHighlights.sort(sortByBidAndRecency)];
+    const sortedHighlights = [...strictHighlights.sort(sortHighlightsByBidAndRecency)];
     const minHighlightPoolSize = limit ?? 15;
     if (sortedHighlights.length < minHighlightPoolSize && fallbackHighlights.length > 0) {
       fallbackHighlights.sort(
-        (a, b) => b.affinityScore - a.affinityScore || sortByBidAndRecency(a.hl, b.hl)
+        (a, b) => b.affinityScore - a.affinityScore || sortHighlightsByBidAndRecency(a.hl, b.hl)
       );
       sortedHighlights.push(
         ...fallbackHighlights.slice(0, minHighlightPoolSize - sortedHighlights.length).map((f) => f.hl)
@@ -395,12 +405,16 @@ export async function GET(req: NextRequest) {
 
     // Build shared cacheable highlights (without user-specific render counts)
     const sharedHighlights = sortedHighlights.map((h: any) => {
-      const cat = String(h.interest || "").toLowerCase();
+      const cats = safeParseArray(h.interest).map((c: string) => c.toLowerCase().trim());
       const bid = parseFloat(h.bid_price || 0);
-      const isHighestBidder = h.is_bidded && maxBidsByInterest[cat] !== undefined && bid >= maxBidsByInterest[cat] && bid > 0;
+      const isBidded = Boolean(h.is_bidded || bid > 0);
+      const isHighestBidder =
+        isBidded &&
+        bid > 0 &&
+        cats.some((cat: string) => maxBidsByInterest[cat] !== undefined && bid >= maxBidsByInterest[cat]);
 
       let holdMins = 10;
-      if (h.is_bidded) {
+      if (isBidded) {
         holdMins = isHighestBidder ? 30 : 25;
       }
 
@@ -412,12 +426,13 @@ export async function GET(req: NextRequest) {
         interest: h.interest,
         user_email: h.user_email,
         created_at: h.created_at,
+        expires_at: h.expires_at || null,
         scheduled_start_at: h.scheduled_start_at || null,
         scheduled_end_at: h.scheduled_end_at || null,
         country: h.country || null,
         state: h.state || null,
         province: h.province || null,
-        is_bidded: h.is_bidded || false,
+        is_bidded: isBidded,
         bid_price: h.bid_price || null,
         is_boosted: h.is_boosted || false,
         boosted_amount: h.boosted_amount || null,
@@ -450,6 +465,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Error in GET /api/highlights:", err);
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

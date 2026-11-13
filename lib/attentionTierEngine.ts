@@ -20,9 +20,26 @@ export const STAR_RATING_INCREMENTS: Record<number, number> = {
   5: 0.05,
 };
 
+export const DEFAULT_ATTENTION_WORTH_SCORE = 0.1;
 export const MAX_ATTENTION_SCORE = 1000000.0;
 export const MAX_ATW_LEVEL = 14;
 export const MAX_ATW_HOLDING_CAP = MAX_ATW_LEVEL * 30000; // ₦420,000
+
+/**
+ * Converts a user's `attention_worth_score` (default 0.1000) into bonus click equivalents
+ * matching the canonical SQL `compute_atw_level` contract:
+ * `FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 300)`.
+ */
+export function computeRatingBonusClicks(attentionWorthScore?: number | null): number {
+  const numericScore = Number(attentionWorthScore);
+  const safeScore = Number.isFinite(numericScore) ? numericScore : DEFAULT_ATTENTION_WORTH_SCORE;
+  // Round delta to 4 decimal places (matching DB NUMERIC(10,4)) to avoid IEEE-754 floor drift (e.g. 0.15 - 0.1 = 0.04999999999999999)
+  const deltaTenThousandths = Math.max(
+    0,
+    Math.round((safeScore - DEFAULT_ATTENTION_WORTH_SCORE) * 10000)
+  );
+  return Math.floor((deltaTenThousandths * 300) / 10000);
+}
 
 export function resolveAtwTier(score: number): AtwTierDef {
   const normalizedScore = Number(score) || 0.1;
@@ -48,34 +65,39 @@ export interface ComputedAtwTierDetails {
   nextTierCode: string;
   nextAtwLevel: number;
   nextHoldingCap: number;
+  ratingBonusClicks: number;
+  effectiveClicks: number;
 }
 
 /**
- * Computes ATW tier progression from live seen/click count (300 clicks per step:
- * 300 -> ATW1, 600 -> ATW2, ..., 4200 -> ATW14) and holding balance cap
- * (₦30,000 per ATW step up to ATW14 ₦420,000, or Unlimited for Admin / Exempt accounts).
- *
- * If clicks exceed ATW14 (4,200+ clicks), the ATW tier remains unchanged at ATW14 (Peak Tier),
- * but milestone counting continues seamlessly 300 by 300 for the entire lifetime of the account.
+ * Computes ATW tier progression from live seen/click count + advertiser rating boost
+ * matching the canonical SQL `compute_atw_level(p_clicks, p_score, p_current_tier)`:
+ *   rating_bonus_clicks = FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 300)
+ *   effective_clicks = GREATEST(0, clicks) + rating_bonus_clicks
+ *   level = LEAST(14, GREATEST(1, parsed_current_tier_num, effective_clicks >= 300 ? FLOOR(effective_clicks / 300) : 1))
+ *   holding_cap = level * 30,000 (₦420,000 max, or Unlimited for Admin / Exempt accounts).
  */
 export function computeAtwTierDetails(
   clicks: number,
   existingTier?: string | null,
-  isAdminOrExempt?: boolean
+  isAdminOrExempt?: boolean,
+  attentionWorthScore?: number | null
 ): ComputedAtwTierDetails {
   const safeClicks = Math.max(0, Number(clicks) || 0);
+  const ratingBonusClicks = computeRatingBonusClicks(attentionWorthScore);
+  const effectiveClicks = safeClicks + ratingBonusClicks;
 
   // Lifetime 300-by-300 milestone progression (300, 600, 900, ..., 4200, 4500, 4800, 5100...)
   const currentMilestoneTarget =
-    safeClicks < 300 ? 300 : (Math.floor(safeClicks / 300) + 1) * 300;
-  const clicksRemaining = Math.max(0, currentMilestoneTarget - safeClicks);
-  const stepBase = safeClicks < 300 ? 0 : Math.floor(safeClicks / 300) * 300;
+    effectiveClicks < 300 ? 300 : (Math.floor(effectiveClicks / 300) + 1) * 300;
+  const clicksRemaining = Math.max(0, currentMilestoneTarget - effectiveClicks);
+  const stepBase = effectiveClicks < 300 ? 0 : Math.floor(effectiveClicks / 300) * 300;
   const clicksPercent = Math.min(
     100,
-    Math.max(0, Math.round(((safeClicks - stepBase) / 300) * 100))
+    Math.max(0, Math.round(((effectiveClicks - stepBase) / 300) * 100))
   );
 
-  const rawLevelFromClicks = safeClicks >= 300 ? Math.floor(safeClicks / 300) : 1;
+  const rawLevelFromClicks = effectiveClicks >= 300 ? Math.floor(effectiveClicks / 300) : 1;
   const parsedTierMatch = String(existingTier || "").match(/\d+/);
   const parsedTierLevel = parsedTierMatch ? parseInt(parsedTierMatch[0], 10) : 1;
 
@@ -89,7 +111,7 @@ export function computeAtwTierDetails(
   // When at or beyond ATW14, next tier remains ATW14 with holding cap at ₦420,000
   const nextAtwLevel = isMaxTier
     ? MAX_ATW_LEVEL
-    : safeClicks < 300
+    : effectiveClicks < 300
     ? 1
     : Math.min(MAX_ATW_LEVEL, level + 1);
   const nextHoldingCap = nextAtwLevel * 30000;
@@ -124,18 +146,21 @@ export function computeAtwTierDetails(
     nextTierCode,
     nextAtwLevel,
     nextHoldingCap,
+    ratingBonusClicks,
+    effectiveClicks,
   };
 }
 
 /**
- * Computes maximum wallet balance holding limit based on user's ATW tier level & clicks.
- * Every 300 clicks advances the tier by 1 step (+₦30,000 holding cap per step, capped at ATW14 ₦420,000).
+ * Computes maximum wallet balance holding limit based on user's ATW tier level, clicks,
+ * and optional attention_worth_score rating boost.
  * Admins / Exempt accounts have an Unlimited holding balance cap (Infinity).
  */
 export function getAtwBalanceLimit(
   atwTier?: string | null,
   isAdmin?: boolean,
-  clicks?: number
+  clicks?: number,
+  attentionWorthScore?: number | null
 ): number {
   if (
     isAdmin ||
@@ -145,7 +170,8 @@ export function getAtwBalanceLimit(
     return Infinity;
   }
   const safeClicks = Math.max(0, Number(clicks) || 0);
-  const rawLevelFromClicks = safeClicks >= 300 ? Math.floor(safeClicks / 300) : 1;
+  const effectiveClicks = safeClicks + computeRatingBonusClicks(attentionWorthScore);
+  const rawLevelFromClicks = effectiveClicks >= 300 ? Math.floor(effectiveClicks / 300) : 1;
   const match = String(atwTier || "").match(/\d+/);
   const levelNum = match ? parseInt(match[0], 10) : 1;
   const safeLevel = Math.min(MAX_ATW_LEVEL, Math.max(1, levelNum, rawLevelFromClicks));

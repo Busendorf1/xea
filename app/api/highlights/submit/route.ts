@@ -110,12 +110,30 @@ export async function POST(req: NextRequest) {
     const isAdmin = isAdminEmail(emailLower);
 
     if (editingId) {
-      // Check if editing an active delivering highlight
-      const { data: activeHl } = await supabaseAdmin
-        .from("newsactive")
-        .select("id, campaign_days, bid_price, is_bidded")
-        .eq("id", editingId)
-        .maybeSingle();
+      // Check ownership across BOTH newsactive and news BEFORE modifying (prevents IDOR)
+      const [{ data: activeHl }, { data: draftHl }] = await Promise.all([
+        supabaseAdmin
+          .from("newsactive")
+          .select("id, user_email, campaign_days, bid_price, is_bidded")
+          .eq("id", editingId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("news")
+          .select("id, user_email")
+          .eq("id", editingId)
+          .maybeSingle(),
+      ]);
+
+      const existingOwner = activeHl?.user_email || draftHl?.user_email || null;
+      if (!activeHl && !draftHl) {
+        return NextResponse.json({ error: "Highlight not found." }, { status: 404 });
+      }
+      if (existingOwner && String(existingOwner).toLowerCase().trim() !== emailLower && !isAdmin) {
+        return NextResponse.json(
+          { error: "Forbidden: You do not have permission to edit this highlight." },
+          { status: 403 }
+        );
+      }
 
       const isDeliveringActive = !!activeHl;
       let isBudgetIncreased = false;
@@ -127,7 +145,8 @@ export async function POST(req: NextRequest) {
         isBudgetIncreased = newCost > origCost;
       }
 
-      // Upsert into news so review draft is created or updated and placed back in review
+      // Upsert into news scoped to owner email so existing drafts cannot be hijacked
+      const ownerEmailForUpdate = existingOwner ? String(existingOwner).toLowerCase().trim() : emailLower;
       const baseHighlightRow = {
         id: editingId,
         title: highlightData.title,
@@ -143,14 +162,35 @@ export async function POST(req: NextRequest) {
         custom_sponsor_name: highlightData.customSponsorName || null,
         custom_sponsor_handle: highlightData.customSponsorHandle || null,
         admin_statement: "Status: Pending review",
-        user_email: emailLower,
+        user_email: ownerEmailForUpdate,
         is_admin_post: isAdmin,
         is_paused: false,
       };
 
-      const { error: upsertErr } = await supabaseAdmin
-        .from("news")
-        .upsert({
+      if (draftHl) {
+        let query = supabaseAdmin
+          .from("news")
+          .update({
+            ...baseHighlightRow,
+            is_ai_content: !!highlightData.isAiContent,
+            status: "pending_review",
+            approved_at: null,
+            payment_status: isDeliveringActive && !isBudgetIncreased ? "paid" : "unpaid",
+            ...(parsedScheduledStart ? { scheduled_start_at: parsedScheduledStart } : {}),
+          })
+          .eq("id", editingId);
+        if (!isAdmin) {
+          query = query.eq("user_email", emailLower);
+        }
+        const { error: updErr } = await query;
+        if (updErr) {
+          let fbQuery = supabaseAdmin.from("news").update(baseHighlightRow).eq("id", editingId);
+          if (!isAdmin) fbQuery = fbQuery.eq("user_email", emailLower);
+          const { error: fallbackErr } = await fbQuery;
+          if (fallbackErr) throw fallbackErr;
+        }
+      } else {
+        const { error: insErr } = await supabaseAdmin.from("news").insert({
           ...baseHighlightRow,
           is_ai_content: !!highlightData.isAiContent,
           status: "pending_review",
@@ -158,14 +198,16 @@ export async function POST(req: NextRequest) {
           payment_status: isDeliveringActive && !isBudgetIncreased ? "paid" : "unpaid",
           ...(parsedScheduledStart ? { scheduled_start_at: parsedScheduledStart } : {}),
         });
-
-      if (upsertErr) {
-        const { error: fallbackErr } = await supabaseAdmin.from("news").upsert(baseHighlightRow);
-        if (fallbackErr) throw fallbackErr;
+        if (insErr) {
+          const { error: fallbackErr } = await supabaseAdmin.from("news").insert(baseHighlightRow);
+          if (fallbackErr) throw fallbackErr;
+        }
       }
 
       if (!isDeliveringActive) {
-        await supabaseAdmin.from("newsactive").delete().eq("id", editingId);
+        let delQuery = supabaseAdmin.from("newsactive").delete().eq("id", editingId);
+        if (!isAdmin) delQuery = delQuery.eq("user_email", emailLower);
+        await delQuery;
       }
 
       const notifRow = {

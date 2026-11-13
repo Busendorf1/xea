@@ -1,164 +1,38 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import {
-  Phone,
-  MessageCircle,
-  Globe,
-  Mail,
-  Share2,
-  Play,
-  Apple,
-  ChevronDown,
-  Video,
-  ArrowLeft,
-} from "lucide-react";
+import { Share2, ArrowLeft } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
 import { InteractionData } from "@/lib/hooks/useFeedActions";
 import Avatar from "./Avatar";
 import HighlightCard from "./HighlightCard";
-import AdOptionsMenu from "./AdOptionsMenu";
+import AdOptionsMenu, { type AdReportType } from "./AdOptionsMenu";
 import MediaCarousel, { isVideoUrl } from "./MediaCarousel";
 import AdvertiserHoverCard, { AdvertiserProfileData } from "./AdvertiserHoverCard";
 import VerifiedBadge from "./VerifiedBadge";
 import RoleStarBadges from "./RoleStarBadges";
 import { AdMediaLightboxModal, AdTextReaderModal } from "./AdCardModals";
 import { AdCardActionBar } from "./AdCardActionBar";
+import {
+  preloadCallbacks,
+  playCallbacks,
+  getSharedPreloadObserver,
+  getSharedPlayObserver,
+  getHref,
+  formatTimestamp,
+  type BaseAd,
+  type VideoAd,
+  type CarouselAd,
+  type TextAd,
+  type AdUnion,
+  type Ad,
+} from "./adCardUtils";
+import { getAdActionIcon as getIcon, attachAdCardSlots } from "./adCardSlots";
+
+export type { BaseAd, VideoAd, CarouselAd, TextAd, AdUnion, Ad };
 
 const FullscreenVideoPlayer = dynamic(() => import("@/components/MyAds/FullscreenVideoPlayer"), { ssr: false });
-
-// Shared pooled IntersectionObservers by scroll root for 1000+ card feed scrolling without per-card observer GC overhead
-const preloadCallbacks = new WeakMap<Element, (intersecting: boolean) => void>();
-const playCallbacks = new WeakMap<Element, (intersecting: boolean) => void>();
-const preloadObserversByRoot = new Map<Element | null, IntersectionObserver>();
-const playObserversByRoot = new Map<Element | null, IntersectionObserver>();
-
-function getSharedPreloadObserver(root: Element | null = null): IntersectionObserver | null {
-  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
-  let obs = preloadObserversByRoot.get(root);
-  if (!obs) {
-    obs = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          preloadCallbacks.get(entry.target)?.(entry.isIntersecting);
-        }
-      },
-      // 1400px pre-warm headroom (~2.5 cards ahead) ensures full video header and first-frame buffer are ready before viewport entry
-      { root, rootMargin: "1400px 0px 1400px 0px", threshold: 0 }
-    );
-    preloadObserversByRoot.set(root, obs);
-  }
-  return obs;
-}
-
-function getSharedPlayObserver(root: Element | null = null): IntersectionObserver | null {
-  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return null;
-  let obs = playObserversByRoot.get(root);
-  if (!obs) {
-    obs = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          // X / TikTok standard: Only card with majority (>45%) visibility in the active scroll viewport autoplays
-          const isPrimaryInView = entry.isIntersecting && entry.intersectionRatio >= 0.45;
-          playCallbacks.get(entry.target)?.(isPrimaryInView);
-        }
-      },
-      { root, rootMargin: "0px 0px 0px 0px", threshold: [0, 0.45, 0.8] }
-    );
-    playObserversByRoot.set(root, obs);
-  }
-  return obs;
-}
-
-export type BaseAd = {
-  id: string;
-  ad_content: string;
-  impressions: number;
-  cost_per_impression?: number | null;
-  created_at?: string | null;
-  user_email?: string;
-  title?: string;
-  is_highlight?: boolean;
-  [key: string]: any;
-};
-
-export type VideoAd = BaseAd & {
-  ad_type?: "video";
-  hls_url?: string | null;
-  ad_media: string;
-};
-
-export type CarouselAd = BaseAd & {
-  ad_type?: "carousel";
-  ad_media: string;
-};
-
-export type TextAd = BaseAd & {
-  ad_type?: "text";
-  ad_media: null;
-};
-
-export type AdUnion = VideoAd | CarouselAd | TextAd;
-
-export interface Ad {
-  id: string;
-  ad_media: string | null;
-  hls_url?: string | null;
-
-  ad_content: string;
-  action_phone?: string;
-  action_whatsapp?: string;
-  action_email?: string;
-  action_website?: string;
-  action_ios?: string;
-  action_android?: string;
-  action_watch_now?: string;
-  ad_action_buttons?: string[];
-  ad_action_button?: string;
-  interest: string[] | string | null;
-  industry: string[] | string | null;
-  behavior: string[] | string | null;
-  lifestyle: string[] | string | null;
-  personality: string[] | string | null;
-  country: string | null;
-  state: string | null;
-  gender: string | null;
-  employment_status: string | null;
-  age_range: string[] | string | null;
-  province: string | null;
-  impressions: number;
-  impression_count?: number | null;
-  seen_users?: string[];
-  campaign_days?: number;
-  daily_impression_cap?: number;
-  daily_impression_count?: number;
-  last_reset_date?: string;
-  user_frequency_cap?: number;
-  completed_at?: string | null;
-  user_email?: string;
-  display_mutual_button?: boolean | null;
-  mutual_targets?: string[] | null;
-  mutual_adds_count?: number | null;
-  cost_per_impression?: number | null;
-  created_at?: string | null;
-  targeting_all?: boolean;
-  is_admin_post?: boolean;
-  custom_sponsor_name?: string;
-  custom_sponsor_handle?: string;
-  custom_sponsor_logo?: string;
-  is_highlight?: boolean;
-  title?: string;
-  verification_token?: string;
-  served_at?: number;
-  ad_type?: string;
-  product_name?: string | null;
-  product_price?: number | null;
-  product_cta_type?: string | null;
-  product_cta_link?: string | null;
-  clicks_product_cta?: number | null;
-  is_ai_content?: boolean;
-}
 
 interface AdCardProps {
   ad: Ad;
@@ -179,71 +53,9 @@ interface AdCardProps {
   onAdMutual: (ad: Ad) => Promise<boolean>;
   onMarkSeen: (ad: Ad) => Promise<boolean>;
   onShare: (id: string) => void;
-  onDismiss: (adId: string) => void;
+  onDismiss: (adId: string, advertiserEmail?: string, reportType?: AdReportType) => void;
   style?: React.CSSProperties;
 }
-
-const getHref = (type: string, value: string, ad?: Ad) => {
-  if (type === "action_whatsapp") {
-    const cleanPhone = value.replace(/[^0-9+]/g, "");
-    const previewText = ad?.ad_content ? ad.ad_content.slice(0, 45).trim() + "..." : "Ad";
-    const text = `Hello, I saw your ad on Paayh: "${previewText}"\nhttps://paayh.com`;
-    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
-  }
-  const map: Record<string, string> = {
-    action_phone: `tel:${value}`,
-    action_email: `mailto:${value}`,
-    action_website: value.startsWith("http") ? value : `https://${value}`,
-    action_ios: value.startsWith("http") ? value : `https://${value}`,
-    action_android: value.startsWith("http") ? value : `https://${value}`,
-    action_watch_now: value.startsWith("http") ? value : `https://${value}`,
-  };
-  return map[type] || "#";
-};
-
-const getIcon = (type: string): React.ReactNode => {
-  const icons: Record<string, React.ReactNode> = {
-    action_phone: <Phone size={14} strokeWidth={1.5} />,
-    action_whatsapp: <MessageCircle size={14} strokeWidth={1.5} />,
-    action_website: <Globe size={14} strokeWidth={1.5} />,
-    action_email: <Mail size={14} strokeWidth={1.5} />,
-    action_ios: <Apple size={14} strokeWidth={1.5} />,
-    action_android: <Play size={14} strokeWidth={1.5} />,
-    action_watch_now: <Video size={14} strokeWidth={1.5} />,
-    action_read_more: <ChevronDown size={14} strokeWidth={1.5} />,
-  };
-  return icons[type] || null;
-};
-
-const formatTimestamp = (timestamp: string | null | undefined): string => {
-  if (!timestamp) return "1sec";
-  try {
-    const created = new Date(timestamp);
-    const createdMs = created.getTime();
-    if (isNaN(createdMs)) return "1sec";
-    const now = new Date();
-    const diffSec = Math.max(1, Math.floor((now.getTime() - createdMs) / 1000));
-
-    if (diffSec < 60) {
-      return diffSec === 1 ? "1sec" : `${diffSec}secs`;
-    }
-    if (diffSec < 3600) {
-      const mins = Math.floor(diffSec / 60);
-      return mins === 1 ? "1min" : `${mins}mins`;
-    }
-    if (diffSec <= 86400) {
-      const hrs = Math.floor(diffSec / 3600);
-      return hrs === 1 ? "1hr" : `${hrs}hrs`;
-    }
-    return created.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      ...(created.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
-    });
-  } catch {
-    return "1sec";
-  }
-};
 
 import { formatCurrency } from "@/lib/utils/currency";
 
@@ -376,17 +188,20 @@ function AdCard({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [lightboxIndex, isTextReaderOpen, mediaUrls.length, closeLightbox, closeTextReader]);
 
-  const handleDismiss = useCallback((adId: string) => {
-    setLightboxIndex(null);
-    setShowLightboxMenu(false);
-    setIsTextReaderOpen(false);
-    setShowReaderMenu(false);
-    setIsDismissing(true);
-    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    dismissTimerRef.current = setTimeout(() => {
-      _onDismiss(adId);
-    }, 380);
-  }, [_onDismiss]);
+  const handleDismiss = useCallback(
+    (adId: string, advertiserEmail?: string, reportType?: AdReportType) => {
+      setLightboxIndex(null);
+      setShowLightboxMenu(false);
+      setIsTextReaderOpen(false);
+      setShowReaderMenu(false);
+      setIsDismissing(true);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = setTimeout(() => {
+        _onDismiss(adId, advertiserEmail, reportType);
+      }, 380);
+    },
+    [_onDismiss]
+  );
 
   useEffect(() => {
     return () => {
@@ -574,21 +389,35 @@ function AdCard({
   }, [ad, advertiserProfile]);
 
   const targetLink = useMemo(() => {
-    if (ad.action_website) return getHref("action_website", ad.action_website);
-    if (ad.action_whatsapp) return getHref("action_whatsapp", ad.action_whatsapp);
-    if (ad.action_phone) return getHref("action_phone", ad.action_phone);
-    if (ad.action_email) return getHref("action_email", ad.action_email);
+    if (ad.action_website) return getHref("action_website", ad.action_website, ad);
+    if (ad.action_whatsapp) return getHref("action_whatsapp", ad.action_whatsapp, ad);
+    if (ad.action_phone) return getHref("action_phone", ad.action_phone, ad);
+    if (ad.action_email) return getHref("action_email", ad.action_email, ad);
     if (ad.product_cta_link) {
       return ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`;
     }
-    if (ad.action_ios) return getHref("action_ios", ad.action_ios);
-    if (ad.action_android) return getHref("action_android", ad.action_android);
-    if (ad.action_watch_now) return getHref("action_watch_now", ad.action_watch_now);
+    if (ad.action_ios) return getHref("action_ios", ad.action_ios, ad);
+    if (ad.action_android) return getHref("action_android", ad.action_android, ad);
+    if (ad.action_watch_now) return getHref("action_watch_now", ad.action_watch_now, ad);
     return "#";
-  }, [ad.action_website, ad.action_whatsapp, ad.action_phone, ad.action_email, ad.product_cta_link, ad.action_ios, ad.action_android, ad.action_watch_now]);
+  }, [ad]);
+
+  const brandHandle = useMemo(() => {
+    const raw =
+      (ad.custom_sponsor_handle && ad.custom_sponsor_handle.trim()) ||
+      (advertiserProfile?.username && advertiserProfile.username.trim()) ||
+      ((ad as any).publisher_handle && String((ad as any).publisher_handle).trim()) ||
+      "";
+    const cleaned = raw.replace(/^@+/, "").trim();
+    if (!cleaned) return "";
+    if (cleaned.toLowerCase() === brandName.replace(/^@+/, "").trim().toLowerCase()) {
+      return "";
+    }
+    return `@${cleaned}`;
+  }, [ad, advertiserProfile?.username, brandName]);
 
   const getAdvertiserName = useCallback((_adItem: Ad): string => {
-    return brandName.slice(0, 25);
+    return brandName;
   }, [brandName]);
 
   const actionButtons = useMemo(() => {
@@ -680,18 +509,15 @@ function AdCard({
                 {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
                   <VerifiedBadge size={14} title="Verified Account" />
                 )}
-                
+                {brandHandle && (
+                  <span className={styles.sponsorHandle}>{brandHandle}</span>
+                )}
               </div>
             </AdvertiserHoverCard>
-            <span className={styles.dot}></span>
-            <span className={styles.adTime}>{formatTimestamp(ad.created_at)}</span>
             {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
-              <>
-                <span className={styles.dot}></span>
-                <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                  AI
-                </span>
-              </>
+              <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
+                AI
+              </span>
             )}
           </div>
 
@@ -713,6 +539,7 @@ function AdCard({
               showThreeDotMenu={showThreeDotMenu}
               onToggleMenu={handleToggleMenu}
               onDismiss={handleDismiss}
+              onShowToast={showToast}
             />
           </div>
         </div>
@@ -901,52 +728,6 @@ function AdCard({
   );
 }
 
-const MemoizedAdCard = (React.memo(AdCard) as unknown) as typeof AdCard & {
-  Root: React.FC<React.HTMLAttributes<HTMLDivElement>>;
-  Header: React.FC<{ advertiserName?: string; timestamp?: string | null; sponsorLabel?: string }>;
-  Media: React.FC<{ adMedia?: string | null; hlsUrl?: string | null; isMuted?: boolean; onToggleMute?: () => void }>;
-  Body: React.FC<{ content?: string; isExpanded?: boolean; onToggleExpand?: () => void }>;
-  Actions: React.FC<{ children?: React.ReactNode }>;
-};
-
-MemoizedAdCard.Root = function AdCardRoot({ children, className, ...props }: any) {
-  return <div className={`${styles.card} ${className || ""}`} {...props}>{children}</div>;
-};
-
-MemoizedAdCard.Header = function AdCardHeader({ advertiserName, timestamp, sponsorLabel }: any) {
-  return (
-    <div className={styles.tweetHeader}>
-      <div className={styles.headerLeft}>
-        <span className={styles.sponsorName}>{advertiserName}</span>
-        {timestamp && <><span className={styles.dot}></span><span className={styles.adTime}>{timestamp}</span></>}
-      </div>
-      {sponsorLabel && (
-        <div className={styles.headerRightContainer}>
-          <span className={styles.sponsorLabel}>{sponsorLabel}</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-MemoizedAdCard.Media = function AdCardMedia({ adMedia, hlsUrl, isMuted = true, onToggleMute }: any) {
-  return (
-    <MediaCarousel
-      adMedia={adMedia || null}
-      hlsUrl={hlsUrl}
-      isCardVisible={true}
-      isMuted={isMuted}
-      onToggleMute={onToggleMute || (() => {})}
-    />
-  );
-};
-
-MemoizedAdCard.Body = function AdCardBody({ content }: any) {
-  return <p className={styles.adText}>{content}</p>;
-};
-
-MemoizedAdCard.Actions = function AdCardActions({ children }: any) {
-  return <div className={styles.actionButtons}>{children}</div>;
-};
+const MemoizedAdCard = attachAdCardSlots(React.memo(AdCard));
 
 export default MemoizedAdCard;

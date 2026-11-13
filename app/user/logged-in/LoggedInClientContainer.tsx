@@ -10,56 +10,57 @@ import AppleSpinner from "@/components/ui/AppleSpinner";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
 import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
 
-// Clean Spinner Component for Dynamic Loading (Zero Text)
-const SimpleLoader = () => (
-  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "4rem 0" }}>
-    <AppleSpinner size={32} />
-  </div>
-);
+import {
+  MonetizeSkeleton,
+  FormSkeleton,
+  PublicationsSkeleton,
+  ProfileSkeleton,
+  FeedPageSkeleton,
+} from "@/components/ui/PageSkeletons";
 
-// Dynamic Code Splitting with clean loading state (client-rendered to avoid missing SSR chunk errors)
+// Dynamic Code Splitting with Skeleton Suspense fallbacks (Zero generic spinner/loader)
 const MultiStepAdForm = dynamic(() => import("@/components/Ad/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <FormSkeleton />,
   ssr: false,
 });
 
 const Monetize = dynamic(() => import("@/components/Monetize/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <MonetizeSkeleton />,
   ssr: false,
 });
 
 const MyNews = dynamic(() => import("@/components/MyNews/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <PublicationsSkeleton />,
   ssr: false,
 });
 
 const MyAds = dynamic(() => import("@/components/MyAds/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <PublicationsSkeleton />,
   ssr: false,
 });
 
 const UpdateProfile = dynamic(() => import("@/components/Update/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <ProfileSkeleton />,
   ssr: false,
 });
 
 const NewsComponent = dynamic(() => import("@/components/News/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <PublicationsSkeleton />,
   ssr: false,
 });
 
 const DeactivateAccount = dynamic(() => import("@/components/Deactivate/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <FormSkeleton />,
   ssr: false,
 });
 
 const StatementPageContent = dynamic(() => import("@/components/Statement/page"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <PublicationsSkeleton />,
   ssr: false,
 });
 
 const BecomeAgentPage = dynamic(() => import("@/components/AgentSystem/AgentSystem"), {
-  loading: () => <SimpleLoader />,
+  loading: () => <FormSkeleton />,
   ssr: false,
 });
 
@@ -79,6 +80,7 @@ export type TabKey =
 interface Props {
   session: any;
   initialMonetized?: boolean;
+  initialHasCancelled?: boolean;
   initialClicks?: number;
   initialAtwTier?: string;
   initialTab?: TabKey;
@@ -95,6 +97,7 @@ const VALID_TABS: TabKey[] = ["feed", "adPage", "monetize", "agent", "myads", "p
 export default function LoggedInClientContainer({ 
   session, 
   initialMonetized, 
+  initialHasCancelled,
   initialClicks, 
   initialAtwTier,
   initialTab = "feed",
@@ -444,6 +447,7 @@ export default function LoggedInClientContainer({
             <Monetize 
               session={session} 
               initialMonetized={initialMonetized}
+              initialHasCancelled={initialHasCancelled}
               initialClicks={initialClicks}
               initialAtwTier={initialAtwTier}
             />

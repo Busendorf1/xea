@@ -1,0 +1,423 @@
+/* Responsive Paayh Dashboard Suspense Shell mirroring DashboardClient layout across all viewports */
+.shellWrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 68px;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--card-border);
+  z-index: 1100;
+  box-sizing: border-box;
+}
+
+.headerContent {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  padding: 0 1%;
+  max-width: 1400px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.brandGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.brandTextBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.appName {
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+
+.appSub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.1;
+}
+
+.headerRightDesktop {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.navLinksRow {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+
+.tabletBtnPlaceholder {
+  display: none;
+}
+
+.headerIconsGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mobileControls {
+  display: none;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+/* Main 3-Column Dashboard Frame (3.1 Left / 5 Feed / 3.3 Right) */
+.dashboardContainer {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  padding-top: 68px;
+  margin: 0 auto;
+  max-width: 1400px;
+  padding-left: 1%;
+  padding-right: 1%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.leftSidebar {
+  flex: 0 0 calc((3.1 / 11.4) * 100%);
+  width: calc((3.1 / 11.4) * 100%);
+  max-width: calc((3.1 / 11.4) * 100%);
+  background-color: var(--sidebar-bg);
+  border-right: 1px solid var(--card-border);
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+}
+
+.leftSidebarInner {
+  padding: 1.25rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.accountMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
+  border-radius: 14px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+.accountMenuLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.highlightsBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sectionHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.2rem;
+}
+
+.highlightCard {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 0.85rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.highlightTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.highlightSponsor {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* Center Feed Stream */
+.feedArea {
+  flex: 0 0 calc((5 / 11.4) * 100%);
+  width: calc((5 / 11.4) * 100%);
+  max-width: calc((5 / 11.4) * 100%);
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  background-color: var(--background);
+}
+
+.feedTopStrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.65rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+  max-width: 600px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.feedFilterPills {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+/* Right Profile & Wallet Sidebar */
+.rightSidebar {
+  flex: 0 0 calc((3.3 / 11.4) * 100%);
+  width: calc((3.3 / 11.4) * 100%);
+  max-width: calc((3.3 / 11.4) * 100%);
+  background-color: var(--card-bg);
+  border-left: 1px solid var(--card-border);
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+}
+
+.profileSection {
+  padding: 1.25rem 1.15rem;
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profileIdentityRow {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.profileNameCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.profileStatsRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding-top: 0.25rem;
+}
+
+.inviteCard {
+  margin: 1rem 1.15rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.inviteInputRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.walletCard {
+  margin: 1rem 1.15rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.walletHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.walletButtonsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.personaRow {
+  padding: 0 1.15rem 1.15rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pill {
+  border-radius: 9999px !important;
+}
+
+.compactRadius {
+  border-radius: 8px !important;
+}
+
+.noMargin {
+  margin-bottom: 0 !important;
+}
+
+/* Tablet Viewports (769px - 1024px): Left Highlights + Center Feed; Right Profile collapsed */
+@media screen and (max-width: 1024px) {
+  .headerContent,
+  .dashboardContainer {
+    padding-left: 2%;
+    padding-right: 2%;
+  }
+
+  .tabletBtnPlaceholder {
+    display: inline-flex;
+  }
+
+  .leftSidebar {
+    flex: 0 0 32%;
+    width: 32%;
+    max-width: 32%;
+  }
+
+  .feedArea {
+    flex: 1;
+    width: auto;
+    max-width: 100%;
+  }
+
+  .rightSidebar {
+    display: none;
+  }
+}
+
+/* Compact Desktop Scaling (1025px - 1180px): ensure nav fits smoothly */
+@media screen and (min-width: 769px) and (max-width: 1120px) {
+  .navLinksRow {
+    gap: 0.7rem;
+  }
+}
+
+/* Mobile Viewports (<= 768px): Top icon header + Full-width Feed stream */
+@media screen and (max-width: 768px) {
+  .appSub {
+    display: none;
+  }
+
+  .headerContent {
+    padding: 0 0.85rem;
+  }
+
+  .headerRightDesktop {
+    display: none;
+  }
+
+  .mobileControls {
+    display: flex;
+  }
+
+  .dashboardContainer {
+    padding-left: 0;
+    padding-right: 0;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .leftSidebar,
+  .rightSidebar {
+    display: none;
+  }
+
+  .feedArea {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    padding: 0.35rem 0.25rem 1.5rem;
+    height: auto;
+    overflow: visible;
+  }
+
+  .feedTopStrip {
+    padding: 0.65rem 0.75rem 0.55rem;
+  }
+}
+
+/* Small Phone Guard (<= 400px) */
+@media screen and (max-width: 400px) {
+  .appName {
+    font-size: 1.1rem;
+  }
+
+  .headerContent {
+    padding: 0 0.65rem;
+  }
+
+  .mobileControls {
+    gap: 0.4rem;
+  }
+}
+
+/* Large Desktop Scaling (>= 1440px and >= 1800px) */
+@media screen and (min-width: 1440px) {
+  .headerContent,
+  .dashboardContainer {
+    max-width: 1560px;
+  }
+
+  .feedTopStrip {
+    max-width: 680px;
+  }
+}
+
+@media screen and (min-width: 1800px) {
+  .headerContent,
+  .dashboardContainer {
+    max-width: 1760px;
+  }
+
+  .feedTopStrip {
+    max-width: 760px;
+  }
+}

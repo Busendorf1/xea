@@ -45,6 +45,11 @@ export type Ad = {
   is_paused?: boolean;
   cost_per_impression?: number;
   total_cost?: number;
+  boosted_amount?: number | null;
+  total_spend?: number | null;
+  effective_cpc?: number | null;
+  is_boosted?: boolean | null;
+  boosted_at?: string | null;
   status?: string | null;
   payment_status?: string | null;
   approved_at?: string | null;
@@ -60,6 +65,22 @@ export type Ad = {
   email?: string | null;
   is_ai_content?: boolean | null;
 };
+
+export interface AnalyticsSeriesPoint {
+  date: string;
+  views: number;
+  clicks: number;
+  ctr: number;
+}
+
+export interface AnalyticsSummary {
+  totalSpend: number;
+  totalViews: number;
+  totalClicks: number;
+  avgCtr: number;
+  effectiveCpc: number;
+  effectiveCpv: number;
+}
 
 export interface Session {
   user?: {

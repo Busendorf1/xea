@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     const { data: user, error: uErr } = await supabaseReadOnly
       .from("users")
       .select("referral_code, referral_downloads_count, monetization_clicks, atw_tier")
-      .eq("email", emailLower)
+      .ilike("email", emailLower)
       .maybeSingle();
 
     if (uErr || !user) {
@@ -30,16 +30,35 @@ export async function GET(req: NextRequest) {
     if (!refCode) {
       const crypto = await import("crypto");
       refCode = crypto.randomBytes(4).toString("hex").toUpperCase();
-      await supabaseAdmin.from("users").update({ referral_code: refCode }).eq("email", emailLower);
+      await supabaseAdmin.from("users").update({ referral_code: refCode }).ilike("email", emailLower);
     }
 
-    // 2. Fetch referral breakdown list
-    const { data: referralsList, error: refErr } = await supabaseReadOnly
+    // 2. Fetch referral breakdown list (scrub referee_email PII from selection & payload)
+    const { data: referralsList } = await supabaseReadOnly
       .from("referrals")
-      .select("id, referee_email, status, interactions_count, created_at, qualified_at")
-      .eq("referrer_email", emailLower)
+      .select("id, status, interactions_count, created_at, qualified_at")
+      .ilike("referrer_email", emailLower)
       .order("created_at", { ascending: false })
       .limit(100);
+
+    const activeReferrals = (referralsList || []).filter((r: any) => {
+      const status = String(r?.status || "").toLowerCase().trim();
+      const optOut = String(r?.opt_out_status || "").toLowerCase().trim();
+      return (
+        r?.is_opted_out !== true &&
+        status !== "opted_out" &&
+        optOut !== "accepted" &&
+        optOut !== "forced"
+      );
+    });
+
+    const sanitizedReferrals = activeReferrals.map((r: any) => ({
+      id: r.id,
+      status: r.status,
+      interactions_count: r.interactions_count ?? 0,
+      created_at: r.created_at,
+      qualified_at: r.qualified_at ?? null,
+    }));
 
     const qualifiedCount = user.referral_downloads_count ?? 0;
     const clicksCount = user.monetization_clicks ?? 0;
@@ -50,15 +69,15 @@ export async function GET(req: NextRequest) {
       referralCode: refCode,
       referralLink: `https://xea.app/join?ref=${refCode}`,
       qualifiedCount,
-      pendingCount: (referralsList || []).filter((r) => r.status === "pending").length,
-      totalInvites: referralsList?.length || 0,
+      pendingCount: sanitizedReferrals.filter((r) => r.status === "pending").length,
+      totalInvites: sanitizedReferrals.length,
       atwTier: user.atw_tier || tier,
       atwLevel: level,
       holdingLimit,
-      referrals: referralsList || [],
+      referrals: sanitizedReferrals,
     });
   } catch (err: any) {
     console.error("❌ Error in GET /api/referrals:", err);
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

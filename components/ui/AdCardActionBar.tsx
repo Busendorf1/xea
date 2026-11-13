@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import AdInteractionHandler from "@/components/ui/AdInteractionHandler";
 import type { Ad } from "@/components/ui/AdCard";
 import type { InteractionData } from "@/lib/hooks/useFeedActions";
+import { shareAdToDeviceOrClipboard } from "@/lib/utils/adShare";
 
 export interface AdCardActionBarProps {
   ad: Ad;
@@ -131,17 +132,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
             type="button"
             onClick={() => {
               handleCtaClick("share");
-              try {
-                const encodedId = btoa(ad.id.toString());
-                const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
-                navigator.clipboard.writeText(shareUrl).then(() => {
-                  showToast("Link copied to clipboard");
-                }).catch(() => {
-                  onShare(ad.id);
-                });
-              } catch {
-                onShare(ad.id);
-              }
+              void shareAdToDeviceOrClipboard(ad, showToast, onShare);
             }}
           >
             <Share2 size={14} strokeWidth={1.5} />
@@ -240,17 +231,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
           type="button"
           onClick={() => {
             handleCtaClick("share");
-            try {
-              const encodedId = btoa(ad.id.toString());
-              const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
-              navigator.clipboard.writeText(shareUrl).then(() => {
-                showToast("Link copied to clipboard");
-              }).catch(() => {
-                onShare(ad.id);
-              });
-            } catch {
-              onShare(ad.id);
-            }
+            void shareAdToDeviceOrClipboard(ad, showToast, onShare);
           }}
         >
           <Share2 size={14} strokeWidth={1.5} />

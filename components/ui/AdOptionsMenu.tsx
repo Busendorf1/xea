@@ -1,13 +1,16 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MoreVertical, ShieldAlert, UserX, EyeOff } from "lucide-react";
 import styles from "./AdCard.module.css";
+
+export type AdReportType = "ad" | "advertiser" | "dont_show";
 
 interface AdOptionsMenuProps {
   adId: string;
   advertiserEmail?: string;
   showThreeDotMenu: boolean;
   onToggleMenu: (show: boolean) => void;
-  onDismiss?: (adId: string) => void;
+  onDismiss?: (adId: string, advertiserEmail?: string, reportType?: AdReportType) => void;
+  onShowToast?: (msg: string) => void;
 }
 
 const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
@@ -16,8 +19,10 @@ const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
   showThreeDotMenu,
   onToggleMenu,
   onDismiss,
+  onShowToast,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [submittingType, setSubmittingType] = useState<AdReportType | null>(null);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -31,26 +36,68 @@ const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [showThreeDotMenu, onToggleMenu]);
 
-  const handleBlockAndReportAd = () => {
-    onToggleMenu(false);
+  const notifyUser = (msg: string) => {
+    if (onShowToast) {
+      onShowToast(msg);
+      return;
+    }
     if (typeof window !== "undefined") {
-      window.location.href = `/help?reportAdId=${encodeURIComponent(adId)}&type=ad`;
+      window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: msg } }));
     }
   };
 
-  const handleBlockAndReportAdvertiser = () => {
-    onToggleMenu(false);
-    if (typeof window !== "undefined") {
-      window.location.href = `/help?reportAdId=${encodeURIComponent(adId)}&advertiserEmail=${encodeURIComponent(advertiserEmail || "")}&type=advertiser`;
+  const handleReportAction = async (reportType: AdReportType) => {
+    if (submittingType) return;
+    if (reportType === "advertiser" && !advertiserEmail) {
+      onToggleMenu(false);
+      notifyUser("Unable to block this advertiser: advertiser identifier missing.");
+      return;
     }
-  };
 
-  const handleDontShowAgain = () => {
-    onToggleMenu(false);
-    if (onDismiss) {
-      onDismiss(adId);
-    } else if (typeof window !== "undefined") {
-      window.location.href = `/help?reportAdId=${encodeURIComponent(adId)}&type=dont_show`;
+    setSubmittingType(reportType);
+    try {
+      const response = await fetch("/api/campaigns/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          adId,
+          advertiserEmail: advertiserEmail || "",
+          reportType,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        onToggleMenu(false);
+        notifyUser(data?.error || "Unable to complete that action right now.");
+        return;
+      }
+
+      onToggleMenu(false);
+      onDismiss?.(adId, advertiserEmail, reportType);
+
+      if (reportType === "dont_show") {
+        notifyUser("Ad hidden from your feed.");
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        const helpUrl =
+          reportType === "advertiser"
+            ? `/help?reportAdId=${encodeURIComponent(adId)}&advertiserEmail=${encodeURIComponent(
+                advertiserEmail || ""
+              )}&type=advertiser&reported=1`
+            : `/help?reportAdId=${encodeURIComponent(adId)}&type=ad&reported=1`;
+        setTimeout(() => {
+          window.location.href = helpUrl;
+        }, 250);
+      }
+    } catch {
+      onToggleMenu(false);
+      notifyUser("Network error while submitting report. Please try again.");
+    } finally {
+      setSubmittingType(null);
     }
   };
 
@@ -74,28 +121,33 @@ const AdOptionsMenu: React.FC<AdOptionsMenuProps> = ({
           <button
             type="button"
             className={styles.dropdownOption}
-            onClick={handleBlockAndReportAd}
+            disabled={submittingType !== null}
+            onClick={() => handleReportAction("ad")}
           >
             <ShieldAlert size={14} className={styles.dropdownIconDanger} />
-            <span>Block & report Ad</span>
+            <span>{submittingType === "ad" ? "Blocking Ad..." : "Block & report Ad"}</span>
           </button>
 
           <button
             type="button"
             className={styles.dropdownOption}
-            onClick={handleBlockAndReportAdvertiser}
+            disabled={submittingType !== null}
+            onClick={() => handleReportAction("advertiser")}
           >
             <UserX size={14} className={styles.dropdownIconDanger} />
-            <span>Block & report Advertiser</span>
+            <span>
+              {submittingType === "advertiser" ? "Blocking Advertiser..." : "Block & report Advertiser"}
+            </span>
           </button>
 
           <button
             type="button"
             className={styles.dropdownOption}
-            onClick={handleDontShowAgain}
+            disabled={submittingType !== null}
+            onClick={() => handleReportAction("dont_show")}
           >
             <EyeOff size={14} className={styles.dropdownIconMuted} />
-            <span>Don&apos;t show this Ad again</span>
+            <span>{submittingType === "dont_show" ? "Hiding Ad..." : "Don\u2019t show this Ad again"}</span>
           </button>
         </div>
       )}

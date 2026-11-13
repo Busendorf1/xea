@@ -138,6 +138,9 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
                 {isItemVideo ? (
                   <video
                     src={url}
+                    autoPlay
+                    loop
+                    muted
                     controls
                     playsInline
                     onLoadedMetadata={(e) => {

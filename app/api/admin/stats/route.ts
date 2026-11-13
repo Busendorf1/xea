@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     console.warn("⚠️ get_admin_overview_stats RPC fallback triggered:", rpcError?.message);
 
-    // 3. Fallback: Execute fast parallel count queries using head: true (zero row payload)
+    // 3. Fallback: Execute fast parallel count queries using head: true (zero row payload, no JS array reduction)
     const [
       { count: totalUsersCnt },
       { count: monetizedUsersCnt },
@@ -64,7 +64,6 @@ export async function GET(req: NextRequest) {
       { count: pausedActiveCnt },
       { count: reportsCnt },
       { count: ticketsCnt },
-      { data: recentAds }
     ] = await Promise.all([
       supabaseAdmin.from("users").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("users").select("*", { count: "exact", head: true }).or("monetized.eq.yes,monetized.eq.true"),
@@ -77,33 +76,26 @@ export async function GET(req: NextRequest) {
       supabaseAdmin.from("addsactive").select("*", { count: "exact", head: true }).eq("is_paused", true),
       supabaseAdmin.from("ad_reports").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("help_tickets").select("*", { count: "exact", head: true }),
-      supabaseAdmin.from("addsactive").select("impression_count, mutual_adds_count, impressions").limit(100)
     ]);
-
-    const resolvedAds = recentAds || [];
-    const activeImpressions = resolvedAds.reduce((sum, ad) => sum + parseInt(ad.impression_count || 0), 0);
-    const activeMutuals = resolvedAds.reduce((sum, ad) => sum + parseInt(ad.mutual_adds_count || 0), 0);
-    const totalTargetImpressions = resolvedAds.reduce((sum, ad) => sum + parseInt(ad.impressions || 0), 0);
-    const totalClicks = activeImpressions + activeMutuals;
-    const clickRate = totalTargetImpressions > 0 ? (totalClicks / totalTargetImpressions) * 100 : 0;
 
     const statsData = {
       totalUsers: totalUsersCnt || 0,
       monetizedUsers: monetizedUsersCnt || 0,
       suspendedUsers: suspendedUsersCnt || 0,
-      totalBalance: 0, // Computed by RPC
-      totalWithdrawal: 0, // Computed by RPC
+      totalBalance: 0, // Computed by SQL RPC
+      totalWithdrawal: 0, // Computed by SQL RPC
       pendingAdsCount: pAdsCount || 0,
       activeAdsCount: aAdsCount || 0,
       pendingHighlightsCount: pHighlightsCount || 0,
       activeHighlightsCount: aHighlightsCount || 0,
-      totalClicks,
-      totalMutuals: activeMutuals,
-      clickRate,
+      totalClicks: 0, // Computed by SQL RPC
+      totalMutuals: 0, // Computed by SQL RPC
+      clickRate: 0, // Computed by SQL RPC
       reportedCount: reportsCnt || 0,
       helpTicketsCount: ticketsCnt || 0,
       pausedAdsCount: (pausedAddsCnt || 0) + (pausedActiveCnt || 0),
-      timestamp: new Date().toISOString()
+      metricsDegraded: true,
+      timestamp: new Date().toISOString(),
     };
 
     try {

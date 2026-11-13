@@ -23,6 +23,8 @@ export interface AgentNetworkModalProps {
   onRegisterAgent?: () => Promise<void>;
   onNavigateToAgentPage?: () => void;
   onRefresh?: (force?: boolean) => Promise<void>;
+  onLoadMoreInvites?: () => Promise<void>;
+  loadingMore?: boolean;
 }
 
 export default function AgentNetworkModal({
@@ -36,6 +38,8 @@ export default function AgentNetworkModal({
   onTriggerOptOut,
   onNavigateToAgentPage,
   onRefresh,
+  onLoadMoreInvites,
+  loadingMore = false,
 }: AgentNetworkModalProps) {
   const [activeTab, setActiveTab] = useState<NetworkModalTab>(initialTab);
   const [selectedFollowerKey, setSelectedFollowerKey] = useState<string | null>(null);
@@ -47,14 +51,14 @@ export default function AgentNetworkModal({
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  // Real-time background sync while modal is open so other user's Undo / Accept / Reject reflects automatically
+  // Real-time background sync while modal is open and visible so other user's Undo / Accept / Reject reflects automatically
   useEffect(() => {
     if (!onRefresh) return;
     const interval = setInterval(() => {
-      if (!actionLoading) {
+      if (!actionLoading && (typeof document === "undefined" || document.visibilityState === "visible")) {
         onRefresh(true);
       }
-    }, 3500);
+    }, 5000);
     return () => clearInterval(interval);
   }, [onRefresh, actionLoading]);
 
@@ -96,6 +100,9 @@ export default function AgentNetworkModal({
           {activeTab === "invites" ? (
             <AgentFollowersTab
               invites={data.invites}
+              hasMoreInvites={Boolean(data.hasMoreInvites && data.nextCursor)}
+              loadingMore={loadingMore}
+              onLoadMore={onLoadMoreInvites}
               actionLoading={actionLoading}
               activeActionKey={activeActionKey}
               selectedFollowerKey={selectedFollowerKey}

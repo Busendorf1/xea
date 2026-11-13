@@ -1,7 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Ad } from "@/components/ui/AdCard";
+import {
+  HighlightLike,
+  isHighlightCurrentlyActive,
+  sortHighlightsByBidAndRecency,
+} from "@/lib/highlights/highlightLifecycle";
 
-interface RawHighlightItem {
+interface RawHighlightItem extends HighlightLike {
   id: string;
   is_bidded?: boolean;
   is_paused?: boolean;
@@ -10,34 +15,53 @@ interface RawHighlightItem {
   title?: string;
   content?: string;
   image_url?: string;
-  interest?: string;
+  interest?: string | string[];
   created_at?: string;
   user_email?: string;
 }
 
+const HIGHLIGHTS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 function mapRawHighlightsToAds(data: RawHighlightItem[] | undefined | null): Ad[] {
   if (!Array.isArray(data) || data.length === 0) return [];
-  const boosted = data.filter((item) => !!item?.is_bidded && !item?.is_paused);
+  const nowMs = Date.now();
+  const boosted = data
+    .filter(
+      (item) =>
+        Boolean(item?.is_bidded || Number(item?.bid_price || 0) > 0) &&
+        isHighlightCurrentlyActive(item, nowMs)
+    )
+    .sort(sortHighlightsByBidAndRecency);
+
   const eligible = boosted.filter((item) => {
     const count = item.user_render_count || 0;
     const limit = item.is_highest_bidder ? 2 : 1;
     return count < limit;
   });
 
-  return eligible.map(
-    (item) =>
-      ({
-        id: item.id,
-        is_highlight: true,
-        title: item.title,
-        ad_content: item.content || "",
-        ad_media: item.image_url || null,
-        interest: item.interest ? [item.interest] : [],
-        created_at: item.created_at,
-        user_email: item.user_email || "",
-        impressions: 0,
-      } as Ad)
-  );
+  return eligible.map((item) => {
+    const normalizedInterest = Array.isArray(item.interest)
+      ? item.interest
+      : item.interest
+        ? [String(item.interest)]
+        : [];
+    return {
+      id: item.id,
+      is_highlight: true,
+      is_bidded: Boolean(item.is_bidded || Number(item.bid_price || 0) > 0),
+      is_highest_bidder: Boolean(item.is_highest_bidder),
+      expires_at: item.expires_at || null,
+      scheduled_end_at: item.scheduled_end_at || null,
+      campaign_days: item.campaign_days || 1,
+      title: item.title,
+      ad_content: item.content || "",
+      ad_media: item.image_url || null,
+      interest: normalizedInterest,
+      created_at: item.created_at,
+      user_email: item.user_email || "",
+      impressions: 0,
+    } as unknown as Ad;
+  });
 }
 
 export function useFeedHighlights(isMobile: boolean, initialHighlights?: any[]) {
@@ -50,7 +74,8 @@ export function useFeedHighlights(isMobile: boolean, initialHighlights?: any[]) 
         const cached = sessionStorage.getItem("paayh_highlights_cache");
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
+          const isFresh = parsed?.timestamp && Date.now() - Number(parsed.timestamp) <= HIGHLIGHTS_CACHE_TTL_MS;
+          if (isFresh && Array.isArray(parsed?.items) && parsed.items.length > 0) {
             return mapRawHighlightsToAds(parsed.items);
           }
         }
@@ -58,6 +83,17 @@ export function useFeedHighlights(isMobile: boolean, initialHighlights?: any[]) 
     }
     return [];
   });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const nowMs = Date.now();
+      setHighlights((prev) => {
+        const next = prev.filter((item) => isHighlightCurrentlyActive(item as unknown as HighlightLike, nowMs));
+        return next.length === prev.length ? prev : next;
+      });
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const [hasFetched, setHasFetched] = useState<boolean>(
     Array.isArray(initialHighlights) && initialHighlights.length > 0
   );

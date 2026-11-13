@@ -7,7 +7,9 @@ const cleanDomain = auth0Domain.replace(/^https?:\/\//, "");
 
 // Local bounded cache for validated access tokens to prevent redundant userinfo HTTP calls
 const MAX_CACHE_SIZE = 5000;
-const tokenCache = new Map<string, { email: string; expiresAt: number }>();
+const tokenCache = new Map<string, { email: string; expiresAt: number; iatMs?: number }>();
+
+const PERMANENT_BAN_REASONS = new Set(["admin_perm_banned", "perm_banned"]);
 
 function cleanExpiredTokens() {
   const now = Date.now();
@@ -23,14 +25,173 @@ const JWKS = createRemoteJWKSet(
   new URL(`https://${cleanDomain}/.well-known/jwks.json`)
 );
 
-// Helper to check deactivated tombstone without pulling ioredis into client bundles
-async function isEmailDeactivated(email: string): Promise<boolean> {
+export async function isEmailPermanentlyBanned(email: string): Promise<boolean> {
   const cleanEmail = email.toLowerCase().trim();
+  if (!cleanEmail) return false;
   try {
     const { default: redisConnection, isRedisReady } = await import("./redis");
     if (isRedisReady()) {
-      const isDeactivated = await redisConnection.get(`deactivated:${cleanEmail}`);
-      if (isDeactivated) return true;
+      const banned = await redisConnection.get(`perm_banned:${cleanEmail}`);
+      if (banned) return true;
+    }
+  } catch {}
+
+  try {
+    const { default: supabaseAdmin } = await import("./utils/dbAdmin");
+    const [{ data: deact }, { data: userRow }] = await Promise.all([
+      supabaseAdmin
+        .from("deactivated_users")
+        .select("email, reason")
+        .ilike("email", cleanEmail)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("users")
+        .select("ad_account_status")
+        .ilike("email", cleanEmail)
+        .maybeSingle(),
+    ]);
+
+    const reason = String((deact as any)?.reason || "").toLowerCase().trim();
+    if (PERMANENT_BAN_REASONS.has(reason) || userRow?.ad_account_status === "perm_banned") {
+      try {
+        const { default: redisConnection, isRedisReady } = await import("./redis");
+        if (isRedisReady()) {
+          await redisConnection.set(`perm_banned:${cleanEmail}`, "1", "EX", 315360000).catch(() => {});
+        }
+      } catch {}
+      return true;
+    }
+  } catch {}
+
+  return false;
+}
+
+/**
+ * Clears non-ban self-deactivation or 60-day dormancy tombstones when a user signs in
+ * again with a fresh identity so they can recreate a clean account via profile setup.
+ * Permanent admin bans (`perm_banned` / `admin_perm_banned`) are NEVER cleared.
+ */
+export async function clearSelfDeactivationForRejoin(
+  email: string
+): Promise<{ allowed: boolean; permanentlyBanned: boolean }> {
+  const cleanEmail = email.toLowerCase().trim();
+  if (!cleanEmail) return { allowed: false, permanentlyBanned: false };
+
+  if (await isEmailPermanentlyBanned(cleanEmail)) {
+    return { allowed: false, permanentlyBanned: true };
+  }
+
+  try {
+    const { default: redisConnection, isRedisReady } = await import("./redis");
+    if (isRedisReady()) {
+      await redisConnection.del(`deactivated:${cleanEmail}`).catch(() => {});
+    }
+  } catch {}
+
+  try {
+    const { default: supabaseAdmin } = await import("./utils/dbAdmin");
+    await supabaseAdmin
+      .from("deactivated_users")
+      .delete()
+      .ilike("email", cleanEmail);
+
+    const { data: leftoverUser } = await supabaseAdmin
+      .from("users")
+      .select("id, ad_account_status")
+      .ilike("email", cleanEmail)
+      .maybeSingle();
+
+    if (leftoverUser && leftoverUser.ad_account_status === "deactivated") {
+      const { error: delErr } = await supabaseAdmin
+        .from("users")
+        .delete()
+        .eq("id", leftoverUser.id);
+
+      if (delErr) {
+        const ts = Date.now();
+        await supabaseAdmin
+          .from("users")
+          .update({
+            ad_account_status: "active",
+            has_updated_profile: false,
+            country: "PLACEHOLDER",
+            state: "PLACEHOLDER",
+            location: "PLACEHOLDER",
+            phone: `PLACEHOLDER_PHONE_${ts}`,
+            passphrase: `PLACEHOLDER_PASS_${ts}`,
+            balance: 0,
+            monetized: "false",
+            monetization_clicks: 0,
+            is_agent: false,
+            referred_by: null,
+          })
+          .eq("id", leftoverUser.id);
+      }
+    }
+  } catch {}
+
+  try {
+    const { invalidateCachedProfile } = await import("./utils/cache");
+    await invalidateCachedProfile(cleanEmail).catch(() => {});
+  } catch {}
+
+  return { allowed: true, permanentlyBanned: false };
+}
+
+async function isTokenIssuedBeforeRevocation(email: string, iatMs?: number): Promise<boolean> {
+  if (!iatMs) return false;
+  try {
+    const { default: redisConnection, isRedisReady } = await import("./redis");
+    if (isRedisReady()) {
+      const raw = await redisConnection.get(`revoked_before:${email.toLowerCase().trim()}`);
+      if (raw && iatMs < Number(raw)) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+async function checkDeactivatedOrAllowFreshBearer(email: string, iatMs?: number): Promise<boolean> {
+  const cleanEmail = email.toLowerCase().trim();
+  if (await isEmailPermanentlyBanned(cleanEmail)) return true;
+  if (await isTokenIssuedBeforeRevocation(cleanEmail, iatMs)) return true;
+
+  if (iatMs) {
+    try {
+      const { default: supabaseAdmin } = await import("./utils/dbAdmin");
+      const { data: deact } = await supabaseAdmin
+        .from("deactivated_users")
+        .select("deactivated_at, reason")
+        .ilike("email", cleanEmail)
+        .maybeSingle();
+
+      const reason = String((deact as any)?.reason || "").toLowerCase().trim();
+      if (deact && !PERMANENT_BAN_REASONS.has(reason)) {
+        const deactMs = deact.deactivated_at ? new Date(deact.deactivated_at).getTime() : 0;
+        if (!Number.isNaN(deactMs) && iatMs > deactMs + 1000) {
+          await clearSelfDeactivationForRejoin(cleanEmail);
+          return false;
+        }
+      }
+    } catch {}
+  }
+
+  return await isEmailDeactivated(cleanEmail);
+}
+
+// Helper to check deactivated tombstone without pulling ioredis into client bundles
+export async function isEmailDeactivated(email: string): Promise<boolean> {
+  const cleanEmail = email.toLowerCase().trim();
+  if (!cleanEmail) return false;
+  try {
+    const { default: redisConnection, isRedisReady } = await import("./redis");
+    if (isRedisReady()) {
+      const [isBanned, isDeactivated] = await Promise.all([
+        redisConnection.get(`perm_banned:${cleanEmail}`),
+        redisConnection.get(`deactivated:${cleanEmail}`),
+      ]);
+      if (isBanned || isDeactivated) return true;
     }
   } catch {}
 
@@ -39,16 +200,18 @@ async function isEmailDeactivated(email: string): Promise<boolean> {
     const { data: deact } = await supabaseAdmin
       .from("deactivated_users")
       .select("email")
-      .eq("email", cleanEmail)
+      .ilike("email", cleanEmail)
       .maybeSingle();
     if (deact) return true;
 
     const { data: userRow } = await supabaseAdmin
       .from("users")
       .select("ad_account_status")
-      .eq("email", cleanEmail)
+      .ilike("email", cleanEmail)
       .maybeSingle();
-    if (userRow?.ad_account_status === "deactivated") return true;
+    if (userRow?.ad_account_status === "deactivated" || userRow?.ad_account_status === "perm_banned") {
+      return true;
+    }
   } catch {}
 
   return false;
@@ -78,7 +241,8 @@ export async function getAuthenticatedEmail(
       // 1. Check L1 in-memory cache to resolve in <0.1ms
       const cached = tokenCache.get(token);
       if (cached && cached.expiresAt > Date.now()) {
-        if (await isEmailDeactivated(cached.email)) {
+        if (await checkDeactivatedOrAllowFreshBearer(cached.email, cached.iatMs)) {
+          tokenCache.delete(token);
           return null;
         }
         return cached.email;
@@ -93,10 +257,12 @@ export async function getAuthenticatedEmail(
           const redisEmail = await redisConnection.get(redisTokenKey);
           if (redisEmail && redisEmail.includes("@")) {
             const normalizedRedisEmail = redisEmail.toLowerCase().trim();
-            tokenCache.set(token, { email: normalizedRedisEmail, expiresAt: Date.now() + 900_000 });
-            if (await isEmailDeactivated(normalizedRedisEmail)) {
+            if (await checkDeactivatedOrAllowFreshBearer(normalizedRedisEmail)) {
+              tokenCache.delete(token);
+              await redisConnection.del(redisTokenKey).catch(() => {});
               return null;
             }
+            tokenCache.set(token, { email: normalizedRedisEmail, expiresAt: Date.now() + 900_000 });
             return normalizedRedisEmail;
           }
         }
@@ -104,6 +270,7 @@ export async function getAuthenticatedEmail(
 
       let email: string | undefined = undefined;
       let expiresAt = Date.now() + 3600000; // default 1 hour
+      let tokenIatMs: number | undefined = undefined;
 
       try {
         // 2. Local cryptographic verification of RS256 signature using Auth0 JWKS
@@ -120,6 +287,9 @@ export async function getAuthenticatedEmail(
         }
         if (payload.exp) {
           expiresAt = payload.exp * 1000;
+        }
+        if (typeof payload.iat === "number") {
+          tokenIatMs = payload.iat * 1000;
         }
       } catch {
         // Opaque access token: proceed to Auth0 /userinfo verification
@@ -170,7 +340,10 @@ export async function getAuthenticatedEmail(
             if (firstKey) tokenCache.delete(firstKey);
           }
         }
-        tokenCache.set(token, { email: normalizedEmail, expiresAt });
+        if (await checkDeactivatedOrAllowFreshBearer(normalizedEmail, tokenIatMs)) {
+          return null;
+        }
+        tokenCache.set(token, { email: normalizedEmail, expiresAt, iatMs: tokenIatMs });
 
         try {
           const { default: redisConnection, isRedisReady } = await import("./redis");
@@ -180,9 +353,6 @@ export async function getAuthenticatedEmail(
           }
         } catch {}
 
-        if (await isEmailDeactivated(normalizedEmail)) {
-          return null;
-        }
         return normalizedEmail;
       }
     }
@@ -190,24 +360,52 @@ export async function getAuthenticatedEmail(
 
   // 4. Resolve Web Cookie Session (try cookies() first for App Router, fallback to req)
   let resolvedCookieEmail: string | null = null;
+  let resolvedCookieLoginAt: number | undefined;
   try {
     const session = await auth0.getSession();
     if (session?.user?.email) {
       resolvedCookieEmail = session.user.email.toLowerCase().trim();
+      const loginAt = (session.user as Record<string, unknown>)?.loginAt;
+      if (typeof loginAt === "number" && Number.isFinite(loginAt)) {
+        resolvedCookieLoginAt = loginAt;
+      }
     }
   } catch {}
 
   if (!resolvedCookieEmail) {
     try {
-      const sessionWithReq = await (auth0 as unknown as { getSession: (r?: NextRequest) => Promise<{ user?: { email?: string } } | null> }).getSession(req);
+      const sessionWithReq = await (
+        auth0 as unknown as {
+          getSession: (r?: NextRequest) => Promise<{ user?: { email?: string; loginAt?: unknown } } | null>;
+        }
+      ).getSession(req);
       if (sessionWithReq?.user?.email) {
         resolvedCookieEmail = sessionWithReq.user.email.toLowerCase().trim();
+        if (typeof sessionWithReq.user.loginAt === "number" && Number.isFinite(sessionWithReq.user.loginAt)) {
+          resolvedCookieLoginAt = sessionWithReq.user.loginAt;
+        }
       }
     } catch {}
   }
 
   if (resolvedCookieEmail) {
     if (await isEmailDeactivated(resolvedCookieEmail)) {
+      if (resolvedCookieLoginAt && !(await isEmailPermanentlyBanned(resolvedCookieEmail))) {
+        try {
+          const { default: supabaseAdmin } = await import("./utils/dbAdmin");
+          const [{ data: deact }, { data: userRow }] = await Promise.all([
+            supabaseAdmin.from("deactivated_users").select("deactivated_at").ilike("email", resolvedCookieEmail).maybeSingle(),
+            supabaseAdmin.from("users").select("ad_account_status").ilike("email", resolvedCookieEmail).maybeSingle(),
+          ]);
+          const deactMs = deact?.deactivated_at ? new Date(deact.deactivated_at).getTime() : 0;
+          const dbCleared = !deact && userRow?.ad_account_status !== "deactivated";
+          const newerLogin = Boolean(deact && !Number.isNaN(deactMs) && resolvedCookieLoginAt > deactMs + 1000);
+          if (dbCleared || newerLogin) {
+            await clearSelfDeactivationForRejoin(resolvedCookieEmail);
+            return resolvedCookieEmail;
+          }
+        } catch {}
+      }
       return null;
     }
     return resolvedCookieEmail;

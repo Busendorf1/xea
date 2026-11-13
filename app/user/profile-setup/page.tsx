@@ -6,56 +6,26 @@ import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 import HeaderJoin from "@/components/HeaderJoin/page";
 import Footer from "@/components/Footer/page";
-import LocationSelector from "@/components/LocationSelector";
 import { profileSetupStep1Schema } from "@/lib/validationSchemas";
-import { CheckCircle2, AlertCircle, Loader2, XCircle, Info } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import FormStepProgress from "@/components/ui/FormStepProgress";
 import FairAttentionModal from "@/components/ui/FairAttentionModal";
-import CustomSelect from "@/components/ui/CustomSelect";
-import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
-
-
-import {
-  ALL_INDUSTRIES as industries,
-  ALL_INTERESTS as interests,
-  ALL_BEHAVIORS as behaviors,
-  ALL_LIFESTYLES as lifestyles,
-  ALL_PERSONALITY_TRAITS as personalityTraits,
-} from "@/lib/categoryTargetingMap";
-
+import { FormSkeleton } from "@/components/ui/PageSkeletons";
+import ProfileSetupStep1 from "./_components/ProfileSetupStep1";
+import ProfileSetupStep2 from "./_components/ProfileSetupStep2";
+import { DropdownKey, OpenDropdownsState, ProfileFormData } from "./_components/types";
 
 export default function ProfileSetup() {
   const { user: authUser, isLoading: authLoading } = useUser();
   const router = useRouter();
-  
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [goodwillAgreed, setGoodwillAgreed] = useState<boolean>(false);
   const [termsError, setTermsError] = useState<string | null>(null);
-
-interface ProfileFormData {
-  username: string;
-  dob: string;
-  phone: string;
-  country: string;
-  state: string;
-  location: string;
-  bio: string;
-  gender: string;
-  employment: string;
-  intlTravel: string;
-  localTravel: string;
-  industry: string[];
-  interest: string[];
-  behavior: string[];
-  lifestyle: string[];
-  personality: string[];
-  businessName: string;
-  [key: string]: string | string[];
-}
 
   const [formData, setFormData] = useState<ProfileFormData>({
     username: "",
@@ -77,7 +47,7 @@ interface ProfileFormData {
     businessName: "",
   });
 
-  const [openDropdowns, setOpenDropdowns] = useState({
+  const [openDropdowns, setOpenDropdowns] = useState<OpenDropdownsState>({
     industry: false,
     interest: false,
     behavior: false,
@@ -124,7 +94,7 @@ interface ProfileFormData {
       const defaultUsername = authUser.nickname || authUser.email?.split("@")[0] || "";
       const cleanDefault = defaultUsername.toLowerCase().replace(/[^a-z0-9_-]/g, "");
       if (cleanDefault.length >= 3) {
-        setFormData(prev => ({ ...prev, username: cleanDefault }));
+        setFormData((prev) => ({ ...prev, username: cleanDefault }));
       }
     }
   }, [authUser]);
@@ -143,7 +113,10 @@ interface ProfileFormData {
     setCheckingUsername(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/profile/check-username?username=${encodeURIComponent(clean)}`);
+        const emailParam = authUser?.email ? `&email=${encodeURIComponent(authUser.email)}` : "";
+        const res = await fetch(
+          `/api/profile/check-username?username=${encodeURIComponent(clean)}${emailParam}`
+        );
         const data = await res.json();
         setUsernameAvailable(data.available);
         setUsernameStatus(data.message);
@@ -156,7 +129,7 @@ interface ProfileFormData {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [formData.username]);
+  }, [formData.username, authUser?.email]);
 
   useEffect(() => {
     // If not logged in after auth finishes loading, redirect to home
@@ -198,20 +171,21 @@ interface ProfileFormData {
     }
   }, [authUser, authLoading, router]);
 
-
-  const toggleDropdown = (key: keyof typeof openDropdowns) => {
-    setOpenDropdowns(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleDropdown = (key: DropdownKey) => {
+    setOpenDropdowns((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleCheckboxChange = (name: string, value: string, checked: boolean) => {
-    setFormData(prev => {
+    setFormData((prev) => {
       const arr = Array.isArray(prev[name]) ? (prev[name] as string[]) : [];
-      const updated = checked ? [...arr, value] : arr.filter(v => v !== value);
+      const updated = checked ? [...arr, value] : arr.filter((v) => v !== value);
       return { ...prev, [name]: updated };
     });
   };
@@ -261,7 +235,8 @@ interface ProfileFormData {
     }
 
     if (!goodwillAgreed) {
-      const msg = "Please read and review the terms and policies, and tick the box to accept before completing setup.";
+      const msg =
+        "Please read and review the terms and policies, and tick the box to accept before completing setup.";
       setErrorMessage(msg);
       setTermsError(msg);
       return;
@@ -281,7 +256,7 @@ interface ProfileFormData {
       const response = await fetch("/api/update", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           username: formData.username,
@@ -301,8 +276,8 @@ interface ProfileFormData {
           lifestyle: formData.lifestyle,
           personality: formData.personality,
           businessName: formData.businessName,
-          has_updated_profile: true
-        })
+          has_updated_profile: true,
+        }),
       });
 
       if (!response.ok) {
@@ -332,94 +307,8 @@ interface ProfileFormData {
     setFormData((prev) => ({ ...prev, [name]: [] }));
   };
 
-  const renderMultiSelect = (label: string, name: keyof typeof openDropdowns, options: string[]) => {
-    const selectedArr = (formData[name] as string[]) || [];
-    const isAllSelected = options.length > 0 && selectedArr.length === options.length;
-    return (
-      <div className={styles.dropdownContainer}>
-        <label className={styles.inputLabel}>{label}</label>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-expanded={Boolean(openDropdowns[name])}
-          aria-label={`Select ${label}`}
-          className={styles.dropdownHeader}
-          onClick={() => toggleDropdown(name)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              toggleDropdown(name);
-            }
-          }}
-        >
-          <span>{selectedArr.length > 0 ? `${selectedArr.length} selected` : `Select ${label}`}</span>
-          <span>{openDropdowns[name] ? "▲" : "▼"}</span>
-        </div>
-        <AnimatePresence>
-          {openDropdowns[name] && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className={styles.checkboxGroup}
-            >
-              <div className={styles.dropdownActionsBar}>
-                <button
-                  type="button"
-                  className={styles.quickActionBtn}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isAllSelected) {
-                      handleClearAll(name);
-                    } else {
-                      handleSelectAll(name, options);
-                    }
-                  }}
-                >
-                  {isAllSelected ? "Deselect All" : "Select All"}
-                </button>
-                {selectedArr.length > 0 && (
-                  <button
-                    type="button"
-                    className={styles.quickActionBtn}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleClearAll(name);
-                    }}
-                  >
-                    Clear ({selectedArr.length})
-                  </button>
-                )}
-              </div>
-              {options.map((opt, i) => (
-                <motion.label 
-                  key={i} 
-                  className={styles.checkboxLabel}
-                  whileHover={{ x: 2 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedArr.includes(opt)}
-                    onChange={(e) => handleCheckboxChange(name, opt, e.target.checked)}
-                  />
-                  <span>{opt}</span>
-                </motion.label>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
-
   if (authLoading) {
-    return (
-      <div className={styles.loadingContainer}>
-        <p>Loading session...</p>
-      </div>
-    );
+    return <FormSkeleton />;
   }
 
   return (
@@ -428,7 +317,7 @@ interface ProfileFormData {
       <HeaderJoin />
       <main className={styles.container}>
         <div className={styles.glowBlob}></div>
-        
+
         <div className={styles.setupCard}>
           <FormStepProgress
             steps={["Profile info", "Targeting traits"]}
@@ -468,345 +357,48 @@ interface ProfileFormData {
 
           <form onSubmit={handleSubmit} className={styles.form}>
             {step === 1 && (
-              <div className={styles.formStep}>
-                <div className={styles.grid}>
-                  <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
-                    <label htmlFor="username" className={styles.inputLabel}>Username</label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type="text"
-                        id="username"
-                        name="username"
-                        placeholder="e.g. alex_dev"
-                        required
-                        maxLength={30}
-                        value={formData.username}
-                        onChange={handleInputChange}
-                        className={styles.inputField}
-                        style={{
-                          paddingLeft: "32px",
-                          borderColor: usernameAvailable === true ? "var(--primary)" : usernameAvailable === false ? "#ef4444" : undefined
-                        }}
-                      />
-                      <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", fontWeight: 700 }}>
-                        @
-                      </span>
-                    </div>
-
-                    {checkingUsername && (
-                      <p style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
-                        <Loader2 size={14} className="animate-spin" color="var(--primary)" />
-                        <span>Checking availability...</span>
-                      </p>
-                    )}
-
-                    {!checkingUsername && usernameStatus && (
-                      <p style={{
-                        fontSize: "0.78rem",
-                        marginTop: "6px",
-                        fontWeight: 600,
-                        color: usernameAvailable ? "var(--primary)" : "#ef4444",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                      }}>
-                        {usernameAvailable ? <CheckCircle2 size={14} color="var(--primary)" /> : <XCircle size={14} color="#ef4444" />}
-                        <span>{usernameStatus}</span>
-                      </p>
-                    )}
-
-                    <div className={styles.privacyNotice}>
-                      <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
-                      <span>
-                        <strong>Public Handle Advisory:</strong> Your <code>@username</code> is what people see on the feed. Keep your email private and never use it as your username. Always set a username completely different from your email to keep your email hidden from databases and public feeds. Paayh is removed from all liability if you use your email or personal details as your username.
-                      </span>
-                    </div>
-
-                    {fieldErrors.username && <span className={styles.fieldError}>{fieldErrors.username}</span>}
-                  </div>
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="dob" className={styles.inputLabel}>Date of Birth</label>
-                    <input
-                      type="date"
-                      id="dob"
-                      name="dob"
-                      required
-                      value={formData.dob}
-                      onChange={handleInputChange}
-                      className={styles.inputField}
-                    />
-                    {fieldErrors.dob && <span className={styles.fieldError}>{fieldErrors.dob}</span>}
-                  </div>
-
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="phone" className={styles.inputLabel}>Phone Number</label>
-                    <input
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      placeholder="e.g. +2348012345678"
-                      required
-                      maxLength={20}
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      className={styles.inputField}
-                    />
-                    {fieldErrors.phone && <span className={styles.fieldError}>{fieldErrors.phone}</span>}
-                  </div>
-
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="gender" className={styles.inputLabel}>Gender</label>
-                    <CustomSelect
-                      id="gender"
-                      name="gender"
-                      value={formData.gender}
-                      onChange={(val) => {
-                        setFormData((prev) => ({ ...prev, gender: val }));
-                        if (fieldErrors.gender) {
-                          setFieldErrors((prev) => {
-                            const next = { ...prev };
-                            delete next.gender;
-                            return next;
-                          });
-                        }
-                      }}
-                      options={[
-                        { value: "male", label: "Male" },
-                        { value: "female", label: "Female" },
-                      ]}
-                      placeholder="Select Gender"
-                    />
-                    {fieldErrors.gender && <span className={styles.fieldError}>{fieldErrors.gender}</span>}
-                  </div>
-
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="employment" className={styles.inputLabel}>Employment Status</label>
-                    <CustomSelect
-                      id="employment"
-                      name="employment"
-                      value={formData.employment}
-                      onChange={(val) => {
-                        setFormData((prev) => ({ ...prev, employment: val }));
-                        if (fieldErrors.employment) {
-                          setFieldErrors((prev) => {
-                            const next = { ...prev };
-                            delete next.employment;
-                            return next;
-                          });
-                        }
-                      }}
-                      options={[
-                        { value: "employed", label: "Employed" },
-                        { value: "student", label: "Student" },
-                        { value: "unemployed", label: "Unemployed" },
-                        { value: "freelancer", label: "Freelancer" },
-                        { value: "entrepreneur", label: "Entrepreneur" },
-                        { value: "retired", label: "Retired" },
-                      ]}
-                      placeholder="Select Employment"
-                    />
-                  </div>
-
-                  <div className={styles.inputGroupFull}>
-                    <LocationSelector
-                      country={formData.country}
-                      state={formData.state}
-                      location={formData.location}
-                      onChange={({ country, state, location }) =>
-                        setFormData((prev) => ({ ...prev, country, state, location }))
-                      }
-                      inputClass={styles.inputField}
-                      labelClass={styles.inputLabel}
-                      groupClass={styles.inputGroup}
-                      cityGroupClass={styles.inputGroupFull}
-                      cityLabel="City/Location details"
-                      gpsEnforced={true}
-                    />
-                    {(!formData.country || !formData.state || !formData.location) && (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: "8px",
-                          marginTop: "8px",
-                          padding: "10px 12px",
-                          borderRadius: "10px",
-                          background: "rgba(245, 158, 11, 0.1)",
-                          border: "1px solid rgba(245, 158, 11, 0.28)",
-                          color: "#d97706",
-                          fontSize: "0.78rem",
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        <AlertCircle size={15} style={{ flexShrink: 0, marginTop: "2px" }} />
-                        <span>
-                          <strong>Optional at Setup:</strong> You can continue without enabling GPS auto-detect right now. However, location verification is important for localized campaigns, and you may not be able to earn or use Paayh Pay until verified via the Proof of Location prompt in the app.
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className={styles.inputGroupFull}>
-                    <label htmlFor="businessName" className={styles.inputLabel}>Business Name (Optional)</label>
-                    <input
-                      type="text"
-                      id="businessName"
-                      name="businessName"
-                      placeholder="e.g. ABC Ltd"
-                      maxLength={25}
-                      value={formData.businessName}
-                      onChange={handleInputChange}
-                      className={styles.inputField}
-                    />
-                  </div>
-
-                  <div className={styles.inputGroupFull}>
-                    <label htmlFor="bio" className={styles.inputLabel}>Bio</label>
-                    <textarea
-                      id="bio"
-                      name="bio"
-                      placeholder="Tell us a bit about yourself..."
-                      maxLength={90}
-                      value={formData.bio}
-                      onChange={handleInputChange}
-                      className={styles.textareaField}
-                    />
-                  </div>
-                </div>
-
-                <TermsAgreementCheckbox
-                  id="profile-setup-terms"
-                  checked={goodwillAgreed}
-                  onChange={(checked) => {
-                    setGoodwillAgreed(checked);
-                    if (checked) {
-                      setTermsError(null);
-                      setErrorMessage(null);
-                    }
-                  }}
-                  instruction="Please read and review the terms and policies below, and tick the box if you accept:"
-                  terms={[
-                    { label: "Terms of Service", href: "/terms" },
-                    { label: "Privacy Policy", href: "/privacy" },
-                    { label: "Good Will & Community Guidelines", href: "/terms" },
-                  ]}
-                  checkboxLabel="I have read, reviewed, and accept the Terms of Service & Privacy Policy, and pledge to participate in good will and fair attention exchange."
-                  errorMessage={termsError}
-                  required
-                />
-
-                <div className={styles.buttonGroup}>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    type="button"
-                    onClick={() => router.push("/user/logout")}
-                    className={styles.backBtn}
-                    style={{ marginRight: "auto" }}
-                  >
-                    Logout
-                  </motion.button>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    type="button"
-                    onClick={() => {
-                      if (validateStep1()) {
-                        setStep(2);
-                        setErrorMessage(null);
-                        setFieldErrors({});
-                      }
-                    }}
-                    className={styles.nextBtn}
-                  >
-                    Next Step
-                  </motion.button>
-                </div>
-              </div>
+              <ProfileSetupStep1
+                formData={formData}
+                setFormData={setFormData}
+                fieldErrors={fieldErrors}
+                setFieldErrors={setFieldErrors}
+                checkingUsername={checkingUsername}
+                usernameAvailable={usernameAvailable}
+                usernameStatus={usernameStatus}
+                goodwillAgreed={goodwillAgreed}
+                setGoodwillAgreed={setGoodwillAgreed}
+                termsError={termsError}
+                setTermsError={setTermsError}
+                setErrorMessage={setErrorMessage}
+                handleInputChange={handleInputChange}
+                onLogout={() => router.push("/user/logout")}
+                onNext={() => {
+                  if (validateStep1()) {
+                    setStep(2);
+                    setErrorMessage(null);
+                    setFieldErrors({});
+                  }
+                }}
+              />
             )}
 
             {step === 2 && (
-              <div className={styles.formStep}>
-                <div className={styles.dropdownsGrid}>
-                  {renderMultiSelect("Industries", "industry", industries)}
-                  {renderMultiSelect("Interests", "interest", interests)}
-                  {renderMultiSelect("Behaviors", "behavior", behaviors)}
-                  {renderMultiSelect("Lifestyles", "lifestyle", lifestyles)}
-                  {renderMultiSelect("Personality Traits", "personality", personalityTraits)}
-                </div>
-
-                <div className={styles.grid2}>
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="intlTravel" className={styles.inputLabel}>International Traveller?</label>
-                    <CustomSelect
-                      id="intlTravel"
-                      name="intlTravel"
-                      value={formData.intlTravel || "no"}
-                      onChange={(val) => setFormData((prev) => ({ ...prev, intlTravel: val }))}
-                      options={[
-                        { value: "no", label: "No" },
-                        { value: "yes", label: "Yes" },
-                      ]}
-                    />
-                  </div>
-
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="localTravel" className={styles.inputLabel}>Local Air Traveller?</label>
-                    <CustomSelect
-                      id="localTravel"
-                      name="localTravel"
-                      value={formData.localTravel || "no"}
-                      onChange={(val) => setFormData((prev) => ({ ...prev, localTravel: val }))}
-                      options={[
-                        { value: "no", label: "No" },
-                        { value: "yes", label: "Yes" },
-                      ]}
-                    />
-                  </div>
-                </div>
-
-                <div className={styles.buttonGroup}>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    type="button"
-                    onClick={() => router.push("/user/logout")}
-                    className={styles.backBtn}
-                    style={{ marginRight: "auto" }}
-                    disabled={loading}
-                  >
-                    Logout
-                  </motion.button>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    type="button"
-                    onClick={() => {
-                      setStep(1);
-                      setErrorMessage(null);
-                      setFieldErrors({});
-                    }}
-                    className={styles.backBtn}
-                    disabled={loading}
-                  >
-                    Back
-                  </motion.button>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                    type="submit"
-                    className={styles.submitBtn}
-                    disabled={loading}
-                  >
-                    {loading ? "Saving..." : "Complete Setup"}
-                  </motion.button>
-                </div>
-              </div>
+              <ProfileSetupStep2
+                formData={formData}
+                setFormData={setFormData}
+                openDropdowns={openDropdowns}
+                toggleDropdown={toggleDropdown}
+                handleCheckboxChange={handleCheckboxChange}
+                handleSelectAll={handleSelectAll}
+                handleClearAll={handleClearAll}
+                loading={loading}
+                onLogout={() => router.push("/user/logout")}
+                onBack={() => {
+                  setStep(1);
+                  setErrorMessage(null);
+                  setFieldErrors({});
+                }}
+              />
             )}
           </form>
         </div>

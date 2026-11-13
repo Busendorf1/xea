@@ -16,7 +16,7 @@
 .mediaRowContainer {
   display: flex;
   flex-direction: row;
-  gap: 0.1rem;
+  gap: 0.05rem;
   overflow-x: auto;
   overflow-y: hidden;
   width: 100%;

@@ -137,6 +137,7 @@ export async function POST(req: NextRequest) {
         .select("id")
         .ilike("user_email", targetEmail);
 
+      const emailLower = String(targetEmail).toLowerCase().trim();
       await Promise.all([
         supabaseAdmin.from("addsactive").update(updateData).ilike("user_email", targetEmail),
         supabaseAdmin.from("adds").update(updateData).ilike("user_email", targetEmail),
@@ -145,7 +146,12 @@ export async function POST(req: NextRequest) {
           ad_account_status: "perm_banned",
           ad_ban_until: "2099-12-31T23:59:59Z",
           ad_ban_reason: adminStatement
-        }).ilike("email", targetEmail)
+        }).ilike("email", targetEmail),
+        supabaseAdmin.from("deactivated_users").upsert({
+          email: emailLower,
+          deactivated_at: new Date().toISOString(),
+          reason: "admin_perm_banned",
+        }, { onConflict: "email" }),
       ]);
 
       if (reportId) {
@@ -157,6 +163,10 @@ export async function POST(req: NextRequest) {
           const detailKeys = userAds.map((a: any) => `ad:detail:${a.id}`);
           await redisConnection.del(detailKeys);
         }
+        await redisConnection.set(`perm_banned:${emailLower}`, "1", "EX", 315360000);
+        await redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 315360000);
+        await redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 315360000);
+        await redisConnection.del(`profile:${emailLower}`);
         await scanDeletePattern("feed:ads:*");
         await scanDeletePattern("admin:campaigns:*");
         await scanDeletePattern("admin:reports:*");

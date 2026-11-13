@@ -1,16 +1,17 @@
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { getCachedProfile, setCachedProfile, getCachedHighlights } from "@/lib/utils/cache";
 import { safeParseArray } from "@/lib/utils/parsers";
 import { UserProfile } from "@/components/DashboardClient/page";
 import type { Ad, AdvertiserProfile } from "@/types/ads";
 import type { HighlightItem } from "@/components/MyNews/types";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import crypto from "crypto";
-import { isAdminEmail } from "@/lib/authHelper";
-import { getSpecialRoleProfile } from "@/lib/adminHelper";
+import { isAdminEmail, isEmailDeactivated, isEmailPermanentlyBanned } from "@/lib/authHelper";
+import { getSpecialRoleProfile, isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
+import { invalidateCachedProfile, getCachedProfile, setCachedProfile, getCachedHighlights } from "@/lib/utils/cache";
 import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
 import { signAdImpressionToken, evaluateAdTargeting } from "@/lib/targetingEngine";
+import { isHighlightCurrentlyActive, sortHighlightsByBidAndRecency } from "@/lib/highlights/highlightLifecycle";
 import { decryptProfilePII, encryptSensitiveField } from "@/lib/security/piiCrypto";
 
 export interface DashboardProfileResult {
@@ -45,6 +46,22 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
   }
   const email = rawEmail.toLowerCase().trim();
 
+  if (typeof isEmailPermanentlyBanned === "function" && (await isEmailPermanentlyBanned(email))) {
+    await invalidateCachedProfile(email).catch(() => {});
+    return {
+      error: "Account has been permanently banned.",
+      redirectUrl: "/auth/logout?reason=perm_banned",
+    };
+  }
+
+  if (typeof isEmailDeactivated === "function" && (await isEmailDeactivated(email))) {
+    await invalidateCachedProfile(email).catch(() => {});
+    return {
+      error: "Account has been permanently deactivated.",
+      redirectUrl: "/auth/logout",
+    };
+  }
+
   const BASELINE_COLUMNS = `
     id,
     "profileImage",
@@ -77,7 +94,9 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     withdrawal,
     monetization_clicks,
     last_active_at,
-    has_updated_profile
+    has_updated_profile,
+    ad_account_status,
+    has_cancelled_monetization
   `;
 
   const PROFILE_COLUMNS = `
@@ -116,11 +135,14 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     referral_code,
     referral_downloads_count,
     atw_tier,
+    attention_worth_score,
     wallet_pin_hash,
     suspended_until,
     is_career,
     is_affiliate,
-    affiliate_role
+    affiliate_role,
+    ad_account_status,
+    has_cancelled_monetization
   `;
 
   let dbError: any = null;
@@ -136,7 +158,7 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     try {
       const [rawProfile, rawLiveClicks, rawAdIds, rawProfiles, rawCooldown] = await redisConnection.mget([
         `user:profile:${email}`,
-        `user:live_clicks:${email}`,
+        `user:live_clicks:v2:${email}`,
         `feed:ad_ids:${email}`,
         `feed:profiles:${email}`,
         `user:cooldown:${email}`,
@@ -212,13 +234,36 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
 
   // Reconcile monetization_clicks with live Redis counter if present to ensure SSR matches real-time clicks
   if (user) {
-    if (prefetchedLiveClicksStr) {
+    if (user.ad_account_status === "perm_banned") {
+      await invalidateCachedProfile(email).catch(() => {});
+      if (isRedisReady()) {
+        await redisConnection.set(`perm_banned:${email}`, "1", "EX", 315360000).catch(() => {});
+      }
+      return {
+        error: "Account has been permanently banned.",
+        redirectUrl: "/auth/logout?reason=perm_banned",
+      };
+    }
+
+    if (user.ad_account_status === "deactivated") {
+      await invalidateCachedProfile(email).catch(() => {});
+      if (isRedisReady()) {
+        await redisConnection.set(`deactivated:${email}`, "1", "EX", 2592000).catch(() => {});
+      }
+      return {
+        error: "Account has been permanently deactivated.",
+        redirectUrl: "/auth/logout",
+      };
+    }
+    if (prefetchedLiveClicksStr && !user.has_cancelled_monetization) {
       const liveClicks = Number(prefetchedLiveClicksStr) || 0;
       if (liveClicks > (user.monetization_clicks || 0)) {
         user.monetization_clicks = liveClicks;
       }
     }
-    if ((user.monetization_clicks || 0) >= 300) {
+    if (user.has_cancelled_monetization) {
+      user.monetized = false;
+    } else if ((user.monetization_clicks || 0) >= 300) {
       user.monetized = true;
     }
     if (prefetchedCooldownStr) {
@@ -365,8 +410,30 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
 
   const parsedInterest = safeParseArray(user.interest);
 
-  // Lazy evaluation of activity & 7-day inactivity reset on login
-  touchUserActivity(email, user).catch(() => {});
+  // Lazy evaluation of 60-day dormancy & 7-day inactivity reset before updating last_active_at
+  if (user.last_active_at && !isExemptFromBarriersAndInactivity(email, user as any)) {
+    const lastActiveMs = new Date(user.last_active_at).getTime();
+    if (!Number.isNaN(lastActiveMs)) {
+      const daysInactive = Math.max(0, Math.floor((Date.now() - lastActiveMs) / (1000 * 60 * 60 * 24)));
+      if (daysInactive >= 60 && Number(user.balance || 0) > 0) {
+        try {
+          await supabaseAdmin.rpc("forfeit_dormant_user_balances_60_days");
+          user.balance = 0;
+          user.monetized = false;
+          user.monetization_clicks = 0;
+          await invalidateCachedProfile(email);
+        } catch {}
+      }
+    }
+  }
+
+  try {
+    const actRes = await touchUserActivity(email, user);
+    if (actRes?.isDeMonetized) {
+      user.monetized = false;
+      user.monetization_clicks = 0;
+    }
+  } catch {}
 
   // 4. Server-Side Feed & Highlights Pre-load: Hydrate initialAds & initialHighlights from Redis in parallel
   let initialAds: any[] | undefined = undefined;
@@ -394,24 +461,33 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
       const adIds: string[] = isUserOnCooldown ? [] : JSON.parse(prefetchedAdIdsStr).slice(0, 10);
       if (adIds.length > 0) {
         const detailKeys = adIds.map((id) => `ad:detail:${id}`);
-        const [rawDetails, cachedHighlights, seenAdIds] = await Promise.all([
+        const [rawDetails, cachedHighlights, seenAdIds, deactUsersResult] = await Promise.all([
           redisConnection.mget(detailKeys).catch(() => []),
           highlightsPromise,
           redisConnection.smembers(`seen:ads:${email.toLowerCase().trim()}`).catch(() => []),
+          Promise.resolve(supabaseAdmin.from("deactivated_users").select("email").limit(5000)).catch(() => ({ data: [] })),
         ]);
         const seenSet = new Set<string>(seenAdIds || []);
+        const deactSet = new Set<string>(
+          ((deactUsersResult as any)?.data || []).map((d: any) => (d.email || "").toLowerCase().trim())
+        );
         if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
-          initialHighlights = cachedHighlights;
+          const hlNowMs = Date.now();
+          initialHighlights = cachedHighlights
+            .filter((h: any) => isHighlightCurrentlyActive(h, hlNowMs))
+            .sort(sortHighlightsByBidAndRecency);
         }
         const servedAt = Date.now();
 
         initialAds = (rawDetails || [])
-          .map((raw) => {
+          .map((raw: any) => {
             if (!raw) return null;
             try {
               const ad = JSON.parse(raw);
               if (!ad || !ad.id) return null;
               if (ad.completed_at || ad.is_paused === true) return null;
+              const ownerEmail = (ad.user_email || ad.email || "").toLowerCase().trim();
+              if (ownerEmail && deactSet.has(ownerEmail)) return null;
               if (seenSet.has(String(ad.id))) return null;
               const impressionsTarget = Number(ad.impressions || 0);
               const impressionCount = Number(ad.impression_count ?? ad.view_count ?? 0);
@@ -452,13 +528,19 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
       } else {
         const cachedHighlights = await highlightsPromise;
         if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
-          initialHighlights = cachedHighlights;
+          const hlNowMs = Date.now();
+          initialHighlights = cachedHighlights
+            .filter((h: any) => isHighlightCurrentlyActive(h, hlNowMs))
+            .sort(sortHighlightsByBidAndRecency);
         }
       }
     } else {
       const cachedHighlights = await highlightsPromise;
       if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
-        initialHighlights = cachedHighlights;
+        const hlNowMs = Date.now();
+        initialHighlights = cachedHighlights
+          .filter((h: Record<string, unknown>) => isHighlightCurrentlyActive(h, hlNowMs))
+          .sort(sortHighlightsByBidAndRecency);
       }
     }
   } catch {

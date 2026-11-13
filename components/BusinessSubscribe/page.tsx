@@ -16,6 +16,10 @@ import {
   Wallet,
   RefreshCw,
 } from "lucide-react";
+import WalletPinField, {
+  isWalletPinErrorResponse,
+  formatWalletPinErrorMessage,
+} from "@/components/ui/WalletPinField";
 import styles from "./page.module.css";
 
 export default function BusinessSubscribeComponent() {
@@ -31,6 +35,8 @@ export default function BusinessSubscribeComponent() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [currency, setCurrency] = useState<string>("NGN");
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [walletPin, setWalletPin] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [showReapplyForm, setShowReapplyForm] = useState(false);
@@ -134,11 +140,19 @@ export default function BusinessSubscribeComponent() {
       return;
     }
 
+    if (!/^\d{4}$/.test(walletPin)) {
+      const msg = "Please enter your 4-digit Wallet PIN before paying from Wallet Balance.";
+      setPinError(msg);
+      setErrorMsg(msg);
+      return;
+    }
+
     if (!confirm(`Confirm payment of ${formattedReq} from your wallet balance to activate the 30% discount subsidy for ${subscriber.domain}?`)) {
       return;
     }
 
     setPaymentLoading(true);
+    setPinError(null);
     setErrorMsg("");
     setSuccessMsg("");
 
@@ -149,14 +163,23 @@ export default function BusinessSubscribeComponent() {
         body: JSON.stringify({
           subscriber_id: subscriber.id,
           payment_method: "wallet",
+          pin: walletPin,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {
+        if (isWalletPinErrorResponse(res.status, data)) {
+          setWalletPin("");
+          const formatted = formatWalletPinErrorMessage(data, "Wallet PIN verification failed.");
+          setPinError(formatted);
+          throw new Error(formatted);
+        }
         throw new Error(data.error || "Failed to process wallet payment.");
       }
 
+      setWalletPin("");
+      setPinError(null);
       setSuccessMsg(data.message || "Payment successful! Your brand subscription is now active.");
       setSubscriber(data.subscriber);
       if (typeof data.new_balance === "number") {
@@ -371,6 +394,21 @@ export default function BusinessSubscribeComponent() {
                 {currency === "NGN" ? `₦${walletBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}` : `$${walletBalance.toFixed(2)}`}
               </strong>
             </div>
+          </div>
+
+          <div style={{ marginBottom: "1rem" }}>
+            <WalletPinField
+              id="business-subscribe-wallet-pin"
+              value={walletPin}
+              onChange={(val) => {
+                setWalletPin(val);
+                if (pinError) setPinError(null);
+                if (errorMsg) setErrorMsg("");
+              }}
+              disabled={paymentLoading}
+              error={pinError}
+              hint="Required only when paying from Wallet Balance. You can set or manage your Wallet PIN in Dashboard → Wallet."
+            />
           </div>
 
           <div className={styles.paymentButtons}>

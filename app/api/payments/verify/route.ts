@@ -6,6 +6,7 @@ import { KoraService } from "@/lib/payment/kora";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import redisConnection from "@/lib/redis";
 import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 
@@ -143,30 +144,53 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 3. Process the successful payment (activates ad/highlight/brand subscription)
+    // 3. Verify gateway amount paid matches server-expected payment amount
+    const expectedAmount = Number(payment.amount || 0);
+    const paidAmount = Number(verifyResult.amount || 0);
+    if (!Number.isFinite(paidAmount) || paidAmount <= 0 || (expectedAmount > 0 && paidAmount < expectedAmount - 0.01)) {
+      console.error(`❌ Gateway amount mismatch for ${reference}: paid=${paidAmount}, expected=${expectedAmount}`);
+      await supabaseAdmin
+        .from("payments")
+        .update({ status: "failed" })
+        .eq("reference", reference)
+        .eq("status", "pending");
+      return NextResponse.json(
+        {
+          success: false,
+          status: "amount_mismatch",
+          error: "Verified payment amount does not match the expected order amount.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 4. Process the successful payment atomically (activates ad/highlight/brand subscription)
     const metadata = {
       ...(payment.metadata || {}),
       ...(verifyResult.metadata || {}),
     };
-    const processResult = await processSuccessfulPayment(reference, metadata, verifyResult.amount);
+    const processResult = await processSuccessfulPayment(reference, metadata, paidAmount);
 
     // Invalidate user cache and statement cache
-    await invalidateCachedProfile(email);
+    const emailLower = email.toLowerCase().trim();
+    await Promise.all([
+      invalidateCachedProfile(emailLower),
+      redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
+      redisConnection.del(`statement:payments:${emailLower}`, `statement:all:${emailLower}`).catch(() => {}),
+    ]);
 
     return NextResponse.json({
       success: true,
       status: "success",
       type: payment.type,
-      amount: verifyResult.amount,
+      amount: paidAmount,
       alreadyProcessed: !!processResult.alreadyProcessed,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/payments/verify:", err);
     captureApiException(err, {
       route: "GET /api/payments/verify",
-      email: (typeof email !== "undefined" && email) ? email : undefined,
-      reference: (typeof reference !== "undefined" && reference) ? reference : undefined,
     });
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
+import { isWalletPinErrorResponse, formatWalletPinErrorMessage } from "@/components/ui/WalletPinField";
 import { Ad } from "./types";
 import styles from "./page.module.css";
 
@@ -39,6 +40,8 @@ export default function CampaignBoosterModal({
   const [boosterMultiLocations, setBoosterMultiLocations] = useState<string[]>([]);
   const [boosterPaymentMethod, setBoosterPaymentMethod] = useState<"wallet" | "card">("wallet");
   const [showBoosterPaymentConfirmModal, setShowBoosterPaymentConfirmModal] = useState(false);
+  const [walletPin, setWalletPin] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
   const [boosting, setBoosting] = useState(false);
 
   useEffect(() => {
@@ -54,6 +57,8 @@ export default function CampaignBoosterModal({
       setAddDays(0);
       setBoosterPaymentMethod("wallet");
       setShowBoosterPaymentConfirmModal(false);
+      setWalletPin("");
+      setPinError(null);
     }
   }, [boosterAd]);
 
@@ -104,6 +109,7 @@ export default function CampaignBoosterModal({
   };
 
   const handleInitiateBoost = () => {
+    if (boosting) return;
     const reason = getBoostUnavailableReason(boosterAd, reportsCount);
     if (reason) {
       onShowNotice("Boosting Unavailable", reason, boosterAd.id);
@@ -138,10 +144,13 @@ export default function CampaignBoosterModal({
       return;
     }
 
+    setWalletPin("");
+    setPinError(null);
     setShowBoosterPaymentConfirmModal(true);
   };
 
   const handleExecuteBoost = async () => {
+    if (boosting) return;
     const reason = getBoostUnavailableReason(boosterAd, reportsCount);
     if (reason) {
       onShowNotice("Boosting Unavailable", reason, boosterAd.id);
@@ -161,6 +170,12 @@ export default function CampaignBoosterModal({
     }
 
     const totalCost = calculateBoosterCost();
+    const requiresWalletPin = totalCost > 0 && boosterPaymentMethod === "wallet";
+    if (requiresWalletPin && !/^\d{4}$/.test(walletPin)) {
+      setPinError("Please enter your 4-digit Wallet PIN to authorize wallet payment.");
+      return;
+    }
+
     if (boosterPaymentMethod === "wallet" && typeof userBalance === "number" && totalCost > userBalance) {
       setShowBoosterPaymentConfirmModal(false);
       onClose();
@@ -172,6 +187,7 @@ export default function CampaignBoosterModal({
       return;
     }
 
+    setPinError(null);
     setBoosting(true);
     try {
       const res = await fetch("/api/campaigns/boost", {
@@ -188,13 +204,19 @@ export default function CampaignBoosterModal({
           state: boosterState,
           province: boosterProvince || (boosterMultiLocations.length > 0 ? boosterMultiLocations.join("; ") : ""),
           paymentMethod: boosterPaymentMethod,
+          ...(requiresWalletPin ? { pin: walletPin } : {}),
           callbackUrl: typeof window !== "undefined" ? `${window.location.origin}/logged-in` : undefined,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || "Failed to boost campaign");
+        if (requiresWalletPin && isWalletPinErrorResponse(res.status, data)) {
+          setWalletPin("");
+          setPinError(formatWalletPinErrorMessage(data, `Wallet PIN verification failed (${res.status}).`));
+          return;
+        }
+        throw new Error(data.error || `Failed to boost campaign (${res.status})`);
       }
 
       if (boosterPaymentMethod === "card" && data.paymentUrl) {
@@ -233,7 +255,7 @@ export default function CampaignBoosterModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className={styles.modalOverlay}
-          onClick={onClose}
+          onClick={boosting ? undefined : onClose}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -248,7 +270,13 @@ export default function CampaignBoosterModal({
                 <TrendingUp size={18} color="var(--primary)" />
                 <h3 className={styles.modalTitle}>Boost &amp; Top Up Campaign</h3>
               </div>
-              <button className={styles.modalClose} onClick={onClose} aria-label="Close modal">
+              <button
+                type="button"
+                className={styles.modalClose}
+                onClick={boosting ? undefined : onClose}
+                disabled={boosting}
+                aria-label="Close modal"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -379,6 +407,7 @@ export default function CampaignBoosterModal({
                   type="button"
                   className={`${styles.paymentSelectBtn} ${styles.paymentSelectBtnFlex} ${boosterPaymentMethod === "wallet" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("wallet")}
+                  disabled={boosting}
                 >
                   <Wallet size={12} /> Wallet Balance
                 </button>
@@ -386,6 +415,7 @@ export default function CampaignBoosterModal({
                   type="button"
                   className={`${styles.paymentSelectBtn} ${styles.paymentSelectBtnFlex} ${boosterPaymentMethod === "card" ? styles.paymentSelectBtnActive : ""}`}
                   onClick={() => setBoosterPaymentMethod("card")}
+                  disabled={boosting}
                 >
                   <CreditCard size={12} /> Card / Bank Transfer
                 </button>
@@ -406,11 +436,24 @@ export default function CampaignBoosterModal({
 
       <PaymentConfirmationModal
         isOpen={showBoosterPaymentConfirmModal}
-        onClose={() => setShowBoosterPaymentConfirmModal(false)}
+        onClose={() => {
+          if (!boosting) {
+            setShowBoosterPaymentConfirmModal(false);
+            setWalletPin("");
+            setPinError(null);
+          }
+        }}
         onConfirm={handleExecuteBoost}
         serviceTitle="Campaign Attention Booster"
         amountFormatted={formatCurrency(calculateBoosterCost(), boosterAd.country)}
         paymentMethodText={boosterPaymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
+        requireWalletPin={boosterPaymentMethod === "wallet" && calculateBoosterCost() > 0}
+        walletPin={walletPin}
+        onWalletPinChange={(val) => {
+          setWalletPin(val);
+          if (pinError) setPinError(null);
+        }}
+        pinError={pinError}
         summaryItems={[
           { label: "Target Attention Added", value: `+${addImpressions.toLocaleString()} views` },
           { label: "Schedule Extension", value: `+${addDays} ${addDays === 1 ? "day" : "days"}` },

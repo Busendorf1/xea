@@ -63,8 +63,9 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
   const invites = Number(profileResult.user.referral_downloads_count) || 0;
   const initialAtwTier = profileResult.user.atw_tier || "ATW1";
   const isExemptAccount = isAdmin || Boolean(profileResult.user.is_career || profileResult.user.is_affiliate);
+  const initialHasCancelled = Boolean(profileResult.user.has_cancelled_monetization);
   const initialMonetized = Boolean(
-    !profileResult.user.has_cancelled_monetization &&
+    !initialHasCancelled &&
     (isExemptAccount || clicks >= 300)
   );
 
@@ -72,6 +73,7 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
     <LoggedInClientContainer 
       session={session} 
       initialMonetized={initialMonetized}
+      initialHasCancelled={initialHasCancelled}
       initialClicks={clicks}
       initialAtwTier={initialAtwTier}
       initialTab={requestedView}

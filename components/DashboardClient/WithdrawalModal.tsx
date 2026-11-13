@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, AlertCircle } from "lucide-react";
 import { withdrawalSchema } from "@/lib/validationSchemas";
 import { getCurrencyConfig, getUserCurrency, NGN_PER_USD } from "@/lib/utils/currency";
+import { toClientFriendlyApiError, toClientFriendlyError } from "@/lib/utils/clientError";
 import { UserProfile, DEFAULT_NIGERIAN_BANKS } from "./types";
 import { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
 import styles from "./page.module.css";
@@ -13,6 +14,7 @@ interface WithdrawalModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: UserProfile;
+  defaultPin?: string;
   formatCurrency: (amount: number | string) => string;
   onSuccess: (data: TransferSuccessData) => void;
   onUpdateBalance: (newBalance: number, newWithdrawal: number) => void;
@@ -20,10 +22,28 @@ interface WithdrawalModalProps {
   onFetchNotifications: () => void;
 }
 
+function estimateGatewayFeeRange(amount: number): { paystack: number; kora: number } {
+  const paystack = amount <= 5000 ? 10.75 : amount <= 50000 ? 26.88 : 53.75;
+  const kora = amount <= 5000 ? 15 : amount <= 50000 ? 25 : 35;
+  return { paystack, kora };
+}
 
 function formatWithdrawalErrorMsg(msg: string): string {
-  if (!msg) return "Withdrawal failed. Disbursements are processed via Nigerian clearing rails; please try using a verified Nigerian bank account (NUBAN).";
-  if (msg.toLowerCase().includes("nigeria")) return msg;
+  if (!msg) {
+    return "Withdrawal failed. Disbursements are processed via Nigerian clearing rails; please try using a verified Nigerian bank account (NUBAN).";
+  }
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("nigeria") ||
+    lower.includes("pin") ||
+    lower.includes("locked") ||
+    lower.includes("attempt") ||
+    lower.includes("phone") ||
+    lower.includes("balance") ||
+    lower.includes("minimum")
+  ) {
+    return msg;
+  }
   return `${msg}. Disbursements are processed via Nigerian clearing rails; please check your details or try using a Nigerian bank account (NUBAN).`;
 }
 
@@ -31,6 +51,7 @@ export default function WithdrawalModal({
   isOpen,
   onClose,
   user,
+  defaultPin = "",
   formatCurrency,
   onSuccess,
   onUpdateBalance,
@@ -42,6 +63,7 @@ export default function WithdrawalModal({
   const [accountNumber, setAccountNumber] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawPhone, setWithdrawPhone] = useState("");
+  const [walletPin, setWalletPin] = useState("");
   const [resolvedAccountName, setResolvedAccountName] = useState("");
   const [resolvingAccount, setResolvingAccount] = useState(false);
   const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
@@ -52,9 +74,10 @@ export default function WithdrawalModal({
     if (isOpen) {
       setWithdrawAmount(user.balance.toString());
       setWithdrawPhone("");
+      setWalletPin(defaultPin || "");
       setWithdrawalError("");
     }
-  }, [isOpen, user.balance]);
+  }, [isOpen, user.balance, defaultPin]);
 
   useEffect(() => {
     if (isOpen) {
@@ -87,14 +110,18 @@ export default function WithdrawalModal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accountNumber, bankCode: selectedBank }),
           });
-          const data = await res.json();
-          if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (res.ok && data) {
             setResolvedAccountName(data.account_name);
           } else {
-            setWithdrawalError(formatWithdrawalErrorMsg(data.error || "Could not resolve account details"));
+            setWithdrawalError(
+              formatWithdrawalErrorMsg(
+                toClientFriendlyApiError(res.status, data, "Could not resolve account details")
+              )
+            );
           }
         } catch (e: any) {
-          setWithdrawalError(formatWithdrawalErrorMsg(e.message || "Error resolving account details"));
+          setWithdrawalError(toClientFriendlyError(e, "Try again later"));
         } finally {
           setResolvingAccount(false);
         }
@@ -107,6 +134,7 @@ export default function WithdrawalModal({
 
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingWithdrawal) return;
     setWithdrawalError("");
 
     const amountNum = parseFloat(withdrawAmount);
@@ -142,6 +170,12 @@ export default function WithdrawalModal({
       return;
     }
 
+    const cleanPin = walletPin.trim();
+    if (!/^\d{4}$/.test(cleanPin)) {
+      setWithdrawalError("Please enter your 4-digit Wallet PIN.");
+      return;
+    }
+
     if (!resolvedAccountName) {
       setWithdrawalError("Please resolve bank account details before submitting");
       return;
@@ -158,15 +192,22 @@ export default function WithdrawalModal({
           bankName: bank?.name || "Unknown Bank",
           accountNumber,
           amount: amountNum,
-          phone: withdrawPhone,
+          phone: withdrawPhone.trim(),
+          pin: cleanPin,
         }),
       });
 
-      const data = await res.json();
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data) {
         onClose();
         const finalBal =
           typeof data.newBalance === "number" ? data.newBalance : Math.max(0, (user.balance || 0) - amountNum);
+        const { paystack } = estimateGatewayFeeRange(amountNum);
+        const resolvedFee = typeof data.fee === "number" ? data.fee : paystack;
+        const resolvedNet =
+          typeof data.netAmount === "number"
+            ? data.netAmount
+            : Math.max(0, amountNum - resolvedFee);
         onUpdateBalance(finalBal, (user.withdrawal || 0) + amountNum);
         try {
           sessionStorage.removeItem("paayh_statement_cache");
@@ -179,7 +220,7 @@ export default function WithdrawalModal({
               : data.status === "queued"
               ? "Withdrawal Queued"
               : "Withdrawal Processing",
-          amount: typeof data.netAmount === "number" ? data.netAmount : Math.max(0, amountNum - 35),
+          amount: resolvedNet,
           bankName: bank?.name || "Bank Account",
           accountNumber,
           accountName: resolvedAccountName,
@@ -189,10 +230,17 @@ export default function WithdrawalModal({
         onRefreshProfile();
         onFetchNotifications();
       } else {
-        setWithdrawalError(formatWithdrawalErrorMsg(data.error || "Failed to process withdrawal"));
+        if (res.status === 401 || res.status === 429) {
+          setWalletPin("");
+        }
+        setWithdrawalError(
+          formatWithdrawalErrorMsg(
+            toClientFriendlyApiError(res.status, data, "Failed to process withdrawal")
+          )
+        );
       }
     } catch (e: any) {
-      setWithdrawalError(formatWithdrawalErrorMsg(e.message || "Failed to process withdrawal"));
+      setWithdrawalError(toClientFriendlyError(e, "Try again later"));
     } finally {
       setSubmittingWithdrawal(false);
     }
@@ -309,6 +357,25 @@ export default function WithdrawalModal({
                 />
               </div>
 
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>4-Digit Wallet PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  placeholder="Enter 4-digit PIN"
+                  value={walletPin}
+                  onChange={(e) => setWalletPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  required
+                  autoComplete="off"
+                  className={styles.formInput}
+                />
+                <span className={styles.formHintSmall}>
+                  5 incorrect PIN attempts lock PIN verification for 45 minutes.
+                </span>
+              </div>
+
               {(user.balance ?? 0) < 10000 && (
                 <div className={styles.balanceWarningBox}>
                   <AlertCircle size={15} />
@@ -320,23 +387,30 @@ export default function WithdrawalModal({
 
               {withdrawAmount && parseFloat(withdrawAmount) > 0 && (() => {
                 const amt = parseFloat(withdrawAmount) || 0;
-                const estFee = amt <= 5000 ? 10.75 : amt <= 50000 ? 26.88 : 53.75;
-                const netReceive = Math.max(0, amt - estFee);
+                const { paystack, kora } = estimateGatewayFeeRange(amt);
+                const minFee = Math.min(paystack, kora);
+                const maxFee = Math.max(paystack, kora);
+                const netReceiveMin = Math.max(0, amt - maxFee);
+                const netReceiveMax = Math.max(0, amt - minFee);
                 return (
                   <div className={styles.feeSummaryCard}>
                     <div className={styles.feeSummaryRow}>
-                      <span>Gateway Transfer Fee:</span>
-                      <span className={styles.feeSummaryValBold}>₦{estFee.toFixed(2)}</span>
+                      <span>Transfer Fee (Paystack / Kora):</span>
+                      <span className={styles.feeSummaryValBold}>
+                        ₦{paystack.toFixed(2)} / ₦{kora.toFixed(2)}
+                      </span>
                     </div>
                     <div className={styles.feeSummaryRow}>
                       <span>Disbursement Schedule:</span>
                       <span className={styles.feeSummaryVal}>Instant / Payout Window</span>
                     </div>
                     <div className={styles.feeSummaryTotalRow}>
-                      <span className={styles.receiveLabel}>You will receive:</span>
+                      <span className={styles.receiveLabel}>Estimated Net Payout:</span>
                       <span className={styles.receiveAmount}>
-                        ₦{netReceive.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                        {isUSD && ` (~$${(netReceive / NGN_PER_USD).toFixed(2)} USD)`}
+                        {netReceiveMin === netReceiveMax
+                          ? `₦${netReceiveMax.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`
+                          : `₦${netReceiveMin.toLocaleString("en-NG", { minimumFractionDigits: 2 })} – ₦${netReceiveMax.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`}
+                        {isUSD && ` (~$${(netReceiveMax / NGN_PER_USD).toFixed(2)} USD)`}
                       </span>
                     </div>
                   </div>
@@ -350,6 +424,7 @@ export default function WithdrawalModal({
                 disabled={
                   submittingWithdrawal ||
                   !resolvedAccountName ||
+                  !/^\d{4}$/.test(walletPin) ||
                   (user.balance ?? 0) < 10000 ||
                   (parseFloat(withdrawAmount) || 0) < 10000 ||
                   (parseFloat(withdrawAmount) || 0) > (user.balance ?? 0)

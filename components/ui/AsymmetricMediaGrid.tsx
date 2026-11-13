@@ -121,7 +121,7 @@ const AsymmetricMediaGrid: React.FC<AsymmetricMediaGridProps> = ({
                   padding: 0,
                   scrollPaddingLeft: 0,
                   scrollPaddingRight: 0,
-                  gap: "6px",
+                  gap: "3px",
                 }
               : undefined
           }

@@ -26,6 +26,8 @@ export const EMPTY_NETWORK: AgentNetworkPayload = {
   invites: [],
   uplineAgent: null,
   mutuals: [],
+  nextCursor: null,
+  hasMoreInvites: false,
 };
 
 export function formatCompactCount(count: number): string {
@@ -136,16 +138,25 @@ function applyOptimisticTransform(
 export function useAgentNetwork() {
   const [data, setData] = useState<AgentNetworkPayload>(() => cachedNetworkData || EMPTY_NETWORK);
   const [loading, setLoading] = useState<boolean>(() => !cachedNetworkData);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const broadcastUpdate = useCallback((nextData: AgentNetworkPayload) => {
-    cachedNetworkData = nextData;
+    const list = Array.isArray(nextData.invites) ? nextData.invites : [];
+    const hasMore = Boolean(nextData.hasMoreInvites || nextData.nextCursor);
+    const serverCount = Number(nextData.invitesCount) || 0;
+    const normalized: AgentNetworkPayload = {
+      ...nextData,
+      invites: list,
+      invitesCount: hasMore ? Math.max(list.length, serverCount) : list.length,
+    };
+    cachedNetworkData = normalized;
     cachedAt = Date.now();
-    setData(nextData);
+    setData(normalized);
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("paayh:agent_network_loaded", { detail: nextData }));
+      window.dispatchEvent(new CustomEvent("paayh:agent_network_loaded", { detail: normalized }));
     }
   }, []);
 
@@ -187,8 +198,34 @@ export function useAgentNetwork() {
               if (typeof window !== "undefined") {
                 localStorage.removeItem("paayh_ref_code");
               }
-              broadcastUpdate(json);
-              return json as AgentNetworkPayload;
+              const list = Array.isArray(json.invites) ? json.invites : [];
+              const prevInvites = cachedNetworkData?.invites || [];
+              let mergedInvites = list;
+              let nextCursorVal = json.nextCursor ?? null;
+              let hasMoreVal = Boolean(json.hasMoreInvites);
+
+              // Preserve extra pages already loaded if user paginated beyond page 1
+              if (prevInvites.length > list.length && cachedNetworkData?.nextCursor !== undefined) {
+                const seenKeys = new Set(list.map((i: any) => i.refereeKey));
+                const tail = prevInvites.filter((i) => !seenKeys.has(i.refereeKey));
+                if (tail.length > 0) {
+                  mergedInvites = [...list, ...tail];
+                  nextCursorVal = cachedNetworkData.nextCursor;
+                  hasMoreVal = Boolean(cachedNetworkData.hasMoreInvites);
+                }
+              }
+
+              const normalized: AgentNetworkPayload = {
+                ...json,
+                invites: mergedInvites,
+                nextCursor: nextCursorVal,
+                hasMoreInvites: hasMoreVal,
+                invitesCount: hasMoreVal
+                  ? Math.max(mergedInvites.length, Number(json.invitesCount) || 0)
+                  : mergedInvites.length,
+              };
+              broadcastUpdate(normalized);
+              return normalized;
             }
           }
         } catch {}
@@ -204,6 +241,42 @@ export function useAgentNetwork() {
     },
     [broadcastUpdate]
   );
+
+  const loadMoreInvites = useCallback(async () => {
+    const cursor = cachedNetworkData?.nextCursor || data.nextCursor;
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("cursor", cursor);
+      params.set("limit", "50");
+      const res = await fetch(`/api/agent?${params.toString()}`, { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.success) {
+          const nextPage = Array.isArray(json.invites) ? json.invites : [];
+          const base = cachedNetworkData || data;
+          const seen = new Set(base.invites.map((i) => i.refereeKey));
+          const appended = [...base.invites, ...nextPage.filter((i: any) => !seen.has(i.refereeKey))];
+          const hasMore = Boolean(json.hasMoreInvites && json.nextCursor);
+          const merged: AgentNetworkPayload = {
+            ...base,
+            invites: appended,
+            invitesCount: hasMore
+              ? Math.max(appended.length, Number(json.invitesCount) || base.invitesCount)
+              : appended.length,
+            nextCursor: json.nextCursor ?? null,
+            hasMoreInvites: hasMore,
+          };
+          broadcastUpdate(merged);
+        }
+      }
+    } catch {
+      // Keep current page intact on transient network failure
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [broadcastUpdate, data, loadingMore]);
 
   useEffect(() => {
     refreshNetwork(false);
@@ -253,12 +326,7 @@ export function useAgentNetwork() {
         setFeedback(json.error || "Could not register.");
       }
     } catch {
-      broadcastUpdate({
-        ...snapshot,
-        isAgent: true,
-        agentRegisteredAt: snapshot.agentRegisteredAt || new Date().toISOString(),
-      });
-      setFeedback("Network error.");
+      setFeedback("Network error. Please check your connection and try again.");
     } finally {
       setActionLoading(false);
       setActiveActionKey(null);
@@ -271,8 +339,6 @@ export function useAgentNetwork() {
     setActionLoading(true);
     setActiveActionKey(actionKey);
     setFeedback(null);
-    const snapshot = cachedNetworkData || data;
-    const optimisticNext = applyOptimisticTransform(snapshot, optOutAction, cleanRef);
 
     try {
       const [res] = await Promise.all([
@@ -295,8 +361,7 @@ export function useAgentNetwork() {
         setFeedback(json.error || "Action failed.");
       }
     } catch {
-      broadcastUpdate(optimisticNext);
-      setFeedback("Network error.");
+      setFeedback("Network error. Please check your connection and try again.");
     } finally {
       setActionLoading(false);
       setActiveActionKey(null);
@@ -306,11 +371,13 @@ export function useAgentNetwork() {
   return {
     data,
     loading,
+    loadingMore,
     actionLoading,
     activeActionKey,
     feedback,
     setFeedback,
     refreshNetwork,
+    loadMoreInvites,
     registerAgent,
     triggerOptOutAction,
   };

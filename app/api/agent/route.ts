@@ -37,7 +37,14 @@ export async function GET(req: NextRequest) {
     }
 
     const fresh = req.nextUrl.searchParams.get("fresh") === "1" || Boolean(codeToBind);
-    const networkData = await getAgentNetworkData(emailLower, fresh);
+    const cursor = req.nextUrl.searchParams.get("cursor")?.trim() || null;
+    const rawLimit = Number(req.nextUrl.searchParams.get("limit") || 50);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 50;
+    const networkData = await getAgentNetworkData(emailLower, {
+      bypassCache: fresh,
+      cursor,
+      limit,
+    });
     const response = NextResponse.json({
       success: true,
       ...networkData,
@@ -176,7 +183,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("❌ Error in POST /api/agent:", err);
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: "Try again later" },
       { status: 500 }
     );
   }

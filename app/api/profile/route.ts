@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as authHelper from "@/lib/authHelper";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
+import * as cacheUtils from "@/lib/utils/cache";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { decryptProfilePII, encryptSensitiveField } from "@/lib/security/piiCrypto";
@@ -14,6 +16,77 @@ function sanitizeProfileResponse(rawUser: Record<string, any> | null) {
   return decryptProfilePII(rawUser);
 }
 
+async function applyLiveMonetizationAndCooldown(
+  user: Record<string, any>,
+  emailLower: string,
+  liveClicksKey: string
+): Promise<void> {
+  if (isRedisReady()) {
+    try {
+      const [liveVal, cooldownRaw] = await Promise.all([
+        redisConnection.get(liveClicksKey),
+        redisConnection.get(`user:cooldown:${emailLower}`),
+      ]);
+      if (liveVal !== null && liveVal !== undefined && !user.has_cancelled_monetization) {
+        const liveClicks = Number(liveVal) || 0;
+        user.monetization_clicks = Math.max(Number(user.monetization_clicks) || 0, liveClicks);
+        if (user.monetization_clicks >= 300) {
+          user.monetized = "true";
+        }
+      }
+      if (cooldownRaw) {
+        const parsedCooldown = JSON.parse(cooldownRaw);
+        if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > Date.now()) {
+          user.cooldown_until = parsedCooldown.cooldownUntil;
+          user.cooldown_type = parsedCooldown.cooldownType || "pacing_15m";
+        }
+      } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
+        user.cooldown_until = user.suspended_until;
+        user.cooldown_type = "review_hours";
+      }
+    } catch {}
+  } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
+    user.cooldown_until = user.suspended_until;
+    user.cooldown_type = "review_hours";
+  }
+
+  if (user.has_cancelled_monetization) {
+    user.monetized = false;
+  }
+}
+
+async function evaluateInactivitySafely(user: Record<string, any>, emailLower: string): Promise<void> {
+  const activityTracker = await import("@/lib/utils/activityTracker");
+  const adminHelper = await import("@/lib/adminHelper").catch(() => null as any);
+  const isExemptFn = adminHelper?.isExemptFromBarriersAndInactivity;
+  const isExempt = typeof isExemptFn === "function" ? isExemptFn(emailLower, user as any) : false;
+
+  // 60-day dormant balance forfeiture must run BEFORE touchUserActivity updates last_active_at
+  if (user.last_active_at && !isExempt) {
+    const lastActiveMs = new Date(user.last_active_at).getTime();
+    if (!Number.isNaN(lastActiveMs)) {
+      const daysInactive = Math.max(0, Math.floor((Date.now() - lastActiveMs) / (1000 * 60 * 60 * 24)));
+      if (daysInactive >= 60 && Number(user.balance || 0) > 0) {
+        try {
+          await supabaseAdmin.rpc("forfeit_dormant_user_balances_60_days");
+          user.balance = 0;
+          user.monetized = "false";
+          user.monetization_clicks = 0;
+          await cacheUtils.invalidateCachedProfile?.(emailLower);
+        } catch {}
+      }
+    }
+  }
+
+  try {
+    const activityRes = await activityTracker.touchUserActivity?.(emailLower, user);
+    if (activityRes?.isDeMonetized) {
+      user.monetized = "false";
+      user.monetization_clicks = 0;
+    }
+  } catch {}
+}
+
 export async function GET(req: NextRequest) {
   try {
     const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
@@ -22,45 +95,38 @@ export async function GET(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
-    const { touchUserActivity } = await import("@/lib/utils/activityTracker");
+
+    // Fail closed permanently for deactivated / deleted accounts (never resurrect via stale sessions)
+    if (typeof authHelper.isEmailDeactivated === "function" && (await authHelper.isEmailDeactivated(emailLower))) {
+      await cacheUtils.invalidateCachedProfile?.(emailLower).catch(() => {});
+      return NextResponse.json(
+        { error: "Account has been permanently deactivated.", deactivated: true },
+        { status: 403 }
+      );
+    }
 
     // 1. Attempt to fetch from Two-Tier (L1 Memory + L2 Redis) cache first (<0.1ms)
     let user = await getCachedProfile(emailLower);
     if (user) {
       if (user.ad_account_status === "deactivated") {
+        await cacheUtils.invalidateCachedProfile?.(emailLower).catch(() => {});
+        if (isRedisReady()) {
+          await redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 2592000).catch(() => {});
+        }
         return NextResponse.json(
-          { error: "This account has been deactivated and cannot be accessed.", code: "ACCOUNT_DEACTIVATED" },
+          { error: "Account has been permanently deactivated.", deactivated: true },
           { status: 403 }
         );
       }
-      touchUserActivity(emailLower, user).catch(() => {});
 
-      if (isRedisReady()) {
-        try {
-          const [liveVal, cooldownRaw] = await Promise.all([
-            redisConnection.get(`user:live_clicks:v2:${emailLower}`),
-            redisConnection.get(`user:cooldown:${emailLower}`),
-          ]);
-          if (liveVal) {
-            const liveClicks = Number(liveVal) || 0;
-            user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
-            if (user.monetization_clicks >= 300) user.monetized = "true";
-          }
-          if (cooldownRaw) {
-            const parsedCooldown = JSON.parse(cooldownRaw);
-            if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > Date.now()) {
-              user.cooldown_until = parsedCooldown.cooldownUntil;
-              user.cooldown_type = parsedCooldown.cooldownType || "pacing_15m";
-            }
-          }
-        } catch {}
-      }
+      await evaluateInactivitySafely(user, emailLower);
+      await applyLiveMonetizationAndCooldown(user, emailLower, `user:live_clicks:v2:${emailLower}`);
 
       return NextResponse.json(sanitizeProfileResponse(user));
     }
 
-    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, wallet_pin_hash, ad_account_status, has_cancelled_monetization`;
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, wallet_pin_hash, suspended_until, ad_account_status, has_cancelled_monetization`;
+    const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", has_updated_profile, bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, wallet_pin_hash, ad_account_status, has_cancelled_monetization`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", has_updated_profile, bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, attention_worth_score, is_career, is_affiliate, wallet_pin_hash, suspended_until, ad_account_status, has_cancelled_monetization`;
 
     let error: any = null;
     const attempts = 3;
@@ -119,32 +185,21 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("❌ Error fetching user profile after all attempts:", error?.message || error);
-      return NextResponse.json({ error: error?.message || "Database connection failure" }, { status: 500 });
+      return NextResponse.json({ error: "Try again later" }, { status: 500 });
     }
 
     if (user?.ad_account_status === "deactivated") {
+      await cacheUtils.invalidateCachedProfile?.(emailLower).catch(() => {});
+      if (isRedisReady()) {
+        await redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 2592000).catch(() => {});
+      }
       return NextResponse.json(
-        { error: "This account has been deactivated and cannot be accessed.", code: "ACCOUNT_DEACTIVATED" },
+        { error: "Account has been permanently deactivated.", deactivated: true },
         { status: 403 }
       );
     }
 
     if (!user) {
-      // Tombstone check before auto provisioning
-      try {
-        const { data: deact } = await supabaseAdmin
-          .from("deactivated_users")
-          .select("email")
-          .eq("email", emailLower)
-          .maybeSingle();
-        if (deact) {
-          return NextResponse.json(
-            { error: "This account has been deactivated and cannot be accessed.", code: "ACCOUNT_DEACTIVATED" },
-            { status: 403 }
-          );
-        }
-      } catch {}
-
       const dummyPhone = `PLACEHOLDER_PHONE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const dummyPassphrase = `PLACEHOLDER_PASS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
@@ -160,7 +215,7 @@ export async function GET(req: NextRequest) {
 
       if (insertError) {
         console.error("❌ Auto-provisioning failed:", insertError);
-        return NextResponse.json({ error: "Failed to setup profile" }, { status: 500 });
+        return NextResponse.json({ error: "Try again later" }, { status: 500 });
       }
 
       const { data: newUserRows, error: fetchError } = await supabaseAdmin
@@ -170,49 +225,22 @@ export async function GET(req: NextRequest) {
         .limit(1);
 
       if (fetchError) {
-        return NextResponse.json({ error: fetchError.message }, { status: 500 });
+        console.error("❌ Failed to fetch newly provisioned profile:", fetchError);
+        return NextResponse.json({ error: "Try again later" }, { status: 500 });
       }
       user = newUserRows?.[0] || null;
     }
 
     if (user) {
+      await evaluateInactivitySafely(user, emailLower);
       user = sanitizeProfileResponse(user);
-      if (isRedisReady()) {
-        try {
-          const [liveVal, cooldownRaw] = await Promise.all([
-            redisConnection.get(`user:live_clicks:${emailLower}`),
-            redisConnection.get(`user:cooldown:${emailLower}`),
-          ]);
-          if (liveVal) {
-            const liveClicks = Number(liveVal) || 0;
-            user.monetization_clicks = Math.max(user.monetization_clicks || 0, liveClicks);
-            if (user.monetization_clicks >= 300) {
-              user.monetized = "true";
-            }
-          }
-          if (cooldownRaw) {
-            const parsedCooldown = JSON.parse(cooldownRaw);
-            if (parsedCooldown?.cooldownUntil && new Date(parsedCooldown.cooldownUntil).getTime() > Date.now()) {
-              user.cooldown_until = parsedCooldown.cooldownUntil;
-              user.cooldown_type = parsedCooldown.cooldownType || "pacing_15m";
-            }
-          } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
-            user.cooldown_until = user.suspended_until;
-            user.cooldown_type = "review_hours";
-          }
-        } catch {}
-      } else if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
-        user.cooldown_until = user.suspended_until;
-        user.cooldown_type = "review_hours";
-      }
-
+      await applyLiveMonetizationAndCooldown(user, emailLower, `user:live_clicks:v2:${emailLower}`);
       await setCachedProfile(emailLower, user);
-      touchUserActivity(emailLower, user).catch(() => {});
     }
 
     return NextResponse.json(user);
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/profile:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

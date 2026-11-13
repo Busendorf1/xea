@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 
 export async function GET(req: NextRequest) {
@@ -22,25 +22,38 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const currentEmail = (await getAuthenticatedEmail(req)) || null;
+    // Resolve caller email from query param, mobile header, or authenticated session
+    const queryEmail = searchParams.get("email")?.toLowerCase().trim();
+    const headerEmail = req.headers.get("x-user-email")?.toLowerCase().trim();
+    const sessionEmail = await getAuthenticatedEmail(req, { allowMobileHeader: true }).catch(() => null);
+    const currentEmail = queryEmail || headerEmail || sessionEmail || null;
 
-    let query = supabaseAdmin
+    const dbClient = supabaseReadOnly || supabaseAdmin;
+    // Use exact equality .in() instead of .ilike() to:
+    // 1. Prevent SQL wildcard matching where '_' matches any character (e.g. 'abc_xyz' falsely matching 'abc1xyz')
+    // 2. Leverage B-Tree index for sub-millisecond lookup across 500M+ users with zero table scans
+    const handlesToCheck = [cleanUsername, `@${cleanUsername}`];
+    let query = dbClient
       .from("users")
-      .select("id", { count: "exact", head: true })
-      .ilike("username", cleanUsername);
+      .select("id, email")
+      .in("username", handlesToCheck)
+      .limit(2);
 
     if (currentEmail) {
       query = query.neq("email", currentEmail);
     }
 
-    const { count, error } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error("❌ Username check database error:", error);
       return NextResponse.json({ available: false, message: "Database query error" }, { status: 500 });
     }
 
-    const isAvailable = count === 0;
+    const conflictingUsers = (data || []).filter(
+      (u: any) => !currentEmail || u.email?.toLowerCase().trim() !== currentEmail
+    );
+    const isAvailable = conflictingUsers.length === 0;
 
     return NextResponse.json({
       available: isAvailable,

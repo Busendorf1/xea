@@ -19,6 +19,11 @@ import {
   ArrowUpRight
 } from "lucide-react";
 import styles from "./TransactionReceiptModal.module.css";
+import {
+  openPrintableReceiptWindow,
+  PrintableReceiptRow,
+  resolveWithdrawalCharge,
+} from "./receiptPrintBuilder";
 
 export interface ReceiptTransaction {
   id?: string;
@@ -66,10 +71,8 @@ export default function TransactionReceiptModal({
   const isCredit = transaction.type === "transfer_received" || transaction.type === "funding";
   const isWithdrawal = transaction.type === "withdrawal";
 
-  // Fee / Charge & Discount extraction
-  const charge = typeof meta.fee === "number"
-    ? meta.fee
-    : (meta.fee ? parseFloat(meta.fee) : (isWithdrawal ? 35 : 0)); // standard ₦35 interbank transfer charge
+  // Fee / Charge & Discount extraction (dynamic gateway-aware resolution, no hardcoded ₦35)
+  const charge = resolveWithdrawalCharge(rawAmount, meta, isWithdrawal);
 
   const discount = typeof meta.discount === "number"
     ? meta.discount
@@ -251,281 +254,54 @@ export default function TransactionReceiptModal({
   const purpose = isWithdrawal ? maskAccountNumbersInText(rawPurpose) : rawPurpose;
 
   const handlePrint = () => {
-    // Generate clean printable receipt window
     const printContent = document.getElementById("paayh-receipt-voucher");
     if (!printContent) {
       window.print();
       return;
     }
 
-    const printWindow = window.open("", "_blank", "width=440,height=720");
-    if (!printWindow) {
-      window.print();
-      return;
+    const s = (transaction.status || "").toLowerCase();
+    const statusTone =
+      s === "success" || s === "completed"
+        ? "success"
+        : s === "pending" || s === "processing" || s === "queued"
+          ? "pending"
+          : s === "reversed"
+            ? "reversed"
+            : "failed";
+
+    const rows: PrintableReceiptRow[] = [
+      { label: "Payment For", value: purpose },
+      { label: "Transaction Type", value: getTypeLabel(transaction.type) },
+      { label: "Reference", value: transaction.reference, monospace: true },
+      { label: "Timestamp", value: formattedDateTime },
+      { label: "Paid By", value: payerUsername },
+    ];
+
+    if (destinationBank) rows.push({ label: "Destination Bank", value: String(destinationBank) });
+    if (destinationAccount) rows.push({ label: "Account Number", value: destinationAccount });
+    if (destinationName) rows.push({ label: "Beneficiary Name", value: String(destinationName) });
+    if (recipientUsername && recipientUsername !== destinationName) {
+      rows.push({ label: "Recipient", value: recipientUsername });
+    }
+    if (charge > 0) rows.push({ label: "Withdrawal Charge", value: formatNaira(charge) });
+    if (discount > 0) rows.push({ label: "Discount", value: `-${formatNaira(discount)}` });
+    if (charge > 0 || discount > 0) {
+      rows.push({ label: "Net Amount", value: formatNaira(netAmount), highlight: true });
     }
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Receipt_${transaction.reference || "tx"}</title>
-        <style>
-          @page {
-            size: 100mm auto;
-            margin: 6mm auto;
-          }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          html, body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: #ffffff;
-            color: #000000;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          .receipt-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            padding: 16px 8px;
-          }
-          .receipt-box {
-            width: 360px;
-            max-width: 360px;
-            min-width: 320px;
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 24px 20px;
-            background: #ffffff;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-          }
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 1.5px solid #f1f5f9;
-            padding-bottom: 14px;
-            margin-bottom: 16px;
-          }
-          .brand {
-            font-size: 22px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-            color: #000000;
-          }
-          .brand-sub {
-            font-size: 11px;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 2px;
-          }
-          .receipt-title {
-            font-size: 11px;
-            font-weight: 700;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            text-align: right;
-            margin-top: 5px;
-          }
-          .amount-section {
-            text-align: center;
-            padding: 14px 10px;
-            margin-bottom: 16px;
-            background: #f9f9f7;
-            border-radius: 12px;
-            border: 1px dashed #e2e8f0;
-          }
-          .amount-label {
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            color: #64748b;
-            margin-bottom: 4px;
-            font-weight: 600;
-          }
-          .amount-val {
-            font-size: 26px;
-            font-weight: 800;
-            color: #000000;
-            letter-spacing: -0.5px;
-          }
-          .grid {
-            width: 100%;
-            margin-bottom: 16px;
-            border-collapse: collapse;
-          }
-          .grid tr {
-            border-bottom: 1px solid #f1f5f9;
-          }
-          .grid td {
-            padding: 8px 2px;
-            font-size: 12px;
-          }
-          .grid td.label {
-            color: #64748b;
-            width: 42%;
-            font-weight: 500;
-          }
-          .grid td.value {
-            color: #000000;
-            font-weight: 600;
-            text-align: right;
-            word-break: break-word;
-          }
-          .badge {
-            display: inline-block;
-            padding: 2px 7px;
-            border-radius: 9999px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: capitalize;
-          }
-          .badge-success { background: #f4f4f2; color: #000000; border: 1px solid #e2e8f0; }
-          .badge-pending { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
-          .badge-failed { background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; }
-          .badge-reversed { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
-          .footer-note {
-            text-align: center;
-            font-size: 11px;
-            color: #94a3b8;
-            margin-top: 16px;
-            padding-top: 12px;
-            border-top: 1px solid #f1f5f9;
-            font-weight: 500;
-          }
-          @media print {
-            html, body {
-              background: #ffffff !important;
-              padding: 0 !important;
-              margin: 0 !important;
-              width: 100% !important;
-            }
-            .receipt-container {
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            .receipt-box {
-              width: 360px !important;
-              max-width: 360px !important;
-              min-width: 320px !important;
-              margin: 12px auto !important;
-              border: 1px solid #e2e8f0 !important;
-              border-radius: 14px !important;
-              padding: 20px 18px !important;
-              box-shadow: none !important;
-              background: #ffffff !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="receipt-container">
-          <div class="receipt-box">
-          <div class="header">
-            <div>
-              <div class="brand">Paayh</div>
-            </div>
-            <div>
-              <div class="receipt-title">Transaction Receipt</div>
-            </div>
-          </div>
+    const opened = openPrintableReceiptWindow({
+      reference: transaction.reference || "tx",
+      isCredit,
+      formattedAmount: formatNaira(rawAmount),
+      statusText: transaction.status || "Unknown",
+      statusTone,
+      rows,
+    });
 
-          <div class="amount-section">
-            <div class="amount-label">${isCredit ? "Amount Credited" : "Amount Paid / Transferred"}</div>
-            <div class="amount-val">${formatNaira(rawAmount)}</div>
-          </div>
-
-          <table class="grid">
-            <tr>
-              <td class="label">Payment For</td>
-              <td class="value">${purpose}</td>
-            </tr>
-            <tr>
-              <td class="label">Transaction Type</td>
-              <td class="value">${getTypeLabel(transaction.type)}</td>
-            </tr>
-            <tr>
-              <td class="label">Status</td>
-              <td class="value">
-                <span class="badge badge-${(transaction.status || "").toLowerCase() === "success" || (transaction.status || "").toLowerCase() === "completed" ? "success" : (transaction.status || "").toLowerCase() === "pending" || (transaction.status || "").toLowerCase() === "processing" ? "pending" : "failed"}">
-                  ${transaction.status}
-                </span>
-              </td>
-            </tr>
-            <tr>
-              <td class="label">Reference</td>
-              <td class="value" style="font-family: monospace;">${transaction.reference}</td>
-            </tr>
-            <tr>
-              <td class="label">Timestamp</td>
-              <td class="value">${formattedDateTime}</td>
-            </tr>
-            <tr>
-              <td class="label">Paid By</td>
-              <td class="value">${payerUsername}</td>
-            </tr>
-            ${destinationBank ? `
-            <tr>
-              <td class="label">Destination Bank</td>
-              <td class="value">${destinationBank}</td>
-            </tr>` : ""}
-            ${destinationAccount ? `
-            <tr>
-              <td class="label">Account Number</td>
-              <td class="value">${destinationAccount}</td>
-            </tr>` : ""}
-            ${destinationName ? `
-            <tr>
-              <td class="label">Beneficiary Name</td>
-              <td class="value">${destinationName}</td>
-            </tr>` : ""}
-            ${recipientUsername && recipientUsername !== destinationName ? `
-            <tr>
-              <td class="label">Recipient</td>
-              <td class="value">${recipientUsername}</td>
-            </tr>` : ""}
-            ${charge > 0 ? `
-            <tr>
-              <td class="label">Withdrawal Charge</td>
-              <td class="value">${formatNaira(charge)}</td>
-            </tr>` : ""}
-            ${discount > 0 ? `
-            <tr>
-              <td class="label">Discount</td>
-              <td class="value">-${formatNaira(discount)}</td>
-            </tr>` : ""}
-            ${(charge > 0 || discount > 0) ? `
-            <tr style="border-top: 1.5px solid #cbd5e1; font-weight: 700;">
-              <td class="label" style="color: #000000; font-weight: 700;">Net Amount</td>
-              <td class="value" style="color: #000000; font-size: 13px;">${formatNaira(netAmount)}</td>
-            </tr>` : ""}
-          </table>
-
-          <div class="footer-note">
-            Paayh • Official Transaction Slip
-          </div>
-        </div>
-      </div>
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() { window.close(); }, 500);
-          };
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+    if (!opened) {
+      window.print();
+    }
   };
 
   return (

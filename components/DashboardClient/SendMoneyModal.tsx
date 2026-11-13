@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { sendMoneySchema } from "@/lib/validationSchemas";
+import { toClientFriendlyApiError, toClientFriendlyError } from "@/lib/utils/clientError";
 import { UserProfile } from "./types";
 import { TransferSuccessData } from "@/components/ui/TransferSuccessModal";
 import styles from "./page.module.css";
@@ -12,6 +13,7 @@ interface SendMoneyModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: UserProfile;
+  defaultPin?: string;
   currentUserEmail: string;
   formatCurrency: (amount: number | string) => string;
   onSuccess: (data: TransferSuccessData) => void;
@@ -24,6 +26,7 @@ export default function SendMoneyModal({
   isOpen,
   onClose,
   user,
+  defaultPin = "",
   currentUserEmail,
   formatCurrency,
   onSuccess,
@@ -33,11 +36,20 @@ export default function SendMoneyModal({
 }: SendMoneyModalProps) {
   const [sendRecipientEmail, setSendRecipientEmail] = useState("");
   const [sendAmount, setSendAmount] = useState("");
+  const [walletPin, setWalletPin] = useState("");
   const [submittingSend, setSubmittingSend] = useState(false);
   const [sendMoneyError, setSendMoneyError] = useState("");
 
+  useEffect(() => {
+    if (isOpen) {
+      setWalletPin(defaultPin || "");
+      setSendMoneyError("");
+    }
+  }, [isOpen, defaultPin]);
+
   const handleSendMoneySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingSend) return;
     setSendMoneyError("");
 
     const cleanEmail = sendRecipientEmail.trim().toLowerCase();
@@ -74,6 +86,12 @@ export default function SendMoneyModal({
       return;
     }
 
+    const cleanPin = walletPin.trim();
+    if (!/^\d{4}$/.test(cleanPin)) {
+      setSendMoneyError("Please enter your 4-digit Wallet PIN.");
+      return;
+    }
+
     setSubmittingSend(true);
     try {
       const idempotencyKey =
@@ -91,11 +109,12 @@ export default function SendMoneyModal({
           recipientEmail: cleanEmail,
           amount: amountNum,
           idempotencyKey,
+          pin: cleanPin,
         }),
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         onClose();
         setSendRecipientEmail("");
         setSendAmount("");
@@ -121,10 +140,19 @@ export default function SendMoneyModal({
         onRefreshProfile();
         onFetchNotifications();
       } else {
-        setSendMoneyError(data.error || "Failed to process transfer. Your balance remains unchanged.");
+        if (res.status === 401 || res.status === 429) {
+          setWalletPin("");
+        }
+        setSendMoneyError(
+          toClientFriendlyApiError(
+            res.status,
+            data,
+            "Failed to process transfer. Your balance remains unchanged."
+          )
+        );
       }
     } catch (e: any) {
-      setSendMoneyError(e.message || "Network error occurred. Your balance remains unchanged.");
+      setSendMoneyError(toClientFriendlyError(e, "Try again later"));
     } finally {
       setSubmittingSend(false);
     }
@@ -200,9 +228,32 @@ export default function SendMoneyModal({
                 </span>
               </div>
 
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>4-Digit Wallet PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  placeholder="Enter 4-digit PIN"
+                  value={walletPin}
+                  onChange={(e) => setWalletPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  required
+                  autoComplete="off"
+                  className={styles.formInput}
+                />
+                <span className={styles.formHintSmall}>
+                  5 incorrect PIN attempts lock PIN verification for 45 minutes.
+                </span>
+              </div>
+
               {sendMoneyError && <div className={styles.errorText}>{sendMoneyError}</div>}
 
-              <button type="submit" disabled={submittingSend || user.balance <= 0} className={styles.submitBtn}>
+              <button
+                type="submit"
+                disabled={submittingSend || user.balance <= 0 || !/^\d{4}$/.test(walletPin)}
+                className={styles.submitBtn}
+              >
                 {submittingSend ? "Processing Transfer..." : "Send Funds Instantly"}
               </button>
             </form>

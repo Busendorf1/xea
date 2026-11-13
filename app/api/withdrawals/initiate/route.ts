@@ -9,7 +9,7 @@ import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
 import { initiateWithdrawalApiSchema } from "@/lib/validationSchemas";
 import { decryptSensitiveField } from "@/lib/security/piiCrypto";
-import { verifyTransactionPin } from "@/lib/security/walletPinHelper";
+import { verifyTransactionPin, resolveStoredWalletPinHash } from "@/lib/security/walletPinHelper";
 import crypto from "crypto";
 
 const MIN_WITHDRAWAL_AMOUNT = 10000; // 10,000 NGN
@@ -19,19 +19,25 @@ function isTerminalBankAccountError(msg: string): boolean {
   const m = (msg || "").toLowerCase();
   return (
     m.includes("invalid account") ||
-    m.includes("account number") && m.includes("invalid") ||
+    (m.includes("account number") && m.includes("invalid")) ||
     m.includes("could not resolve account") ||
     m.includes("account closed") ||
     m.includes("no such account") ||
     m.includes("invalid bank") ||
     m.includes("unknown bank") ||
     m.includes("bvn") ||
-    m.includes("beneficiary") && m.includes("invalid")
+    (m.includes("beneficiary") && m.includes("invalid"))
   );
 }
 
 export async function POST(req: NextRequest) {
   let email: string | null = null;
+  let emailLower = "";
+  let reference = "";
+  let withdrawAmount = 0;
+  let walletDeducted = false;
+  let rollbackAtomicDebit: ((reason: string) => Promise<void>) | null = null;
+
   try {
     email = await getAuthenticatedEmail(req);
     if (!email) {
@@ -76,10 +82,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { bankCode, bankName, accountNumber, amount: withdrawAmount, phone, pin } = parsed.data;
+    const { bankCode, bankName, accountNumber, amount: parsedAmount, phone, pin } = parsed.data;
+    withdrawAmount = parsedAmount;
 
     // 1. Flush any buffered/sharded affiliate yield first and fetch user's profile
-    const emailLower = email.toLowerCase().trim();
+    emailLower = email.toLowerCase().trim();
     const { isExemptFromBarriersAndInactivity } = await import("@/lib/adminHelper");
     const { flushPendingAffiliateYield } = await import("@/lib/affiliateEngine");
     if (isExemptFromBarriersAndInactivity(emailLower)) {
@@ -88,8 +95,8 @@ export async function POST(req: NextRequest) {
 
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career, wallet_pin_hash")
-      .eq("email", emailLower)
+      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career, wallet_pin_hash, passphrase")
+      .ilike("email", emailLower)
       .maybeSingle();
 
     if (userFetchErr || !user) {
@@ -97,17 +104,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to verify account balance" }, { status: 500 });
     }
 
-    // Verify 4-Digit Wallet PIN (if configured)
+    // 2. Enforce 4-Digit Wallet PIN (fail closed when unset)
     const pinCheck = await verifyTransactionPin({
       email: emailLower,
       pin,
-      storedPinHash: (user as any).wallet_pin_hash,
+      storedPinHash: resolveStoredWalletPinHash(user),
     });
 
     if (!pinCheck.valid) {
       return NextResponse.json(
         {
           error: pinCheck.error,
+          code: pinCheck.code,
           attemptsRemaining: pinCheck.attemptsRemaining,
           retryAfter: pinCheck.retryAfter,
         },
@@ -122,35 +130,59 @@ export async function POST(req: NextRequest) {
 
     // Rule 1: Minimum balance requirement (Bypassed for Admins)
     if (!isAdmin && currentBalance < MIN_WITHDRAWAL_AMOUNT) {
-      return NextResponse.json({
-        error: `Minimum wallet balance required to initiate a withdrawal is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}. Your current balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Minimum wallet balance required to initiate a withdrawal is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}. Your current balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
+        },
+        { status: 400 }
+      );
     }
 
     // Rule 2: Minimum withdrawal amount per transaction (Bypassed for Admins)
-    if (!isAdmin && (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT)) {
-      return NextResponse.json({
-        error: `Minimum withdrawal amount per transaction is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}.`,
-      }, { status: 400 });
+    if (!isAdmin && (!Number.isFinite(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL_AMOUNT)) {
+      return NextResponse.json(
+        {
+          error: `Minimum withdrawal amount per transaction is ₦${MIN_WITHDRAWAL_AMOUNT.toLocaleString("en-NG")}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
+      return NextResponse.json({ error: "Invalid withdrawal amount." }, { status: 400 });
     }
 
     // Rule 3: Users can withdraw ANY amount up to their full available balance (can empty account to ₦0)
     if (withdrawAmount > currentBalance) {
-      return NextResponse.json({
-        error: `Insufficient available balance. Your total available balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Insufficient available balance. Your total available balance is ₦${currentBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
+        },
+        { status: 400 }
+      );
     }
 
-    // Rule C: Phone matching user profile (Normalized comparison of last 10 digits, decrypting stored phone first)
-    const normalizePhone = (num: string) => {
-      const cleaned = num.replace(/\D/g, "");
+    // Rule C: Registered phone verification (non-placeholder, >= 7 digits, last-10 match)
+    const normalizePhone = (num: unknown) => {
+      const cleaned = String(num || "").replace(/\D/g, "");
       return cleaned.slice(-10);
     };
 
     const decryptedProfilePhone = user.phone ? decryptSensitiveField(String(user.phone)) : "";
-    if (!decryptedProfilePhone || normalizePhone(decryptedProfilePhone) !== normalizePhone(phone)) {
-      console.warn(`❌ Security Block: Phone mismatch for ${emailLower}`);
-      return NextResponse.json({ error: "Verification failed. Phone number must match your registered account phone number." }, { status: 400 });
+    const profileDigits = decryptedProfilePhone ? normalizePhone(decryptedProfilePhone) : "";
+    const inputDigits = normalizePhone(phone);
+    if (
+      !decryptedProfilePhone ||
+      decryptedProfilePhone.startsWith("PLACEHOLDER") ||
+      profileDigits.length < 7 ||
+      inputDigits.length < 7 ||
+      profileDigits !== inputDigits
+    ) {
+      console.warn(`❌ Security Block: Registered phone verification failed for ${emailLower}`);
+      return NextResponse.json(
+        { error: "Verification failed. Phone number must match your registered account phone number." },
+        { status: 400 }
+      );
     }
 
     // Attempt Bank Resolution with High-Volume Queue Fallback (Never reject on gateway timeout/rate-limit)
@@ -167,9 +199,12 @@ export async function POST(req: NextRequest) {
     } catch (netErr: any) {
       const errMsg = netErr?.message || "";
       if (isTerminalBankAccountError(errMsg)) {
-        return NextResponse.json({
-          error: `Bank account verification failed: ${errMsg}. Your wallet balance was not deducted.`,
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: `Bank account verification failed: ${errMsg}. Your wallet balance was not deducted.`,
+          },
+          { status: 400 }
+        );
       }
       // High-volume / transient bank resolution timeout: Do NOT cancel! Queue for batch window.
       console.warn("⚠️ Gateway busy during bank resolution — queueing withdrawal instead of cancelling:", errMsg);
@@ -178,57 +213,84 @@ export async function POST(req: NextRequest) {
       queueReason = "High-volume payout queue (bank verification deferred to batch dispatch)";
     }
 
-    // Deduct user's balance atomically via PostgreSQL FOR UPDATE row lock RPC (with OCC fallback)
-    let newBalance = Math.max(0, currentBalance - withdrawAmount);
-    let newWithdrawal = currentWithdrawal + withdrawAmount;
+    // Generate unique transaction reference BEFORE atomic wallet debit for idempotent ledger tracking
+    reference = `trsf_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").substring(0, 12)}`;
 
-    const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("initiate_atomic_withdrawal", {
-      p_email: emailLower,
+    // Deduct user's balance atomically via PostgreSQL FOR UPDATE row-lock RPC (no non-atomic OCC fallback)
+    let newBalance = Math.max(0, Number((currentBalance - withdrawAmount).toFixed(2)));
+    let newWithdrawal = Number((currentWithdrawal + withdrawAmount).toFixed(2));
+
+    const { data: deductRes, error: deductErr } = await supabaseAdmin.rpc("deduct_wallet_atomic", {
+      p_user_email: emailLower,
       p_amount: withdrawAmount,
-      p_min_amount: MIN_WITHDRAWAL_AMOUNT,
-      p_is_admin: isAdmin,
+      p_reason: "withdrawal_debit",
+      p_reference: reference,
     });
 
-    const isRpcSchemaMismatch =
-      atomicResult?.success === false &&
-      /column .* does not exist|bvn_hash|bvn|function .* does not exist|relation .* does not exist/i.test(
-        String(atomicResult?.error || "")
-      );
-
-    if (atomicErr || !atomicResult || isRpcSchemaMismatch) {
-      console.warn(
-        "⚠️ initiate_atomic_withdrawal RPC unavailable or schema mismatch, using strict OCC fallback:",
-        atomicErr?.message || atomicResult?.error
-      );
-      const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
-        .from("users")
-        .update({
-          balance: newBalance,
-          withdrawal: newWithdrawal,
-        })
-        .eq("email", emailLower)
-        .eq("balance", currentBalance)
-        .select("id, email, balance, withdrawal");
-
-      if (userUpdateErr || !updatedUser || updatedUser.length === 0) {
-        console.error("❌ OCC check failed during withdrawal balance deduction:", userUpdateErr);
-        return NextResponse.json({ error: "Balance mismatch or concurrent transaction detected. Please refresh and try again." }, { status: 409 });
+    if (!deductErr && deductRes) {
+      if (deductRes.success === false) {
+        return NextResponse.json(
+          { error: deductRes.error || "Insufficient wallet balance for withdrawal." },
+          { status: 400 }
+        );
       }
-    } else if (atomicResult.success === false) {
-      console.error("❌ Atomic withdrawal validation error:", atomicResult.error);
-      return NextResponse.json({ error: atomicResult.error || "Withdrawal validation failed." }, { status: 400 });
+      walletDeducted = true;
+      newBalance = Number(deductRes.new_balance ?? newBalance);
+      await supabaseAdmin
+        .from("users")
+        .update({ withdrawal: newWithdrawal })
+        .ilike("email", emailLower);
     } else {
-      newBalance = atomicResult.new_balance;
-      newWithdrawal = atomicResult.new_withdrawal;
+      // Compatibility fallback to initiate_atomic_withdrawal if deduct_wallet_atomic is not yet deployed
+      const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("initiate_atomic_withdrawal", {
+        p_email: emailLower,
+        p_amount: withdrawAmount,
+        p_min_amount: MIN_WITHDRAWAL_AMOUNT,
+        p_is_admin: isAdmin,
+      });
+
+      if (atomicErr || !atomicResult) {
+        console.error("❌ Atomic withdrawal RPC unavailable:", deductErr?.message || atomicErr?.message);
+        return NextResponse.json(
+          { error: "Unable to process withdrawal safely at this time. Please try again later." },
+          { status: 503 }
+        );
+      }
+      if (atomicResult.success === false) {
+        return NextResponse.json({ error: atomicResult.error || "Withdrawal validation failed." }, { status: 400 });
+      }
+      walletDeducted = true;
+      newBalance = Number(atomicResult.new_balance ?? newBalance);
+      newWithdrawal = Number(atomicResult.new_withdrawal ?? newWithdrawal);
     }
 
-    // Generate unique transaction reference
-    const reference = `trsf_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").substring(0, 12)}`;
+    rollbackAtomicDebit = async (reason: string) => {
+      if (!walletDeducted) return;
+      walletDeducted = false;
+      const { error: refundErr } = await supabaseAdmin.rpc("refund_wallet_atomic", {
+        p_user_email: emailLower,
+        p_amount: withdrawAmount,
+        p_reason: reason,
+        p_reference: reference,
+      });
+      if (refundErr) {
+        await supabaseAdmin.rpc("refund_wallet_deduction_atomic", {
+          p_user_email: emailLower,
+          p_amount: withdrawAmount,
+          p_reason: reason,
+          p_reference: reference,
+        });
+      }
+      await Promise.all([
+        invalidateCachedProfile(emailLower).catch(() => {}),
+        redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
+      ]);
+    };
 
     // Dynamic Gateway Payout Fee Breakdown: User is responsible for active gateway (Paystack/Kora) interbank charges
     const activeGateway = PayoutProvider.getActiveGateway();
     const WITHDRAWAL_TRANSFER_FEE = PayoutProvider.calculateTransferFee(withdrawAmount, activeGateway);
-    const netDisbursementAmount = Math.max(0, withdrawAmount - WITHDRAWAL_TRANSFER_FEE);
+    const netDisbursementAmount = Number(Math.max(0, withdrawAmount - WITHDRAWAL_TRANSFER_FEE).toFixed(2));
 
     // Record processing withdrawal in payments ledger
     const paymentMetadata = {
@@ -237,7 +299,7 @@ export async function POST(req: NextRequest) {
       accountNumber,
       accountName,
       phone,
-      provider: PayoutProvider.getActiveGateway(),
+      provider: activeGateway,
       fee: WITHDRAWAL_TRANSFER_FEE,
       net_amount: netDisbursementAmount,
       fee_bearer: "user",
@@ -255,24 +317,23 @@ export async function POST(req: NextRequest) {
 
     if (paymentInsertErr) {
       console.error("❌ Error inserting payment ledger record:", paymentInsertErr);
-      // Auto-rollback balance update on ledger write error to ensure zero locked balance
-      await supabaseAdmin
-        .from("users")
-        .update({ balance: currentBalance, withdrawal: currentWithdrawal })
-        .eq("email", emailLower);
-
-      await invalidateCachedProfile(emailLower);
-      return NextResponse.json({ error: "Failed to queue withdrawal record due to network error. Balance restored." }, { status: 500 });
+      await rollbackAtomicDebit("withdrawal_ledger_insert_failed");
+      return NextResponse.json(
+        { error: "Failed to queue withdrawal record due to network error. Balance restored." },
+        { status: 500 }
+      );
     }
 
     // 4. Check available disbursement float balance & queue depth before attempting immediate payout
     try {
-      if (!shouldQueue && PayoutProvider.getActiveGateway() === "kora") {
+      if (!shouldQueue && activeGateway === "kora") {
         const floatBal = await KoraService.getNairaBalance();
         if (floatBal < netDisbursementAmount) {
           shouldQueue = true;
           queueReason = "Scheduled payout window (batch processing)";
-          console.log(`⏳ Kora float balance (₦${floatBal}) is below net withdrawal amount (₦${netDisbursementAmount}). Queuing ref=${reference}.`);
+          console.log(
+            `⏳ Kora float balance (₦${floatBal}) is below net withdrawal amount (₦${netDisbursementAmount}). Queuing ref=${reference}.`
+          );
         }
       }
     } catch (checkErr) {
@@ -312,7 +373,11 @@ export async function POST(req: NextRequest) {
         console.warn("⚠️ Failed to push withdrawal to Redis payout queue:", redisErr);
       }
 
-      await invalidateCachedProfile(emailLower);
+      await Promise.all([
+        invalidateCachedProfile(emailLower),
+        redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
+        redisConnection.del(`statement:withdrawals:${emailLower}`, `statement:all:${emailLower}`).catch(() => {}),
+      ]);
 
       await supabaseAdmin.from("notifications").insert({
         user_email: emailLower,
@@ -320,6 +385,7 @@ export async function POST(req: NextRequest) {
         message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Net: ₦${netDisbursementAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} after ₦${WITHDRAWAL_TRANSFER_FEE} network transfer fee) has been queued for our scheduled payout window.`,
       });
 
+      walletDeducted = false;
       return NextResponse.json({
         success: true,
         queued: true,
@@ -335,7 +401,9 @@ export async function POST(req: NextRequest) {
     // Call payout provider immediately to disburse funds (disburse net amount so user bears fee)
     let payoutStatus = "processing";
     try {
-      console.log(`🚀 Dispatching immediate payout via [${PayoutProvider.getActiveGateway().toUpperCase()}] ref=${reference} (Gross: ₦${withdrawAmount}, Net: ₦${netDisbursementAmount})`);
+      console.log(
+        `🚀 Dispatching immediate payout via [${activeGateway.toUpperCase()}] ref=${reference} (Gross: ₦${withdrawAmount}, Net: ₦${netDisbursementAmount})`
+      );
       const payoutRes = await PayoutProvider.initiatePayout({
         reference,
         amount: netDisbursementAmount,
@@ -360,7 +428,6 @@ export async function POST(req: NextRequest) {
           },
         })
         .eq("reference", reference);
-
     } catch (payoutErr: any) {
       console.error("❌ Payout Gateway disbursement error:", payoutErr);
       const errMsg = payoutErr?.message || "Gateway disbursement error";
@@ -402,7 +469,11 @@ export async function POST(req: NextRequest) {
           console.warn("⚠️ Failed to push withdrawal to Redis payout queue:", redisErr);
         }
 
-        await invalidateCachedProfile(emailLower);
+        await Promise.all([
+          invalidateCachedProfile(emailLower),
+          redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
+          redisConnection.del(`statement:withdrawals:${emailLower}`, `statement:all:${emailLower}`).catch(() => {}),
+        ]);
 
         await supabaseAdmin.from("notifications").insert({
           user_email: emailLower,
@@ -410,6 +481,7 @@ export async function POST(req: NextRequest) {
           message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been safely queued and will be disbursed during our next payout batch window.`,
         });
 
+        walletDeducted = false;
         return NextResponse.json({
           success: true,
           queued: true,
@@ -427,17 +499,27 @@ export async function POST(req: NextRequest) {
         error: errMsg,
         refunded_at: new Date().toISOString(),
       });
+      await redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {});
+      walletDeducted = false;
 
-      return NextResponse.json({
-        error: `Bank rejected beneficiary account (${errMsg}). Your full ₦${withdrawAmount.toLocaleString("en-NG")} balance has been restored to your wallet. Disbursements are settled via Nigerian clearing rails; please verify your bank details or try using a Nigerian bank account (NUBAN).`,
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Bank rejected beneficiary account (${errMsg}). Your full ₦${withdrawAmount.toLocaleString("en-NG")} balance has been restored to your wallet. Disbursements are settled via Nigerian clearing rails; please verify your bank details or try using a Nigerian bank account (NUBAN).`,
+        },
+        { status: 400 }
+      );
     }
 
-    await invalidateCachedProfile(email);
+    walletDeducted = false;
+    await Promise.all([
+      invalidateCachedProfile(emailLower),
+      redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
+      redisConnection.del(`statement:withdrawals:${emailLower}`, `statement:all:${emailLower}`).catch(() => {}),
+    ]);
 
     // Send user notification
     await supabaseAdmin.from("notifications").insert({
-      user_email: email,
+      user_email: emailLower,
       title: "Withdrawal Processing",
       message: `Your withdrawal of ₦${withdrawAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${bankName} (${accountNumber}) has been sent to the bank and is processing.`,
     });
@@ -448,16 +530,23 @@ export async function POST(req: NextRequest) {
       reference,
       status: payoutStatus,
       newBalance,
+      fee: WITHDRAWAL_TRANSFER_FEE,
+      netAmount: netDisbursementAmount,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/withdrawals/initiate:", err);
+    if (walletDeducted && rollbackAtomicDebit) {
+      await rollbackAtomicDebit("withdrawal_unexpected_error").catch(() => {});
+    }
     captureApiException(err, {
       route: "POST /api/withdrawals/initiate",
       email: email || undefined,
     });
-    const errText = err.message || "Failed to process withdrawal request";
-    return NextResponse.json({
-      error: `${errText}. Disbursements are settled via Nigerian clearing rails; please verify your bank details or try using a Nigerian bank account (NUBAN).`,
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed to process withdrawal request. Disbursements are settled via Nigerian clearing rails; please verify your bank details or try again.",
+      },
+      { status: 500 }
+    );
   }
 }

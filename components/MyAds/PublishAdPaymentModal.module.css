@@ -16,6 +16,8 @@
   padding: 1.5rem 0.75rem;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .noticeModal {

@@ -23,6 +23,7 @@ export function AgentProfileStats({
 }) {
   const {
     data,
+    loadingMore,
     actionLoading,
     activeActionKey,
     feedback,
@@ -30,6 +31,7 @@ export function AgentProfileStats({
     registerAgent,
     triggerOptOutAction,
     refreshNetwork,
+    loadMoreInvites,
   } = useAgentNetwork();
   const [modalOpen, setModalOpen] = useState(false);
   const [initialModalTab, setInitialModalTab] = useState<NetworkModalTab>("invites");
@@ -100,6 +102,8 @@ export function AgentProfileStats({
             onTriggerOptOut={triggerOptOutAction}
             onRegisterAgent={registerAgent}
             onRefresh={refreshNetwork}
+            onLoadMoreInvites={loadMoreInvites}
+            loadingMore={loadingMore}
             onNavigateToAgentPage={() => {
               setModalOpen(false);
               if (onSelectTab) {

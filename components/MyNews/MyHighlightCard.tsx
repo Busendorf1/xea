@@ -283,7 +283,7 @@ function MyHighlightCard({
               <span className={styles.deliveryCountText}>
                 {status === "review"
                   ? `${scheduleInfo.scheduledDays}d window starts on live publish`
-                  : `${scheduleInfo.remainingText} (${scheduleInfo.totalHours}h total)`}
+                  : `${scheduleInfo.remainingText}${scheduleInfo.expiresAtLabel ? ` • Expires ${scheduleInfo.expiresAtLabel}` : ""}`}
               </span>
             </div>
             <div className={styles.deliveryProgressTrack}>
@@ -418,15 +418,7 @@ function MyHighlightCard({
                 onClick={() => onTogglePause(item)}
                 className={item.is_paused ? styles.resumeBtn : styles.pauseBtn}
               >
-                {item.is_paused ? (
-                  <>
-                    Resume
-                  </>
-                ) : (
-                  <>
-                    Pause
-                  </>
-                )}
+                {actionLoading ? "Updating..." : item.is_paused ? "Resume" : "Pause"}
               </button>
               <button
                 type="button"
@@ -445,7 +437,7 @@ function MyHighlightCard({
             className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
             onClick={(e) => {
               e.preventDefault();
-              onEdit(item.id);
+              if (!actionLoading) onEdit(item.id);
             }}
           >
             <Pencil size={12} /> Edit

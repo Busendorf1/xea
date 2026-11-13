@@ -111,23 +111,46 @@ export async function POST(req: NextRequest) {
     const impressionsCount = Math.max(100, Number(adData.impressions || 1000));
     const computedTotalCost = Math.round(effectiveRate * impressionsCount);
 
-    // Check if editing an active delivering campaign
+    // Check if editing an active delivering campaign & verify ownership (prevents IDOR)
     let isDeliveringActive = false;
     let isBudgetIncreased = false;
     if (editingId) {
-      const { data: activeAd } = await supabaseAdmin
-        .from("addsactive")
-        .select("id, total_cost")
-        .eq("id", editingId)
-        .maybeSingle();
+      const [{ data: activeAd }, { data: draftAd }] = await Promise.all([
+        supabaseAdmin
+          .from("addsactive")
+          .select("id, user_email, total_cost")
+          .eq("id", editingId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("adds")
+          .select("id, user_email")
+          .eq("id", editingId)
+          .maybeSingle(),
+      ]);
+
+      const existingOwner = activeAd?.user_email || draftAd?.user_email || null;
+      const { isAdminEmail } = await import("@/lib/authHelper");
+      const isAdmin = isAdminEmail(emailLower);
+
+      if (!activeAd && !draftAd) {
+        return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
+      }
+      if (existingOwner && String(existingOwner).toLowerCase().trim() !== emailLower && !isAdmin) {
+        return NextResponse.json(
+          { error: "Forbidden: You do not have permission to edit this campaign." },
+          { status: 403 }
+        );
+      }
 
       if (activeAd) {
         isDeliveringActive = true;
         isBudgetIncreased = computedTotalCost > Number(activeAd.total_cost || 0);
       }
 
-      // Clean up previous review draft from adds if updating to prevent primary key collision
-      await supabaseAdmin.from("adds").delete().eq("id", adId);
+      // Clean up previous review draft from adds scoped by ownership
+      let delDraft = supabaseAdmin.from("adds").delete().eq("id", adId);
+      if (!isAdmin) delDraft = delDraft.eq("user_email", emailLower);
+      await delDraft;
     }
 
     // 4. Submit directly to 'adds' table (Pending Moderation Queue) — never auto-insert into addsactive!

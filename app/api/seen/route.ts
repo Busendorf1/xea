@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { streamImpressionsToClickHouse } from "@/lib/clickhouse";
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     const existingPaceExpiry = l1PaceLocks.get(emailKey);
     if ((existingSeenExpiry && existingSeenExpiry > now) || (existingPaceExpiry && existingPaceExpiry > now)) {
       const fallbackClicks = isRedisReady()
-        ? Number(await redisConnection.get(`user:live_clicks:${emailKey}`).catch(() => 0)) || undefined
+        ? Number(await redisConnection.get(`user:live_clicks:v2:${emailKey}`).catch(() => 0)) || undefined
         : undefined;
       return NextResponse.json({
         success: true,
@@ -117,10 +117,12 @@ export async function POST(request: NextRequest) {
     let adOwnerEmail: string | null = null;
     let adCpi = 0;
 
+    let existingLifetimeCached: string | null = null;
+
     if (isRedisReady()) {
       try {
         const lockKey = `lock:click:${emailKey}:${adId}:seen`;
-        const globalPaceKey = `lock:attention_pace:${emailKey}`;
+        const globalPaceKey = `lock:seen_pace:${emailKey}`;
 
         const [lockAcquired, paceAcquired, cached, existingLifetimeStr, activeCooldownRaw] = await Promise.all([
           redisConnection.set(lockKey, "1", "EX", 3, "NX"),
@@ -129,6 +131,7 @@ export async function POST(request: NextRequest) {
           redisConnection.hget(`user:freq_lifetime:${emailKey}`, adId).catch(() => null),
           redisConnection.get(`user:cooldown:${emailKey}`).catch(() => null),
         ]);
+        existingLifetimeCached = existingLifetimeStr;
 
         if (activeCooldownRaw) {
           try {
@@ -223,6 +226,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Enforce per-user frequency cap BEFORE incrementing monetization_clicks or ad impressions
+    if (existingLifetimeCached === null || existingLifetimeCached === undefined) {
+      try {
+        const { data: impRow } = await supabaseAdmin
+          .from("ad_impressions")
+          .select("view_count")
+          .eq("ad_id", adId)
+          .ilike("user_email", emailKey)
+          .maybeSingle();
+        if (impRow) {
+          currentLifetimeViews = Number(impRow.view_count || 0);
+        }
+      } catch {}
+    }
+
+    if (!isAdminEmail(emailKey) && currentLifetimeViews >= userCap) {
+      if (isRedisReady()) {
+        await Promise.all([
+          redisConnection.hset(`user:freq_lifetime:${emailKey}`, adId, String(currentLifetimeViews)).catch(() => {}),
+          redisConnection.sadd(`seen:ads:${emailKey}`, adId).catch(() => {}),
+          redisConnection.expire(`seen:ads:${emailKey}`, 86400 * 30).catch(() => {}),
+        ]);
+      }
+      return NextResponse.json({
+        success: true,
+        duplicate: true,
+        frequencyCapped: true,
+        views: currentLifetimeViews,
+        cap: userCap,
+      });
+    }
+
     // Token and dwell time soft verification for paid advertiser campaigns
     if (!isPlatformPost && (!token || !servedAt)) {
       console.log("ℹ️ Seen recorded via client feed interaction without verification token for ad:", adId);
@@ -247,6 +282,7 @@ export async function POST(request: NextRequest) {
           freqPipe.sadd(`seen:ads:${emailKey}`, adId);
           freqPipe.expire(`seen:ads:${emailKey}`, 86400 * 30);
         }
+        freqPipe.del(`monetize:status:v2:${emailKey}`);
         freqPipe.del(`monetize:status:${emailKey}`);
         await freqPipe.exec().catch(() => {});
       } catch {}
@@ -317,16 +353,21 @@ export async function POST(request: NextRequest) {
             ? Number(rpcRes.data[0].new_click_count)
             : null;
 
+        let existingAtwTier: string | null | undefined;
+        let existingAtwScore: number | null | undefined;
+
         if (rpcCount !== null && rpcCount > 0) {
           clicksCount = Math.max(rpcCount, liveVal || 0);
           isMonetized = Boolean(rpcRes.data[0]?.is_now_monetized);
         } else {
           const { data: userRow } = await supabaseAdmin
             .from("users")
-            .select("id, monetization_clicks, monetized, has_cancelled_monetization")
+            .select("id, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score")
             .eq("email", emailKey)
             .maybeSingle();
 
+          existingAtwTier = userRow?.atw_tier;
+          existingAtwScore = userRow?.attention_worth_score;
           const hasCancelled = Boolean(userRow?.has_cancelled_monetization);
           const currentDbClicks = Number(userRow?.monetization_clicks || 0);
           const nextDbClicks = Math.max(currentDbClicks + 1, liveVal || 0);
@@ -351,7 +392,7 @@ export async function POST(request: NextRequest) {
         }
 
         const isExempt = isExemptFromBarriersAndInactivity(emailKey);
-        const tierDetails = computeAtwTierDetails(clicksCount || 0, undefined, isExempt);
+        const tierDetails = computeAtwTierDetails(clicksCount || 0, existingAtwTier, isExempt, existingAtwScore);
         const nextAtwTier = tierDetails.tierCode;
 
         if (nextAtwTier) {
@@ -367,6 +408,7 @@ export async function POST(request: NextRequest) {
         if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
           redisConnection.set(`user:live_clicks:v2:${emailKey}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});
           redisConnection.del(`monetize:status:v2:${emailKey}`).catch(() => {});
+          redisConnection.del(`monetize:status:${emailKey}`).catch(() => {});
         }
 
         invalidateCachedProfile(emailKey).catch(() => {});
@@ -401,7 +443,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/seen:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }
 

@@ -157,7 +157,7 @@ export async function checkIsUserAgent(email: string): Promise<{
 
 export async function resolveReferrerEmailByCode(rawCode: string): Promise<string | null> {
   const code = rawCode.trim();
-  if (!code) return null;
+  if (!code || !/^[a-zA-Z0-9_.@-]{1,64}$/.test(code)) return null;
   const upperCode = code.toUpperCase();
 
   if (isRedisReady()) {
@@ -188,16 +188,37 @@ export async function resolveReferrerEmailByCode(rawCode: string): Promise<strin
   } catch {}
 
   try {
-    const cleanUser = code.toLowerCase().replace(/^@/, "");
-    const { data: byUsername } = await supabaseAdmin
+    const cleanUser = code.toLowerCase().trim().replace(/^@/, "");
+    // Strictly allow only safe handle characters so PostgREST filter injection or wildcards are impossible
+    if (!/^[a-z0-9_.-]{1,64}$/.test(cleanUser)) {
+      return null;
+    }
+    const escapedUser = cleanUser.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+    const { data: exactUser } = await supabaseAdmin
       .from("users")
       .select("email")
-      .or(`username.ilike.${cleanUser},username.ilike.${cleanUser}@%`)
+      .ilike("username", escapedUser)
       .limit(1)
       .maybeSingle();
 
-    if (byUsername?.email) {
-      const resolved = byUsername.email.toLowerCase().trim();
+    if (exactUser?.email) {
+      const resolved = exactUser.email.toLowerCase().trim();
+      if (isRedisReady()) {
+        await redisConnection.set(`agent:code:${upperCode}`, resolved, "EX", 86400 * 30).catch(() => {});
+      }
+      return resolved;
+    }
+
+    const { data: domainHandleUser } = await supabaseAdmin
+      .from("users")
+      .select("email")
+      .ilike("username", `${escapedUser}@%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (domainHandleUser?.email) {
+      const resolved = domainHandleUser.email.toLowerCase().trim();
       if (isRedisReady()) {
         await redisConnection.set(`agent:code:${upperCode}`, resolved, "EX", 86400 * 30).catch(() => {});
       }
@@ -286,24 +307,48 @@ export async function registerUserAsAgent(email: string): Promise<{
       error: `Agency privileges are currently suspended${banStatus.bannedUntil ? ` until ${new Date(banStatus.bannedUntil).toLocaleDateString()}` : ""}${banStatus.banReason ? ` (Reason: ${banStatus.banReason})` : ""}.`,
     };
   }
-  const nowIso = new Date().toISOString();
+  const effectiveRegisteredAt =
+    banStatus.isAgent && banStatus.registeredAt ? banStatus.registeredAt : new Date().toISOString();
   const referralCode = await ensureUserReferralCode(cleanEmail);
 
   try {
-    await supabaseAdmin
+    const { error: updateErr } = await supabaseAdmin
       .from("users")
       .update({
         is_agent: true,
-        agent_registered_at: nowIso,
+        agent_registered_at: effectiveRegisteredAt,
         referral_code: referralCode,
       })
       .ilike("email", cleanEmail);
-  } catch {}
 
-  memoryAgentFlags.set(cleanEmail, { isAgent: true, registeredAt: nowIso });
+    if (updateErr) {
+      console.error("❌ Failed to persist agent registration in database:", updateErr.message);
+      return {
+        success: false,
+        referralCode: "",
+        registeredAt: "",
+        error: "Failed to save agent status. Please try again later.",
+      };
+    }
+  } catch (dbEx: any) {
+    console.error("❌ Database exception during agent registration:", dbEx?.message || dbEx);
+    return {
+      success: false,
+      referralCode: "",
+      registeredAt: "",
+      error: "Failed to save agent status. Please try again later.",
+    };
+  }
+
+  memoryAgentFlags.set(cleanEmail, { isAgent: true, registeredAt: effectiveRegisteredAt });
   if (isRedisReady()) {
     await redisConnection
-      .set(`agent:status:${cleanEmail}`, JSON.stringify({ isAgent: true, registeredAt: nowIso }), "EX", 86400 * 365)
+      .set(
+        `agent:status:${cleanEmail}`,
+        JSON.stringify({ isAgent: true, registeredAt: effectiveRegisteredAt }),
+        "EX",
+        86400 * 365
+      )
       .catch(() => {});
   }
 
@@ -377,17 +422,27 @@ export async function registerUserAsAgent(email: string): Promise<{
   return {
     success: true,
     referralCode,
-    registeredAt: nowIso,
+    registeredAt: effectiveRegisteredAt,
   };
 }
 
 export function resolveOptOutFromDbRow(row: any): OptOutStatusType {
   const rawOpt = String(row?.opt_out_status || "").toLowerCase().trim();
   const rawStatus = String(row?.status || "").toLowerCase().trim();
-  if (rawStatus === "opted_out" || rawOpt === "accepted") return "accepted";
+  const reqBy = String(row?.opt_out_requested_by || "").toLowerCase().trim();
+  if (row?.is_opted_out === true || rawStatus === "opted_out" || rawOpt === "accepted") return "accepted";
   if (rawOpt === "forced") return "forced";
-  if (rawStatus === "req_remove" || rawOpt === "agent_requested") return "agent_requested";
-  if (rawStatus === "req_unfollow" || rawOpt === "requested") return "requested";
+  if (rawStatus === "req_remove" || rawOpt === "agent_requested" || (rawStatus === "opt_out_requested" && reqBy === "agent")) {
+    return "agent_requested";
+  }
+  if (
+    rawStatus === "req_unfollow" ||
+    rawOpt === "requested" ||
+    rawStatus === "opt_out_requested" ||
+    rawStatus === "requested"
+  ) {
+    return "requested";
+  }
   if (rawStatus === "rej_unfollow" || rawOpt === "rejected") return "rejected";
   return "none";
 }
@@ -414,6 +469,10 @@ export async function updateReferralOptOutInDb(
   optOutRequestedAt: string | null
 ) {
   const dbStatus = mapOptOutToDbStatus(optOutStatus);
+  const isOptedOut = optOutStatus === "accepted" || optOutStatus === "forced";
+  const cleanReferee = filter.refereeEmail.toLowerCase().trim();
+  const cleanReferrer = filter.referrerEmail ? filter.referrerEmail.toLowerCase().trim() : undefined;
+
   try {
     let q1 = supabaseAdmin
       .from("referrals")
@@ -421,19 +480,20 @@ export async function updateReferralOptOutInDb(
         status: dbStatus,
         opt_out_status: optOutStatus,
         opt_out_requested_at: optOutRequestedAt,
+        is_opted_out: isOptedOut,
       })
-      .eq("referee_email", filter.refereeEmail);
-    if (filter.referrerEmail) {
-      q1 = q1.eq("referrer_email", filter.referrerEmail);
+      .ilike("referee_email", cleanReferee);
+    if (cleanReferrer) {
+      q1 = q1.ilike("referrer_email", cleanReferrer);
     }
     const { error } = await q1;
     if (error) {
       let q2 = supabaseAdmin
         .from("referrals")
         .update({ status: dbStatus })
-        .eq("referee_email", filter.refereeEmail);
-      if (filter.referrerEmail) {
-        q2 = q2.eq("referrer_email", filter.referrerEmail);
+        .ilike("referee_email", cleanReferee);
+      if (cleanReferrer) {
+        q2 = q2.ilike("referrer_email", cleanReferrer);
       }
       await q2;
     }

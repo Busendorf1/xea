@@ -43,7 +43,7 @@ export async function handleAgentOptOut({
     const { data: upRow } = await supabaseAdmin
       .from("referrals")
       .select("*")
-      .eq("referee_email", cleanActor)
+      .ilike("referee_email", cleanActor)
       .maybeSingle();
 
     const memEdge = memoryReferralEdges.get(cleanActor);
@@ -88,8 +88,8 @@ export async function handleAgentOptOut({
     const { data: edgeRow } = await supabaseAdmin
       .from("referrals")
       .select("*")
-      .eq("referrer_email", cleanActor)
-      .eq("referee_email", cleanReferee)
+      .ilike("referrer_email", cleanActor)
+      .ilike("referee_email", cleanReferee)
       .maybeSingle();
 
     const memEdge = memoryReferralEdges.get(cleanReferee);
@@ -132,7 +132,7 @@ export async function handleAgentOptOut({
     const { data: upRow } = await supabaseAdmin
       .from("referrals")
       .select("*")
-      .eq("referee_email", cleanActor)
+      .ilike("referee_email", cleanActor)
       .maybeSingle();
 
     const memEdge = memoryReferralEdges.get(cleanActor);
@@ -144,7 +144,7 @@ export async function handleAgentOptOut({
     if (action === "referee_accept") {
       await Promise.all([
         updateReferralOptOutInDb({ refereeEmail: cleanActor }, "accepted", nowIso),
-        supabaseAdmin.from("users").update({ referred_by: null }).eq("email", cleanActor),
+        supabaseAdmin.from("users").update({ referred_by: null }).ilike("email", cleanActor),
       ]);
 
       const acceptedEdge: StoredReferralEdge = {
@@ -196,8 +196,8 @@ export async function handleAgentOptOut({
     const { data: edgeRow } = await supabaseAdmin
       .from("referrals")
       .select("*")
-      .eq("referrer_email", cleanActor)
-      .eq("referee_email", cleanReferee)
+      .ilike("referrer_email", cleanActor)
+      .ilike("referee_email", cleanReferee)
       .maybeSingle();
 
     const memEdge = memoryReferralEdges.get(cleanReferee);
@@ -212,7 +212,7 @@ export async function handleAgentOptOut({
           "accepted",
           nowIso
         ),
-        supabaseAdmin.from("users").update({ referred_by: null }).eq("email", cleanReferee),
+        supabaseAdmin.from("users").update({ referred_by: null }).ilike("email", cleanReferee),
       ]);
 
       const acceptedEdge: StoredReferralEdge = {
@@ -269,7 +269,7 @@ export async function handleAgentOptOut({
     const { data: upRow } = await supabaseAdmin
       .from("referrals")
       .select("*")
-      .eq("referee_email", cleanActor)
+      .ilike("referee_email", cleanActor)
       .maybeSingle();
     const uplineEmail = (upRow?.referrer_email || memoryReferralEdges.get(cleanActor)?.referrerEmail || "")
       .toLowerCase()
@@ -295,40 +295,103 @@ export async function handleAgentOptOut({
       }
     }
 
-    // Bulk indexed SQL updates in parallel (no N+1 loops even at 100M+ followers)
+    // Bounded chunked SQL updates (case-insensitive, safe at 500M+ scale without giant locks)
     try {
-      const [upRefRes, downRefRes] = await Promise.all([
+      const BATCH_SIZE = 1000;
+      const MAX_CHUNKS = 500;
+
+      const [upRefRes] = await Promise.all([
         supabaseAdmin
           .from("referrals")
           .update({ status: "opted_out", opt_out_status: "forced" })
-          .eq("referee_email", cleanActor),
-        supabaseAdmin
-          .from("referrals")
-          .update({ status: "opted_out", opt_out_status: "forced" })
-          .eq("referrer_email", cleanActor)
-          .neq("status", "opted_out"),
+          .ilike("referee_email", cleanActor),
         supabaseAdmin
           .from("users")
           .update({ is_agent: false, referred_by: null })
-          .eq("email", cleanActor),
-        supabaseAdmin
-          .from("users")
-          .update({ referred_by: null })
-          .eq("referred_by", cleanActor),
+          .ilike("email", cleanActor),
       ]);
       if (upRefRes?.error) {
-        await supabaseAdmin.from("referrals").update({ status: "opted_out" }).eq("referee_email", cleanActor);
-      }
-      if (downRefRes?.error) {
         await supabaseAdmin
           .from("referrals")
           .update({ status: "opted_out" })
-          .eq("referrer_email", cleanActor)
-          .neq("status", "opted_out");
+          .ilike("referee_email", cleanActor);
+      }
+
+      for (let chunk = 0; chunk < MAX_CHUNKS; chunk++) {
+        const { data: refBatch, error: refSelErr } = await supabaseAdmin
+          .from("referrals")
+          .select("referee_email")
+          .ilike("referrer_email", cleanActor)
+          .neq("status", "opted_out")
+          .limit(BATCH_SIZE);
+
+        if (refSelErr || refBatch === null) {
+          const { error: downErr } = await supabaseAdmin
+            .from("referrals")
+            .update({ status: "opted_out", opt_out_status: "forced" })
+            .ilike("referrer_email", cleanActor)
+            .neq("status", "opted_out");
+          if (downErr) {
+            await supabaseAdmin
+              .from("referrals")
+              .update({ status: "opted_out" })
+              .ilike("referrer_email", cleanActor)
+              .neq("status", "opted_out");
+          }
+          break;
+        }
+        if (refBatch.length === 0) break;
+
+        const batchEmails = refBatch
+          .map((r: any) => String(r?.referee_email || "").toLowerCase().trim())
+          .filter(Boolean);
+        if (batchEmails.length === 0) break;
+
+        const { error: updErr } = await supabaseAdmin
+          .from("referrals")
+          .update({ status: "opted_out", opt_out_status: "forced" })
+          .ilike("referrer_email", cleanActor)
+          .in("referee_email", batchEmails);
+        if (updErr) {
+          await supabaseAdmin
+            .from("referrals")
+            .update({ status: "opted_out" })
+            .ilike("referrer_email", cleanActor)
+            .in("referee_email", batchEmails);
+        }
+        if (refBatch.length < BATCH_SIZE) break;
+      }
+
+      for (let chunk = 0; chunk < MAX_CHUNKS; chunk++) {
+        const { data: userBatch, error: userSelErr } = await supabaseAdmin
+          .from("users")
+          .select("email")
+          .ilike("referred_by", cleanActor)
+          .limit(BATCH_SIZE);
+
+        if (userSelErr || userBatch === null) {
+          await supabaseAdmin
+            .from("users")
+            .update({ referred_by: null })
+            .ilike("referred_by", cleanActor);
+          break;
+        }
+        if (userBatch.length === 0) break;
+
+        const batchEmails = userBatch
+          .map((u: any) => String(u?.email || "").trim())
+          .filter(Boolean);
+        if (batchEmails.length === 0) break;
+
+        await supabaseAdmin
+          .from("users")
+          .update({ referred_by: null })
+          .in("email", batchEmails);
+        if (userBatch.length < BATCH_SIZE) break;
       }
     } catch {}
 
-    // Clear in-memory & Redis downline set in O(1)
+    // Clear in-memory & Redis downline set in bounded chunks
     for (const [k, v] of memoryReferralEdges.entries()) {
       if (v.referrerEmail === cleanActor) {
         memoryReferralEdges.set(k, { ...v, optOutStatus: "forced", optOutRequestedAt: nowIso });
@@ -339,11 +402,14 @@ export async function handleAgentOptOut({
     if (isRedisReady()) {
       try {
         const downlineMembers = await redisConnection.smembers(`agent:downline:${cleanActor}`).catch(() => []);
-        if (Array.isArray(downlineMembers) && downlineMembers.length > 0 && downlineMembers.length <= 500) {
-          affectedEmails.push(...downlineMembers);
-          await Promise.all(
-            downlineMembers.map((m) => redisConnection.del(`agent:edge:${m}`).catch(() => {}))
-          );
+        if (Array.isArray(downlineMembers) && downlineMembers.length > 0) {
+          if (downlineMembers.length <= 500) {
+            affectedEmails.push(...downlineMembers);
+          }
+          const edgeKeys = downlineMembers.map((m) => `agent:edge:${String(m).toLowerCase().trim()}`);
+          for (let i = 0; i < edgeKeys.length; i += 500) {
+            await redisConnection.del(...edgeKeys.slice(i, i + 500)).catch(() => {});
+          }
         }
         await Promise.all([
           redisConnection.del(`agent:downline:${cleanActor}`).catch(() => {}),
@@ -464,7 +530,9 @@ export async function removeAllAgentFollowers({
           `agent:net_cache:${em.toLowerCase().trim()}`,
         ]),
       ];
-      await redisConnection.del(...keysToDelete).catch(() => {});
+      for (let i = 0; i < keysToDelete.length; i += 500) {
+        await redisConnection.del(...keysToDelete.slice(i, i + 500)).catch(() => {});
+      }
     }
     await invalidateAgentCaches([cleanAgent, ...refereeEmails]);
 

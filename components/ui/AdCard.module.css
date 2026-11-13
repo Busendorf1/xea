@@ -113,8 +113,9 @@ img.avatarImg {
   align-items: center;
   flex-wrap: nowrap;
   gap: 0.35rem;
+  flex: 1 1 0%;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
 }
 
@@ -133,7 +134,9 @@ img.avatarImg {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
   display: inline-block;
   vertical-align: bottom;
 }
@@ -143,7 +146,10 @@ img.avatarImg {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  min-width: 0;
+  flex: 0 1.3 auto;
+  max-width: 100%;
+  font-size: 0.85em;
 }
 
 .dot {
@@ -200,9 +206,6 @@ img.avatarImg {
   .avatarCol {
     margin-right: 0.55rem;
   }
-  .sponsorName {
-    max-width: 130px;
-  }
 }
 
 .adText {
@@ -227,7 +230,7 @@ img.avatarImg {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 4px;
+  gap: 2px;
   overflow-x: auto;
   overflow-y: hidden;
   width: 100%;
@@ -2069,6 +2072,7 @@ img.avatarImg {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .threeDotMenuWrapper {
@@ -2239,6 +2243,9 @@ img.avatarImg {
   gap: 4px;
   cursor: pointer;
   min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  overflow: hidden;
 }
 
 .productDescriptionText {
@@ -2773,6 +2780,8 @@ img.avatarImg {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .textReaderAuthorNameRow {
@@ -2782,6 +2791,15 @@ img.avatarImg {
   font-weight: 700;
   font-size: 0.98rem;
   color: var(--foreground, #f8fafc);
+  min-width: 0;
+}
+
+.textReaderAuthorName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .textReaderAuthorSub {

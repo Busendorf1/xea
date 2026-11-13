@@ -1,14 +1,15 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getVerifiedUserEmail } from "../_shared/auth.ts";
+import { computeAtwTierDetails } from "../_shared/atwEngine.ts";
+import { AFFILIATE_EMAILS, corsHeaders, errorResponse, jsonResponse } from "../_shared/cors.ts";
+import { evaluateKinematics } from "../_shared/kinematics.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-user-email, x-user-authorization",
-};
-
-async function verifyHmacToken(token: string, payload: string, secret: string): Promise<boolean> {
+async function verifyHmacToken(
+  token: string,
+  payload: string,
+  secret: string,
+): Promise<boolean> {
   try {
     const encoder = new TextEncoder();
     const keyData = encoder.encode(secret);
@@ -17,15 +18,79 @@ async function verifyHmacToken(token: string, payload: string, secret: string): 
       keyData,
       { name: "HMAC", hash: "SHA-256" },
       false,
-      ["sign"]
+      ["verify"],
     );
-    const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
-    const hashArray = Array.from(new Uint8Array(signature));
-    const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-    return hex.toLowerCase() === token.toLowerCase();
+
+    const hexMatch = token.match(/.{1,2}/g);
+    if (!hexMatch || hexMatch.length !== 32) return false;
+    const sigBytes = new Uint8Array(hexMatch.map((byte) => parseInt(byte, 16)));
+    return await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(payload));
   } catch {
     return false;
   }
+}
+
+async function archiveExhaustedAd(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  adRow: Record<string, unknown>,
+  finalImpressionCount: number,
+): Promise<void> {
+  const adId = String(adRow.id || "");
+  if (!adId) return;
+
+  // Prefer canonical atomic archival RPC (handles completed_ads, addscompleted, bidded_ads, addsactive)
+  const { error: rpcErr } = await supabase.rpc("archive_completed_ad", {
+    p_ad_id: adId,
+  });
+  if (!rpcErr) return;
+
+  const nowIso = new Date().toISOString();
+  const completedAdSnapshot = {
+    id: adRow.id,
+    ad_type: adRow.ad_type,
+    industry: adRow.industry,
+    interest: adRow.interest,
+    lifestyle: adRow.lifestyle,
+    behavior: adRow.behavior,
+    personality: adRow.personality,
+    age_range: adRow.age_range,
+    targeting_all: adRow.targeting_all,
+    impressions: adRow.impressions,
+    country: adRow.country,
+    state: adRow.state,
+    province: adRow.province,
+    gender: adRow.gender,
+    employment_status: adRow.employment_status,
+    ad_media_type: adRow.ad_media_type,
+    ad_content: adRow.ad_content,
+    ad_media_url: adRow.ad_media ?? adRow.ad_media_url ?? null,
+    ad_action_buttons: adRow.ad_action_buttons,
+    action_phone: adRow.action_phone,
+    action_whatsapp: adRow.action_whatsapp,
+    action_website: adRow.action_website,
+    action_email: adRow.action_email,
+    cost_per_impression: adRow.cost_per_impression,
+    total_cost: adRow.total_cost,
+    created_at: adRow.created_at || nowIso,
+    completed_at: nowIso,
+    user_id: adRow.user_id,
+    user_email: adRow.user_email,
+    impression_count: finalImpressionCount,
+  };
+
+  const addsCompletedSnapshot = {
+    ...adRow,
+    impression_count: finalImpressionCount,
+    completed_at: nowIso,
+  };
+
+  await Promise.allSettled([
+    supabase.from("completed_ads").upsert(completedAdSnapshot, { onConflict: "id" }),
+    supabase.from("addscompleted").upsert(addsCompletedSnapshot, { onConflict: "id" }),
+    supabase.from("bidded_ads").delete().eq("ad_id", adId),
+    supabase.from("addsactive").delete().eq("id", adId),
+  ]);
 }
 
 serve(async (req: Request) => {
@@ -38,24 +103,19 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const body = await req.json();
-    const adId = String(body?.adId || "").trim();
-    const actionType = String(body?.type || "earn").toLowerCase();
+    const body = await req.json().catch(() => ({}));
+    const actionType = String(body?.type || body?.action || "earn").toLowerCase().trim();
+    const adId = String(body?.adId || body?.ad_id || "").trim();
 
-    // Zero-Trust caller verification: strictly require verified token
     const verifiedEmail = await getVerifiedUserEmail(req);
-    const rawEmail =
-      req.headers.get("x-user-email") || String(body?.email || "");
-    const requestedEmail = rawEmail.toLowerCase().trim();
+    const requestedEmail = (
+      req.headers.get("x-user-email") || String(body?.userEmail || body?.email || "")
+    )
+      .toLowerCase()
+      .trim();
 
     if (!verifiedEmail) {
-      return new Response(
-        JSON.stringify({ error: "Please sign in to earn from ads." }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return errorResponse("Session expired or unauthorized. Please sign in again.", 401);
     }
 
     if (
@@ -63,27 +123,29 @@ serve(async (req: Request) => {
       requestedEmail &&
       verifiedEmail !== requestedEmail
     ) {
-      return new Response(
-        JSON.stringify({
-          error: "Session mismatch. Please sign in again.",
-        }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return errorResponse("Session identity mismatch. Please sign in again.", 403);
     }
 
     const cleanEmail =
       verifiedEmail === "service_role" ? requestedEmail : verifiedEmail;
-
     if (!adId || !cleanEmail) {
-      return new Response(
-        JSON.stringify({ error: "Missing campaign or user session." }),
+      return errorResponse("Missing campaign ID or user session.", 400);
+    }
+
+    // Check deactivated tombstone immediately
+    const { data: tombstone } = await supabase
+      .from("deactivated_users")
+      .select("email")
+      .eq("email", cleanEmail)
+      .maybeSingle();
+    if (tombstone) {
+      return jsonResponse(
         {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+          success: false,
+          code: "ACCOUNT_DEACTIVATED",
+          error: "This account has been deactivated.",
+        },
+        403,
       );
     }
 
@@ -91,23 +153,12 @@ serve(async (req: Request) => {
     if (actionType === "mutual") {
       const { data: rpcRes, error: rpcErr } = await supabase.rpc(
         "handle_mutual_click",
-        {
-          p_ad_id: adId,
-          p_user_email: cleanEmail,
-        }
+        { p_ad_id: adId, p_user_email: cleanEmail },
       );
-
       if (!rpcErr && rpcRes) {
-        return new Response(JSON.stringify({ success: true, ...rpcRes }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ success: true, ...rpcRes });
       }
-
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ success: true });
     }
 
     // 2. Seen / Dismiss Action
@@ -116,203 +167,175 @@ serve(async (req: Request) => {
         p_ad_id: adId,
         p_user_email: cleanEmail,
       });
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ success: true });
     }
 
-    // 3. Cryptographic HMAC Token & 12s Dwell Time Check (for earn actions)
+    // 3. Validate Kinematics PoH BEFORE token/lock verification & earn claim
     let viewDuration = 0;
     if (actionType === "earn") {
-      const token = body?.token;
-      const servedAt = body?.servedAt;
-      const secret = Deno.env.get("EARN_TOKEN_SECRET") || Deno.env.get("AUTH0_SECRET") || "";
+      const rawVectors = body?.kinematicVectors ?? body?.vectors ?? body?.kinematics;
+      const poh = evaluateKinematics(rawVectors);
+      if (!poh.isHuman) {
+        return jsonResponse(
+          {
+            success: false,
+            code: "BOT_ACTIVITY_DETECTED",
+            botScore: poh.botScore,
+            reasons: poh.reasons,
+            error: "Automated or synthetic interaction detected. Earning reward rejected.",
+          },
+          403,
+        );
+      }
 
-      if (secret && (token || servedAt || Deno.env.get("ENVIRONMENT") === "production")) {
-        if (!token || !servedAt) {
-          return new Response(
-            JSON.stringify({ success: false, error: "Verification token and timestamp required to claim reward." }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      // 4. Mandatory Cryptographic HMAC Token & Dwell Window Verification (12s..30m)
+      const token = String(body?.token || "").trim();
+      const servedAtRaw = body?.servedAt;
+      const secret =
+        Deno.env.get("EARN_TOKEN_SECRET") ||
+        Deno.env.get("NEXTAUTH_SECRET") ||
+        Deno.env.get("AUTH0_SECRET") ||
+        "";
+
+      if (secret) {
+        if (!token || !servedAtRaw) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "TOKEN_REQUIRED",
+              error: "Verification token and timestamp are required to claim reward.",
+            },
+            403,
+          );
+        }
+
+        const parsedServedAt = Number.parseInt(String(servedAtRaw), 10);
+        const nowMs = Date.now();
+        viewDuration = nowMs - parsedServedAt;
+        if (!Number.isFinite(parsedServedAt) || viewDuration < 12000) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "DWELL_TOO_SHORT",
+              error: "Minimum attention duration not met (12s required). Please view ad completely.",
+            },
+            400,
+          );
+        }
+        if (viewDuration > 1800000) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "TOKEN_EXPIRED",
+              error: "Ad session expired (30-minute limit exceeded). Please refresh your feed.",
+            },
+            403,
           );
         }
 
         const payloads = [
-          `${adId}:${cleanEmail}:${servedAt}`,
-          `${adId}:${requestedEmail}:${servedAt}`,
+          `${adId}:${cleanEmail}:${servedAtRaw}`,
+          `${adId}:${requestedEmail}:${servedAtRaw}`,
         ];
-
-        let isValid = false;
+        let tokenValid = false;
         for (const p of payloads) {
           if (await verifyHmacToken(token, p, secret)) {
-            isValid = true;
+            tokenValid = true;
             break;
           }
         }
-
-        if (!isValid) {
-          return new Response(
-            JSON.stringify({ success: false, error: "Cryptographic token verification failed. Reward rejected." }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        if (!tokenValid) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "INVALID_TOKEN",
+              error: "Cryptographic token verification failed. Reward rejected.",
+            },
+            403,
           );
         }
-
-        const now = Date.now();
-        const parsedServedAt = parseInt(servedAt, 10);
-        viewDuration = now - parsedServedAt;
-        if (isNaN(parsedServedAt) || viewDuration < 12000) {
-          return new Response(
-            JSON.stringify({ success: false, error: "Minimum attention duration not met (12s required). Please view ad completely." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      }
-    }
-
-    // 4. Proof-of-Human Telemetry Sanity Check
-    const telemetry = Array.isArray(body?.telemetry) ? body.telemetry : [];
-    if (telemetry.length > 0) {
-      const untrusted = telemetry.some((v: any) => v?.isTrusted === false);
-      const startTime = Number(telemetry[0]?.t || 0);
-      const endTime = Number(telemetry[telemetry.length - 1]?.t || 0);
-      const durationMs = Math.max(0, endTime - startTime);
-      const mode =
-        telemetry[0]?.mode || (telemetry.length <= 3 ? "tap" : "swipe");
-      const tooFast =
-        (mode === "hold" && durationMs < 400) ||
-        (mode === "tap" && (telemetry.length < 3 || durationMs < 110)) ||
-        (mode === "swipe" && (telemetry.length < 3 || durationMs < 60));
-
-      if (untrusted || tooFast) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: "POH_RETRY",
-            error: "Please interact naturally to verify.",
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+      } else {
+        // When EARN_TOKEN_SECRET isn't configured in dev, still enforce 12s dwell if servedAt supplied
+        if (servedAtRaw) {
+          viewDuration = Date.now() - Number.parseInt(String(servedAtRaw), 10);
+          if (!Number.isFinite(viewDuration) || viewDuration < 12000 || viewDuration > 1800000) {
+            return jsonResponse(
+              {
+                success: false,
+                code: "INVALID_DWELL",
+                error: "Invalid ad viewing duration.",
+              },
+              400,
+            );
           }
-        );
-      }
-    } else {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          code: "POH_RETRY",
-          error: "Verification gesture required. Please try again.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        } else {
+          viewDuration = 16000;
         }
-      );
+      }
     }
 
-    // 4. Resolve Ad Details (check addsactive first, fallback to adds)
-    let { data: adRow } = await supabase
+    // 5. Look up active campaign in `addsactive` ONLY (never fallback to unapproved `public.adds`)
+    const { data: adRow, error: adErr } = await supabase
       .from("addsactive")
-      .select(
-        "id, cost_per_impression, impressions, impression_count, user_frequency_cap, user_email, is_admin_post, completed_at"
-      )
+      .select("*")
       .eq("id", adId)
       .maybeSingle();
 
-    if (!adRow) {
-      const { data: addsRow } = await supabase
-        .from("adds")
-        .select(
-          "id, cost_per_impression, impressions, impression_count, user_frequency_cap, user_email, is_admin_post, completed_at"
-        )
-        .eq("id", adId)
-        .maybeSingle();
-      adRow = addsRow;
+    if (adErr || !adRow) {
+      return jsonResponse({
+        success: false,
+        code: "CAMPAIGN_COMPLETED",
+        error: "This campaign has ended.",
+      });
     }
 
-    if (!adRow) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "This campaign has ended.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const isPlatformPost = Boolean(
+    if (
       adRow.is_admin_post ||
       !adRow.cost_per_impression ||
       Number(adRow.cost_per_impression) <= 0 ||
       !adRow.impressions ||
       Number(adRow.impressions) <= 0
-    );
-
-    if (isPlatformPost) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "This is a platform post without an earning budget.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    ) {
+      return jsonResponse({
+        success: false,
+        code: "NO_BUDGET",
+        error: "This is a platform post without an earning budget.",
+      });
     }
 
-    if (
-      String(adRow.user_email || "")
-        .toLowerCase()
-        .trim() === cleanEmail
-    ) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "You cannot earn from your own campaign.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (String(adRow.user_email || "").toLowerCase().trim() === cleanEmail) {
+      return jsonResponse({
+        success: false,
+        code: "SELF_VIEW_REJECTED",
+        error: "You cannot earn from your own campaign.",
+      });
     }
 
     const targetImpressions = Number(adRow.impressions || 0);
-    const currentImpressionCount = Number(adRow.impression_count || 0);
-    if (adRow.completed_at || (targetImpressions > 0 && currentImpressionCount >= targetImpressions)) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          code: "CAMPAIGN_COMPLETED",
-          error: "This ad campaign has completed its impression budget.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    const currentImpCount = Number(adRow.impression_count || 0);
+    if (adRow.completed_at || (targetImpressions > 0 && currentImpCount >= targetImpressions)) {
+      await archiveExhaustedAd(supabase, adRow, Math.max(currentImpCount, targetImpressions));
+      return jsonResponse({
+        success: false,
+        code: "CAMPAIGN_COMPLETED",
+        error: "This ad campaign has completed its impression budget.",
+      });
     }
 
-    const rawCpi =
-      adRow?.cost_per_impression && Number(adRow.cost_per_impression) > 0
-        ? Number(adRow.cost_per_impression)
-        : 25.0;
-    // Dynamic attention share: 30% base (16s focus) scaling up to 50% max (32s focus)
+    const rawCpi = Number(adRow.cost_per_impression);
     const clientBonusSeconds =
-      typeof body?.bonusSeconds === "number" && Number.isFinite(body.bonusSeconds) ? body.bonusSeconds : 0;
+      typeof body?.bonusSeconds === "number" && Number.isFinite(body.bonusSeconds)
+        ? body.bonusSeconds
+        : 0;
     const serverMaxBonusSeconds = Math.max(0, Math.floor(viewDuration / 1000) - 16);
     const bonusSeconds = Math.max(0, Math.min(16, clientBonusSeconds, serverMaxBonusSeconds));
-    const attentionSharePercent = 0.30 + (bonusSeconds / 16.0) * 0.20;
+    const attentionSharePercent = 0.3 + (bonusSeconds / 16.0) * 0.2;
     const earnedRate = Math.round(rawCpi * attentionSharePercent * 100) / 100;
     const deviceId = String(body?.deviceId || "").trim() || null;
 
-    // 5. Attempt Atomic Ad Earning Claim via authoritative PostgreSQL RPC
-    let rpcResult: any = null;
-    let rpcError: any = null;
+    // 6. Execute authoritative PostgreSQL atomic earning RPC
+    let rpcResult: Record<string, unknown> | null = null;
+    let rpcError: unknown = null;
 
     try {
       const res = await supabase.rpc("claim_ad_earning_atomic", {
@@ -324,246 +347,237 @@ serve(async (req: Request) => {
       });
       rpcResult = res.data;
       rpcError = res.error;
-    } catch (e: any) {
+    } catch (e) {
       rpcError = e;
     }
 
-    if (rpcError) {
-      console.warn("⚠️ claim_ad_earning_atomic RPC failed in earn-payout:", rpcError?.message || rpcError);
-    }
-
-    const isLegitRejection =
-      rpcResult &&
-      !rpcResult.success &&
-      (rpcResult.code === "CAMPAIGN_COMPLETED" ||
-        rpcResult.code === "USER_SUSPENDED" ||
-        rpcResult.code === "ALREADY_EARNED" ||
-        rpcResult.code === "USER_NOT_FOUND");
-
-    let finalResult = rpcResult;
-
-    // 6. Direct Database Fallback if RPC failed or had unexpected rejection
-    if (rpcError || !finalResult || (!finalResult.success && !isLegitRejection)) {
-      console.info("⚙️ Running direct DB fallback in earn-payout Edge Function for user:", cleanEmail);
-
-      const { data: dbUser, error: userFetchErr } = await supabase
-        .from("users")
-        .select("id, balance, monetization_clicks, monetized, referral_downloads_count, suspended_until, atw_tier, is_affiliate, is_career")
-        .ilike("email", cleanEmail)
-        .maybeSingle();
-
-      if (userFetchErr || !dbUser) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: "USER_NOT_FOUND",
-            error: "Viewer profile not found.",
-          }),
+    if (!rpcError && rpcResult) {
+      if (rpcResult.success === false) {
+        const code = String(rpcResult.code || "EARN_REJECTED");
+        const status =
+          code === "ALREADY_EARNED" || code === "FREQUENCY_CAP_REACHED"
+            ? 409
+            : code === "ACCOUNT_DEACTIVATED"
+            ? 403
+            : 200;
+        return jsonResponse(
           {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+            success: false,
+            code,
+            error: String(rpcResult.error || "Unable to claim ad reward."),
+            balance: rpcResult.new_balance ?? rpcResult.balance,
+            clicks: rpcResult.new_clicks ?? rpcResult.clicks,
+          },
+          status,
         );
       }
 
-      const isExempt = Boolean(
-        dbUser.is_affiliate ||
-        dbUser.is_career ||
-        ["nonsom019@gmail.com", "nonsom2023@gmail.com"].includes(cleanEmail)
-      );
-
-      if (!isExempt && dbUser.suspended_until && new Date(dbUser.suspended_until).getTime() > Date.now()) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: "USER_SUSPENDED",
-            error: "Account is currently suspended.",
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+      // Ensure ad exhaustion archival if target impressions reached
+      const nextImpCount = currentImpCount + 1;
+      if (targetImpressions > 0 && nextImpCount >= targetImpressions) {
+        await archiveExhaustedAd(supabase, adRow, nextImpCount);
       }
 
-      const currentBal = Number(dbUser.balance) || 0;
-      const currentClicks = Number(dbUser.monetization_clicks) || 0;
-      const currentInvites = Number(dbUser.referral_downloads_count) || 0;
-      const isMonetized = Boolean(
-        isExempt ||
-        dbUser.monetized === true ||
-        dbUser.monetized === "true" ||
-        currentClicks >= 300 ||
-        currentInvites >= 12
-      );
-
-      const userFreqCap = Number(adRow.user_frequency_cap || 1);
-
-      // Check frequency cap in ad_impressions
-      const { data: impRow } = await supabase
-        .from("ad_impressions")
-        .select("id, view_count")
-        .eq("ad_id", adId)
-        .ilike("user_email", cleanEmail)
-        .maybeSingle();
-
-      const existingViews = impRow ? Number(impRow.view_count || 0) : 0;
-      if (existingViews >= userFreqCap) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: "ALREADY_EARNED",
-            error: "Frequency cap reached for this ad campaign.",
-            views: existingViews,
-            cap: userFreqCap,
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      // ATW Holding Cap calculation
-      const nextClicks = currentClicks + 1;
-      const tierLevel = Math.min(3, Math.max(1, Math.floor(nextClicks / 300) + 1));
-      const holdingCap = isExempt ? Infinity : tierLevel * 30000;
-      let rateToApply = isMonetized ? earnedRate : 0;
-      let isCapped = false;
-      if (currentBal >= holdingCap) {
-        rateToApply = 0;
-        isCapped = true;
-      }
-      const newBal = isMonetized ? Math.min(holdingCap, Math.round((currentBal + rateToApply) * 100) / 100) : currentBal;
-      const nextMonetized = (isMonetized || nextClicks >= 300) ? "true" : "false";
-
-      // Upsert impression
-      if (impRow) {
-        await supabase
-          .from("ad_impressions")
-          .update({
-            view_count: existingViews + 1,
-            last_viewed_at: new Date().toISOString(),
-          })
-          .eq("id", impRow.id);
-      } else {
-        await supabase
-          .from("ad_impressions")
-          .insert({
-            ad_id: adId,
-            user_email: cleanEmail,
-            view_count: 1,
-            today_view_count: 1,
-            last_viewed_at: new Date().toISOString(),
-          });
-      }
-
-      // Increment ad impression count in addsactive
-      const nextImpCount = currentImpressionCount + 1;
-      const isNowCompleted = targetImpressions > 0 && nextImpCount >= targetImpressions;
-      await supabase
-        .from("addsactive")
-        .update({
-          impression_count: nextImpCount,
-          completed_at: isNowCompleted ? new Date().toISOString() : adRow.completed_at,
-        })
-        .eq("id", adId);
-
-      // Update user record
-      await supabase
-        .from("users")
-        .update({
-          balance: newBal,
-          monetization_clicks: nextClicks,
-          atw_tier: isExempt ? "Unlimited" : `ATW${tierLevel}`,
-          monetized: nextMonetized,
-          last_active_at: new Date().toISOString(),
-        })
-        .eq("id", dbUser.id);
-
-      finalResult = {
+      const netCredited = Number(rpcResult.net_credited ?? rpcResult.amount ?? 0);
+      return jsonResponse({
         success: true,
-        code: "EARN_SUCCESS",
-        amount: rateToApply,
-        raw_cpi: rawCpi,
-        balance: newBal,
-        clicks: nextClicks,
-        views: existingViews + 1,
-        cap: userFreqCap,
-        holding_cap: holdingCap === Infinity ? 999999999 : holdingCap,
-        is_capped: isCapped,
-        monetized: nextMonetized === "true",
-        affiliate_credited: false,
-      };
-    }
-
-    if (finalResult && finalResult.success) {
-      if (!finalResult.affiliate_credited) {
-        try {
-          await supabase.rpc("credit_affiliate_platform_share_atomic", {
-            p_raw_cpi: rawCpi,
-            p_ad_id: adId,
-            p_earner_email: cleanEmail,
-          });
-        } catch {}
-      }
-
-      const grossEarned = Number(finalResult.amount ?? finalResult.result ?? 0);
-      if (grossEarned > 0) {
-        try {
-          const { data: commRes } = await supabase.rpc(
-            "apply_agent_commission_atomic",
-            {
-              p_earner_email: cleanEmail,
-              p_gross_amount: grossEarned,
-              p_ad_id: adId,
-            }
-          );
-          if (commRes?.applied) {
-            finalResult.amount = Number(
-              commRes.net_earner_amount ?? grossEarned
-            );
-            finalResult.result = finalResult.amount;
-            if (
-              commRes.earner_new_balance !== undefined &&
-              commRes.earner_new_balance !== null
-            ) {
-              finalResult.balance = Number(commRes.earner_new_balance);
-            }
-          }
-        } catch {}
-      }
-    }
-
-    if (finalResult) {
-      return new Response(JSON.stringify(finalResult), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        code: String(rpcResult.code || "EARN_SUCCESS"),
+        amount: netCredited,
+        net_credited: netCredited,
+        raw_earn_rate: Number(rpcResult.raw_earn_rate ?? earnedRate),
+        capped: Boolean(rpcResult.capped ?? rpcResult.is_capped),
+        balance: Number(rpcResult.new_balance ?? rpcResult.balance ?? 0),
+        clicks: Number(rpcResult.new_clicks ?? rpcResult.clicks ?? 0),
+        atw_tier: rpcResult.atw_tier,
+        atw_level: rpcResult.atw_level,
+        holding_cap: rpcResult.holding_cap,
+        attention_worth_score: rpcResult.attention_worth_score,
+        monetized: Boolean(rpcResult.monetized ?? rpcResult.is_monetized),
       });
     }
 
-    const reportedError = rpcError?.message || rpcResult?.error || "Unable to process reward right now. Please try again.";
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: reportedError,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+    // 7. Resilient Direct DB Fallback (ONLY when RPC function itself failed/unavailable)
+    const { data: user, error: userErr } = await supabase
+      .from("users")
+      .select(
+        "id, email, balance, monetization_clicks, monetized, has_cancelled_monetization, suspended_until, ad_account_status, attention_worth_score, atw_tier, is_affiliate, is_career",
+      )
+      .ilike("email", cleanEmail)
+      .maybeSingle();
+
+    if (userErr || !user) {
+      return errorResponse("User profile not found.", 404);
+    }
+
+    if (
+      user.ad_account_status === "deactivated" ||
+      user.ad_account_status === "banned" ||
+      (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now())
+    ) {
+      return jsonResponse(
+        { success: false, code: "USER_SUSPENDED", error: "Account is currently restricted." },
+        403,
+      );
+    }
+
+    // Enforce ALREADY_EARNED strictly per user frequency cap
+    const freqCap = Math.max(1, Number(adRow.user_frequency_cap ?? adRow.frequency_cap ?? 1));
+    const { data: existingImp } = await supabase
+      .from("ad_impressions")
+      .select("id, view_count, today_view_count, last_viewed_at")
+      .eq("ad_id", adId)
+      .ilike("user_email", cleanEmail)
+      .maybeSingle();
+
+    const existingViews = Number(existingImp?.view_count || 0);
+    if (existingViews >= freqCap) {
+      return jsonResponse(
+        {
+          success: false,
+          code: "ALREADY_EARNED",
+          error: "You have already earned from this campaign.",
+        },
+        409,
+      );
+    }
+
+    // Atomic optimistic lock on addsactive impression_count to prevent concurrent double-pay
+    const nextImpCount = currentImpCount + 1;
+    const isNowExhausted = targetImpressions > 0 && nextImpCount >= targetImpressions;
+    let adUpdQuery = supabase
+      .from("addsactive")
+      .update({
+        impression_count: nextImpCount,
+        completed_at: isNowExhausted ? new Date().toISOString() : adRow.completed_at,
+      })
+      .eq("id", adId);
+    adUpdQuery = adRow.impression_count == null
+      ? adUpdQuery.is("impression_count", null)
+      : adUpdQuery.eq("impression_count", currentImpCount);
+    const { data: updatedAd, error: adUpdErr } = await adUpdQuery
+      .select("id")
+      .maybeSingle();
+
+    if (adUpdErr || !updatedAd) {
+      return jsonResponse(
+        {
+          success: false,
+          code: "ALREADY_EARNED",
+          error: "Impression slot claimed concurrently. Please refresh.",
+        },
+        409,
+      );
+    }
+
+    // Record per-user impression
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const lastDay = existingImp?.last_viewed_at
+      ? String(existingImp.last_viewed_at).slice(0, 10)
+      : "";
+    if (existingImp?.id) {
+      await supabase
+        .from("ad_impressions")
+        .update({
+          view_count: existingViews + 1,
+          today_view_count: lastDay === todayIso ? Number(existingImp.today_view_count || 0) + 1 : 1,
+          last_viewed_at: new Date().toISOString(),
+        })
+        .eq("id", existingImp.id);
+    } else {
+      await supabase.from("ad_impressions").insert([
+        {
+          ad_id: adId,
+          user_email: cleanEmail,
+          view_count: 1,
+          today_view_count: 1,
+          last_viewed_at: new Date().toISOString(),
+        },
+      ]);
+    }
+
+    // Compute canonical ATW tier, holding cap, and monetization progress
+    const isExempt = Boolean(
+      user.is_affiliate || user.is_career || AFFILIATE_EMAILS.has(cleanEmail),
     );
-  } catch (err: any) {
-    console.error("❌ Fatal error in earn-payout:", err);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: err?.message || "Unable to process reward right now. Please try again.",
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const hasCancelled = Boolean(user.has_cancelled_monetization);
+    const currentlyMonetized =
+      !hasCancelled &&
+      (isExempt ||
+        ["true", "yes", "1", "t"].includes(String(user.monetized || "").toLowerCase()));
+
+    const nextClicks = Number(user.monetization_clicks || 0) + 1;
+    const atwAfter = computeAtwTierDetails({
+      email: cleanEmail,
+      clicks: nextClicks,
+      attentionWorthScore: user.attention_worth_score,
+      currentTier: user.atw_tier,
+      isAffiliate: user.is_affiliate,
+      isCareer: user.is_career,
+    });
+
+    const currentBal = Number(user.balance || 0);
+    let netCredited = 0;
+    let isCapped = false;
+    if (currentlyMonetized) {
+      if (atwAfter.isUnlimited) {
+        netCredited = earnedRate;
+      } else {
+        const room = Math.max(0, atwAfter.holdingCap - currentBal);
+        netCredited = Math.round(Math.min(earnedRate, room) * 100) / 100;
+        isCapped = netCredited < earnedRate;
       }
-    );
+    }
+
+    const nextBalance = Math.round((currentBal + netCredited) * 100) / 100;
+    const nextMonetized = hasCancelled
+      ? "false"
+      : currentlyMonetized || nextClicks >= 300
+      ? "true"
+      : "false";
+
+    await supabase
+      .from("users")
+      .update({
+        balance: nextBalance,
+        monetization_clicks: nextClicks,
+        atw_tier: atwAfter.tier,
+        monetized: nextMonetized,
+        last_active_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    // Direct 1%/2% commission only when monetized and netCredited > 0
+    if (currentlyMonetized && netCredited > 0) {
+      await supabase
+        .rpc("credit_affiliate_platform_share_atomic", {
+          p_raw_cpi: rawCpi,
+          p_ad_id: adId,
+          p_earner_email: cleanEmail,
+        })
+        .catch(() => {});
+    }
+
+    if (isNowExhausted) {
+      await archiveExhaustedAd(supabase, adRow, nextImpCount);
+    }
+
+    return jsonResponse({
+      success: true,
+      code: "EARN_SUCCESS",
+      amount: netCredited,
+      net_credited: netCredited,
+      raw_earn_rate: earnedRate,
+      capped: isCapped,
+      balance: nextBalance,
+      clicks: nextClicks,
+      atw_tier: atwAfter.tier,
+      atw_level: atwAfter.tierLevel,
+      holding_cap: atwAfter.isUnlimited ? null : atwAfter.holdingCap,
+      attention_worth_score: atwAfter.score,
+      monetized: nextMonetized === "true",
+    });
+  } catch (err: unknown) {
+    console.error("earn-payout error:", err);
+    return errorResponse("Failed to process reward claim right now.", 500);
   }
 });

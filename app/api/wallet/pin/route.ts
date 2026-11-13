@@ -2,142 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
-import redisConnection, { isRedisReady } from "@/lib/redis";
-import { getClientIp } from "@/lib/edgeRateLimit";
 import {
   hashWalletPinAsync,
   verifyWalletPinAsync,
   decryptSensitiveField,
 } from "@/lib/security/piiCrypto";
+import {
+  getPinAttemptBucket,
+  getPinResetAttemptBucket,
+  getPinLockoutStatus,
+  recordFailedPinAttempt,
+  clearFailedPinAttempts,
+  resolveStoredWalletPinHash,
+} from "@/lib/security/walletPinHelper";
 
 export const dynamic = "force-dynamic";
-
-const MAX_FAILED_PIN_ATTEMPTS = 5;
-const PIN_LOCKOUT_SECONDS = 45 * 60; // 45 minutes (2700 seconds)
-
-interface PinFailRecord {
-  count: number;
-  expiresAt: number;
-}
-
-const memoryPinFailStore = new Map<string, PinFailRecord>();
-
-async function getPinLockoutStatus(bucketKey: string): Promise<{
-  locked: boolean;
-  secondsLeft: number;
-  minsLeft: number;
-}> {
-  const now = Date.now();
-
-  if (isRedisReady()) {
-    try {
-      const rawCount = await redisConnection.get(bucketKey);
-      const count = Number(rawCount || 0);
-      if (count >= MAX_FAILED_PIN_ATTEMPTS) {
-        const ttl = await redisConnection.ttl(bucketKey);
-        const secondsLeft = ttl > 0 ? ttl : PIN_LOCKOUT_SECONDS;
-        return {
-          locked: true,
-          secondsLeft,
-          minsLeft: Math.max(1, Math.ceil(secondsLeft / 60)),
-        };
-      }
-      return { locked: false, secondsLeft: 0, minsLeft: 0 };
-    } catch {
-      // Fallback to in-memory store below
-    }
-  }
-
-  const rec = memoryPinFailStore.get(bucketKey);
-  if (!rec) return { locked: false, secondsLeft: 0, minsLeft: 0 };
-  if (rec.expiresAt <= now) {
-    memoryPinFailStore.delete(bucketKey);
-    return { locked: false, secondsLeft: 0, minsLeft: 0 };
-  }
-  if (rec.count >= MAX_FAILED_PIN_ATTEMPTS) {
-    const secondsLeft = Math.max(1, Math.ceil((rec.expiresAt - now) / 1000));
-    return {
-      locked: true,
-      secondsLeft,
-      minsLeft: Math.max(1, Math.ceil(secondsLeft / 60)),
-    };
-  }
-  return { locked: false, secondsLeft: 0, minsLeft: 0 };
-}
-
-async function recordFailedPinAttempt(bucketKey: string): Promise<{
-  locked: boolean;
-  attemptsRemaining: number;
-  secondsLeft: number;
-  minsLeft: number;
-}> {
-  const now = Date.now();
-
-  if (isRedisReady()) {
-    try {
-      const count = await redisConnection.incr(bucketKey);
-      if (count === 1 || count >= MAX_FAILED_PIN_ATTEMPTS) {
-        await redisConnection.expire(bucketKey, PIN_LOCKOUT_SECONDS);
-      }
-      if (count >= MAX_FAILED_PIN_ATTEMPTS) {
-        const ttl = await redisConnection.ttl(bucketKey);
-        const secondsLeft = ttl > 0 ? ttl : PIN_LOCKOUT_SECONDS;
-        return {
-          locked: true,
-          attemptsRemaining: 0,
-          secondsLeft,
-          minsLeft: Math.max(1, Math.ceil(secondsLeft / 60)),
-        };
-      }
-      return {
-        locked: false,
-        attemptsRemaining: Math.max(0, MAX_FAILED_PIN_ATTEMPTS - count),
-        secondsLeft: PIN_LOCKOUT_SECONDS,
-        minsLeft: 15,
-      };
-    } catch {
-      // Fallback to in-memory store below
-    }
-  }
-
-  const existing = memoryPinFailStore.get(bucketKey);
-  let count = 1;
-  let expiresAt = now + PIN_LOCKOUT_SECONDS * 1000;
-
-  if (existing && existing.expiresAt > now) {
-    count = existing.count + 1;
-    expiresAt =
-      count >= MAX_FAILED_PIN_ATTEMPTS ? now + PIN_LOCKOUT_SECONDS * 1000 : existing.expiresAt;
-  }
-
-  memoryPinFailStore.set(bucketKey, { count, expiresAt });
-
-  if (count >= MAX_FAILED_PIN_ATTEMPTS) {
-    const secondsLeft = Math.max(1, Math.ceil((expiresAt - now) / 1000));
-    return {
-      locked: true,
-      attemptsRemaining: 0,
-      secondsLeft,
-      minsLeft: Math.max(1, Math.ceil(secondsLeft / 60)),
-    };
-  }
-
-  return {
-    locked: false,
-    attemptsRemaining: Math.max(0, MAX_FAILED_PIN_ATTEMPTS - count),
-    secondsLeft: PIN_LOCKOUT_SECONDS,
-    minsLeft: 15,
-  };
-}
-
-async function clearFailedPinAttempts(bucketKey: string): Promise<void> {
-  memoryPinFailStore.delete(bucketKey);
-  if (isRedisReady()) {
-    try {
-      await redisConnection.del(bucketKey);
-    } catch {}
-  }
-}
 
 function formatTryAgainMins(mins: number): string {
   const safeMins = Math.max(1, Math.ceil(mins));
@@ -152,15 +31,6 @@ function normalizePhoneLast10(phone: string | null | undefined): string {
   const decrypted = decryptSensitiveField(phone) || String(phone);
   if (decrypted.startsWith("PLACEHOLDER")) return "";
   return decrypted.replace(/\D/g, "").slice(-10);
-}
-
-function extractStoredPinHash(userRow: Record<string, any> | null): string {
-  if (!userRow) return "";
-  const direct = typeof userRow.wallet_pin_hash === "string" ? userRow.wallet_pin_hash.trim() : "";
-  if (direct) return direct;
-  const fallbackPass = typeof userRow.passphrase === "string" ? userRow.passphrase.trim() : "";
-  if (fallbackPass.startsWith("pin:v1:")) return fallbackPass;
-  return "";
 }
 
 async function fetchUserForPin(emailLower: string): Promise<{
@@ -239,7 +109,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ hasPin: false });
     }
 
-    const storedPinHash = extractStoredPinHash(user);
+    const storedPinHash = resolveStoredWalletPinHash(user);
     return NextResponse.json({ hasPin: Boolean(storedPinHash) });
   } catch {
     return NextResponse.json({ hasPin: false });
@@ -253,13 +123,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const emailLower = email.toLowerCase().trim();
-    const clientIp = getClientIp(req);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "").trim().toLowerCase();
 
-    const pinAttemptBucket = `wallet_pin_fail:${emailLower}:${clientIp}`;
-    const resetAttemptBucket = `wallet_pin_reset_fail:${emailLower}:${clientIp}`;
+    // User-scoped lockout buckets (prevents X-Forwarded-For spoofing bypass & syncs with wallet transactions)
+    const pinAttemptBucket = getPinAttemptBucket(emailLower);
+    const resetAttemptBucket = getPinResetAttemptBucket(emailLower);
 
     // Check active lockout for PIN verification / change
     if (action === "verify" || action === "change") {
@@ -296,7 +166,7 @@ export async function POST(req: NextRequest) {
     if (fetchErr) {
       console.error("[WalletPIN] Profile lookup error:", fetchErr);
       return NextResponse.json(
-        { error: "Unable to process Wallet PIN request right now. Please try again." },
+        { error: "Try again later" },
         { status: 500 }
       );
     }
@@ -305,7 +175,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User profile not found" }, { status: 404 });
     }
 
-    const storedPinHash = extractStoredPinHash(user);
+    const storedPinHash = resolveStoredWalletPinHash(user) || "";
     const hasExistingPin = Boolean(storedPinHash);
 
     // -------------------------------------------------------------------------
@@ -335,7 +205,7 @@ export async function POST(req: NextRequest) {
       if (updateErr) {
         console.error("[WalletPIN] Setup update error:", updateErr);
         return NextResponse.json(
-          { error: "Could not save your Wallet PIN right now. Please try again." },
+          { error: "Try again later" },
           { status: 500 }
         );
       }
@@ -446,7 +316,7 @@ export async function POST(req: NextRequest) {
       if (updateErr) {
         console.error("[WalletPIN] Change update error:", updateErr);
         return NextResponse.json(
-          { error: "Could not update your Wallet PIN right now. Please try again." },
+          { error: "Try again later" },
           { status: 500 }
         );
       }
@@ -491,13 +361,15 @@ export async function POST(req: NextRequest) {
       const savedPhoneLast10 = normalizePhoneLast10(user.phone);
       const inputPhoneLast10 = phoneInput.replace(/\D/g, "").slice(-10);
 
-      if (savedPhoneLast10) {
+      if (savedPhoneLast10 && savedPhoneLast10.length >= 7) {
         if (!inputPhoneLast10 || inputPhoneLast10 !== savedPhoneLast10) {
           const failInfo = await recordFailedPinAttempt(resetAttemptBucket);
           if (failInfo.locked) {
             return NextResponse.json(
               {
                 error: `Too many failed reset attempts. Try again in ${formatTryAgainMins(failInfo.minsLeft)}.`,
+                retryAfter: failInfo.secondsLeft,
+                retryAfterMinutes: failInfo.minsLeft,
               },
               { status: 429 }
             );
@@ -511,12 +383,10 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
-        if (!phoneInput) {
-          return NextResponse.json(
-            { error: "Please enter your phone number to verify your identity." },
-            { status: 400 }
-          );
-        }
+        return NextResponse.json(
+          { error: "Please register a valid phone number in your Profile Settings before resetting your Wallet PIN." },
+          { status: 400 }
+        );
       }
 
       if (!/^\d{4}$/.test(newPin)) {
@@ -532,7 +402,7 @@ export async function POST(req: NextRequest) {
       if (updateErr) {
         console.error("[WalletPIN] Reset update error:", updateErr);
         return NextResponse.json(
-          { error: "Could not reset your Wallet PIN right now. Please try again." },
+          { error: "Try again later" },
           { status: 500 }
         );
       }
@@ -567,7 +437,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("[WalletPIN] Unexpected error:", err);
     return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
+      { error: "Try again later" },
       { status: 500 }
     );
   }

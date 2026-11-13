@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import supabase from "@/lib/utils/db";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
 import AppleSpinner from "@/components/ui/AppleSpinner";
+import { ProfileSkeleton } from "@/components/ui/PageSkeletons";
 import { CheckCircle2, AlertCircle, ShieldCheck, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import FormStepProgress from "@/components/ui/FormStepProgress";
@@ -12,6 +13,8 @@ import FairAttentionModal from "@/components/ui/FairAttentionModal";
 import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
 import { MANUAL_LOCATION_PENDING_KEY } from "@/lib/utils/locationHelper";
 import { isAdminEmail } from "@/lib/adminHelper";
+import { getProfileEditCooldownState } from "@/lib/utils/profileCooldown";
+import { toClientFriendlyApiError, toClientFriendlyError } from "@/lib/utils/clientError";
 
 import UpdatePersonalStep from "./UpdatePersonalStep";
 import UpdateDemographicsStep from "./UpdateDemographicsStep";
@@ -109,6 +112,8 @@ export default function Update({ email }: Props) {
   const [dbProfile, setDbProfile] = useState<UserProfileData | null>(null);
   const [formData, setFormData] = useState<Partial<UserProfileData>>({});
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
   const [status, setStatus] = useState<string | null>(null);
   const [openDropdowns, setOpenDropdowns] = useState({
     industry: false,
@@ -166,6 +171,7 @@ export default function Update({ email }: Props) {
   };
 
   const handleNextStep = () => {
+    if (isSaving) return;
     if (validateStep(currentStep)) {
       if (
         currentStep === 0 &&
@@ -176,87 +182,91 @@ export default function Update({ email }: Props) {
         return;
       }
       setCurrentStep((prev) => Math.min(steps.length - 1, prev + 1));
-      window.scrollTo({ top: 0, behavior: "smooth" });
     }
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handlePrevStep = () => {
+    if (isSaving) return;
     setStatus(null);
     setCurrentStep((prev) => Math.max(0, prev - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/profile");
-        if (!res.ok) {
-          setStatus("Failed to fetch profile.");
-          setLoading(false);
-          return;
-        }
-        const data = await res.json();
-
-        // Ensure arrays for multi-selects
-        const arrayFields = [
-          "industry",
-          "interest",
-          "behavior",
-          "lifestyle",
-          "personality",
-        ];
-        arrayFields.forEach((field) => {
-          if (typeof data[field] === "string") {
-            data[field] = data[field]?.split(",").map((v: string) => v.trim());
-          } else if (!Array.isArray(data[field])) {
-            data[field] = [];
-          }
-        });
-
-        setDbProfile(data);
-        setFormData({
-          industry: data.industry || [],
-          interest: data.interest || [],
-          behavior: data.behavior || [],
-          lifestyle: data.lifestyle || [],
-          personality: data.personality || [],
-          gender: data.gender || "",
-          employment: data.employment || "",
-          intlTravel: data.intl_travel === true || data.intl_travel === "yes" ? "yes" : "no",
-          localTravel: data.local_travel === true || data.local_travel === "yes" ? "yes" : "no",
-          dob: data.dob || "",
-        });
-      } catch (e) {
-        console.error("Error fetching profile:", e);
-        setStatus("Failed to fetch profile.");
-      } finally {
+  const fetchProfile = useCallback(async () => {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await fetch("/api/profile");
+      if (!res.ok) {
+        const errPayload = await res.json().catch(() => null);
+        setStatus(toClientFriendlyApiError(res.status, errPayload, "Failed to fetch profile."));
         setLoading(false);
+        return;
       }
-    };
+      const data = await res.json();
 
-    fetchProfile();
-  }, [email]);
+      // Ensure arrays for multi-selects
+      const arrayFields = [
+        "industry",
+        "interest",
+        "behavior",
+        "lifestyle",
+        "personality",
+      ];
+      arrayFields.forEach((field) => {
+        if (typeof data[field] === "string") {
+          data[field] = data[field]?.split(",").map((v: string) => v.trim());
+        } else if (!Array.isArray(data[field])) {
+          data[field] = [];
+        }
+      });
+
+      setDbProfile(data);
+      setFormData({
+        industry: data.industry || [],
+        interest: data.interest || [],
+        behavior: data.behavior || [],
+        lifestyle: data.lifestyle || [],
+        personality: data.personality || [],
+        gender: data.gender || "",
+        employment: data.employment || "",
+        intlTravel: data.intl_travel === true || data.intl_travel === "yes" ? "yes" : "no",
+        localTravel: data.local_travel === true || data.local_travel === "yes" ? "yes" : "no",
+        dob: data.dob || "",
+      });
+    } catch (e) {
+      console.error("Error fetching profile:", e);
+      setStatus(toClientFriendlyError(e, "Failed to fetch profile."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (isAdmin || !dbProfile || !dbProfile.has_updated_profile) {
-      setTimeRemaining(null);
-      setNextAvailableMs(null);
-      return;
-    }
+    fetchProfile();
+  }, [email, fetchProfile]);
 
-    const lastUpdated = new Date(dbProfile.lastUpdated || 0);
-    const targetMs = lastUpdated.getTime() + 15 * 24 * 60 * 60 * 1000;
-    const diff = targetMs - Date.now();
+  useEffect(() => {
+    const cooldown = getProfileEditCooldownState({
+      hasUpdatedProfile: dbProfile?.has_updated_profile,
+      lastUpdated: dbProfile?.lastUpdated,
+      isAdmin,
+    });
 
-    if (diff <= 0) {
+    if (!cooldown.isLocked || !cooldown.nextAvailableMs) {
       setTimeRemaining(null);
       setNextAvailableMs(null);
     } else {
-      setTimeRemaining(diff);
-      setNextAvailableMs(targetMs);
+      setTimeRemaining(cooldown.msRemaining);
+      setNextAvailableMs(cooldown.nextAvailableMs);
     }
   }, [dbProfile, isAdmin]);
+
+  const handleCooldownExpire = useCallback(() => {
+    setTimeRemaining(null);
+    setNextAvailableMs(null);
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -278,10 +288,13 @@ export default function Update({ email }: Props) {
   };
 
   const handleUpdate = async () => {
+    if (isSavingRef.current || isSaving) return;
+
     if (!goodwillAgreed) {
       const msg = "Please read and review the terms and policies, and tick the box to accept before saving your profile.";
       setTermsError(msg);
       setStatus(msg);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     if (!dbProfile) return;
@@ -292,6 +305,7 @@ export default function Update({ email }: Props) {
     const resolvedLocation = formData.location ? formData.location : dbProfile.location;
     if (!resolvedCountry || !resolvedState || !resolvedLocation) {
       setStatus("Location is required. Please enable 'Auto-detect location' to detect your country, state, and city via GPS.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -301,142 +315,155 @@ export default function Update({ email }: Props) {
 
     if (!resolvedInterest || resolvedInterest.length === 0) {
       setStatus("At least one Interest must be selected so we can target relevant ads for you.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (!resolvedIndustry || resolvedIndustry.length === 0) {
       setStatus("At least one Industry must be selected so we can target relevant ads for you.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (!isAdmin && timeRemaining !== null && timeRemaining > 0) {
       setStatus("You can only update your profile once every 15 days.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
-    setLoading(true);
+    isSavingRef.current = true;
+    setIsSaving(true);
     setStatus("Checking update eligibility...");
 
-    // 1. Fetch current timestamp & update status via secure API
-    let latestUser;
     try {
-      const resUser = await fetch("/api/profile");
-      if (!resUser.ok) {
-        throw new Error("Failed to fetch profile");
-      }
-      latestUser = await resUser.json();
-    } catch (fetchErr: any) {
-      console.error("Failed to check timestamp:", fetchErr.message);
-      setStatus("Failed to verify update eligibility.");
-      setLoading(false);
-      return;
-    }
-
-    const now = new Date();
-    if (!isAdmin && latestUser.has_updated_profile) {
-      const lastUpdated = new Date(latestUser.lastUpdated || 0);
-      const diffDays =
-        (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
-
-      if (diffDays < 15) {
-        console.warn(
-          "Update blocked: Only",
-          Math.floor(diffDays),
-          "days passed"
-        );
-        setStatus("You can only update your profile once every 15 days.");
-        setLoading(false);
+      // 1. Fetch current timestamp & update status via secure API
+      let latestUser;
+      try {
+        const resUser = await fetch("/api/profile");
+        if (!resUser.ok) {
+          const errPayload = await resUser.json().catch(() => null);
+          throw new Error(toClientFriendlyApiError(resUser.status, errPayload, "Try again later"));
+        }
+        latestUser = await resUser.json();
+      } catch (fetchErr: any) {
+        console.error("Failed to check timestamp:", fetchErr?.message);
+        setStatus(toClientFriendlyError(fetchErr, "Try again later"));
+        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
-    }
 
-    // 2. Upload new image if provided
-    let imageUrl = dbProfile.profileImage;
-
-    if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop();
-      const fileName = `${Date.now()}-${dbProfile.email}.${fileExt}`;
-      const filePath = `public/${fileName}`;
-
-      // Remove old image (optional)
-      if (dbProfile.profileImage?.includes("storage.supabase")) {
-        const parts = dbProfile.profileImage.split("/");
-        const existingPath = `${parts.at(-2)}/${parts.at(-1)}`;
-        await supabase.storage.from("dp").remove([existingPath]);
+      const latestCooldown = getProfileEditCooldownState({
+        hasUpdatedProfile: latestUser?.has_updated_profile,
+        lastUpdated: latestUser?.lastUpdated,
+        isAdmin,
+      });
+      if (latestCooldown.isLocked) {
+        setStatus(`Profile edit locked (${latestCooldown.detailedLabel || "wait for cooldown"}).`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
       }
 
-      const { error: uploadError } = await supabase.storage
-        .from("dp")
-        .upload(filePath, imageFile, {
-          cacheControl: "3600",
-          upsert: true,
+      // 2. Upload new image if provided
+      let imageUrl = dbProfile.profileImage;
+
+      if (imageFile) {
+        const fileExt = imageFile.name.split(".").pop();
+        const fileName = `${Date.now()}-${dbProfile.email}.${fileExt}`;
+        const filePath = `public/${fileName}`;
+
+        if (dbProfile.profileImage?.includes("storage.supabase")) {
+          try {
+            const parts = dbProfile.profileImage.split("/");
+            const existingPath = `${parts.at(-2)}/${parts.at(-1)}`;
+            await supabase.storage.from("dp").remove([existingPath]);
+          } catch {}
+        }
+
+        const { error: uploadError } = await supabase.storage
+          .from("dp")
+          .upload(filePath, imageFile, {
+            cacheControl: "3600",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error("Image upload failed:", uploadError.message);
+          setStatus("Failed to upload profile image.");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from("dp")
+          .getPublicUrl(filePath);
+        imageUrl = publicUrlData?.publicUrl || imageUrl;
+      }
+
+      // 3. Prepare payload, substituting placeholder values for empty form fields
+      const payload = {
+        ...dbProfile,
+        ...formData,
+        username: formData.username?.trim() ? formData.username.trim() : dbProfile.username,
+        firstName: formData.firstName?.trim() ? formData.firstName.trim() : dbProfile.firstName,
+        lastName: formData.lastName?.trim() ? formData.lastName.trim() : dbProfile.lastName,
+        business_name: formData.business_name?.trim() ? formData.business_name.trim() : dbProfile.business_name,
+        phone: formData.phone?.trim() ? formData.phone.trim() : dbProfile.phone,
+        email: formData.email?.trim() ? formData.email.trim() : dbProfile.email,
+        dob: formData.dob || dbProfile.dob,
+        bio: formData.bio !== undefined ? formData.bio.trim() : dbProfile.bio,
+        country: formData.country ? formData.country : dbProfile.country,
+        state: formData.state ? formData.state : dbProfile.state,
+        location: formData.location ? formData.location : dbProfile.location,
+        profileImage: imageUrl,
+        has_updated_profile: true,
+      };
+
+      if ("passphrase" in payload) {
+        delete (payload as any).passphrase;
+      }
+
+      // 4. Update Supabase via secure API
+      try {
+        const response = await fetch("/api/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         });
 
-      if (uploadError) {
-        console.error("Image upload failed:", uploadError.message);
-        setStatus("Failed to upload profile image.");
-        setLoading(false);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => null);
+          throw new Error(toClientFriendlyApiError(response.status, errData, "Try again later"));
+        }
+      } catch (updateError: any) {
+        console.error("Update failed:", updateError?.message);
+        setStatus(toClientFriendlyError(updateError, "Try again later"));
+        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from("dp")
-        .getPublicUrl(filePath);
-      imageUrl = publicUrlData?.publicUrl || imageUrl;
-    }
-
-    // 3. Prepare payload, substituting placeholder values for empty form fields
-    const payload = {
-      ...dbProfile,
-      ...formData,
-      username: formData.username?.trim() ? formData.username.trim() : dbProfile.username,
-      firstName: formData.firstName?.trim() ? formData.firstName.trim() : dbProfile.firstName,
-      lastName: formData.lastName?.trim() ? formData.lastName.trim() : dbProfile.lastName,
-      business_name: formData.business_name?.trim() ? formData.business_name.trim() : dbProfile.business_name,
-      phone: formData.phone?.trim() ? formData.phone.trim() : dbProfile.phone,
-      email: formData.email?.trim() ? formData.email.trim() : dbProfile.email,
-      dob: formData.dob || dbProfile.dob,
-      bio: formData.bio !== undefined ? formData.bio.trim() : dbProfile.bio,
-      country: formData.country ? formData.country : dbProfile.country,
-      state: formData.state ? formData.state : dbProfile.state,
-      location: formData.location ? formData.location : dbProfile.location,
-      profileImage: imageUrl,
-      has_updated_profile: true,
-    };
-
-    // Remove passphrase if any in payload
-    if ('passphrase' in payload) {
-      delete (payload as any).passphrase;
-    }
-
-    // 4. Update Supabase via secure API
-    try {
-      const response = await fetch("/api/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Update rejected by API");
+      // 5. Reset state and show success
+      const updatedIso = new Date().toISOString();
+      setDbProfile((prev) =>
+        prev ? { ...prev, lastUpdated: updatedIso, has_updated_profile: true } : prev
+      );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("paayh:profile-updated", {
+            detail: { lastUpdated: updatedIso, has_updated_profile: true },
+          })
+        );
       }
-    } catch (updateError: any) {
-      console.error("Update failed:", updateError.message);
-      setStatus(`Update failed: ${updateError.message}`);
-      setLoading(false);
-      return;
+      setStatus("Successful.");
+      setImageFile(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      setTimeout(() => {
+        router.push("/");
+      }, 1500);
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
     }
-
-    // 5. Reset state and show success
-    setStatus("Successful.");
-    setImageFile(null); // Reset image
-    setLoading(false);
-
-    // Optional delay for user to see the message
-    setTimeout(() => {
-      router.push("/");
-    }, 1500);
   };
 
   const handleSelectAll = (name: "industry" | "interest" | "behavior" | "lifestyle" | "personality", options: string[]) => {
@@ -448,13 +475,21 @@ export default function Update({ email }: Props) {
   };
 
   if (loading) {
+    return <ProfileSkeleton />;
+  }
+  if (!dbProfile) {
     return (
-      <div className={styles.loadingContainer}>
-        <AppleSpinner size={42} />
+      <div className={styles.profileContainer}>
+        <div className={`${styles.statusBanner} ${styles.statusBannerError}`}>
+          <AlertCircle size={18} color="#ef4444" />
+          <span>{status || "Profile not found."}</span>
+        </div>
+        <button type="button" className={styles.nextBtn} onClick={fetchProfile}>
+          Retry
+        </button>
       </div>
     );
   }
-  if (!dbProfile) return <p>Profile not found.</p>;
 
   const isFormDisabled = !isAdmin && timeRemaining !== null && timeRemaining > 0;
 
@@ -465,7 +500,14 @@ export default function Update({ email }: Props) {
       <FormStepProgress
         steps={steps}
         currentStep={currentStep}
-        onStepClick={(idx) => setCurrentStep(idx)}
+        onStepClick={(idx) => {
+          if (isSaving) return;
+          if (idx <= currentStep || validateStep(currentStep)) {
+            setStatus(null);
+            setCurrentStep(idx);
+          }
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
       />
 
       <h1 className={styles.update}>Update Profile</h1>
@@ -480,10 +522,7 @@ export default function Update({ email }: Props) {
       {isFormDisabled && nextAvailableMs && (
         <CooldownBanner
           nextAvailableMs={nextAvailableMs}
-          onExpire={() => {
-            setTimeRemaining(null);
-            setNextAvailableMs(null);
-          }}
+          onExpire={handleCooldownExpire}
         />
       )}
 
@@ -579,7 +618,7 @@ export default function Update({ email }: Props) {
             type="button"
             className={styles.prevBtn}
             onClick={handlePrevStep}
-            disabled={loading}
+            disabled={loading || isSaving}
           >
             Previous Step
           </motion.button>
@@ -593,7 +632,7 @@ export default function Update({ email }: Props) {
             type="button"
             className={styles.nextBtn}
             onClick={handleNextStep}
-            disabled={isFormDisabled}
+            disabled={isFormDisabled || isSaving}
           >
             Continue to {steps[currentStep + 1]}
           </motion.button>
@@ -605,9 +644,9 @@ export default function Update({ email }: Props) {
             type="button"
             className={`${styles.nextBtn} ${isFormDisabled ? styles.submitBtnDisabled : styles.submitBtnActive}`}
             onClick={handleUpdate}
-            disabled={loading || isFormDisabled}
+            disabled={loading || isSaving || isFormDisabled}
           >
-            {loading ? (
+            {isSaving ? (
               <span className={styles.savingSpinnerWrap}>
                 <span className="btnSpinner" aria-hidden="true" />
                 <span>Saving Profile...</span>

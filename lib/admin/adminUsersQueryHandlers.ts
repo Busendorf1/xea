@@ -88,7 +88,7 @@ export async function handleGetAgentsList(searchParams: URLSearchParams) {
     .from("users")
     .select('id, username, email, "firstName", "lastName", "profileImage", balance, referral_code, suspended_until, created_at, is_agent, agent_registered_at, agent_banned_until, agent_ban_reason');
 
-  const cleanSearch = search.replace(/[,()]/g, "").trim();
+  const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
   if (cleanSearch) {
     usersQuery = usersQuery.or(`email.ilike.%${cleanSearch}%,username.ilike.%${cleanSearch}%,firstName.ilike.%${cleanSearch}%,lastName.ilike.%${cleanSearch}%,referral_code.ilike.%${cleanSearch}%`);
   } else {
@@ -176,7 +176,7 @@ export async function handleGetFollowersList(searchParams: URLSearchParams) {
   const search = searchParams.get("search")?.trim() || "";
   const agentEmail = searchParams.get("agentEmail")?.trim().toLowerCase() || "";
 
-  const cleanSearch = search.replace(/[,()]/g, "").trim();
+  const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
   let query = supabaseAdmin
     .from("referrals")
     .select("id, referrer_email, referee_email, commission_rate, total_commission_earned, status, opt_out_status, created_at, interactions_count", { count: "planned" });
@@ -273,7 +273,7 @@ export async function handleGetAffiliatesList(searchParams: URLSearchParams) {
   }
 
   const dbClient = supabaseReadOnly || supabaseAdmin;
-  const cleanSearch = search.replace(/[,()]/g, "").trim();
+  const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
   let affQuery = dbClient
     .from("users")
     .select('id, username, email, "firstName", "lastName", "profileImage", balance, is_career, is_affiliate, affiliate_role, affiliate_earned_total, referral_code, monetized, created_at, phone, country', { count: "planned" })
@@ -369,8 +369,8 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
   }
 
   const dbClient = supabaseReadOnly || supabaseAdmin;
-  const selectedColumns = 'id, username, email, "firstName", "lastName", "profileImage", business_name, phone, state, country, location, bio, industry, interest, lifestyle, behavior, personality, gender, balance, withdrawal, monetized, monetization_type, monetized_until, monetized_at, monetization_clicks, referral_code, referred_by, suspended_until, ad_account_status, ad_ban_until, ad_ban_reason, mutual_count, created_at, last_active_at, atw_tier, employment, is_career, is_affiliate, affiliate_role, affiliate_earned_total';
-  const cleanSearch = search.replace(/[,()]/g, "").trim();
+  const selectedColumns = 'id, username, email, "firstName", "lastName", "profileImage", business_name, phone, state, country, location, bio, industry, interest, lifestyle, behavior, personality, gender, balance, withdrawal, monetized, monetization_type, monetized_until, monetized_at, monetization_clicks, referral_code, referred_by, suspended_until, ad_account_status, ad_ban_until, ad_ban_reason, mutual_count, created_at, last_active_at, atw_tier, employment, is_career, is_affiliate, affiliate_role, affiliate_earned_total, is_agent, agent_registered_at, agent_banned_until, agent_ban_reason';
+  const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
   let query = dbClient.from("users").select(selectedColumns, { count: "planned" });
 
   if (filter === "affiliates") {
@@ -396,62 +396,124 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
 
   const resolvedUsers = users || [];
 
-  // Server-Side Enrichment for the current page
+  // Server-Side Enrichment for the current page (1 SQL aggregation RPC + 0 N+1 queries)
   let enrichedUsers = resolvedUsers;
   if (resolvedUsers.length > 0) {
-    const emails = resolvedUsers.map((u: any) => (u.email || "").toLowerCase()).filter(Boolean);
+    const emails = resolvedUsers.map((u: any) => (u.email || "").toLowerCase().trim()).filter(Boolean);
 
-    const { checkIsUserAgent } = await import("@/lib/agentSystem");
-    const [adsRes, activeAdsRes, newsRes, activeNewsRes, agentStatuses] = await Promise.all([
-      dbClient.from("adds").select("user_email, impression_count, mutual_adds_count").in("user_email", emails),
-      dbClient.from("addsactive").select("user_email, impression_count, mutual_adds_count").in("user_email", emails),
-      dbClient.from("news").select("user_email").in("user_email", emails),
-      dbClient.from("newsactive").select("user_email").in("user_email", emails),
-      Promise.all(emails.map(async (em: string) => {
-        const ag = await checkIsUserAgent(em);
-        return {
-          email: em,
-          isAgent: ag.isAgent,
-          isBanned: Boolean(ag.isBanned),
-          bannedUntil: ag.bannedUntil || null,
-          banReason: ag.banReason || null,
-        };
-      })),
-    ]);
-    const agentMap = new Map((agentStatuses || []).map((a: any) => [a.email, a]));
+    type CampaignSummaryRow = {
+      reviewAdsCount: number;
+      activeAdsCount: number;
+      reviewHighlightsCount: number;
+      activeHighlightsCount: number;
+      totalClicksOnAds: number;
+    };
+    const summaryMap = new Map<string, CampaignSummaryRow>();
 
-    const adsData = adsRes.data || [];
-    const activeAdsData = activeAdsRes.data || [];
-    const newsData = newsRes.data || [];
-    const activeNewsData = activeNewsRes.data || [];
+    // Single SQL aggregation RPC replaces 4 unbounded per-page table fetches
+    const { data: rpcRows, error: rpcErr } = await supabaseAdmin.rpc("get_users_campaign_summary", {
+      p_emails: emails,
+    });
+
+    if (!rpcErr && Array.isArray(rpcRows)) {
+      for (const row of rpcRows) {
+        const em = String(row.user_email || "").toLowerCase().trim();
+        if (!em) continue;
+        summaryMap.set(em, {
+          reviewAdsCount: Number(row.review_ads_count || 0),
+          activeAdsCount: Number(row.active_ads_count || 0),
+          reviewHighlightsCount: Number(row.review_highlights_count || 0),
+          activeHighlightsCount: Number(row.active_highlights_count || 0),
+          totalClicksOnAds: Number(row.total_clicks || 0),
+        });
+      }
+    } else {
+      // Bounded fallback (capped at 500 rows per table) if RPC is not yet applied
+      const [adsRes, activeAdsRes, newsRes, activeNewsRes] = await Promise.all([
+        dbClient.from("adds").select("user_email, impression_count, mutual_adds_count").in("user_email", emails).limit(500),
+        dbClient.from("addsactive").select("user_email, impression_count, mutual_adds_count").in("user_email", emails).limit(500),
+        dbClient.from("news").select("user_email").in("user_email", emails).limit(500),
+        dbClient.from("newsactive").select("user_email").in("user_email", emails).limit(500),
+      ]);
+
+      for (const em of emails) {
+        summaryMap.set(em, {
+          reviewAdsCount: 0,
+          activeAdsCount: 0,
+          reviewHighlightsCount: 0,
+          activeHighlightsCount: 0,
+          totalClicksOnAds: 0,
+        });
+      }
+      for (const ad of adsRes.data || []) {
+        const em = String(ad.user_email || "").toLowerCase().trim();
+        const entry = summaryMap.get(em);
+        if (entry) {
+          entry.reviewAdsCount += 1;
+          entry.totalClicksOnAds += (parseInt(ad.impression_count || 0, 10) || 0) + (parseInt(ad.mutual_adds_count || 0, 10) || 0);
+        }
+      }
+      for (const ad of activeAdsRes.data || []) {
+        const em = String(ad.user_email || "").toLowerCase().trim();
+        const entry = summaryMap.get(em);
+        if (entry) {
+          entry.activeAdsCount += 1;
+          entry.totalClicksOnAds += (parseInt(ad.impression_count || 0, 10) || 0) + (parseInt(ad.mutual_adds_count || 0, 10) || 0);
+        }
+      }
+      for (const h of newsRes.data || []) {
+        const em = String(h.user_email || "").toLowerCase().trim();
+        const entry = summaryMap.get(em);
+        if (entry) entry.reviewHighlightsCount += 1;
+      }
+      for (const h of activeNewsRes.data || []) {
+        const em = String(h.user_email || "").toLowerCase().trim();
+        const entry = summaryMap.get(em);
+        if (entry) entry.activeHighlightsCount += 1;
+      }
+    }
+
+    // Optional single-roundtrip Redis MGET for live agent ban overrides (zero N+1)
+    const redisBanMap = new Map<string, { bannedUntil?: string | null; reason?: string | null }>();
+    if (isRedisReady() && emails.length > 0) {
+      try {
+        const banKeys = emails.map((em) => `agent:ban:${em}`);
+        const banVals = await redisConnection.mget(...banKeys);
+        banVals.forEach((raw, idx) => {
+          if (!raw) return;
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.banned && parsed.bannedUntil && new Date(parsed.bannedUntil).getTime() > Date.now()) {
+              redisBanMap.set(emails[idx], { bannedUntil: parsed.bannedUntil, reason: parsed.reason || null });
+            }
+          } catch {}
+        });
+      } catch {}
+    }
 
     enrichedUsers = resolvedUsers.map((user: any) => {
-      const emailLower = (user.email || "").toLowerCase();
-      const reviewAds = adsData.filter((ad: any) => (ad.user_email || "").toLowerCase() === emailLower);
-      const activeAds = activeAdsData.filter((ad: any) => (ad.user_email || "").toLowerCase() === emailLower);
-
-      const reviewHighlights = newsData.filter((h: any) => (h.user_email || "").toLowerCase() === emailLower).length;
-      const activeHighlights = activeNewsData.filter((h: any) => (h.user_email || "").toLowerCase() === emailLower).length;
-
-      const adImpressionsCount = [...reviewAds, ...activeAds].reduce((sum: number, ad: any) => sum + parseInt(ad.impression_count || 0), 0);
-      const adMutualsCount = [...reviewAds, ...activeAds].reduce((sum: number, ad: any) => sum + parseInt(ad.mutual_adds_count || 0), 0);
-      const totalClicksOnAds = adImpressionsCount + adMutualsCount;
+      const emailLower = (user.email || "").toLowerCase().trim();
+      const summary = summaryMap.get(emailLower);
       const special = getSpecialRoleProfile(emailLower, user);
+      const redisBan = redisBanMap.get(emailLower);
+      const dbBanned = Boolean(user.agent_banned_until && new Date(user.agent_banned_until).getTime() > Date.now());
+      const isAgentBanned = Boolean(redisBan || dbBanned);
+      const isAgent = isAgentBanned ? false : Boolean(user.is_agent);
 
       return {
         ...user,
         is_career: special.isCareer,
         is_affiliate: special.isAffiliate,
         affiliate_role: special.affiliateRole,
-        is_agent: agentMap.get(emailLower)?.isAgent || false,
-        is_agent_banned: agentMap.get(emailLower)?.isBanned || false,
-        agent_banned_until: agentMap.get(emailLower)?.bannedUntil || user.agent_banned_until || null,
-        agent_ban_reason: agentMap.get(emailLower)?.banReason || user.agent_ban_reason || null,
-        totalClicksOnAds,
-        reviewAdsCount: reviewAds.length,
-        activeAdsCount: activeAds.length,
-        reviewHighlightsCount: reviewHighlights,
-        activeHighlightsCount: activeHighlights,
+        is_agent: isAgent,
+        is_agent_banned: isAgentBanned,
+        agent_banned_until: redisBan?.bannedUntil || user.agent_banned_until || null,
+        agent_ban_reason: redisBan?.reason || user.agent_ban_reason || null,
+        totalClicksOnAds: summary?.totalClicksOnAds || 0,
+        reviewAdsCount: summary?.reviewAdsCount || 0,
+        activeAdsCount: summary?.activeAdsCount || 0,
+        reviewHighlightsCount: summary?.reviewHighlightsCount || 0,
+        activeHighlightsCount: summary?.activeHighlightsCount || 0,
       };
     });
   }

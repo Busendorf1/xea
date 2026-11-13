@@ -1,42 +1,17 @@
 // app/api/admin/notifications/send/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth0";
+import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { adminNotificationSchema } from "@/lib/validationSchemas";
 import redisConnection from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
-// Admin email whitelist logic
-const getAdminEmails = (): string[] => {
-  return process.env.ADMIN_EMAILS
-    ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
-    : [];
-};
-
-// Middleware-like verification helper
-async function verifyAdmin() {
-  const session = await auth0.getSession();
-  if (!session || !session.user) {
-    return { errorResponse: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), email: null };
-  }
-
-  const email = session.user.email?.toLowerCase();
-  if (!email) {
-    return { errorResponse: NextResponse.json({ error: "No email associated with session" }, { status: 400 }), email: null };
-  }
-
-  const adminEmails = getAdminEmails();
-  if (!adminEmails.includes(email)) {
-    return { errorResponse: NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 }), email };
-  }
-
-  return { errorResponse: null, email };
-}
-
 export async function POST(req: NextRequest) {
-  const { errorResponse } = await verifyAdmin();
-  if (errorResponse) return errorResponse;
+  const admin = await verifyAdminUser(req);
+  if (!admin) {
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+  }
 
   try {
     const body = await req.json();
@@ -69,10 +44,11 @@ export async function POST(req: NextRequest) {
       }
 
       if (!userExists) {
+        const escapedEmail = emailLower.replace(/[%_\\]/g, "\\$&");
         const { data: dbUser, error: checkErr } = await supabaseAdmin
           .from("users")
           .select("email")
-          .ilike("email", emailLower)
+          .ilike("email", escapedEmail)
           .maybeSingle();
 
         if (checkErr) {

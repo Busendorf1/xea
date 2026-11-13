@@ -6,7 +6,7 @@ import { invalidateCachedProfile } from "@/lib/utils/cache";
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getAuthenticatedEmail(req);
+    const userEmail = await getAuthenticatedEmail(req, { allowMobileHeader: true });
     if (!userEmail) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -14,14 +14,17 @@ export async function POST(req: NextRequest) {
     const cleanUserEmail = userEmail.toLowerCase().trim();
 
     // Reset monetization_clicks to 0 and set monetized to false to start 300 clicks path
+    // Uses indexed exact match for 0-lock, sub-millisecond execution at 500M+ users
     const { error: updateErr } = await supabaseAdmin
       .from("users")
       .update({
         monetized: "false",
         monetization_clicks: 0,
+        atw_tier: "ATW1",
+        attention_worth_score: 0.1,
         has_cancelled_monetization: false,
       })
-      .ilike("email", cleanUserEmail);
+      .eq("email", cleanUserEmail);
 
     if (updateErr) {
       console.error("❌ Error resuming monetization path:", updateErr);

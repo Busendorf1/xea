@@ -2,37 +2,26 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import {
-  Trash2,
-  Video,
-  Image as ImageIcon,
-  Megaphone,
-  Clock,
-  Info,
-  Globe,
-  Users,
-  Target,
-  SlidersHorizontal,
-  CheckCircle2,
-  Phone,
-  MessageSquare,
-  Mail,
-  ShoppingCart,
-  AlertTriangle,
-  Star,
-  ChevronUp,
-  FileText,
-  Share2,
-  Pencil,
-  Pause,
-  Play,
-  XCircle,
-} from "lucide-react";
+import { Info, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/currency";
-import { Ad, parseTargetingList, formatAgeRange } from "./types";
+import { Ad, AnalyticsSeriesPoint, parseTargetingList, formatAgeRange } from "./types";
+import {
+  formatAdTimestamp,
+  getCampaignDaysInfo,
+  getDeletionCountdown,
+  getAdminCustomNote,
+  parseApprovedCountdown,
+  getTotalAdClicks,
+  getCampaignSpend,
+  getCampaignEffectiveCpc,
+} from "./adUtils";
 import MultimediaCarousel from "./MultimediaCarousel";
+import AdPerformanceChart from "./AdPerformanceChart";
 import CampaignSpecsDrawer from "./CampaignSpecsDrawer";
+import MyAdCardFooter from "./MyAdCardFooter";
 import styles from "./page.module.css";
+
+export { getCampaignDaysInfo };
 
 interface MyAdCardProps {
   ad: Ad;
@@ -40,6 +29,7 @@ interface MyAdCardProps {
   reportsCount: number;
   dismissalsCount: number;
   advertiserBlockCount: number;
+  analyticsSeries?: AnalyticsSeriesPoint[];
   isSpecsOpen: boolean;
   onToggleSpecs: () => void;
   onOpenBooster: (ad: Ad) => void;
@@ -51,148 +41,9 @@ interface MyAdCardProps {
   onExportCsv: (ad: Ad) => void;
   onShowNotice: (title: string, message: string, adId?: string) => void;
   onPublish?: (ad: Ad) => void;
+  actionLoading?: boolean;
   ratedAdIds: Set<string>;
   timeNow: number;
-}
-
-function getHref(type: string, value: string): string {
-  switch (type) {
-    case "action_phone":
-      return `tel:${value}`;
-    case "action_whatsapp":
-      return `https://wa.me/${value}`;
-    case "action_email":
-      return `mailto:${value}`;
-    case "action_website":
-      return value.startsWith("http") ? value : `https://${value}`;
-    default:
-      return "#";
-  }
-}
-
-function getIcon(type: string): React.ReactNode {
-  switch (type) {
-    case "action_phone":
-      return <Phone size={13} />;
-    case "action_whatsapp":
-      return <MessageSquare size={13} />;
-    case "action_email":
-      return <Mail size={13} />;
-    case "action_website":
-      return <Globe size={13} />;
-    default:
-      return <Globe size={13} />;
-  }
-}
-
-function formatTimestamp(timestamp: string | null | undefined): string {
-  if (!timestamp) return "Unknown time";
-  const created = new Date(timestamp);
-  if (isNaN(created.getTime())) return "Invalid date";
-
-  return created.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-export function getCampaignDaysInfo(ad: Ad, timeNow: number) {
-  const scheduled = Math.max(1, Number(ad.campaign_days) || 1);
-  if (!ad.created_at) {
-    return { scheduled, remaining: scheduled, isRollover: false, rolloverDays: 0 };
-  }
-  const createdMs = new Date(ad.created_at).getTime();
-  const scheduledStartMs = ad.scheduled_start_at ? new Date(ad.scheduled_start_at).getTime() : NaN;
-  const startMs = !isNaN(scheduledStartMs) && scheduledStartMs > 0 ? Math.max(createdMs, scheduledStartMs) : createdMs;
-  if (isNaN(startMs)) {
-    return { scheduled, remaining: scheduled, isRollover: false, rolloverDays: 0 };
-  }
-
-  const isCompleted = !!ad.completed_at || (ad.impression_count !== null && ad.impression_count >= ad.impressions);
-  if (isCompleted) {
-    return { scheduled, remaining: 0, isRollover: false, rolloverDays: 0 };
-  }
-
-  const endMs = startMs + scheduled * 86_400_000;
-  if (timeNow < startMs) {
-    return { scheduled, remaining: scheduled, isRollover: false, rolloverDays: 0 };
-  }
-
-  if (timeNow >= endMs) {
-    return {
-      scheduled,
-      remaining: 0,
-      isRollover: true,
-      rolloverDays: Math.max(1, Math.ceil((timeNow - endMs) / 86_400_000)),
-    };
-  }
-
-  return {
-    scheduled,
-    remaining: Math.max(1, Math.ceil((endMs - timeNow) / 86_400_000)),
-    isRollover: false,
-    rolloverDays: 0,
-  };
-}
-
-function getDeletionCountdown(completedAt: string, timeNow: number): string | null {
-  const completedTime = new Date(completedAt).getTime();
-  const expiryTime = completedTime + 48 * 60 * 60 * 1000; // 48 Hours Archive Grace Window
-  const timeLeft = expiryTime - timeNow;
-
-  if (timeLeft <= 0) return null;
-
-  const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-  const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
-
-function getBoostUnavailableReason(ad: Ad, reportsCount: number): string | null {
-  // If approved and pending publish, or unpaid, boost is strictly unavailable until paid and live in feed
-  if (
-    ad.payment_status === "unpaid" ||
-    ad.status === "pending_review" ||
-    ad.status === "approved_pending_publish"
-  ) {
-    return "Boosting is only available after your campaign has been approved, paid for, and published live to the feed.";
-  }
-  if (reportsCount > 0) {
-    return "This campaign has been reported by viewers and is currently under content safety review. Please wait for the moderation review to complete.";
-  }
-  const isPausedByAdmin = Boolean(
-    ad.admin_statement &&
-    typeof ad.admin_statement === "string" &&
-    ad.admin_statement.trim() !== "" &&
-    !ad.admin_statement.startsWith("APPROVED:") &&
-    !ad.admin_statement.toLowerCase().startsWith("status:") &&
-    !ad.admin_statement.startsWith("REJECTED:")
-  );
-  if (isPausedByAdmin) {
-    return `This campaign was paused by an administrator. Reason: "${getAdminCustomNote(ad.admin_statement) || ad.admin_statement}". Please resolve the notice or wait for admin review.`;
-  }
-  if (ad.is_paused) {
-    return "This campaign is currently paused. Please resume the campaign first to boost it.";
-  }
-  return null;
-}
-
-function getAdminCustomNote(stmt: string | null | undefined): string | null {
-  if (!stmt) return null;
-  const trimmed = stmt.trim();
-  if (
-    trimmed.startsWith("APPROVED:") ||
-    trimmed.startsWith("REJECTED:") ||
-    trimmed.startsWith("STATUS:") ||
-    trimmed.startsWith("Status: Pending review") ||
-    trimmed === "pending_review"
-  ) {
-    return null;
-  }
-  return trimmed;
 }
 
 function MyAdCard({
@@ -201,6 +52,7 @@ function MyAdCard({
   reportsCount,
   dismissalsCount,
   advertiserBlockCount,
+  analyticsSeries,
   isSpecsOpen,
   onToggleSpecs,
   onOpenBooster,
@@ -212,6 +64,7 @@ function MyAdCard({
   onExportCsv,
   onShowNotice,
   onPublish,
+  actionLoading = false,
   ratedAdIds,
   timeNow,
 }: MyAdCardProps) {
@@ -225,36 +78,12 @@ function MyAdCard({
 
   const daysInfo = getCampaignDaysInfo(ad, timeNow);
 
-  // Moderation & Approval State
-  const isApproved = !!(ad.admin_statement && ad.admin_statement.startsWith("APPROVED:"));
+  const { isApproved, isApprovedExpired, approvedCountdownText } = parseApprovedCountdown(ad.admin_statement, timeNow);
   const isRejected = !!(ad.admin_statement && ad.admin_statement.startsWith("REJECTED:"));
   const rejectionFeedback = isRejected ? ad.admin_statement?.replace("REJECTED:", "").trim() : null;
   const adminCustomNote = getAdminCustomNote(ad.admin_statement);
 
-  // 3-Day Countdown calculation for approved campaigns
-  let approvedCountdownText: string | null = null;
-  let isApprovedExpired = false;
-
-  if (isApproved && ad.admin_statement) {
-    const approvedTimestamp = ad.admin_statement.replace("APPROVED:", "").trim();
-    const approvedDate = new Date(approvedTimestamp);
-    if (!isNaN(approvedDate.getTime())) {
-      const expiresAt = approvedDate.getTime() + 72 * 60 * 60 * 1000;
-      const diffMs = expiresAt - timeNow;
-      if (diffMs <= 0) {
-        isApprovedExpired = true;
-        approvedCountdownText = "Expired";
-      } else {
-        const d = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-        const h = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-        const m = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
-        approvedCountdownText = `${d > 0 ? `${d}d ` : ""}${h}h ${m}m remaining`;
-      }
-    }
-  }
   const seenCount = ad.impression_count ?? 0;
-
-  // Calculate click tracking counters across all 9 canonical click columns
   const phoneClicks = ad.clicks_phone ?? 0;
   const whatsappClicks = ad.clicks_whatsapp ?? 0;
   const websiteClicks = ad.clicks_website ?? 0;
@@ -264,19 +93,11 @@ function MyAdCard({
   const androidClicks = ad.clicks_android ?? 0;
   const watchNowClicks = ad.clicks_watch_now ?? 0;
   const readMoreClicks = ad.clicks_read_more ?? 0;
-  const clicksCount =
-    phoneClicks +
-    whatsappClicks +
-    websiteClicks +
-    emailClicks +
-    productCtaClicks +
-    iosClicks +
-    androidClicks +
-    watchNowClicks +
-    readMoreClicks;
+  const clicksCount = getTotalAdClicks(ad);
   const ctr = seenCount > 0 ? ((clicksCount / seenCount) * 100).toFixed(1) : "0.0";
+  const totalSpend = getCampaignSpend(ad);
+  const effectiveCpc = getCampaignEffectiveCpc(ad);
 
-  // Parse all targeting dimensions
   const industryList = parseTargetingList(ad.industry);
   const interestList = parseTargetingList(ad.interest);
   const lifestyleList = parseTargetingList(ad.lifestyle);
@@ -324,45 +145,22 @@ function MyAdCard({
       transition={{ duration: 0.22 }}
       className={styles.card}
     >
-      {/* Main Horizontal Row Body */}
       <div className={styles.rowBody}>
-        {/* Thumbnail / Media Column */}
         <div className={styles.mediaCol}>
           <MultimediaCarousel rawMedia={rawMediaString} adMediaType={ad.ad_media_type} />
         </div>
 
-        {/* Main Content & Delivery Column */}
         <div className={styles.mainInfoCol}>
-          {/* Top Badges Strip */}
           <div className={styles.tagsRow}>
             <span className={`${styles.tagPill} ${styles.tagPillMediaType}`}>
-              {hasValidMedia ? (
-                mediaType === "video" ? (
-                  <>
-                    Video
-                  </>
-                ) : (
-                  <>
-                    Image
-                  </>
-                )
-              ) : (
-                <>
-                  Text
-                </>
-              )}
+              {hasValidMedia ? (mediaType === "video" ? "Video" : "Image") : "Text"}
             </span>
 
-            {/* The single status badge */}
             {status === "active" ? (
               ad.is_paused ? (
-                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
-                  Paused
-                </span>
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>Paused</span>
               ) : isCompleted ? (
-                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
-                  Completed
-                </span>
+                <span className={`${styles.tagPill} ${styles.tagPillReview}`}>Completed</span>
               ) : daysInfo.isRollover ? (
                 <span className={`${styles.tagPill} ${styles.tagPillApproved}`}>
                   Rollover (+{daysInfo.rolloverDays}d)
@@ -377,13 +175,9 @@ function MyAdCard({
                 Approved{approvedCountdownText ? ` • ${approvedCountdownText}` : ""}
               </span>
             ) : isRejected ? (
-              <span className={`${styles.tagPill} ${styles.tagPillRejected}`}>
-                Rejected
-              </span>
+              <span className={`${styles.tagPill} ${styles.tagPillRejected}`}>Rejected</span>
             ) : (
-              <span className={`${styles.tagPill} ${styles.tagPillReview}`}>
-                Pending review
-              </span>
+              <span className={`${styles.tagPill} ${styles.tagPillReview}`}>Pending review</span>
             )}
 
             {isBiddedOrBoosted && (
@@ -394,11 +188,8 @@ function MyAdCard({
                 {isBoosted ? (
                   <>
                     Boosted •{" "}
-                    {formatCurrency(
-                      boostedAmount > 0 ? boostedAmount : ad.cost_per_impression,
-                      ad.country
-                    )}
-                    {boostedAt ? ` • ${formatTimestamp(boostedAt)}` : ""}
+                    {formatCurrency(boostedAmount > 0 ? boostedAmount : ad.cost_per_impression, ad.country)}
+                    {boostedAt ? ` • ${formatAdTimestamp(boostedAt)}` : ""}
                   </>
                 ) : (
                   <>
@@ -410,9 +201,7 @@ function MyAdCard({
             )}
 
             {ad.display_mutual_button && (
-              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-                Mutual+
-              </span>
+              <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>Mutual+</span>
             )}
 
             {(ad.is_ai_content || (ad as any).isAiContent) && (
@@ -422,10 +211,8 @@ function MyAdCard({
             )}
           </div>
 
-          {/* Ad Copy Preview */}
           <p className={styles.adDescription}>{ad.ad_content}</p>
 
-          {/* Single Rejection Reason Banner */}
           {isRejected && rejectionFeedback && (
             <div className={styles.statusReasonBanner}>
               <AlertTriangle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: "2px" }} />
@@ -436,7 +223,6 @@ function MyAdCard({
             </div>
           )}
 
-          {/* Single Admin Custom Note Banner (if any manual note was given) */}
           {adminCustomNote && (
             <div className={styles.statusReasonBanner}>
               <Info size={15} color="var(--primary)" style={{ flexShrink: 0, marginTop: "2px" }} />
@@ -447,11 +233,8 @@ function MyAdCard({
             </div>
           )}
 
-          {/* Compact Targeting Summary Strip */}
           <div className={styles.targetTagsRow}>
-            <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
-              {geoText}
-            </span>
+            <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>{geoText}</span>
             <span className={`${styles.tagPill} ${styles.tagPillIcon}`}>
               {ad.gender
                 ? ad.gender.toLowerCase() === "both"
@@ -480,7 +263,6 @@ function MyAdCard({
             </span>
           </div>
 
-          {/* Live Delivery Progress */}
           <div className={styles.deliveryProgressWrapper}>
             <div className={styles.deliveryProgressRow}>
               <span className={styles.deliveryLabel}>
@@ -501,7 +283,6 @@ function MyAdCard({
             </div>
           </div>
 
-          {/* CTA Conversion Breakdown Pills */}
           <div className={styles.ctaClickRow}>
             <span className={styles.ctaClickItem}>
               Phone: <strong>{phoneClicks}</strong>
@@ -543,7 +324,6 @@ function MyAdCard({
           </div>
         </div>
 
-        {/* Key Metrics 2x2 Bento Panel */}
         <div className={styles.metricsCol}>
           <div className={styles.metricCell}>
             <span className={styles.metricTitle}>Views Delivered</span>
@@ -560,233 +340,61 @@ function MyAdCard({
             <span className={styles.metricVal}>{(ad.mutual_adds_count ?? 0).toLocaleString()}</span>
           </div>
           <div className={styles.metricCell}>
+            <span className={styles.metricTitle}>Total Spend</span>
+            <span className={styles.metricVal}>
+              {ad.is_admin_post
+                ? `${formatCurrency(0, ad.country)} (Platform)`
+                : formatCurrency(totalSpend, ad.country)}
+            </span>
+          </div>
+          <div className={styles.metricCell}>
+            <span className={styles.metricTitle}>Eff. CPC</span>
+            <span className={styles.metricVal}>
+              {effectiveCpc !== null ? formatCurrency(effectiveCpc, ad.country) : "—"}
+            </span>
+          </div>
+          <div className={styles.metricCell}>
             <span className={styles.metricTitle}>Safety Status</span>
             {reportsCount === 0 && advertiserBlockCount === 0 ? (
-              <span className={`${styles.metricVal} ${styles.metricValGreen}`}>
-                Clean
-              </span>
+              <span className={`${styles.metricVal} ${styles.metricValGreen}`}>Clean</span>
             ) : (
-              <span className={`${styles.metricVal} ${styles.metricValRed}`}>
-                {reportsCount} Flags
-              </span>
+              <span className={`${styles.metricVal} ${styles.metricValRed}`}>{reportsCount} Flags</span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Action Row Footer - Aligned Single Horizontal Bar */}
-      <div className={styles.rowFooter}>
-        <div className={`${styles.footerLeftGroup} ${styles.footerLeftGroupInner}`}>
-          {isCompleted && deletionCountdown && (
-            <span className={styles.badgeCompleted}>
-              Archiving in {deletionCountdown}
-            </span>
-          )}
-
-          {/* Rate Listeners Button - Renders ONLY when Completed or Paused */}
-          {(ad.is_paused || isCompleted) &&
-            (ratedAdIds.has(ad.id) ? (
-              <span className={styles.rateBtnDone}>
-                <CheckCircle2 size={13} color="var(--primary)" /> Audience Rated
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onOpenRating(ad.id)}
-                className={`${styles.rateBtn} ${styles.rateBtnGlow}`}
-                title="Rate campaign conversion outcomes to boost top-performing listener Attention Scores"
-              >
-                <Star size={12} fill="var(--primary)" color="var(--primary)" /> Rate Audience
-              </button>
-            ))}
-
-          <span className={styles.postedTime}>
-            {status === "review"
-              ? `Submitted ${formatTimestamp(ad.created_at)}`
-              : isCompleted && ad.completed_at
-              ? `Posted ${formatTimestamp(ad.created_at)} • Completed ${formatTimestamp(ad.completed_at)}`
-              : `Posted ${formatTimestamp(ad.created_at)}`}
-          </span>
+      {(status === "active" || (ad.impression_count || 0) > 0) && (
+        <div className={styles.perAdChartSection}>
+          <AdPerformanceChart ad={ad} series={analyticsSeries} timeNow={timeNow} />
         </div>
+      )}
 
-        <div className={styles.footerRightGroup}>
-          {actionButtons.length > 0 && (
-            <div className={`${styles.actionButtons} ${styles.actionButtonsGroup}`}>
-              {actionButtons.map((type) => (
-                <a
-                  key={`${type}-${ad.id}`}
-                  href={getHref(type, ad[type as keyof Ad] as string)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.iconButton}
-                  title={type.replace("action_", "Test ")}
-                >
-                  {getIcon(type)}
-                </a>
-              ))}
-            </div>
-          )}
+      <MyAdCardFooter
+        ad={ad}
+        status={status}
+        isCompleted={isCompleted}
+        isApproved={isApproved}
+        isApprovedExpired={isApprovedExpired}
+        isRejected={isRejected}
+        deletionCountdown={deletionCountdown}
+        actionButtons={actionButtons}
+        reportsCount={reportsCount}
+        isSpecsOpen={isSpecsOpen}
+        actionLoading={actionLoading}
+        ratedAdIds={ratedAdIds}
+        onToggleSpecs={onToggleSpecs}
+        onOpenBooster={onOpenBooster}
+        onOpenRating={onOpenRating}
+        onTogglePause={onTogglePause}
+        onShare={onShare}
+        onEdit={onEdit}
+        onCancel={onCancel}
+        onExportCsv={onExportCsv}
+        onShowNotice={onShowNotice}
+        onPublish={onPublish}
+      />
 
-          <button type="button" className={styles.toggleSpecsBtn} onClick={onToggleSpecs}>
-            {isSpecsOpen ? (
-              <span className={styles.specsBtnInner}>
-                Hide Specs
-              </span>
-            ) : (
-              <span className={styles.specsBtnInner}>
-                Specs
-              </span>
-            )}
-          </button>
-
-          
-          {status === "review" && (
-            <>
-              {isApproved && !isApprovedExpired && (
-                <button
-                  type="button"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    backgroundColor: "#10b981",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "0.42rem 0.95rem",
-                    fontSize: "0.82rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
-                    transition: "transform 0.15s ease",
-                  }}
-                  onClick={() => onPublish && onPublish(ad)}
-                  title={Number(ad.total_cost || 0) <= 0 || ad.is_admin_post ? "Publish ad live to feed" : "Make payment and publish ad live to feed"}
-                >
-                  {Number(ad.total_cost || 0) <= 0 || ad.is_admin_post ? "Publish" : "Publish & Pay"}
-                </button>
-              )}
-
-              {isRejected && (
-                <a
-                  href="/logged-in"
-                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onEdit(ad.id);
-                  }}
-                  title="Edit and resubmit campaign according to admin feedback"
-                >
-                  Adjust &amp; Resubmit
-                </a>
-              )}
-
-              {!isApproved && !isRejected && (
-                <a
-                  href="/logged-in"
-                  className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onEdit(ad.id);
-                  }}
-                  title="Edit ad copy or targeting"
-                >
-                  Edit
-                </a>
-              )}
-
-              <button
-                type="button"
-                onClick={() => onCancel(ad.id)}
-                className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
-                title="Delete campaign draft"
-              >
-                Delete
-              </button>
-            </>
-          )}
-
-          {status === "active" && !isCompleted && (
-            <>
-              <button
-                type="button"
-                onClick={() => onTogglePause(ad.id, !!ad.is_paused, ad.admin_statement)}
-                className={ad.is_paused ? styles.resumeBtn : styles.pauseBtn}
-              >
-                {ad.is_paused ? (
-                  <>
-                    Resume
-                  </>
-                ) : (
-                  <>
-                    Pause
-                  </>
-                )}
-              </button>
-              {(() => {
-                const reason = getBoostUnavailableReason(ad, reportsCount);
-                if (reason) {
-                  return (
-                    <div className={styles.boostTooltipWrapper}>
-                      <button
-                        type="button"
-                        onClick={() => onShowNotice("Boosting Unavailable", reason, ad.id)}
-                        className={`${styles.boostBtn} ${styles.boostUnavailableBtn}`}
-                      >
-                        <AlertTriangle size={13} color="var(--text-muted)" />
-                        Boost Unavailable
-                      </button>
-                      <div className={styles.boostTooltipContent}>
-                        <div className={styles.boostTooltipRow}>
-                          <AlertTriangle size={13} />
-                          Boosting Unavailable
-                        </div>
-                        {reason}
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <button type="button" onClick={() => onOpenBooster(ad)} className={styles.boostBtn}>
-                    Boost
-                  </button>
-                );
-              })()}
-              <button type="button" onClick={() => onShare(ad.id)} className={styles.shareAdBtn} title="Copy campaign share link">
-                Share
-              </button>
-              <a
-                href="/logged-in"
-                className={`${styles.shareAdBtn} ${styles.editAdBtn}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onEdit(ad.id);
-                }}
-              >
-                <Pencil size={12} /> Edit
-              </a>
-              <button
-                type="button"
-                onClick={() => onExportCsv(ad)}
-                className={styles.shareAdBtn}
-                title="Download CSV Performance Report"
-              >
-                CSV
-              </button>
-              <button
-                type="button"
-                onClick={() => onCancel(ad.id)}
-                className={`${styles.cancelBtn} ${styles.cancelBtnStyling}`}
-                title="Stop and cancel campaign"
-              >
-                Cancel
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Expandable Full Campaign Specs & Budget Drawer */}
       <CampaignSpecsDrawer
         ad={ad}
         isOpen={isSpecsOpen}

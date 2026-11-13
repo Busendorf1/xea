@@ -62,7 +62,7 @@ export async function touchUserActivity(
       if (!isExempt && daysInactive >= 7 && (wasMonetized || hadClicks)) {
         console.warn(` User ${emailLower} inactive for ${daysInactive} days. Revoking monetization & resetting clicks...`);
         await supabaseAdmin.rpc("check_and_update_monetization_status", {
-          p_email: emailLower,
+          user_email_param: emailLower,
         });
         await invalidateCachedProfile(emailLower);
         markL1ActivityTouched(emailLower);

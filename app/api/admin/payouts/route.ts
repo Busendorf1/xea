@@ -37,7 +37,12 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      query = query.or(`user_email.ilike.%${search}%,reference.ilike.%${search}%,description.ilike.%${search}%`);
+      const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+      if (cleanSearch) {
+        query = query.or(
+          `user_email.ilike.%${cleanSearch}%,reference.ilike.%${cleanSearch}%,description.ilike.%${cleanSearch}%`
+        );
+      }
     }
 
     const { data: payouts, count: totalCount, error: fetchErr } = await query
@@ -73,10 +78,10 @@ export async function GET(req: NextRequest) {
 
     if (!countMetrics) {
       const [queuedRes, failedRes, pendingRes, processingRes] = await Promise.all([
-        supabaseAdmin.from("payments").select("amount", { count: "exact" }).eq("type", "withdrawal").eq("status", "queued").limit(1000),
-        supabaseAdmin.from("payments").select("id", { count: "exact" }).eq("type", "withdrawal").eq("status", "failed").limit(1),
-        supabaseAdmin.from("payments").select("id", { count: "exact" }).eq("type", "withdrawal").eq("status", "pending").limit(1),
-        supabaseAdmin.from("payments").select("id", { count: "exact" }).eq("type", "withdrawal").eq("status", "processing").limit(1),
+        supabaseAdmin.from("payments").select("amount", { count: "exact" }).eq("type", "withdrawal").eq("status", "queued").limit(500),
+        supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "failed"),
+        supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "pending"),
+        supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "processing"),
       ]);
 
       const queuedCount = queuedRes.count || 0;
@@ -195,7 +200,13 @@ export async function POST(req: NextRequest) {
 
       for (const payment of queuedPayments) {
         const rawAmount = parseFloat(payment.amount);
-        const netDisburseAmount = payment.metadata?.net_amount ?? Math.max(0, rawAmount - 35);
+        const paymentGateway = (payment.metadata?.gateway || payment.metadata?.provider) as PayoutGateway | undefined;
+        const resolvedFee =
+          payment.metadata?.transfer_fee ??
+          payment.metadata?.fee ??
+          PayoutProvider.calculateTransferFee(rawAmount, paymentGateway);
+        const netDisburseAmount =
+          payment.metadata?.net_amount ?? Math.max(0, Number((rawAmount - Number(resolvedFee)).toFixed(2)));
         const { bankCode, accountNumber, accountName } = payment.metadata || {};
 
         if (!bankCode || !accountNumber) {
@@ -318,53 +329,62 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing destination bank details in payment record." }, { status: 400 });
       }
 
-      // If the payment was previously marked failed, check if the funds were refunded to user balance
+      // If the payment was previously marked failed, atomically re-deduct the refunded balance via RPC
+      let retryDeductRef: string | null = null;
       if (payment.status === "failed") {
-        const { data: user } = await supabaseAdmin
-          .from("users")
-          .select("balance, withdrawal")
-          .eq("email", userEmail)
+        retryDeductRef = `payout_retry_${reference}_${Date.now()}`;
+        const { data: deductRes, error: deductErr } = await supabaseAdmin.rpc("deduct_wallet_atomic", {
+          p_user_email: userEmail,
+          p_amount: withdrawAmount,
+          p_reason: `admin_payout_retry:${reference}`,
+          p_reference: retryDeductRef,
+        });
+
+        if (deductErr || !deductRes?.success) {
+          const errMsg = deductRes?.error || deductErr?.message || "Insufficient balance or concurrent update.";
+          return NextResponse.json({ error: errMsg }, { status: 400 });
+        }
+
+        const { data: transitioned, error: transErr } = await supabaseAdmin
+          .from("payments")
+          .update({
+            status: "queued",
+            metadata: {
+              ...(payment.metadata || {}),
+              retry_deduct_reference: retryDeductRef,
+              retried_from_failed_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", payment.id)
+          .eq("status", "failed")
+          .select("id")
           .maybeSingle();
 
-        if (!user) {
-          return NextResponse.json({ error: "User account not found." }, { status: 404 });
+        if (transErr || !transitioned) {
+          // Another process already retried or modified this payment; atomically refund our deduction
+          await supabaseAdmin.rpc("refund_wallet_atomic", {
+            p_user_email: userEmail,
+            p_amount: withdrawAmount,
+            p_reason: `admin_payout_retry_conflict_rollback:${reference}`,
+            p_reference: retryDeductRef,
+          });
+          return NextResponse.json(
+            { error: "Payout status changed concurrently. Deducted amount was safely refunded." },
+            { status: 409 }
+          );
         }
 
-        const currentBalance = parseFloat(user.balance || 0);
-        const currentWithdrawal = parseFloat(user.withdrawal || 0);
-
-        // If the balance has the funds, deduct it back to withdrawal escrow and transition payment back to queued before settlement
-        if (currentBalance >= withdrawAmount) {
-          const newBal = Number((currentBalance - withdrawAmount).toFixed(2));
-          const newWith = Number((currentWithdrawal + withdrawAmount).toFixed(2));
-
-          const { data: updatedUser, error: userUpdateErr } = await supabaseAdmin
-            .from("users")
-            .update({ balance: newBal, withdrawal: newWith })
-            .eq("email", userEmail)
-            .gte("balance", withdrawAmount)
-            .select("balance")
-            .maybeSingle();
-
-          if (userUpdateErr || !updatedUser) {
-            return NextResponse.json({ error: "User balance concurrent update conflict. Please try again." }, { status: 409 });
-          }
-
-          await supabaseAdmin
-            .from("payments")
-            .update({ status: "queued" })
-            .eq("id", payment.id);
-
-          await invalidateCachedProfile(userEmail);
-        } else if (currentWithdrawal < withdrawAmount) {
-          return NextResponse.json({
-            error: `User insufficient balance to retry. Current balance is ₦${currentBalance.toLocaleString("en-NG")}.`,
-          }, { status: 400 });
-        }
+        await invalidateCachedProfile(userEmail);
       }
 
-      // Attempt disbursement (disburse net amount so user bears the ₦35 fee)
-      const netDisburseAmount = payment.metadata?.net_amount ?? Math.max(0, withdrawAmount - 35);
+      // Attempt disbursement using dynamic gateway-aware Paystack/Kora fee calculation
+      const paymentGateway = (payment.metadata?.gateway || payment.metadata?.provider) as PayoutGateway | undefined;
+      const resolvedFee =
+        payment.metadata?.transfer_fee ??
+        payment.metadata?.fee ??
+        PayoutProvider.calculateTransferFee(withdrawAmount, paymentGateway);
+      const netDisburseAmount =
+        payment.metadata?.net_amount ?? Math.max(0, Number((withdrawAmount - Number(resolvedFee)).toFixed(2)));
       try {
         console.log(`🏦 Admin Retrying Payout (${isTestMode ? "TEST MODE" : "LIVE"}): ref=${reference} to ${accountNumber} (${bankCode}) netAmount=₦${netDisburseAmount}`);
         let newStatus = "processing";
@@ -484,7 +504,13 @@ export async function POST(req: NextRequest) {
           continue;
         }
         const withdrawAmount = parseFloat(t.amount);
-        const netDisburseAmount = t.metadata?.net_amount ?? Math.max(0, withdrawAmount - 35);
+        const tGateway = (t.metadata?.gateway || t.metadata?.provider) as PayoutGateway | undefined;
+        const tFee =
+          t.metadata?.transfer_fee ??
+          t.metadata?.fee ??
+          PayoutProvider.calculateTransferFee(withdrawAmount, tGateway);
+        const netDisburseAmount =
+          t.metadata?.net_amount ?? Math.max(0, Number((withdrawAmount - Number(tFee)).toFixed(2)));
         const { bankCode, accountNumber, accountName } = t.metadata || {};
         if (!bankCode || !accountNumber) continue;
 

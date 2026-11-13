@@ -15,6 +15,7 @@ const AgentNetworkModal = dynamic(() => import("./AgentNetworkModal"), {
 export function BecomeAgentPage({ formatCurrency }: { formatCurrency?: (val: number | string) => string }) {
   const {
     data,
+    loadingMore,
     actionLoading,
     activeActionKey,
     feedback,
@@ -22,6 +23,7 @@ export function BecomeAgentPage({ formatCurrency }: { formatCurrency?: (val: num
     registerAgent,
     triggerOptOutAction,
     refreshNetwork,
+    loadMoreInvites,
   } = useAgentNetwork();
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [confirmAgentOptOut, setConfirmAgentOptOut] = useState(false);
@@ -171,6 +173,8 @@ export function BecomeAgentPage({ formatCurrency }: { formatCurrency?: (val: num
             onTriggerOptOut={triggerOptOutAction}
             onRegisterAgent={registerAgent}
             onRefresh={refreshNetwork}
+            onLoadMoreInvites={loadMoreInvites}
+            loadingMore={loadingMore}
             onNavigateToAgentPage={() => setShowNetworkModal(false)}
           />,
           document.body

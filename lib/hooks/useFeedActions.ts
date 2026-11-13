@@ -4,6 +4,8 @@ import { ViewerProfileState } from "./useViewerProfile";
 import { KinematicVector } from "@/lib/security/kinematicsEvaluator";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { shareAdToDeviceOrClipboard } from "@/lib/utils/adShare";
+import { toClientFriendlyApiError, toClientFriendlyError } from "@/lib/utils/clientError";
 
 export interface InteractionData {
   telemetry?: KinematicVector[];
@@ -408,7 +410,7 @@ export function useFeedActions({
                 : null
             );
           }
-          throw new Error(errData?.error || "Failed to add mutual");
+          throw new Error(toClientFriendlyApiError(response.status, errData, "Could not add mutual. Try again later"));
         }
 
         const resData = await response.json();
@@ -473,7 +475,11 @@ export function useFeedActions({
       } catch (e: unknown) {
         console.error("❌ Unexpected error in handleAdMutual:", e);
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: (e as Error).message || "Action failed" } }));
+          window.dispatchEvent(
+            new CustomEvent("xea:toast", {
+              detail: { message: toClientFriendlyError(e, "Try again later") },
+            })
+          );
         }
         return false;
       } finally {
@@ -486,16 +492,11 @@ export function useFeedActions({
 
   // Ad Sharing
   const handleShare = useCallback((adId: string) => {
-    if (typeof window !== "undefined") {
-      const encodedId = btoa(adId.toString());
-      const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
-      navigator.clipboard
-        .writeText(shareUrl)
-        .then(() => {
-          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Link copied to clipboard" } }));
-        })
-        .catch((err) => console.error("❌ Failed to copy link:", err));
-    }
+    void shareAdToDeviceOrClipboard({ id: adId }, (message) => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message } }));
+      }
+    });
   }, []);
 
   return {

@@ -11,6 +11,9 @@ import styles from "./AgentSystem.module.css";
 
 export interface AgentFollowersTabProps {
   invites: DownlineInviteItem[];
+  hasMoreInvites?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => Promise<void>;
   actionLoading: boolean;
   activeActionKey: string | null;
   selectedFollowerKey: string | null;
@@ -23,6 +26,9 @@ export interface AgentFollowersTabProps {
 
 export default function AgentFollowersTab({
   invites,
+  hasMoreInvites = false,
+  loadingMore = false,
+  onLoadMore,
   actionLoading,
   activeActionKey,
   selectedFollowerKey,
@@ -203,6 +209,19 @@ export default function AgentFollowersTab({
           </div>
         );
       })}
+      {hasMoreInvites && onLoadMore && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+          <button
+            type="button"
+            disabled={loadingMore || actionLoading}
+            className={styles.btnSecondarySmall}
+            onClick={() => onLoadMore()}
+          >
+            {loadingMore && <span className={`btnSpinner ${styles.btnSpinnerSmall}`} aria-hidden="true" />}
+            <span>{loadingMore ? "Loading..." : "Load more followers"}</span>
+          </button>
+        </div>
+      )}
     </>
   );
 }

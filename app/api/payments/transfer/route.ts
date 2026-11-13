@@ -20,7 +20,10 @@ import {
 } from "@/lib/security/discrepancyAuditor";
 import { captureApiException } from "@/lib/logger";
 import { transferApiSchema } from "@/lib/validationSchemas";
-import { verifyTransactionPin } from "@/lib/security/walletPinHelper";
+import {
+  verifyTransactionPin,
+  resolveStoredWalletPinHash,
+} from "@/lib/security/walletPinHelper";
 
 export async function POST(req: NextRequest) {
   let senderEmail = "";
@@ -50,23 +53,24 @@ export async function POST(req: NextRequest) {
 
     const cleanSender = senderEmail.toLowerCase().trim();
 
-    // Verify Sender 4-Digit Wallet PIN (if configured)
+    // Verify Sender 4-Digit Wallet PIN (fail closed when unset)
     const { data: senderPinData } = await supabaseAdmin
       .from("users")
-      .select("wallet_pin_hash")
-      .eq("email", cleanSender)
+      .select("wallet_pin_hash, passphrase")
+      .ilike("email", cleanSender)
       .maybeSingle();
 
     const pinCheck = await verifyTransactionPin({
       email: cleanSender,
       pin,
-      storedPinHash: senderPinData?.wallet_pin_hash,
+      storedPinHash: resolveStoredWalletPinHash(senderPinData),
     });
 
     if (!pinCheck.valid) {
       return NextResponse.json(
         {
           error: pinCheck.error,
+          code: pinCheck.code,
           attemptsRemaining: pinCheck.attemptsRemaining,
           retryAfter: pinCheck.retryAfter,
         },
@@ -388,10 +392,12 @@ export async function POST(req: NextRequest) {
     // Asynchronous non-blocking background auditor check
     runAutomatedDiscrepancyCheck().catch(() => {});
 
-    // 12. Invalidate Redis Caches Immediately for both parties
+    // 12. Invalidate Redis Caches & Statement Cache Immediately for both parties
     await Promise.all([
       invalidateCachedProfile(cleanSender),
       invalidateCachedProfile(cleanRecipient),
+      redisConnection.incr(`statement:ver:${cleanSender}`).catch(() => {}),
+      redisConnection.incr(`statement:ver:${cleanRecipient}`).catch(() => {}),
     ]);
 
     const formattedAmount = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(amountNum);

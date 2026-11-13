@@ -2,7 +2,6 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Activity, Clock, Eye, MousePointerClick, UserPlus } from "lucide-react";
 import styles from "./page.module.css";
 
 interface CampaignKpiSummaryProps {
@@ -45,9 +44,6 @@ export default function CampaignKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Active Campaigns</span>
-          <span className={styles.kpiIconBox}>
-            <Activity size={15} />
-          </span>
         </div>
         <span className={styles.kpiValue}>{activeCount}</span>
         <span className={styles.kpiSub}>
@@ -64,9 +60,6 @@ export default function CampaignKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>In Review Queue</span>
-          <span className={`${styles.kpiIconBox} ${styles.kpiIconBoxMuted}`}>
-            <Clock size={15} />
-          </span>
         </div>
         <span className={`${styles.kpiValue} ${reviewCount === 0 ? styles.kpiValueMuted : ""}`}>
           {reviewCount}
@@ -85,9 +78,6 @@ export default function CampaignKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Verified Views</span>
-          <span className={styles.kpiIconBox}>
-            <Eye size={15} />
-          </span>
         </div>
         <span className={styles.kpiValue}>{totalImpressions.toLocaleString()}</span>
         <span className={styles.kpiSub}>Total impressions served</span>
@@ -102,9 +92,6 @@ export default function CampaignKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>CTA Conversions</span>
-          <span className={styles.kpiIconBox}>
-            <MousePointerClick size={15} />
-          </span>
         </div>
         <div className={styles.kpiValueGroup}>
           <span className={styles.kpiValue}>{totalClicks.toLocaleString()}</span>
@@ -122,9 +109,6 @@ export default function CampaignKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Mutual+ Gained</span>
-          <span className={styles.kpiIconBox}>
-            <UserPlus size={15} />
-          </span>
         </div>
         <span className={styles.kpiValue}>{totalMutuals.toLocaleString()}</span>
         <span className={styles.kpiSub}>Audience connections</span>

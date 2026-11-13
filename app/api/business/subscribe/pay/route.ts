@@ -9,6 +9,10 @@ import {
   spendWalletBalanceAtomic,
   refundWalletDeductionAtomic,
 } from "@/lib/services/payoutSettlementService";
+import {
+  verifyTransactionPin,
+  resolveStoredWalletPinHash,
+} from "@/lib/security/walletPinHelper";
 
 const USD_TO_NGN_RATE = 1500;
 
@@ -22,7 +26,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { subscriber_id, payment_method, callback_url } = body;
+    const { subscriber_id, payment_method, callback_url, pin, walletPin } = body;
+    const providedPin = walletPin ?? pin;
 
     if (!subscriber_id) {
       return NextResponse.json({ error: "Missing subscriber application ID." }, { status: 400 });
@@ -72,8 +77,39 @@ export async function POST(req: NextRequest) {
     // Convert USD ($100) to NGN (₦150,000) so NGN wallets and NGN payment gateways charge the true Naira equivalent
     const requiredAmountNgn = currency === "USD" ? rawAmount * USD_TO_NGN_RATE : rawAmount;
 
-    // 2. Handle Wallet Payment
+    // 2. Handle Wallet Payment (requires valid active user & Wallet PIN)
     if (payment_method === "wallet") {
+      const { data: payerUser, error: payerErr } = await supabaseAdmin
+        .from("users")
+        .select("wallet_pin_hash, passphrase, is_banned, ad_account_status")
+        .ilike("email", cleanEmail)
+        .maybeSingle();
+
+      if (payerErr || !payerUser) {
+        return NextResponse.json({ error: "Account not found." }, { status: 404 });
+      }
+      if (payerUser.ad_account_status === "deactivated" || payerUser.is_banned) {
+        return NextResponse.json({ error: "Account is restricted from wallet payments." }, { status: 403 });
+      }
+
+      const pinCheck = await verifyTransactionPin({
+        email: cleanEmail,
+        pin: providedPin,
+        storedPinHash: resolveStoredWalletPinHash(payerUser),
+      });
+      if (!pinCheck.valid) {
+        return NextResponse.json(
+          {
+            error: pinCheck.error,
+            code: pinCheck.code,
+            requiresPinSetup: pinCheck.code === "PIN_NOT_SET",
+            attemptsRemaining: pinCheck.attemptsRemaining,
+            retryAfter: pinCheck.retryAfter,
+          },
+          { status: pinCheck.statusCode || 401 }
+        );
+      }
+
       walletLockKey = `lock:wallet:${cleanEmail}`;
       const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
       if (!acquired) {

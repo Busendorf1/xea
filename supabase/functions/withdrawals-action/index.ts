@@ -1,48 +1,22 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getVerifiedUserEmail } from "../_shared/auth.ts";
+import { computePhoneHash, corsHeaders, errorResponse, jsonResponse } from "../_shared/cors.ts";
+import { decryptSensitiveFieldEdge } from "../_shared/crypto.ts";
+import { deductWalletAtomic, refundWalletAtomic } from "../_shared/paymentActivation.ts";
+import {
+  calculateTransferFee,
+  getActiveGateway,
+  initiatePayout,
+  listBanks,
+  resolveBankAccount,
+} from "../_shared/payoutProvider.ts";
+import { verifyTransactionPinEdge } from "../_shared/walletPin.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-user-email, x-user-authorization, x-idempotency-key",
-};
-
-const KORA_BASE_URL =
-  Deno.env.get("KORA_BASE_URL") || "https://api.korapay.com/merchant/api/v1";
-
-function getTransferFeeNaira(amount: number): number {
-  if (amount <= 5000) return 10;
-  if (amount <= 50000) return 25;
-  return 50;
+function normalizeLast10Digits(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : digits;
 }
-
-const FALLBACK_BANKS = [
-  { name: "Access Bank", code: "044" },
-  { name: "Citibank Nigeria", code: "023" },
-  { name: "Ecobank Nigeria", code: "050" },
-  { name: "Fidelity Bank", code: "070" },
-  { name: "First Bank of Nigeria", code: "011" },
-  { name: "First City Monument Bank (FCMB)", code: "214" },
-  { name: "Guaranty Trust Bank (GTBank)", code: "058" },
-  { name: "Jaiz Bank", code: "301" },
-  { name: "Keystone Bank", code: "082" },
-  { name: "Kuda Bank", code: "50211" },
-  { name: "Moniepoint MFB", code: "50515" },
-  { name: "Opay (Paycom)", code: "999992" },
-  { name: "Palmpay", code: "999991" },
-  { name: "Polaris Bank", code: "076" },
-  { name: "Providus Bank", code: "101" },
-  { name: "Stanbic IBTC Bank", code: "221" },
-  { name: "Standard Chartered Bank", code: "068" },
-  { name: "Sterling Bank", code: "232" },
-  { name: "Union Bank of Nigeria", code: "032" },
-  { name: "United Bank for Africa (UBA)", code: "033" },
-  { name: "Unity Bank", code: "215" },
-  { name: "VFD Microfinance Bank", code: "566" },
-  { name: "Wema Bank", code: "035" },
-  { name: "Zenith Bank", code: "057" },
-];
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -52,483 +26,270 @@ serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const koraSecretKey = (
-      Deno.env.get("KORA_SECRET_KEY") ||
-      Deno.env.get("KORAPAY_SECRET_KEY") ||
-      ""
-    ).trim();
-    const paystackSecretKey = (
-      Deno.env.get("PAYSTACK_SECRET_KEY") || ""
-    ).trim();
-    const payoutProvider = (Deno.env.get("PAYOUT_PROVIDER") || "kora")
-      .toLowerCase()
-      .trim();
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json().catch(() => ({}));
-    const action = String(body?.action || "banks").toLowerCase();
+    const action = String(body?.action || "banks").toLowerCase().trim();
 
-    // 0. List Supported Nigerian Banks (`banks`) — Kora Primary, Paystack Backup
     if (action === "banks") {
-      if (koraSecretKey && payoutProvider !== "paystack") {
-        try {
-          const koraRes = await fetch(
-            `${KORA_BASE_URL}/misc/banks?countryCode=NG`,
-            {
-              headers: {
-                Authorization: `Bearer ${koraSecretKey}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-          const koraJson = await koraRes.json();
-          if (
-            koraRes.ok &&
-            koraJson?.status &&
-            Array.isArray(koraJson?.data) &&
-            koraJson.data.length > 0
-          ) {
-            return new Response(
-              JSON.stringify({
-                provider: "kora",
-                banks: koraJson.data.map((b: any) => ({
-                  name: b.name,
-                  code: b.code,
-                })),
-              }),
-              {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
-            );
-          }
-        } catch (err) {
-          console.warn("Kora listBanks failed, trying Paystack backup:", err);
-        }
+      const res = await listBanks();
+      if (!res.success) {
+        return errorResponse(res.error || "Unable to fetch bank list.", 503);
       }
-
-      if (paystackSecretKey) {
-        try {
-          const psRes = await fetch(
-            "https://api.paystack.co/bank?country=nigeria",
-            {
-              headers: { Authorization: `Bearer ${paystackSecretKey}` },
-            }
-          );
-          const psJson = await psRes.json();
-          if (psRes.ok && psJson?.status && Array.isArray(psJson?.data)) {
-            return new Response(
-              JSON.stringify({
-                provider: "paystack",
-                banks: psJson.data.map((b: any) => ({
-                  name: b.name,
-                  code: b.code,
-                })),
-              }),
-              {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
-            );
-          }
-        } catch {}
-      }
-
-      return new Response(
-        JSON.stringify({ provider: "fallback", banks: FALLBACK_BANKS }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return jsonResponse({ provider: res.provider, banks: res.banks });
     }
 
-    // 1. Resolve Bank Account Name (`resolve`) — Kora Primary, Paystack Backup
     if (action === "resolve") {
-      const accountNumber = String(body?.accountNumber || "")
-        .replace(/\D/g, "")
-        .trim();
-      const bankCode = String(body?.bankCode || "").trim();
-
-      if (accountNumber.length !== 10 || !bankCode) {
-        return new Response(
-          JSON.stringify({
-            error: "Please enter a valid 10-digit account number and select a bank.",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+      const accountNumber = String(body?.accountNumber || body?.account_number || "").trim();
+      const bankCode = String(body?.bankCode || body?.bank_code || "").trim();
+      if (!/^\d{10}$/.test(accountNumber) || !bankCode) {
+        return errorResponse("Valid 10-digit account number and bank code are required.", 400);
+      }
+      const res = await resolveBankAccount(accountNumber, bankCode);
+      if (!res.success) {
+        return errorResponse(
+          res.error || "Could not verify bank account. Please check the account number and bank.",
+          400,
         );
       }
-
-      // Kora Primary
-      if (koraSecretKey && payoutProvider !== "paystack") {
-        try {
-          const koraRes = await fetch(`${KORA_BASE_URL}/misc/banks/resolve`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${koraSecretKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              bank: bankCode,
-              account: accountNumber,
-              currency: "NGN",
-            }),
-          });
-          const koraJson = await koraRes.json();
-          if (koraRes.ok && koraJson?.status && koraJson?.data?.account_name) {
-            return new Response(
-              JSON.stringify({
-                provider: "kora",
-                account_number:
-                  koraJson.data.account_number || accountNumber,
-                account_name: koraJson.data.account_name,
-                accountName: koraJson.data.account_name,
-              }),
-              {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
-            );
-          }
-        } catch {}
-      }
-
-      // Paystack Backup
-      if (paystackSecretKey) {
-        const res = await fetch(
-          `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(
-            accountNumber
-          )}&bank_code=${encodeURIComponent(bankCode)}`,
-          {
-            headers: { Authorization: `Bearer ${paystackSecretKey}` },
-          }
-        );
-        const json = await res.json();
-        if (res.ok && json?.status && json?.data?.account_name) {
-          return new Response(
-            JSON.stringify({
-              provider: "paystack",
-              account_number: accountNumber,
-              account_name: json.data.account_name,
-              accountName: json.data.account_name,
-            }),
-            {
-              status: 200,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
-      }
-
-      return new Response(
-        JSON.stringify({
-          error: "Could not verify bank account. Please check the account number and bank.",
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return jsonResponse({
+        provider: res.provider,
+        account_number: res.account_number,
+        account_name: res.account_name,
+        accountName: res.account_name,
+      });
     }
 
-    // 2. Initiate Withdrawal Payout Request (`initiate`) — Kora Primary, Paystack Backup
     if (action === "initiate") {
       const verifiedEmail = await getVerifiedUserEmail(req);
       if (!verifiedEmail) {
-        return new Response(
-          JSON.stringify({
-            error: "Please sign in again to initiate a withdrawal.",
-          }),
-          {
-            status: 401,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+        return errorResponse("Please sign in again to initiate a withdrawal.", 401);
       }
 
-      const callerEmail = verifiedEmail;
-      const amount = Number(body?.amount || 0);
-      const accountNumber = String(body?.accountNumber || "")
-        .replace(/\D/g, "")
+      const requestedEmail = (
+        req.headers.get("x-user-email") || String(body?.email || "")
+      )
+        .toLowerCase()
         .trim();
-      const bankCode = String(body?.bankCode || "").trim();
-      const accountName = String(body?.accountName || "Paayh User").trim();
 
-      if (amount < 10000 || accountNumber.length !== 10 || !bankCode) {
-        return new Response(
-          JSON.stringify({
-            error: "Minimum withdrawal is ₦10,000 with a valid 10-digit bank account.",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+      if (
+        verifiedEmail !== "service_role" &&
+        requestedEmail &&
+        verifiedEmail !== requestedEmail
+      ) {
+        return errorResponse("Session mismatch. Please sign in again.", 403);
       }
 
-      const transferFee = getTransferFeeNaira(amount);
-      const netAmount = Math.round((amount - transferFee) * 100) / 100;
+      const cleanEmail =
+        verifiedEmail === "service_role" ? requestedEmail : verifiedEmail;
+      if (!cleanEmail) {
+        return errorResponse("Authentication required.", 401);
+      }
 
-      // Flush any buffered/sharded affiliate yield before checking balance
-      try {
-        await supabase.rpc("flush_affiliate_yield_shards_atomic", {
-          p_target_email: callerEmail,
+      const amount = Math.round(Number(body?.amount || 0) * 100) / 100;
+      const bankCode = String(body?.bankCode || body?.bank_code || "").trim();
+      const accountNumber = String(body?.accountNumber || body?.account_number || "").trim();
+      const accountName = String(body?.accountName || body?.account_name || "").trim();
+      const bankName = String(body?.bankName || body?.bank_name || "").trim();
+      const pin = body?.pin ?? body?.walletPin ?? body?.transactionPin;
+      const providedPhone = String(
+        body?.phone || body?.phoneNumber || body?.registeredPhone || "",
+      ).trim();
+
+      if (!Number.isFinite(amount) || amount < 100) {
+        return errorResponse("Minimum withdrawal amount is ₦100.", 400);
+      }
+      if (!/^\d{10}$/.test(accountNumber) || !bankCode || !accountName) {
+        return errorResponse("Complete 10-digit bank account details are required.", 400);
+      }
+
+      // 1. Enforce mandatory Wallet PIN + DB brute-force lockout
+      const pinCheck = await verifyTransactionPinEdge(supabase, cleanEmail, pin);
+      if (!pinCheck.valid) {
+        return errorResponse(pinCheck.error || "Invalid Wallet PIN.", pinCheck.statusCode, {
+          attemptsLeft: pinCheck.attemptsLeft,
+          retryAfter: pinCheck.retryAfter,
         });
-      } catch {}
-
-      const ref = `kora_wdr_${Date.now()}_${Math.random()
-        .toString(36)
-        .substring(2, 8)}`;
-
-      // Try atomic withdrawal RPC first
-      let nextBal: number | null = null;
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc(
-        "initiate_atomic_withdrawal",
-        {
-          p_email: callerEmail,
-          p_amount: amount,
-          p_reference: ref,
-          p_description: `Withdrawal to ${accountName} (${accountNumber} / ${bankCode})`,
-          p_metadata: {
-            account_number: accountNumber,
-            bank_code: bankCode,
-            account_name: accountName,
-            fee: transferFee,
-            net_amount: netAmount,
-          },
-        }
-      );
-
-      if (!rpcErr && rpcRes) {
-        if (!rpcRes.success) {
-          return new Response(
-            JSON.stringify({
-              error: rpcRes.error || "Insufficient balance for withdrawal.",
-            }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
-        nextBal = Number(rpcRes.new_balance ?? 0);
-      } else {
-        // Fallback guarded atomic deduction
-        const { data: userRow } = await supabase
-          .from("users")
-          .select("id, balance")
-          .eq("email", callerEmail)
-          .maybeSingle();
-
-        const currentBal = Number(userRow?.balance || 0);
-        if (!userRow || currentBal < amount) {
-          return new Response(
-            JSON.stringify({ error: "Insufficient balance for withdrawal." }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
-
-        const candidateBal = Math.round((currentBal - amount) * 100) / 100;
-        const { data: updatedUser, error: deductErr } = await supabase
-          .from("users")
-          .update({ balance: candidateBal })
-          .eq("id", userRow.id)
-          .gte("balance", amount)
-          .select("balance")
-          .maybeSingle();
-
-        if (deductErr || !updatedUser) {
-          return new Response(
-            JSON.stringify({
-              error: "Withdrawal already in progress or insufficient balance.",
-            }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
-        nextBal = Number(updatedUser.balance);
-
-        await supabase.from("payments").insert([
-          {
-            user_email: callerEmail,
-            reference: ref,
-            amount,
-            status: "pending",
-            type: "withdrawal",
-            description: `Withdrawal to ${accountName} (${accountNumber} / ${bankCode})`,
-          },
-        ]);
       }
 
-      let payoutStatus = "pending";
-      let usedProvider = "kora";
-      let disbursed = false;
-
-      // Try Kora Single Payout Primary (disburse netAmount after transfer fee)
-      if (koraSecretKey && payoutProvider !== "paystack") {
-        try {
-          const koraRes = await fetch(
-            `${KORA_BASE_URL}/transactions/disburse`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${koraSecretKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                reference: ref,
-                destination: {
-                  type: "bank_account",
-                  amount: netAmount,
-                  currency: "NGN",
-                  narration: "Paayh Earnings Withdrawal",
-                  bank_account: {
-                    bank: bankCode,
-                    account: accountNumber,
-                  },
-                  customer: {
-                    name: accountName,
-                    email: callerEmail,
-                  },
-                },
-              }),
-            }
-          );
-          const koraJson = await koraRes.json();
-          if (koraRes.ok && koraJson?.status) {
-            disbursed = true;
-            payoutStatus = koraJson?.data?.status || "processing";
-            usedProvider = "kora";
-          }
-        } catch {}
+      // 2. Reject deactivated / banned / suspended accounts
+      const { data: tomb } = await supabase
+        .from("deactivated_users")
+        .select("email")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+      if (tomb) {
+        return errorResponse("This account has been deactivated.", 403);
       }
 
-      // Fallback to Paystack Transfer if Kora did not disburse
-      if (!disbursed && paystackSecretKey) {
-        try {
-          const rcptRes = await fetch(
-            "https://api.paystack.co/transferrecipient",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${paystackSecretKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                type: "nuban",
-                name: accountName,
-                account_number: accountNumber,
-                bank_code: bankCode,
-                currency: "NGN",
-              }),
-            }
-          );
-          const rcptJson = await rcptRes.json();
-          const recipientCode = rcptJson?.data?.recipient_code;
+      const { data: user, error: userErr } = await supabase
+        .from("users")
+        .select(
+          "email, balance, withdrawal, phone, phone_hash, ad_account_status, suspended_until, firstName, lastName, username",
+        )
+        .ilike("email", cleanEmail)
+        .maybeSingle();
 
-          if (rcptRes.ok && recipientCode) {
-            const trfRes = await fetch("https://api.paystack.co/transfer", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${paystackSecretKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                source: "balance",
-                amount: Math.round(netAmount * 100),
-                recipient: recipientCode,
-                reason: "Paayh Wallet Withdrawal",
-                reference: ref,
-              }),
-            });
-            const trfJson = await trfRes.json();
-            if (trfRes.ok && trfJson?.status) {
-              disbursed = true;
-              payoutStatus = trfJson?.data?.status || "processing";
-              usedProvider = "paystack";
-            }
-          }
-        } catch {}
+      if (userErr || !user) {
+        return errorResponse("User profile not found.", 404);
       }
 
-      if (!disbursed) {
-        // Refund balance if neither gateway disbursed
-        const { data: latestUser } = await supabase
-          .from("users")
-          .select("id, balance")
-          .eq("email", callerEmail)
-          .maybeSingle();
-        if (latestUser) {
-          const refundedBal =
-            Math.round(((Number(latestUser.balance) || 0) + amount) * 100) /
-            100;
-          await supabase
-            .from("users")
-            .update({ balance: refundedBal })
-            .eq("id", latestUser.id);
-        }
-        await supabase
-          .from("payments")
-          .update({ status: "failed" })
-          .eq("reference", ref);
+      if (
+        user.ad_account_status === "banned" ||
+        user.ad_account_status === "deactivated" ||
+        (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now())
+      ) {
+        return errorResponse("Your account is restricted from withdrawals.", 403);
+      }
 
-        return new Response(
-          JSON.stringify({
-            error:
-              "Payout service is temporarily busy. Your balance has not been charged—please try again shortly.",
-          }),
-          {
-            status: 502,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+      // 3. Enforce registered phone verification
+      const inputDigits = normalizeLast10Digits(providedPhone);
+      if (inputDigits.length < 10) {
+        return errorResponse(
+          "Registered phone number verification is required to withdraw.",
+          400,
         );
       }
 
-      await supabase
-        .from("payments")
-        .update({ status: payoutStatus })
-        .eq("reference", ref);
+      const decryptedStoredPhone = user.phone
+        ? await decryptSensitiveFieldEdge(String(user.phone))
+        : "";
+      const storedDigits = normalizeLast10Digits(decryptedStoredPhone);
+      const inputHash = await computePhoneHash(providedPhone);
+      const phoneMatches =
+        (storedDigits.length >= 10 && storedDigits === inputDigits) ||
+        (Boolean(user.phone_hash) && user.phone_hash === inputHash);
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          provider: usedProvider,
-          status: payoutStatus,
-          reference: ref,
-          balance: nextBal,
-          fee: transferFee,
-          netAmount,
-          message: "Withdrawal initiated successfully.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+      if (!storedDigits && !user.phone_hash) {
+        return errorResponse(
+          "Please update your profile with a verified phone number before withdrawing.",
+          403,
+        );
+      }
+      if (!phoneMatches) {
+        return errorResponse(
+          "Phone number does not match the registered phone number on this account.",
+          403,
+        );
+      }
+
+      // 4. Unified fee calculation from active gateway schedule
+      const primaryProvider = getActiveGateway();
+      const quotedFee = calculateTransferFee(amount, primaryProvider);
+      const totalDebit = Math.round((amount + quotedFee) * 100) / 100;
+
+      if (Number(user.balance || 0) < totalDebit) {
+        return errorResponse(
+          `Insufficient balance. You need ₦${totalDebit.toLocaleString()} (including ₦${quotedFee} fee).`,
+          400,
+        );
+      }
+
+      const reference = `wd_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+
+      // 5. Atomic wallet deduction BEFORE disbursement
+      const deduction = await deductWalletAtomic(
+        supabase,
+        cleanEmail,
+        totalDebit,
+        "withdrawal",
+        reference,
       );
+      if (!deduction.success) {
+        return errorResponse(deduction.error || "Insufficient balance.", 400);
+      }
+
+      const customerName =
+        `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+        user.username ||
+        accountName;
+
+      // 6. Execute disbursement via unified payout provider
+      const payout = await initiatePayout({
+        reference,
+        amount,
+        bankCode,
+        accountNumber,
+        accountName,
+        customerEmail: cleanEmail,
+        customerName,
+        narration: `XEA Withdrawal - ${reference}`,
+      });
+
+      if (!payout.success) {
+        await refundWalletAtomic(
+          supabase,
+          cleanEmail,
+          totalDebit,
+          "withdrawal_failed_rollback",
+          `refund_${reference}`,
+        );
+        return errorResponse(
+          payout.error || "Withdrawal payout failed. Your wallet balance has been refunded.",
+          502,
+        );
+      }
+
+      // Refund any positive fee delta if fallback provider had a lower fee
+      if (payout.fee < quotedFee) {
+        const feeDelta = Math.round((quotedFee - payout.fee) * 100) / 100;
+        if (feeDelta > 0) {
+          await refundWalletAtomic(
+            supabase,
+            cleanEmail,
+            feeDelta,
+            "withdrawal_fee_adjustment",
+            `fee_adj_${reference}`,
+          );
+        }
+      }
+
+      const actualFee = Math.min(quotedFee, payout.fee);
+      const nextWithdrawn = Math.round((Number(user.withdrawal || 0) + amount) * 100) / 100;
+      await supabase
+        .from("users")
+        .update({ withdrawal: nextWithdrawn })
+        .ilike("email", cleanEmail);
+
+      await supabase.from("payments").insert([
+        {
+          user_email: cleanEmail,
+          reference: payout.reference || reference,
+          amount,
+          status: payout.status === "success" ? "completed" : "processing",
+          type: "withdrawal",
+          description: `Withdrawal to ${bankName || bankCode} (${accountNumber.slice(-4)})`,
+          metadata: {
+            provider: payout.provider,
+            fee: actualFee,
+            bank_code: bankCode,
+            bank_name: bankName,
+            account_last4: accountNumber.slice(-4),
+            account_name: accountName,
+            transfer_code: payout.transferCode || null,
+          },
+        },
+      ]);
+
+      return jsonResponse({
+        success: true,
+        provider: payout.provider,
+        reference: payout.reference || reference,
+        status: payout.status,
+        amount,
+        fee: actualFee,
+        totalDebited: Math.round((amount + actualFee) * 100) / 100,
+        newBalance: deduction.newBalance,
+        message: "Withdrawal initiated successfully.",
+      });
     }
 
-    return new Response(JSON.stringify({ error: "Unsupported action." }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({
-        error: "Unable to complete withdrawal right now. Please try again.",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+    return errorResponse("Unsupported withdrawal action.", 400);
+  } catch (err: unknown) {
+    console.error("withdrawals-action error:", err);
+    return errorResponse(
+      "Unable to process withdrawal request right now. Please try again.",
+      500,
     );
   }
 });

@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const { data: userProfile } = await supabaseAdmin
       .from("users")
       .select('username, balance, "profileImage"')
-      .eq("email", emailLower)
+      .ilike("email", emailLower)
       .maybeSingle();
 
     const currentBalance = parseFloat(userProfile?.balance || 0);
@@ -108,10 +108,11 @@ export async function POST(req: NextRequest) {
 
         if (allAdminEmails.length > 0) {
           const formattedBal = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(currentBalance);
+          const safeHandle = `@${String(username || "user").replace(/@.*$/, "")}`;
           const notificationRows = allAdminEmails.map((adminEmail) => ({
             user_email: adminEmail,
             title: "Forfeited Balance: Account Deactivated",
-            message: `User @${username} (${emailLower}) has deactivated their account and forfeited ${formattedBal}. This amount is queued for resolution to the platform treasury in the Admin Dashboard.`,
+            message: `User ${safeHandle} has deactivated their account and forfeited ${formattedBal}. This amount is queued for resolution to the platform treasury in the Admin Dashboard.`,
           }));
 
           try {
@@ -121,14 +122,15 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // 0c. Record entry in system_reconciliation_logs
+        // 0c. Record entry in system_reconciliation_logs (PII-free audit note)
         try {
+          const safeHandle = `@${String(username || "user").replace(/@.*$/, "")}`;
           await supabaseAdmin.from("system_reconciliation_logs").insert([{
             status: "FLAGGED",
             total_credits_kobo: Math.round(currentBalance * 100),
             total_debits_kobo: 0,
             variance_kobo: Math.round(currentBalance * 100),
-            notes: `Account deactivation forfeiture: @${username} (${emailLower}) forfeited ₦${currentBalance.toFixed(2)}. Awaiting admin resolution to platform balance.`,
+            notes: `Account deactivation forfeiture: ${safeHandle} forfeited ₦${currentBalance.toFixed(2)}. Awaiting admin resolution to platform balance.`,
           }]);
         } catch {}
 
@@ -137,7 +139,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log(`👤 Permanently deactivating and deleting account for: ${emailLower} (Forfeited Balance: ₦${currentBalance})`);
+    console.log(`👤 Permanently deactivating and deleting account (Forfeited Balance: ₦${currentBalance})`);
 
     // 1. Asynchronous Media Cleanup: Schedule storage asset purging in background without delaying user response
     (async () => {
@@ -228,52 +230,94 @@ export async function POST(req: NextRequest) {
     // 2b. Zero-Downtime Fallback: Execute comprehensive direct table deletions if RPC is not yet applied
     if (!rpcSucceeded) {
       // Capture graph edges before deletion so caches can be purged precisely
-      const [upRow, downRows] = await Promise.all([
-        supabaseAdmin.from("referrals").select("referrer_email").eq("referee_email", emailLower).maybeSingle(),
-        supabaseAdmin.from("referrals").select("referee_email").eq("referrer_email", emailLower).limit(5000),
+      const [upRow, downRows, mutualRows] = await Promise.all([
+        supabaseAdmin.from("referrals").select("referrer_email").ilike("referee_email", emailLower).maybeSingle(),
+        supabaseAdmin.from("referrals").select("referee_email").ilike("referrer_email", emailLower),
+        supabaseAdmin.from("user_mutuals").select("holder_email").ilike("mutual_email", emailLower),
       ]);
       graph.referrerEmail = upRow.data?.referrer_email ? String(upRow.data.referrer_email).toLowerCase() : null;
       graph.refereeEmails = (downRows.data || []).map((r: any) => String(r.referee_email).toLowerCase());
+      graph.mutualHolderEmails = Array.from(
+        new Set((mutualRows.data || []).map((r: any) => String(r.holder_email || "").toLowerCase()).filter(Boolean))
+      );
 
       // Financial ledger is retained 5 years for AML compliance, pseudonymised rather than deleted
       const { createHash } = await import("crypto");
       const pseudonym = `deleted_${createHash("md5").update(emailLower).digest("hex")}`;
       await Promise.allSettled([
-        supabaseAdmin.from("payments").update({ user_email: pseudonym }).eq("user_email", emailLower),
-        supabaseAdmin.from("forfeited_balances").update({ user_email: pseudonym, username: null }).eq("user_email", emailLower),
+        supabaseAdmin.from("payments").update({ user_email: pseudonym }).ilike("user_email", emailLower),
+        supabaseAdmin.from("forfeited_balances").update({ user_email: pseudonym, username: null }).ilike("user_email", emailLower),
       ]);
 
       await Promise.allSettled([
-        supabaseAdmin.from("adds").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("addsactive").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("completed_ads").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("addscompleted").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("bidded_ads").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("news").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("newsactive").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("bidded_highlights").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("notifications").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("ad_impressions").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("read_announcements").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("help_tickets").delete().eq("user_email", emailLower),
-        supabaseAdmin.from("referrals").delete().or(`referrer_email.eq.${emailLower},referee_email.eq.${emailLower}`),
-        supabaseAdmin.from("ad_reports").delete().or(`reporter_email.eq.${emailLower},advertiser_email.eq.${emailLower}`),
-        supabaseAdmin.from("blocked_advertisers").delete().or(`reporter_email.eq.${emailLower},advertiser_email.eq.${emailLower}`),
-        supabaseAdmin.from("blocked_ads").delete().eq("reporter_email", emailLower),
-        supabaseAdmin.from("completed_ads_ratings").delete().eq("advertiser_email", emailLower),
-        supabaseAdmin.from("newsletter_subscribers").delete().eq("email", emailLower),
-        supabaseAdmin.from("premium_subscribers").delete().eq("user_email", emailLower),
+        supabaseAdmin.from("adds").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("addsactive").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("completed_ads").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("addscompleted").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("bidded_ads").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("news").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("newsactive").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("bidded_highlights").delete().or(`user_email.ilike.${emailLower},email.ilike.${emailLower}`),
+        supabaseAdmin.from("notifications").delete().ilike("user_email", emailLower),
+        supabaseAdmin.from("ad_impressions").delete().ilike("user_email", emailLower),
+        supabaseAdmin.from("read_announcements").delete().ilike("user_email", emailLower),
+        supabaseAdmin.from("help_tickets").delete().ilike("user_email", emailLower),
+        supabaseAdmin.from("referrals").delete().or(`referrer_email.ilike.${emailLower},referee_email.ilike.${emailLower}`),
+        supabaseAdmin.from("ad_reports").delete().or(`reporter_email.ilike.${emailLower},advertiser_email.ilike.${emailLower}`),
+        supabaseAdmin.from("blocked_advertisers").delete().or(`reporter_email.ilike.${emailLower},advertiser_email.ilike.${emailLower}`),
+        supabaseAdmin.from("blocked_ads").delete().ilike("reporter_email", emailLower),
+        supabaseAdmin.from("completed_ads_ratings").delete().ilike("advertiser_email", emailLower),
+        supabaseAdmin.from("newsletter_subscribers").delete().ilike("email", emailLower),
+        supabaseAdmin.from("premium_subscribers").delete().ilike("user_email", emailLower),
       ]);
+
+      // Notify connected follower/referee/mutual accounts cleanly in fallback mode (RPC handles this in SQL)
+      const safeHandle = `@${String(userProfile?.username || "user").replace(/@.*$/, "")}`;
+      const notifySet = new Map<string, { title: string; message: string }>();
+      if (graph.referrerEmail) {
+        notifySet.set(graph.referrerEmail, {
+          title: "Follower Account Deactivated",
+          message: `One of your followers (${safeHandle}) has permanently deactivated their account and been removed from your network.`,
+        });
+      }
+      for (const refEmail of graph.refereeEmails) {
+        notifySet.set(refEmail, {
+          title: "Agent Account Deactivated",
+          message: `Your referred agent (${safeHandle}) has permanently deactivated their account.`,
+        });
+      }
+      for (const holderEmail of graph.mutualHolderEmails) {
+        if (!notifySet.has(holderEmail)) {
+          notifySet.set(holderEmail, {
+            title: "Mutual Contact Removed",
+            message: `${safeHandle} has permanently deactivated their account and been removed from your mutual list.`,
+          });
+        }
+      }
+      if (notifySet.size > 0) {
+        const rows = Array.from(notifySet.entries()).map(([targetEmail, n]) => ({
+          user_email: targetEmail,
+          title: n.title,
+          message: n.message,
+          read: false,
+          is_global: false,
+        }));
+        for (let i = 0; i < rows.length; i += 500) {
+          try {
+            await supabaseAdmin.from("notifications").insert(rows.slice(i, i + 500));
+          } catch {}
+        }
+      }
 
       // Delete user primary record from users table
       const { error: deleteUserErr } = await supabaseAdmin
         .from("users")
         .delete()
-        .eq("email", emailLower);
+        .ilike("email", emailLower);
 
       if (deleteUserErr) {
         console.error("❌ Error deleting user from users table:", deleteUserErr);
-        return NextResponse.json({ error: deleteUserErr.message }, { status: 500 });
+        return NextResponse.json({ error: "Try again later" }, { status: 500 });
       }
     }
 
@@ -282,7 +326,7 @@ export async function POST(req: NextRequest) {
       purgeDeletedUserFromAgentCaches({ email: emailLower, ...graph }),
       // Delete the sign-in identity too (Apple 5.1.1(v) / Google Play account deletion policy)
       deleteAuth0IdentitiesByEmail(emailLower).then((ok) => {
-        if (!ok) console.warn(`⚠️ Auth0 identity for ${emailLower} not deleted (configure AUTH0_MGMT_CLIENT_ID/SECRET).`);
+        if (!ok) console.warn("⚠️ Auth0 identity was not deleted (configure AUTH0_MGMT_CLIENT_ID/SECRET).");
       }),
       redisConnection.del(`agent:net_cache:${emailLower}`),
       // Delete the Supabase Auth identity so user cannot authenticate with old credentials
@@ -293,16 +337,18 @@ export async function POST(req: NextRequest) {
           console.warn("Notice deleting Supabase auth user:", authErr);
         }
       })(),
-      // Upsert permanent tombstone in deactivated_users table
+      // Upsert tombstone for stale-session revocation (fresh OAuth sign-in clears non-ban tombstones to allow re-joining)
       (async () => {
         try {
           await supabaseAdmin.from("deactivated_users").upsert({
             email: emailLower,
+            reason: "user_deactivated",
             deactivated_at: new Date().toISOString(),
           });
         } catch {}
       })(),
       redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 2592000),
+      redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 2592000),
       invalidateCachedProfile(emailLower),
       invalidateAllHighlights(),
       redisConnection.del(`campaigns:${emailLower}`),
@@ -310,11 +356,19 @@ export async function POST(req: NextRequest) {
       redisConnection.del(`feed:ads:${emailLower}`),
       redisConnection.del(`feed:profiles:${emailLower}`),
       redisConnection.del(`feed:impressions:${emailLower}`),
+      redisConnection.del(`seen:ads:${emailLower}`),
       redisConnection.del(`statement:payments:${emailLower}`),
       redisConnection.del(`statement:withdrawals:${emailLower}`),
       redisConnection.del(`statement:all:${emailLower}`),
+      redisConnection.incr(`statement:ver:${emailLower}`),
       redisConnection.del(`monetize:${emailLower}`),
       redisConnection.del(`monetize:status:${emailLower}`),
+      redisConnection.del(`user:live_clicks:${emailLower}`),
+      redisConnection.del(`user:live_clicks:v2:${emailLower}`),
+      redisConnection.del(`user:cooldown:${emailLower}`),
+      redisConnection.del(`active:touch:${emailLower}`),
+      redisConnection.del(`wallet_pin_fail:${emailLower}`),
+      redisConnection.del(`wallet_pin_reset_fail:${emailLower}`),
       redisConnection.del(`atw:${emailLower}`),
       redisConnection.del(`rate:feed:${emailLower}`),
       redisConnection.del(`user:${emailLower}`),
@@ -323,10 +377,26 @@ export async function POST(req: NextRequest) {
 
     // 4. Build response and revoke session authentication cookies immediately
     const res = NextResponse.json({ success: true, message: "Account deleted successfully" });
-    res.cookies.set("appSession", "", { path: "/", expires: new Date(0), httpOnly: true, secure: process.env.NODE_ENV === "production" });
-    res.cookies.set("auth0.is.authenticated", "", { path: "/", expires: new Date(0) });
-    res.cookies.set("paayh_statement_cache", "", { path: "/", expires: new Date(0) });
-    res.cookies.set("xea_session", "", { path: "/", expires: new Date(0) });
+    const secureCookie = process.env.NODE_ENV === "production";
+    const expiredCookieOpts = {
+      path: "/",
+      expires: new Date(0),
+      maxAge: 0,
+      httpOnly: true,
+      secure: secureCookie,
+      sameSite: "lax" as const,
+    };
+    for (const cookieName of ["appSession", "__session", "__Host-appSession", "paayh_statement_cache", "xea_session"]) {
+      res.cookies.set(cookieName, "", expiredCookieOpts);
+    }
+    for (let i = 0; i <= 4; i++) {
+      res.cookies.set(`appSession.${i}`, "", expiredCookieOpts);
+      res.cookies.set(`__session.${i}`, "", expiredCookieOpts);
+    }
+    res.cookies.set("auth0.is.authenticated", "", { path: "/", expires: new Date(0), maxAge: 0 });
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.headers.set("Pragma", "no-cache");
+    res.headers.set("Clear-Site-Data", '"cookies", "storage"');
 
     return res;
   } catch (err: any) {

@@ -10,10 +10,12 @@ interface HighlightCardProps {
   formatTimestamp: (timestamp: string | null | undefined) => string;
 }
 
-const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestamp }) => {
+const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestamp: _formatTimestamp }) => {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [isTextExpanded, setIsTextExpanded] = useState(false);
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
   const touchStartYRef = React.useRef<number | null>(null);
+  const isVideoMedia = Boolean(ad.ad_media && /\.(mp4|webm|mov|m3u8)(\?|#|$)/i.test(ad.ad_media));
 
   useEffect(() => {
     if (ad.is_highlight && ad.id) {
@@ -95,26 +97,47 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
       <div className={styles.contentCol}>
         <div className={styles.tweetHeader}>
           <div className={styles.headerLeft}>
-            <span className={styles.sponsorName}>{ad.title}</span>
-            <span className={styles.dot}>·</span>
-            <span className={styles.adTime}>
-              {formatTimestamp(ad.created_at)}
-            </span>
+            <span className={styles.sponsorName} title={ad.title || undefined}>{ad.title}</span>
             {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
-              <>
-                <span className={styles.dot}>·</span>
-                <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                  AI
-                </span>
-              </>
+              <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
+                AI
+              </span>
             )}
           </div>
           <span className={`${styles.sponsorLabel} ${styles.highlightLabel}`}>
-            Highlight
+            {(ad as any).is_highest_bidder ? "Top Highlight" : "Highlight"}
           </span>
         </div>
 
-        <p className={styles.adText}>{ad.ad_content}</p>
+        {ad.ad_content && (
+          <p className={styles.adText} style={{ overflowWrap: "anywhere" }}>
+            {!isTextExpanded && ad.ad_content.length > 260 ? (
+              <>
+                {ad.ad_content.slice(0, 260).trimEnd()}…{" "}
+                <button
+                  type="button"
+                  className={styles.inlineReadMoreBtn}
+                  onClick={() => setIsTextExpanded(true)}
+                >
+                  See more
+                </button>
+              </>
+            ) : (
+              <>
+                {ad.ad_content}{" "}
+                {ad.ad_content.length > 260 && (
+                  <button
+                    type="button"
+                    className={styles.inlineReadMoreBtn}
+                    onClick={() => setIsTextExpanded(false)}
+                  >
+                    See less
+                  </button>
+                )}
+              </>
+            )}
+          </p>
+        )}
 
         {ad.ad_media && (
           <div
@@ -123,17 +146,19 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
               {
                 "--single-media-ratio": aspectRatio,
                 aspectRatio: `${aspectRatio}`,
-                cursor: "pointer",
+                cursor: isVideoMedia ? "default" : "pointer",
               } as React.CSSProperties
             }
-            role="button"
-            tabIndex={0}
-            aria-label="Open highlight media viewer"
+            role={isVideoMedia ? undefined : "button"}
+            tabIndex={isVideoMedia ? undefined : 0}
+            aria-label={isVideoMedia ? undefined : "Open highlight media viewer"}
             onClick={(e) => {
+              if (isVideoMedia) return;
               e.stopPropagation();
               setIsLightboxOpen(true);
             }}
             onKeyDown={(e) => {
+              if (isVideoMedia) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 e.stopPropagation();
@@ -141,26 +166,40 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
               }
             }}
           >
-            <img
-              ref={imgRef}
-              src={ad.ad_media}
-              alt="Highlight Cover"
-              className={styles.adImgElement}
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                if (img.naturalWidth && img.naturalHeight) {
-                  const rawRatio = img.naturalWidth / img.naturalHeight;
-                  const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
-                  if (ad.ad_media) saveRatioToCache(ad.ad_media, clamped);
-                  setAspectRatio(clamped);
-                }
-              }}
-            />
+            {isVideoMedia ? (
+              <video
+                src={ad.ad_media}
+                autoPlay
+                loop
+                muted
+                playsInline
+                controls
+                preload="metadata"
+                className={styles.adImgElement}
+              />
+            ) : (
+              <img
+                ref={imgRef}
+                src={ad.ad_media}
+                alt="Highlight Cover"
+                className={styles.adImgElement}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  if (img.naturalWidth && img.naturalHeight) {
+                    const rawRatio = img.naturalWidth / img.naturalHeight;
+                    const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
+                    if (ad.ad_media) saveRatioToCache(ad.ad_media, clamped);
+                    setAspectRatio(clamped);
+                  }
+                }}
+              />
+            )}
           </div>
         )}
       </div>
 
       {isLightboxOpen &&
+        !isVideoMedia &&
         ad.ad_media &&
         typeof document !== "undefined" &&
         createPortal(

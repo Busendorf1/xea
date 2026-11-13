@@ -312,7 +312,7 @@ export class PayoutProvider {
    * - Kora:
    *   <= ₦5,000        -> ₦15.00
    *   ₦5,001 - ₦50,000 -> ₦25.00
-   *   > ₦50,000        -> ₦35.00 (or custom configured KORA_TRANSFER_FEE)
+   *   > ₦50,000        -> ₦35.00 (or custom KORA_TRANSFER_FEE when > 50,000)
    */
   static calculateTransferFee(amount: number, provider?: PayoutGateway): number {
     const gateway = provider || this.getActiveGateway();
@@ -328,18 +328,21 @@ export class PayoutProvider {
       }
     }
 
-    const envKoraFee = parseFloat(process.env.KORA_TRANSFER_FEE || "");
-    if (!isNaN(envKoraFee) && envKoraFee >= 0) {
-      return envKoraFee;
-    }
-
     if (parsedAmount <= 5000) {
       return 15;
     } else if (parsedAmount <= 50000) {
       return 25;
-    } else {
-      return 35;
     }
+
+    const envKoraFee = parseFloat(process.env.KORA_TRANSFER_FEE || "");
+    if (Number.isFinite(envKoraFee) && envKoraFee >= 0) {
+      return envKoraFee;
+    }
+    return 35;
   }
+}
+
+export function calculateTransferFee(amount: number, provider?: PayoutGateway): number {
+  return PayoutProvider.calculateTransferFee(amount, provider);
 }
 

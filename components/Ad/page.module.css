@@ -5,7 +5,7 @@
 
 .pageWrapper,
 .pageWapper {
-  font-family: var(--font-geist-sans), "Geist", "Inter", sans-serif !important;
+  font-family: var(--font-geist-sans), "Geist", sans-serif !important;
   background-color: transparent;
   min-height: auto;
   padding: 0;
@@ -35,7 +35,7 @@
 .adFormContainer label,
 .adFormContainer summary,
 .adFormContainer option {
-  font-family: var(--font-geist-sans), "Geist", "Inter", sans-serif !important;
+  font-family: var(--font-geist-sans), "Geist", sans-serif !important;
 }
 
 /* Multi-Step Wizard Header Bar */
@@ -274,17 +274,14 @@
 
 /* Modern Section Card Architecture */
 .modernSectionCard {
-  border-radius: 0;
-  border: none;
-  border-bottom: 1px solid var(--card-border);
-  background-color: transparent;
-  background: transparent;
+  border-radius: 16px;
+  border: 1px solid var(--card-border);
+  background-color: var(--card-bg);
   overflow: visible;
   position: relative;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.75rem;
-  box-shadow: none !important;
-  transition: none;
+  margin-bottom: 1rem;
+  padding: 1.15rem 1.25rem;
+  transition: border-color 0.2s ease;
 }
 
 .modernSectionCard:hover {
@@ -1861,9 +1858,6 @@
 :global([data-theme='light']) .pageWapper,
 :global([data-theme='dark']) .pageWrapper,
 :global([data-theme='dark']) .pageWapper,
-:global([data-theme='white']) .modernSectionCard,
-:global([data-theme='light']) .modernSectionCard,
-:global([data-theme='dark']) .modernSectionCard,
 :global([data-theme='white']) .modernSectionHeader,
 :global([data-theme='light']) .modernSectionHeader,
 :global([data-theme='dark']) .modernSectionHeader,

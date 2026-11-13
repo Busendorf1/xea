@@ -72,6 +72,7 @@ export default function DashboardClient({
 
   // Balance visibility toggle (locked by default until 4-digit Wallet PIN is verified)
   const [showBalance, setShowBalance] = useState(false);
+  const [unlockedWalletPin, setUnlockedWalletPin] = useState("");
 
   useEffect(() => {
     try {
@@ -82,7 +83,11 @@ export default function DashboardClient({
   }, []);
 
   const toggleShowBalance = (nextState?: boolean) => {
-    setShowBalance((prev) => (typeof nextState === "boolean" ? nextState : !prev));
+    setShowBalance((prev) => {
+      const next = typeof nextState === "boolean" ? nextState : !prev;
+      if (!next) setUnlockedWalletPin("");
+      return next;
+    });
   };
 
   const [mounted, setMounted] = useState(false);
@@ -700,6 +705,7 @@ export default function DashboardClient({
               showBalance={showBalance}
               onToggleShowBalance={toggleShowBalance}
               onPinConfigured={() => setUser((prev) => ({ ...prev, has_wallet_pin: true }))}
+              onPinUnlocked={(pin) => setUnlockedWalletPin(pin)}
               formatCurrency={formatCurrency}
               onOpenWithdrawModal={() => setShowWithdrawModal(true)}
               onOpenSendMoneyModal={() => setShowSendMoneyModal(true)}
@@ -742,6 +748,7 @@ export default function DashboardClient({
                 isOpen={showWithdrawModal}
                 onClose={() => setShowWithdrawModal(false)}
                 user={user}
+                defaultPin={unlockedWalletPin}
                 formatCurrency={formatCurrency}
                 onSuccess={(data) => setTransferSuccessData(data)}
                 onUpdateBalance={(finalBal, finalWithdrawal) =>
@@ -755,6 +762,7 @@ export default function DashboardClient({
                 isOpen={showSendMoneyModal}
                 onClose={() => setShowSendMoneyModal(false)}
                 user={user}
+                defaultPin={unlockedWalletPin}
                 currentUserEmail={email}
                 formatCurrency={formatCurrency}
                 onSuccess={(data) => setTransferSuccessData(data)}

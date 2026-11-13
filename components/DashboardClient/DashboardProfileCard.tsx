@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, Clock } from "lucide-react";
@@ -9,7 +9,8 @@ import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import RoleStarBadges from "@/components/ui/RoleStarBadges";
 import { AgentProfileStats } from "@/components/AgentSystem/AgentSystem";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
-import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
+import { isExemptFromBarriersAndInactivity, isAdminEmail } from "@/lib/adminHelper";
+import { getProfileEditCooldownState } from "@/lib/utils/profileCooldown";
 import { UserProfile } from "./types";
 import Skeleton from "@/components/ui/Skeleton";
 import styles from "./page.module.css";
@@ -87,6 +88,72 @@ export default function DashboardProfileCard({
   isLoading = false,
 }: DashboardProfileCardProps) {
   const [showAtwTooltip, setShowAtwTooltip] = useState(false);
+  // Keep initial SSR/hydration render deterministic; set live clock on mount.
+  const [cooldownNowMs, setCooldownNowMs] = useState<number | null>(null);
+  const [liveLastUpdated, setLiveLastUpdated] = useState<string | null | undefined>(user?.lastUpdated);
+  const [liveHasUpdated, setLiveHasUpdated] = useState<boolean | undefined>(user?.has_updated_profile);
+
+  useEffect(() => {
+    setCooldownNowMs(Date.now());
+  }, []);
+
+  useEffect(() => {
+    setLiveLastUpdated(user?.lastUpdated);
+    setLiveHasUpdated(user?.has_updated_profile);
+  }, [user?.lastUpdated, user?.has_updated_profile]);
+
+  useEffect(() => {
+    const onProfileUpdated = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ lastUpdated?: string; has_updated_profile?: boolean }>)?.detail;
+      if (detail?.lastUpdated) setLiveLastUpdated(detail.lastUpdated);
+      if (typeof detail?.has_updated_profile === "boolean") {
+        setLiveHasUpdated(detail.has_updated_profile);
+      }
+      setCooldownNowMs(Date.now());
+    };
+    window.addEventListener("paayh:profile-updated", onProfileUpdated);
+    return () => window.removeEventListener("paayh:profile-updated", onProfileUpdated);
+  }, []);
+
+  const isAdminUser = isAdminEmail(user?.email);
+  const editCooldown =
+    cooldownNowMs === null
+      ? getProfileEditCooldownState({
+          hasUpdatedProfile: false,
+          lastUpdated: null,
+          isAdmin: isAdminUser,
+          nowMs: 0,
+        })
+      : getProfileEditCooldownState({
+          hasUpdatedProfile: liveHasUpdated ?? user?.has_updated_profile,
+          lastUpdated: liveLastUpdated ?? user?.lastUpdated,
+          isAdmin: isAdminUser,
+          nowMs: cooldownNowMs,
+        });
+
+  useEffect(() => {
+    if (!editCooldown.isLocked || !editCooldown.nextAvailableMs) return;
+
+    const remaining = editCooldown.msRemaining;
+    // Tick every 1s inside the final hour (or under 1 day for live UI accuracy), otherwise every 60s.
+    const intervalMs = remaining <= 60 * 60 * 1000 ? 1000 : 60 * 1000;
+    const interval = setInterval(() => {
+      setCooldownNowMs(Date.now());
+    }, intervalMs);
+
+    // Exact wake-up at exhaustion when within 24 hours so Edit unlocks without delay
+    let expiryTimeout: ReturnType<typeof setTimeout> | null = null;
+    if (remaining <= 24 * 60 * 60 * 1000) {
+      expiryTimeout = setTimeout(() => {
+        setCooldownNowMs(Date.now());
+      }, Math.max(50, remaining + 50));
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (expiryTimeout) clearTimeout(expiryTimeout);
+    };
+  }, [editCooldown.isLocked, editCooldown.nextAvailableMs, editCooldown.msRemaining]);
 
   if (isLoading || !user || !user.email) {
     return <ProfileCardSkeleton />;
@@ -154,8 +221,27 @@ export default function DashboardProfileCard({
             gender={user.gender}
           />
         </div>
-        <Link href="/logged-in" onClick={() => onSelectTab("profile")} className={styles.editProfileBtn}>
-          Edit profile
+        <Link
+          href="/logged-in"
+          onClick={() => onSelectTab("profile")}
+          className={`${styles.editProfileBtn} ${editCooldown.isLocked ? styles.editProfileBtnLocked : ""}`}
+          title={
+            editCooldown.isLocked && editCooldown.detailedLabel
+              ? `Profile edit cooldown: ${editCooldown.detailedLabel}`
+              : "Edit profile"
+          }
+          aria-label={
+            editCooldown.isLocked && editCooldown.detailedLabel
+              ? `Edit profile (${editCooldown.detailedLabel})`
+              : "Edit profile"
+          }
+        >
+          <span>Edit profile</span>
+          {editCooldown.isLocked && editCooldown.buttonCountdownLabel && (
+            <span className={styles.editProfileCountdownBadge}>
+              {editCooldown.buttonCountdownLabel}
+            </span>
+          )}
         </Link>
       </div>
 
@@ -293,20 +379,7 @@ export default function DashboardProfileCard({
             )}
           </AnimatePresence>
 
-          {user.has_cancelled_monetization ? (
-            <>
-              <span className={styles.profileStatDot}>·</span>
-              <Link
-                href="/logged-in"
-                onClick={() => onSelectTab("monetize")}
-                className={styles.profileStatItem}
-                style={{ textDecoration: "none" }}
-              >
-                <strong className={styles.profileStatValue} style={{ color: "#f59e0b" }}>Opted Out</strong>
-                <span className={styles.profileStatLabel}>Status</span>
-              </Link>
-            </>
-          ) : isMonetized ? (
+          {!user.has_cancelled_monetization && isMonetized ? (
             <>
               <span className={styles.profileStatDot}>·</span>
               <div className={styles.profileStatItem}>
@@ -334,10 +407,6 @@ export default function DashboardProfileCard({
           </div>
         ) : user.has_cancelled_monetization ? (
           <div className={styles.renewalSection}>
-            <div className={styles.monetizeProgressHeader}>
-              <span style={{ color: "#f59e0b", fontWeight: 700 }}>Monetization Opted Out</span>
-              <span className={styles.monetizeProgressValue}>Browsing Only</span>
-            </div>
             <p className={styles.monetizeProgressNote}>
               You have voluntarily opted out of monetization. Your wallet balance is preserved. You can reapply anytime.
             </p>

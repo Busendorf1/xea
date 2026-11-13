@@ -5,6 +5,15 @@ import styles from "../Feed/page.module.css";
 import adCardStyles from "../ui/AdCard.module.css";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import AdCard, { type Ad } from "../ui/AdCard";
+import type { AdReportType } from "../ui/AdOptionsMenu";
+import {
+  FeedPullIndicator,
+  FeedErrorState,
+  FeedLocationSkippedState,
+  FeedEmptyInventoryState,
+  FeedScrollTopButton,
+} from "./FeedStateViews";
+import { useFeedPullToRefresh } from "./useFeedPullToRefresh";
 import { isVideoUrl } from "../ui/MediaCarousel";
 import Skeleton from "../ui/Skeleton";
 import FeedSkeleton from "../ui/FeedSkeleton";
@@ -13,6 +22,12 @@ import { useViewerProfile, InitialProfileInput } from "@/lib/hooks/useViewerProf
 import { useFeedHighlights } from "@/lib/hooks/useFeedHighlights";
 import { useFeedActions } from "@/lib/hooks/useFeedActions";
 import { useLiveFeedUpdates } from "@/lib/hooks/useLiveFeedUpdates";
+import {
+  AD_UNAVAILABLE_DISMISS_MS,
+  AD_UNAVAILABLE_MESSAGE,
+  extractSharedAdIdFromSearchParams,
+} from "@/lib/utils/adShare";
+import { toClientFriendlyError } from "@/lib/utils/clientError";
 
 interface FeedProps {
   userEmail: string;
@@ -95,16 +110,20 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   hasAdsRef.current = ads.length > 0;
   const inFlightFeedKeyRef = useRef<string | null>(null);
 
+  const showTimedToast = useCallback((msg: string, durationMs = 2400) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current));
+    }, durationMs);
+  }, []);
+
   useEffect(() => {
     const handleGlobalToast = (e: Event) => {
-      const customEvt = e as CustomEvent<{ message?: string }>;
+      const customEvt = e as CustomEvent<{ message?: string; durationMs?: number }>;
       const msg = customEvt?.detail?.message;
       if (msg) {
-        setToastMessage(msg);
-        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = setTimeout(() => {
-          setToastMessage((current) => (current === msg ? null : current));
-        }, 2400);
+        showTimedToast(msg, customEvt?.detail?.durationMs ?? 2400);
       }
     };
     window.addEventListener("xea:toast", handleGlobalToast);
@@ -112,7 +131,37 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       window.removeEventListener("xea:toast", handleGlobalToast);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
-  }, []);
+  }, [showTimedToast]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      const urlSharedId = extractSharedAdIdFromSearchParams(url.searchParams);
+      const adStatus = url.searchParams.get("adStatus");
+      let urlChanged = false;
+
+      if (urlSharedId) {
+        localStorage.setItem("sharedAdId", urlSharedId);
+        url.searchParams.delete("sharedAdId");
+        url.searchParams.delete("adId");
+        url.searchParams.delete("blurb");
+        url.searchParams.delete("Earn Ads by Paayh");
+        urlChanged = true;
+      }
+
+      if (adStatus === "unavailable") {
+        localStorage.removeItem("sharedAdId");
+        url.searchParams.delete("adStatus");
+        urlChanged = true;
+        showTimedToast(AD_UNAVAILABLE_MESSAGE, AD_UNAVAILABLE_DISMISS_MS);
+      }
+
+      if (urlChanged) {
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      }
+    } catch {}
+  }, [showTimedToast]);
 
   useEffect(() => {
     try {
@@ -268,6 +317,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           throw new Error(`Failed to fetch ad feed (Status: ${response.status})`);
         }
         const data = await response.json();
+        if (data?.sharedAdUnavailable && !isLoadMore) {
+          showTimedToast(AD_UNAVAILABLE_MESSAGE, AD_UNAVAILABLE_DISMISS_MS);
+        }
         const feedAds: Ad[] = data.ads || [];
         const profilesMap = data.profiles || {};
 
@@ -296,11 +348,11 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         setHasMore(feedAds.length >= LIMIT);
         setAds((prev) => {
           if (!isLoadMore) {
+            // If server returned 0 ads on any non-explicit background check, preserve existing visible feed so ads never suddenly vanish
+            if (feedAds.length === 0 && prev.length > 0 && !isExplicitRefresh) {
+              return prev;
+            }
             if (isSilentRefresh && prev.length > 0) {
-              // If server confirmed 0 active ads available, cleanly update to empty feed
-              if (feedAds.length === 0) {
-                return [];
-              }
               const incomingIds = new Set(feedAds.map((a) => a.id));
               const remainingExisting = prev.filter((a) => !incomingIds.has(a.id));
               return [...feedAds, ...remainingExisting];
@@ -318,6 +370,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         console.error("âŒ Error loading feed:", err);
         if (!hasAdsRef.current) {
           setError(true);
+          showTimedToast(toClientFriendlyError(err, "Try again later"), 3200);
         }
       } finally {
         if (inFlightFeedKeyRef.current === requestKey) {
@@ -327,7 +380,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         setLoadingMore(false);
       }
     },
-    [userEmail, setSeenAds]
+    [userEmail, setSeenAds, showTimedToast]
   );
   const fetchRelevantAdsRef = useRef<typeof fetchRelevantAds | null>(null);
   fetchRelevantAdsRef.current = fetchRelevantAds;
@@ -349,10 +402,23 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   }, [initialAds, initialProfiles, userEmail]);
 
   useEffect(() => {
+    let hasSharedAd = false;
+    if (typeof window !== "undefined") {
+      try {
+        hasSharedAd = Boolean(
+          localStorage.getItem("sharedAdId") ||
+            extractSharedAdIdFromSearchParams(new URLSearchParams(window.location.search))
+        );
+      } catch {}
+    }
+
     if (!initialAds || initialAds.length === 0) {
       // Keep skeleton loading active while verifying fresh feed to prevent ghost ad flashes
       setLoading(true);
       fetchRelevantAds(0, false, false);
+    } else if (hasSharedAd) {
+      // Ensure shared deep-link ad is pinned or displays the 5s unavailable notice even when SSR hydrated initialAds
+      fetchRelevantAds(0, false, true);
     }
   }, [fetchRelevantAds, initialAds, userEmail]);
 
@@ -363,9 +429,44 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     fetchRelevantAds(nextPage, true);
   }, [loading, loadingMore, hasMore, page, fetchRelevantAds]);
 
-  const handleDismissAd = useCallback((adId: string) => {
-    setAds((prev) => prev.filter((a) => a.id !== adId));
-  }, []);
+  const handleDismissAd = useCallback(
+    (adId: string, advertiserEmail?: string, reportType?: AdReportType) => {
+      const normalizedAdv = advertiserEmail?.toLowerCase().trim() || "";
+      const shouldFilterAd = (a: Ad) => {
+        if (a.id === adId) return false;
+        if (
+          reportType === "advertiser" &&
+          normalizedAdv &&
+          (a.user_email || "").toLowerCase().trim() === normalizedAdv
+        ) {
+          return false;
+        }
+        return true;
+      };
+
+      setAds((prev) => prev.filter(shouldFilterAd));
+
+      if (typeof window !== "undefined" && userEmail) {
+        try {
+          const cacheKey = `paayh_feed_cache_${userEmail.toLowerCase().trim()}`;
+          const raw = sessionStorage.getItem(cacheKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.ads)) {
+              sessionStorage.setItem(
+                cacheKey,
+                JSON.stringify({
+                  ...parsed,
+                  ads: parsed.ads.filter(shouldFilterAd),
+                })
+              );
+            }
+          }
+        } catch {}
+      }
+    },
+    [userEmail]
+  );
 
   const parentRef = useRef<HTMLDivElement>(null);
   const displayFeed = useMemo(() => {
@@ -538,185 +639,24 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     fetchRelevantAds(0, false, true);
   }, [consumePendingAds, clearPending, fetchRelevantAds]);
 
-  // Drag Pull-to-Refresh
-  const [pullDistance, setPullDistance] = useState(0);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-  const pullStartY = useRef(0);
-  const isPullingRef = useRef(false);
-  const isPullRefreshingRef = useRef(false);
-  isPullRefreshingRef.current = isPullRefreshing;
-
-  useEffect(() => {
-    const scrollEl = parentRef.current?.parentElement || parentRef.current;
-    if (!scrollEl) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (scrollEl.scrollTop <= 2 && !isPullRefreshingRef.current) {
-        pullStartY.current = e.touches[0].clientY;
-        isPullingRef.current = true;
-      } else {
-        isPullingRef.current = false;
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isPullingRef.current || isPullRefreshingRef.current) return;
-      if (scrollEl.scrollTop > 2) {
-        isPullingRef.current = false;
-        setPullDistance(0);
-        return;
-      }
-
-      const currentY = e.touches[0].clientY;
-      const deltaY = currentY - pullStartY.current;
-
-      if (deltaY > 0) {
-        // Damped logarithmic curve for smooth native elastic resistance
-        const pull = Math.min(Math.pow(deltaY, 0.82) * 2.2, 90);
-        setPullDistance(pull);
-        if (deltaY > 10 && e.cancelable) {
-          e.preventDefault();
-        }
-      } else {
-        setPullDistance(0);
-      }
-    };
-
-    const onTouchEnd = async () => {
-      if (!isPullingRef.current) return;
-      isPullingRef.current = false;
-
-      setPullDistance((currentPull) => {
-        if (currentPull >= 55 && !isPullRefreshingRef.current) {
-          setIsPullRefreshing(true);
-          if (typeof window !== "undefined") {
-            (window as any).__xea_force_refresh = true;
-          }
-          fetchRelevantAds(0, false, true).finally(() => {
-            setIsPullRefreshing(false);
-            setPullDistance(0);
-          });
-          return 45; // Hold at active spinner position
-        }
-        return 0;
-      });
-    };
-
-    scrollEl.addEventListener("touchstart", onTouchStart, { passive: true });
-    scrollEl.addEventListener("touchmove", onTouchMove, { passive: false });
-    scrollEl.addEventListener("touchend", onTouchEnd, { passive: true });
-    scrollEl.addEventListener("touchcancel", onTouchEnd, { passive: true });
-
-    return () => {
-      scrollEl.removeEventListener("touchstart", onTouchStart);
-      scrollEl.removeEventListener("touchmove", onTouchMove);
-      scrollEl.removeEventListener("touchend", onTouchEnd);
-      scrollEl.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [fetchRelevantAds]);
+  const handlePullRefresh = useCallback(() => fetchRelevantAds(0, false, true), [fetchRelevantAds]);
+  const { pullDistance, isPullRefreshing, isActivelyPulling } = useFeedPullToRefresh(
+    parentRef,
+    handlePullRefresh
+  );
 
   return (
     <div ref={parentRef} className={styles.feedContainer}>
-      {/* Pull-to-refresh indicator */}
-      {(pullDistance > 0 || isPullRefreshing) && (
-        <div
-          className={styles.pullIndicator}
-          style={{
-            transform: `translate3d(-50%, ${Math.min(pullDistance, 70)}px, 0)`,
-            opacity: isPullRefreshing ? 1 : Math.min(pullDistance / 35, 1),
-            transition: isPullingRef.current
-              ? "none"
-              : "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
-          }}
-          aria-hidden="true"
-        >
-          <div className={styles.pullBubble}>
-            {isPullRefreshing ? (
-              <div className={styles.pullSpinner} />
-            ) : (
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  transform: `rotate(${Math.min(pullDistance * 4.5, 360)}deg)`,
-                  transition: isPullingRef.current ? "none" : "transform 0.2s ease",
-                }}
-              >
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-              </svg>
-            )}
-          </div>
-        </div>
-      )}
+      <FeedPullIndicator
+        pullDistance={pullDistance}
+        isPullRefreshing={isPullRefreshing}
+        isActivelyPulling={isActivelyPulling}
+      />
       {!locationSkipped && <NewPostsPill count={pendingCount} onClick={handlePillClick} />}
       {loading && <FeedSkeleton count={3} />}
-      {!loading && error && (
-        <div className={styles.errorContainer}>
-          <p className={`${styles.error} ${styles.errorMessage}`}>Unable to load ads right now.</p>
-          <button
-            onClick={() => fetchRelevantAds(0, false)}
-            className={`${styles.loadMoreBtn} ${styles.errorRetryBtn}`}
-          >
-            Try Again
-          </button>
-        </div>
-      )}
-      {/* Case 1: Location is explicitly not enabled / skipped -> show Enable Location card */}
-      {!loading && !error && locationSkipped && (
-        <div style={{ textAlign: "center", padding: "48px 20px" }}>
-          <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>
-            Enable location to see your feed
-          </p>
-          <p style={{ fontSize: "0.85rem", color: "var(--muted-foreground, #888)", marginTop: "8px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-            Sponsored content and local community offers are matched to your area. You skipped location verification, so your feed is empty. Tap below to enable location.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                try {
-                  localStorage.removeItem("paayh_proof_of_location_active");
-                  sessionStorage.removeItem("paayh_location_skipped");
-                } catch {}
-                // Opens the same Proof of Location modal shown at sign-in
-                window.dispatchEvent(new CustomEvent("paayh:open_location_modal"));
-              }
-            }}
-            style={{
-              marginTop: "16px",
-              padding: "10px 24px",
-              borderRadius: "9999px",
-              background: "var(--foreground, #111)",
-              color: "var(--background, #fff)",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              border: "none",
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.12)"
-            }}
-          >
-            Enable Location
-          </button>
-        </div>
-      )}
-
-      {/* Case 2: Location is enabled, but no matching campaigns exist right now -> clean empty state without button */}
-      {!loading && !error && !locationSkipped && ads.length === 0 && (
-        <div style={{ textAlign: "center", padding: "48px 20px" }}>
-          <p className={styles.noAds} style={{ fontSize: "1.05rem", fontWeight: 600 }}>
-            No active ad campaigns available right now.
-          </p>
-          <p style={{ fontSize: "0.85rem", color: "var(--muted-foreground, #888)", marginTop: "8px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-            You're all caught up! Check back soon for new campaigns targeted to your area.
-          </p>
-        </div>
-      )}
+      {!loading && error && <FeedErrorState onRetry={() => fetchRelevantAds(0, false)} />}
+      {!loading && !error && locationSkipped && <FeedLocationSkippedState />}
+      {!loading && !error && !locationSkipped && ads.length === 0 && <FeedEmptyInventoryState />}
 
       {!loading && !error && displayFeed.length > 0 && (
         <div
@@ -770,28 +710,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         </div>
       )}
 
-      {/* Floating Scroll-to-Top Arrow at Bottom Side of Feed */}
-      <button
-        type="button"
-        onClick={handleScrollToTop}
-        className={`${styles.scrollTopBtn} ${showScrollTop ? styles.scrollTopBtnVisible : ""}`}
-        aria-label="Scroll to top (latest feed)"
-        title="Back to top"
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 19V5" />
-          <path d="m5 12 7-7 7 7" />
-        </svg>
-      </button>
+      <FeedScrollTopButton visible={showScrollTop} onClick={handleScrollToTop} />
     </div>
   );
 };

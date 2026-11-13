@@ -1,7 +1,7 @@
 import redisConnection, { isRedisReady } from "./redis";
 import supabaseAdmin from "./utils/dbAdmin";
-import { streamImpressionsToClickHouse } from "./clickhouse";
 import { invalidateCachedUserCampaigns } from "./utils/cache";
+import { runTwoPhaseImpressionAndClickFlush } from "./ads/impressionFlushWorker";
 
 /**
  * High-Throughput Impression & Click Buffer for 100M+ Users.
@@ -39,6 +39,22 @@ const REDIS_KEY_CLICKS_WHATSAPP = "buffer:clicks_whatsapp";
 const REDIS_KEY_CLICKS_WEBSITE = "buffer:clicks_website";
 const REDIS_KEY_CLICKS_EMAIL = "buffer:clicks_email";
 const REDIS_KEY_CLICKS_PRODUCT_CTA = "buffer:clicks_product_cta";
+const REDIS_KEY_CLICKS_IOS = "buffer:clicks_ios";
+const REDIS_KEY_CLICKS_ANDROID = "buffer:clicks_android";
+const REDIS_KEY_CLICKS_WATCH_NOW = "buffer:clicks_watch_now";
+const REDIS_KEY_CLICKS_READ_MORE = "buffer:clicks_read_more";
+
+export const CLICK_BUFFER_REDIS_KEYS: Record<CanonicalClickType, string> = {
+  phone: REDIS_KEY_CLICKS_PHONE,
+  whatsapp: REDIS_KEY_CLICKS_WHATSAPP,
+  website: REDIS_KEY_CLICKS_WEBSITE,
+  email: REDIS_KEY_CLICKS_EMAIL,
+  product_cta: REDIS_KEY_CLICKS_PRODUCT_CTA,
+  ios: REDIS_KEY_CLICKS_IOS,
+  android: REDIS_KEY_CLICKS_ANDROID,
+  watch_now: REDIS_KEY_CLICKS_WATCH_NOW,
+  read_more: REDIS_KEY_CLICKS_READ_MORE,
+};
 
 // ── L1 Hot-Row Write-Behind Micro-Batch Coalescer (100M+ Traffic Protection) ──
 const COALESCE_WINDOW_MS = 1500;
@@ -154,16 +170,20 @@ export async function recordCoalescedAdSeen(
   l1ActiveSeenFlushers.add(adId);
   try {
     const [, flushedCount] = await Promise.all([userImpPromise, drainSeenBufferForAd(adId)]);
-    // Keep hot-row shield active for COALESCE_WINDOW_MS (1500ms) to coalesce burst traffic into 1 SQL UPDATE
-    setTimeout(async () => {
-      try {
-        if (l1PendingSeen.has(adId)) {
-          await drainSeenBufferForAd(adId);
+    if (process.env.VERCEL === "1") {
+      // Serverless lambdas freeze immediately after response; never leave unflushed deltas on a deferred timer
+      l1ActiveSeenFlushers.delete(adId);
+    } else {
+      setTimeout(async () => {
+        try {
+          if (l1PendingSeen.has(adId)) {
+            await drainSeenBufferForAd(adId);
+          }
+        } finally {
+          l1ActiveSeenFlushers.delete(adId);
         }
-      } finally {
-        l1ActiveSeenFlushers.delete(adId);
-      }
-    }, COALESCE_WINDOW_MS);
+      }, COALESCE_WINDOW_MS);
+    }
     return flushedCount;
   } catch (err) {
     l1ActiveSeenFlushers.delete(adId);
@@ -232,6 +252,10 @@ async function applyBatchedSeenDeltaToAd(
   if (isNowExhausted) {
     if (updatedAdRow) {
       await supabaseAdmin.from("completed_ads").upsert([updatedAdRow], { onConflict: "id" });
+      await supabaseAdmin
+        .from("addscompleted")
+        .upsert([updatedAdRow], { onConflict: "id" })
+        .then(() => {}, () => {});
     }
     await supabaseAdmin.from("addsactive").delete().eq("id", adId);
     await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId).then(() => {}, () => {});
@@ -246,7 +270,9 @@ async function applyBatchedSeenDeltaToAd(
       evictAdFromL1FeedCaches(adId);
     } catch {}
     if (isRedisReady()) {
-      redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
+      redisConnection
+        .del(`ad:detail:${adId}`, "campaigns:shared_pool:v1", "bids:zset:global")
+        .catch(() => {});
     }
   }
 
@@ -278,16 +304,19 @@ export async function recordCoalescedAdClick(
   l1ActiveClickFlushers.add(adId);
   try {
     await drainClickBufferForAd(adId);
-    // Keep hot-row shield active for COALESCE_WINDOW_MS to absorb burst traffic
-    setTimeout(async () => {
-      try {
-        if (l1PendingClicks.has(adId)) {
-          await drainClickBufferForAd(adId);
+    if (process.env.VERCEL === "1") {
+      l1ActiveClickFlushers.delete(adId);
+    } else {
+      setTimeout(async () => {
+        try {
+          if (l1PendingClicks.has(adId)) {
+            await drainClickBufferForAd(adId);
+          }
+        } finally {
+          l1ActiveClickFlushers.delete(adId);
         }
-      } finally {
-        l1ActiveClickFlushers.delete(adId);
-      }
-    }, COALESCE_WINDOW_MS);
+      }, COALESCE_WINDOW_MS);
+    }
   } catch {
     l1ActiveClickFlushers.delete(adId);
   }
@@ -378,15 +407,20 @@ export function overlayPendingBufferedDeltas<T extends Record<string, any>>(item
  * Reads pending in-memory / in-Redis impression buffer deltas for a list of ad IDs
  * so read endpoints (/api/campaigns, /myAds, /api/admin/campaigns) always reflect 100% real-time counts.
  */
-export async function getPendingImpressionDeltas(adIds: string[]): Promise<Record<string, number>> {
+export async function getPendingImpressionDeltas(
+  adIds: string[],
+  options: { includeL1?: boolean } = {}
+): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   if (!adIds || adIds.length === 0) return result;
 
-  // 1. Overlay L1 pending seen counts
-  for (const id of adIds) {
-    const l1Batch = l1PendingSeen.get(id);
-    if (l1Batch && l1Batch.delta > 0) {
-      result[id] = (result[id] || 0) + l1Batch.delta;
+  // 1. Overlay L1 pending seen counts unless caller already applied overlayPendingBufferedDeltas
+  if (options.includeL1 !== false) {
+    for (const id of adIds) {
+      const l1Batch = l1PendingSeen.get(id);
+      if (l1Batch && l1Batch.delta > 0) {
+        result[id] = (result[id] || 0) + l1Batch.delta;
+      }
     }
   }
 
@@ -401,6 +435,78 @@ export async function getPendingImpressionDeltas(adIds: string[]): Promise<Recor
             const count = parseInt(raw, 10);
             if (!isNaN(count) && count > 0) {
               result[adIds[i]] = (result[adIds[i]] || 0) + count;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return result;
+}
+
+/**
+ * Reads pending in-memory / in-Redis CTA click deltas across all canonical click buffer hashes
+ * so /myAds (/api/campaigns) displays 100% real-time CTA counts before the 1-minute flush cron runs.
+ */
+export async function getPendingClickDeltas(
+  adIds: string[],
+  options: { includeL1?: boolean } = {}
+): Promise<Record<string, Partial<Record<CanonicalClickType, number>>>> {
+  const result: Record<string, Partial<Record<CanonicalClickType, number>>> = {};
+  if (!adIds || adIds.length === 0) return result;
+
+  const addDelta = (adId: string, clickType: CanonicalClickType, delta: number) => {
+    if (!delta || delta <= 0) return;
+    if (!result[adId]) result[adId] = {};
+    result[adId][clickType] = (result[adId][clickType] || 0) + delta;
+  };
+
+  // 1. Overlay L1 pending clicks unless caller already applied overlayPendingBufferedDeltas
+  if (options.includeL1 !== false) {
+    for (const id of adIds) {
+      const l1Clicks = l1PendingClicks.get(id);
+      if (l1Clicks) {
+        for (const [ct, count] of Object.entries(l1Clicks)) {
+          if (count && count > 0) {
+            addDelta(id, ct as CanonicalClickType, count);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Overlay Redis click buffer hashes in a single pipeline round-trip (with hmget fallback)
+  if (isRedisReady() && redisConnection) {
+    try {
+      const clickEntries = Object.entries(CLICK_BUFFER_REDIS_KEYS) as Array<[CanonicalClickType, string]>;
+      let rowsByClickType: Array<Array<string | null> | null> = [];
+
+      if (typeof (redisConnection as any).pipeline === "function") {
+        const pipe = (redisConnection as any).pipeline();
+        for (const [, hashKey] of clickEntries) {
+          pipe.hmget(hashKey, ...adIds);
+        }
+        const pipeRes = (await pipe.exec()) as Array<[Error | null, Array<string | null>]> | null;
+        if (Array.isArray(pipeRes)) {
+          rowsByClickType = pipeRes.map(([err, vals]) => (!err && Array.isArray(vals) ? vals : null));
+        }
+      } else {
+        rowsByClickType = await Promise.all(
+          clickEntries.map(([, hashKey]) => redisConnection.hmget(hashKey, ...adIds).catch(() => null))
+        );
+      }
+
+      for (let cIdx = 0; cIdx < clickEntries.length; cIdx++) {
+        const [clickType] = clickEntries[cIdx];
+        const values = rowsByClickType[cIdx];
+        if (!Array.isArray(values)) continue;
+        for (let i = 0; i < adIds.length; i++) {
+          const raw = values[i];
+          if (raw) {
+            const count = parseInt(raw, 10);
+            if (!isNaN(count) && count > 0) {
+              addDelta(adIds[i], clickType, count);
             }
           }
         }
@@ -427,7 +533,13 @@ export async function bufferAdImpression(adId: string, count: number = 1): Promi
 
   // Fallback to direct DB update if Redis is unavailable
   try {
-    await supabaseAdmin.rpc("increment_ad_impressions_bulk", { p_ad_id: adId, p_count: count });
+    const rpcOut = await supabaseAdmin.rpc("increment_ad_impressions_bulk", { p_ad_id: adId, p_count: count });
+    if (rpcOut?.error) {
+      const retryOut = await supabaseAdmin.rpc("increment_ad_impressions_bulk", { p_ad_id: adId, p_delta: count });
+      if (retryOut?.error) {
+        throw retryOut.error;
+      }
+    }
   } catch (_e) {
     const { data: currentAd } = await supabaseAdmin
       .from("addsactive")
@@ -446,16 +558,9 @@ export async function bufferAdImpression(adId: string, count: number = 1): Promi
 /**
  * Record an ad click asynchronously in Redis.
  */
-export async function bufferAdClick(adId: string, clickType: "phone" | "whatsapp" | "website" | "email" | "product_cta"): Promise<void> {
-  const keyMap = {
-    phone: REDIS_KEY_CLICKS_PHONE,
-    whatsapp: REDIS_KEY_CLICKS_WHATSAPP,
-    website: REDIS_KEY_CLICKS_WEBSITE,
-    email: REDIS_KEY_CLICKS_EMAIL,
-    product_cta: REDIS_KEY_CLICKS_PRODUCT_CTA,
-  };
-
-  const redisKey = keyMap[clickType];
+export async function bufferAdClick(adId: string, clickType: CanonicalClickType): Promise<void> {
+  const redisKey = CLICK_BUFFER_REDIS_KEYS[clickType];
+  if (!redisKey) return;
 
   try {
     if (redisConnection && redisConnection.status === "ready") {
@@ -467,181 +572,28 @@ export async function bufferAdClick(adId: string, clickType: "phone" | "whatsapp
   }
 }
 
-// Two-Phase Atomic Lua Scripts:
-// 1. Move active buffer to a dedicated processing key atomically
-const LUA_RENAME_TO_PROCESSING = `
-  local exists = redis.call('EXISTS', KEYS[1])
-  if exists == 1 then
-    redis.call('RENAME', KEYS[1], KEYS[2])
-    return redis.call('HGETALL', KEYS[2])
-  end
-  return {}
-`;
-
-// 2. Rollback script: If DB write fails, re-merge in-flight counts back to active buffer
-const LUA_RESTORE_PROCESSING_BUFFER = `
-  local inFlight = redis.call('HGETALL', KEYS[1])
-  if #inFlight > 0 then
-    for i = 1, #inFlight, 2 do
-      redis.call('HINCRBY', KEYS[2], inFlight[i], tonumber(inFlight[i+1]))
-    end
-    redis.call('DEL', KEYS[1])
-  end
-  return true
-`;
+/**
+ * Drains any in-process coalesced L1 seen & click batches immediately (serverless-safe).
+ */
+export async function drainL1CoalescedBuffers(): Promise<void> {
+  const seenIds = Array.from(l1PendingSeen.keys());
+  if (seenIds.length > 0) {
+    await Promise.all(seenIds.map((adId) => drainSeenBufferForAd(adId).catch(() => undefined)));
+  }
+  const clickIds = Array.from(l1PendingClicks.keys());
+  if (clickIds.length > 0) {
+    await Promise.all(clickIds.map((adId) => drainClickBufferForAd(adId).catch(() => {})));
+  }
+}
 
 /**
  * Bulk Flush Worker: Flushes accumulated Redis impression & click counts to PostgreSQL safely.
  * Guarantees Zero Data Loss via Two-Phase In-Flight Archiving & Rollback.
  */
 export async function flushImpressionBuffersToDB(): Promise<{ flushedImpressions: number; flushedClicks: number }> {
-  if (!redisConnection || redisConnection.status !== "ready") {
-    return { flushedImpressions: 0, flushedClicks: 0 };
-  }
-
-  let flushedImpressions = 0;
-  let flushedClicks = 0;
-  const batchId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-  try {
-    // 1. Flush Impression Buffers with Two-Phase Commit
-    const processingImpKey = `${REDIS_KEY_IMPRESSIONS}:processing:${batchId}`;
-    const rawImpressionPairs = (await redisConnection.eval(
-      LUA_RENAME_TO_PROCESSING,
-      2,
-      REDIS_KEY_IMPRESSIONS,
-      processingImpKey
-    )) as string[];
-
-    if (rawImpressionPairs && rawImpressionPairs.length > 0) {
-      const impressionUpdates: Array<{ adId: string; delta: number }> = [];
-      for (let i = 0; i < rawImpressionPairs.length; i += 2) {
-        const adId = rawImpressionPairs[i];
-        const delta = parseInt(rawImpressionPairs[i + 1], 10);
-        if (delta > 0) impressionUpdates.push({ adId, delta });
-      }
-
-      try {
-        // Process in concurrent chunks of 10 for high throughput without pool starvation
-        const CHUNK_SIZE = 10;
-        for (let i = 0; i < impressionUpdates.length; i += CHUNK_SIZE) {
-          const chunk = impressionUpdates.slice(i, i + CHUNK_SIZE);
-          await Promise.all(
-            chunk.map(async ({ adId, delta }) => {
-              try {
-                const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc("increment_ad_impressions_bulk", {
-                  p_ad_id: adId,
-                  p_count: delta,
-                });
-                if (rpcErr) throw rpcErr;
-                flushedImpressions += delta;
-                if (rpcRes && typeof rpcRes === "object" && (rpcRes as any).completed) {
-                  try {
-                    const { evictAdFromL1FeedCaches } = await import("./utils/cache");
-                    evictAdFromL1FeedCaches(adId);
-                  } catch {}
-                  if (isRedisReady() && redisConnection) {
-                    redisConnection.del(`ad:detail:${adId}`, "campaigns:shared_pool:v1").catch(() => {});
-                  }
-                }
-              } catch {
-                const { data: current } = await supabaseAdmin
-                  .from("addsactive")
-                  .select("impression_count")
-                  .eq("id", adId)
-                  .maybeSingle();
-
-                if (current) {
-                  const newCount = Number(current.impression_count || 0) + delta;
-                  await supabaseAdmin
-                    .from("addsactive")
-                    .update({ impression_count: newCount })
-                    .eq("id", adId);
-                  flushedImpressions += delta;
-                }
-              }
-            })
-          );
-        }
-        // Stream raw events to ClickHouse Cloud for high-throughput permanent analytics
-        streamImpressionsToClickHouse(
-          impressionUpdates.map((u) => ({
-            ad_id: u.adId,
-            user_email: "batch_buffer@xea.app",
-            cost_per_impression: 0,
-            interaction_type: "view",
-          }))
-        ).catch(() => {});
-
-        // Safely delete in-flight archive key once DB confirms
-        await redisConnection.del(processingImpKey);
-      } catch (dbErr) {
-        console.error("❌ DB error during impression flush, rolling back to Redis active buffer:", dbErr);
-        await redisConnection.eval(LUA_RESTORE_PROCESSING_BUFFER, 2, processingImpKey, REDIS_KEY_IMPRESSIONS).catch(() => {});
-      }
-    }
-
-    // 2. Flush Click Buffers with Two-Phase Commit
-    const clickKeys: Record<string, "phone" | "whatsapp" | "website" | "email" | "product_cta"> = {
-      [REDIS_KEY_CLICKS_PHONE]: "phone",
-      [REDIS_KEY_CLICKS_WHATSAPP]: "whatsapp",
-      [REDIS_KEY_CLICKS_WEBSITE]: "website",
-      [REDIS_KEY_CLICKS_EMAIL]: "email",
-      [REDIS_KEY_CLICKS_PRODUCT_CTA]: "product_cta",
-    };
-
-    for (const [key, clickType] of Object.entries(clickKeys)) {
-      const processingClickKey = `${key}:processing:${batchId}`;
-      const rawClickPairs = (await redisConnection.eval(
-        LUA_RENAME_TO_PROCESSING,
-        2,
-        key,
-        processingClickKey
-      )) as string[];
-
-      if (rawClickPairs && rawClickPairs.length > 0) {
-        const clickUpdates: Array<{ adId: string; count: number }> = [];
-        for (let i = 0; i < rawClickPairs.length; i += 2) {
-          const adId = rawClickPairs[i];
-          const count = parseInt(rawClickPairs[i + 1], 10);
-          if (count > 0) clickUpdates.push({ adId, count });
-        }
-
-        try {
-          const CHUNK_SIZE = 10;
-          for (let i = 0; i < clickUpdates.length; i += CHUNK_SIZE) {
-            const chunk = clickUpdates.slice(i, i + CHUNK_SIZE);
-            await Promise.all(
-              chunk.map(async ({ adId, count }) => {
-                await supabaseAdmin.rpc("increment_ad_clicks_bulk", {
-                  p_ad_id: adId,
-                  p_click_type: clickType,
-                  p_count: count,
-                });
-                flushedClicks += count;
-              })
-            );
-          }
-          // Stream click events to ClickHouse Cloud for high-throughput permanent analytics
-          streamImpressionsToClickHouse(
-            clickUpdates.map((c) => ({
-              ad_id: c.adId,
-              user_email: "batch_buffer@xea.app",
-              cost_per_impression: 0,
-              interaction_type: clickType,
-            }))
-          ).catch(() => {});
-
-          await redisConnection.del(processingClickKey);
-        } catch (dbErr) {
-          console.error(`❌ DB error during ${clickType} click flush, rolling back to Redis active buffer:`, dbErr);
-          await redisConnection.eval(LUA_RESTORE_PROCESSING_BUFFER, 2, processingClickKey, key).catch(() => {});
-        }
-      }
-    }
-  } catch (err) {
-    console.error("❌ Error in flushImpressionBuffersToDB:", err);
-  }
-
-  return { flushedImpressions, flushedClicks };
+  return runTwoPhaseImpressionAndClickFlush({
+    drainL1: drainL1CoalescedBuffers,
+    redisKeyImpressions: REDIS_KEY_IMPRESSIONS,
+    clickBufferRedisKeys: CLICK_BUFFER_REDIS_KEYS,
+  });
 }

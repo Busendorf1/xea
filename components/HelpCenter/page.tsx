@@ -107,6 +107,7 @@ export default function HelpCenter({ session }: HelpCenterProps) {
       const reportAdId = params.get("reportAdId");
       const advertiserEmail = params.get("advertiserEmail");
       const reportType = params.get("type");
+      const alreadyReported = params.get("reported") === "1";
 
       if (reportAdId) {
         const subjectText = reportType === "advertiser"
@@ -117,6 +118,8 @@ export default function HelpCenter({ session }: HelpCenterProps) {
 
         const defaultMessage = reportType === "dont_show"
           ? `Reason for hiding this ad from my feed: `
+          : alreadyReported
+          ? `This ${reportType === "advertiser" ? "advertiser" : "ad"} has already been blocked from my feed. Additional details: `
           : `Reason for reporting this ${reportType === "advertiser" ? "advertiser" : "ad"}: `;
 
         setForm((prev) => ({
@@ -163,21 +166,29 @@ export default function HelpCenter({ session }: HelpCenterProps) {
       if (!response.ok) {
         setError(resData.error || "Failed to submit. Please try again.");
       } else {
-        // Also update reason in ad_reports if reporting an ad
+        // Also persist report / detailed reason in ad_reports if reporting an ad from Help Center
         if (typeof window !== "undefined") {
           const params = new URLSearchParams(window.location.search);
           const reportAdId = params.get("reportAdId");
-          if (reportAdId) {
-            fetch("/api/campaigns/report", {
+          const alreadyReported = params.get("reported") === "1";
+          const trimmedReason = form.message.trim();
+          const hasCustomDetails =
+            !trimmedReason.endsWith("Additional details:") &&
+            !trimmedReason.endsWith("Reason for reporting this ad:") &&
+            !trimmedReason.endsWith("Reason for reporting this advertiser:");
+
+          if (reportAdId && (!alreadyReported || hasCustomDetails)) {
+            await fetch("/api/campaigns/report", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
               body: JSON.stringify({
                 adId: reportAdId,
                 advertiserEmail: params.get("advertiserEmail") || "",
                 reportType: params.get("type") || "ad",
-                reason: form.message
-              })
-            }).catch(err => console.error("Failed to update report reason:", err));
+                reason: trimmedReason,
+              }),
+            }).catch((err) => console.error("Failed to update report reason:", err));
           }
         }
 

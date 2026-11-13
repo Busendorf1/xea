@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { adRatingQueue } from "@/lib/queue";
 import { getScoreIncrementForStars } from "@/lib/attentionTierEngine";
+
+async function findCampaignOwnerEmail(adId: string): Promise<string | null> {
+  const tables = ["completed_ads", "addscompleted", "addsactive", "adds"] as const;
+  for (const table of tables) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from(table)
+        .select("user_email")
+        .eq("id", adId)
+        .maybeSingle();
+      if (!error && data?.user_email) {
+        return String(data.user_email).toLowerCase().trim();
+      }
+    } catch {}
+  }
+  return null;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,10 +37,25 @@ export async function POST(req: NextRequest) {
 
     const stars = parseInt(star_rating, 10);
     if (isNaN(stars) || stars < 1 || stars > 5) {
-      return NextResponse.json({ error: "Star rating must be an integer between 1 and 5" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Star rating must be an integer between 1 and 5" },
+        { status: 400 }
+      );
     }
 
     const emailLower = email.toLowerCase().trim();
+
+    // Verify campaign ownership before allowing advertiser rating
+    const campaignOwnerEmail = await findCampaignOwnerEmail(String(ad_id));
+    if (!campaignOwnerEmail) {
+      return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
+    }
+    if (campaignOwnerEmail !== emailLower && !isAdminEmail(emailLower)) {
+      return NextResponse.json(
+        { error: "Forbidden: You can only rate listeners for your own campaigns." },
+        { status: 403 }
+      );
+    }
 
     // 1. Check if advertiser has already rated this ad
     const { data: existingRating } = await supabaseAdmin
@@ -42,24 +74,8 @@ export async function POST(req: NextRequest) {
 
     const scoreIncrement = getScoreIncrementForStars(stars);
 
-    // 2. Immediately insert record into completed_ads_ratings ledger (idempotent lock)
-    const { error: insertErr } = await supabaseAdmin
-      .from("completed_ads_ratings")
-      .insert([
-        {
-          ad_id,
-          advertiser_email: emailLower,
-          star_rating: stars,
-          score_increment: scoreIncrement,
-          listeners_count: 0,
-        },
-      ]);
-
-    if (insertErr && !insertErr.message?.includes("duplicate")) {
-      console.warn("⚠️ Error saving rating ledger:", insertErr.message);
-    }
-
-    // 3. Enqueue job into BullMQ for asynchronous chunked ATW updates at 100M+ scale
+    // 2. Enqueue BullMQ chunked ATW update (worker upserts completed_ads_ratings on chunked path,
+    // or apply_ad_rating_to_listeners RPC inserts it atomically on legacy/fallback path).
     try {
       await adRatingQueue.add(
         "rate-listeners-job",
@@ -75,19 +91,26 @@ export async function POST(req: NextRequest) {
       );
     } catch (queueErr) {
       console.warn("⚠️ BullMQ unavailable, executing direct RPC fallback:", queueErr);
-      // Fallback: If Redis is offline, run RPC directly
-      try {
-        await supabaseAdmin.rpc("apply_ad_rating_to_listeners", {
-          p_ad_id: ad_id,
-          p_advertiser_email: emailLower,
-          p_star_rating: stars,
-        });
-      } catch (rpcErr: any) {
-        console.error("❌ Fallback RPC execution failed:", rpcErr?.message || rpcErr);
+      const { error: rpcErr } = await supabaseAdmin.rpc("apply_ad_rating_to_listeners", {
+        p_ad_id: ad_id,
+        p_advertiser_email: emailLower,
+        p_star_rating: stars,
+      });
+      if (rpcErr) {
+        if (rpcErr.message?.toLowerCase().includes("already been rated")) {
+          return NextResponse.json(
+            { error: "You have already rated this campaign." },
+            { status: 409 }
+          );
+        }
+        console.error("❌ Fallback RPC execution failed:", rpcErr.message || rpcErr);
+        return NextResponse.json(
+          { error: rpcErr.message || "Failed to apply listener ratings." },
+          { status: 500 }
+        );
       }
     }
 
-    // 4. Return instant <15ms response to client (zero thread blocking)
     return NextResponse.json({
       success: true,
       message: `Thank you for rating! +${scoreIncrement.toFixed(2)} Attention Score applied to all participating ad listeners.`,

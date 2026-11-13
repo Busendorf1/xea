@@ -5,7 +5,14 @@ import { getCachedUserCampaigns, setCachedUserCampaigns } from "@/lib/utils/cach
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
 import { triggerSelfHealingJobsIfDue } from "@/lib/services/cronOrchestrator";
-import { overlayPendingBufferedDeltas, getPendingImpressionDeltas } from "@/lib/impressionBuffer";
+import {
+  overlayPendingBufferedDeltas,
+  getPendingImpressionDeltas,
+  getPendingClickDeltas,
+  CLICK_TYPE_TO_COLUMN,
+  CanonicalClickType,
+} from "@/lib/impressionBuffer";
+import { buildCampaignAnalyticsPayload, computeAdSpendMetrics } from "@/lib/ads/campaignAnalytics";
 
 export const dynamic = "force-dynamic";
 
@@ -111,10 +118,13 @@ export async function GET(req: NextRequest) {
       ...(adsCompleted.data || []),
     ];
 
-    const adIds: string[] = [
-      ...(adsQueue.data || []).map((a: any) => a.id),
-      ...(adsActiveReal.data || []).map((a: any) => a.id),
-    ].filter(Boolean);
+    const adIds: string[] = Array.from(
+      new Set([
+        ...(adsQueue.data || []).map((a: any) => a.id),
+        ...(adsActiveReal.data || []).map((a: any) => a.id),
+        ...(adsCompleted.data || []).map((a: any) => a.id),
+      ].filter(Boolean))
+    );
 
     const reportsMap: Record<string, number> = {};
     const dismissalsMap: Record<string, number> = {};
@@ -139,17 +149,35 @@ export async function GET(req: NextRequest) {
 
     const ratedAdIds = (ratingsData.data || []).map((r: { ad_id: string }) => r.ad_id);
     const todayUtc = new Date().toISOString().slice(0, 10);
-    const pendingRedisDeltas: Record<string, number> = await getPendingImpressionDeltas(adIds).catch(() => ({}));
+    const [pendingRedisDeltas, pendingClickDeltas] = await Promise.all([
+      getPendingImpressionDeltas(adIds, { includeL1: false }).catch(() => ({})),
+      getPendingClickDeltas(adIds, { includeL1: false }).catch(() => ({})),
+    ]);
 
     const sanitizeItem = (item: any) => {
       if (!item) return item;
       let normalized = overlayPendingBufferedDeltas(item);
-      const pendingCount = (pendingRedisDeltas as Record<string, number>)[String(item.id)] || 0;
-      if (pendingCount > 0) {
-        normalized = {
-          ...normalized,
-          impression_count: Number(normalized.impression_count || 0) + pendingCount,
-        };
+      const itemId = String(item.id || "");
+      const pendingCount = (pendingRedisDeltas as Record<string, number>)[itemId] || 0;
+      const pendingClicksForAd = (
+        pendingClickDeltas as Record<string, Partial<Record<CanonicalClickType, number>>>
+      )[itemId];
+      if (pendingCount > 0 || pendingClicksForAd) {
+        const overlaid: Record<string, any> = { ...normalized };
+        if (pendingCount > 0) {
+          overlaid.impression_count = Number(overlaid.impression_count || 0) + pendingCount;
+        }
+        if (pendingClicksForAd) {
+          for (const [ct, delta] of Object.entries(pendingClicksForAd)) {
+            if (delta && delta > 0) {
+              const col = CLICK_TYPE_TO_COLUMN[ct as CanonicalClickType];
+              if (col) {
+                overlaid[col] = Number(overlaid[col] || 0) + delta;
+              }
+            }
+          }
+        }
+        normalized = overlaid;
       }
       const boostInfo = item.id ? boostMap[String(item.id)] : undefined;
       if (boostInfo) {
@@ -168,6 +196,12 @@ export async function GET(req: NextRequest) {
       ) {
         normalized = { ...normalized, daily_impression_count: 0 };
       }
+      const { total_spend, effective_cpc } = computeAdSpendMetrics(normalized);
+      normalized = {
+        ...normalized,
+        total_spend,
+        effective_cpc,
+      };
       const stmt = normalized.admin_statement;
       if (typeof stmt === "string") {
         const trimmed = stmt.trim();
@@ -182,15 +216,32 @@ export async function GET(req: NextRequest) {
       return normalized;
     };
 
+    const sanitizedAdsQueue = (adsQueue.data || []).map(sanitizeItem);
+    const sanitizedAdsActive = combinedActive.map(sanitizeItem);
+    const { analyticsSeries, analyticsSummary, adAnalyticsMap } = await buildCampaignAnalyticsPayload({
+      supabase: supabaseReadOnly,
+      adIds,
+      adsQueue: sanitizedAdsQueue,
+      adsActive: sanitizedAdsActive,
+      pendingImpressionDeltas: pendingRedisDeltas as Record<string, number>,
+      pendingClickDeltas: pendingClickDeltas as Record<
+        string,
+        Partial<Record<CanonicalClickType, number>>
+      >,
+    });
+
     const result = {
-      adsQueue: (adsQueue.data || []).map(sanitizeItem),
-      adsActive: combinedActive.map(sanitizeItem),
+      adsQueue: sanitizedAdsQueue,
+      adsActive: sanitizedAdsActive,
       highlightsQueue: (highlightsQueue.data || []).map(sanitizeItem),
       highlightsActive: (highlightsActive.data || []).map(sanitizeItem),
       ratedAdIds,
       reportsMap,
       dismissalsMap,
       advertiserBlockCount,
+      analyticsSeries,
+      analyticsSummary,
+      adAnalyticsMap,
     };
 
     // 3. Cache in Redis with 30s TTL in the background
@@ -204,6 +255,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/campaigns:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

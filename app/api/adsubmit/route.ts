@@ -105,6 +105,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Ad inserted successfully", data }, { status: 200 });
   } catch (error: any) {
     console.error("❌ Unexpected error in POST /api/adsubmit:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

@@ -30,7 +30,7 @@ export default function AudienceRatingModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className={styles.modalOverlay}
-          onClick={onClose}
+          onClick={ratingSubmitting ? undefined : onClose}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -45,7 +45,13 @@ export default function AudienceRatingModal({
                 <Star size={20} fill="var(--primary)" color="var(--primary)" />
                 <h3 className={styles.ratingModalTitle}>Rate Audience Engagement</h3>
               </div>
-              <button className={styles.modalClose} onClick={onClose}>
+              <button
+                type="button"
+                className={styles.modalClose}
+                onClick={ratingSubmitting ? undefined : onClose}
+                disabled={ratingSubmitting}
+                aria-label="Close rating modal"
+              >
                 <XCircle size={22} />
               </button>
             </div>
@@ -103,23 +109,10 @@ export default function AudienceRatingModal({
               className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
               disabled={ratingSubmitting}
               onClick={async () => {
-                if (!ratingAdId) return;
+                if (!ratingAdId || ratingSubmitting) return;
                 const targetAdId = ratingAdId;
                 const starsToSubmit = ratingStars;
 
-                // 1. Instant optimistic update + immediate modal close
-                onSuccess(targetAdId);
-                onClose();
-                setHoveredStar(null);
-
-                // 2. Dispatch non-blocking Top-Level Toast HUD with tactile haptics
-                showAppleAlert(
-                  `Submitted ${starsToSubmit}-Star rating. Audience Attention Scores updated!`,
-                  "success",
-                  "Audience Rated"
-                );
-
-                // 3. Asynchronously persist to server
                 try {
                   setRatingSubmitting(true);
                   const res = await fetch("/api/campaigns/rate-listeners", {
@@ -127,12 +120,27 @@ export default function AudienceRatingModal({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ ad_id: targetAdId, star_rating: starsToSubmit }),
                   });
-                  const data = await res.json();
+                  const data = await res.json().catch(() => ({}));
                   if (!res.ok && res.status !== 409) {
-                    throw new Error(data.error || "Failed to submit rating");
+                    throw new Error(data.error || `Failed to submit rating (${res.status})`);
                   }
+
+                  onSuccess(targetAdId);
+                  onClose();
+                  setHoveredStar(null);
+                  showAppleAlert(
+                    res.status === 409
+                      ? "You have already rated this campaign's audience."
+                      : `Submitted ${starsToSubmit}-Star rating. Audience Attention Scores updated!`,
+                    "success",
+                    "Audience Rated"
+                  );
                 } catch (err: any) {
-                  console.warn("⚠️ Rating submission warning:", err?.message || err);
+                  showAppleAlert(
+                    err?.message || "Failed to submit audience rating. Please try again.",
+                    "error",
+                    "Rating Failed"
+                  );
                 } finally {
                   setRatingSubmitting(false);
                 }

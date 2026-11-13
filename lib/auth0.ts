@@ -20,6 +20,17 @@ export const auth0 = new Auth0Client({
       const sanitizedSub = session.user.sub.replace(/^apple\|/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
       session.user.email = `${sanitizedSub}@privaterelay.appleid.com`.toLowerCase();
     }
+
+    // Fresh OAuth sign-in clears non-ban self/dormancy deactivation tombstones so returning users go through setup profile cleanly
+    if (session?.user?.email) {
+      const cleanEmail = String(session.user.email).toLowerCase().trim();
+      try {
+        const { clearSelfDeactivationForRejoinEdge } = await import("./edgeRejoinHelper");
+        await clearSelfDeactivationForRejoinEdge(cleanEmail);
+        (session.user as Record<string, unknown>).loginAt = Date.now();
+      } catch {}
+    }
+
     return session;
   },
   async onCallback(error, ctx, session) {

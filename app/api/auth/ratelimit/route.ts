@@ -3,6 +3,22 @@ import { auth0 } from "@/lib/auth0";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { isAdminEmail } from "@/lib/authHelper";
 
+async function clearRateLimitKeys(): Promise<number> {
+  if (!isRedisReady()) return 0;
+  let cursor = "0";
+  let deletedCount = 0;
+  try {
+    do {
+      const [nextCursor, keys] = await redisConnection.scan(cursor, "MATCH", "ratelimit:login:*", "COUNT", 100);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        deletedCount += await redisConnection.del(...keys);
+      }
+    } while (cursor !== "0");
+  } catch {}
+  return deletedCount;
+}
+
 // GET /api/auth/ratelimit?reset=all -> reset limits for all accounts
 export async function GET(req: NextRequest) {
   try {
@@ -10,13 +26,7 @@ export async function GET(req: NextRequest) {
     const reset = searchParams.get("reset");
 
     if (reset === "all" || reset === "true") {
-      let deletedCount = 0;
-      if (isRedisReady()) {
-        const keys = await redisConnection.keys("ratelimit:login:*");
-        if (keys.length > 0) {
-          deletedCount = await redisConnection.del(...keys);
-        }
-      }
+      const deletedCount = await clearRateLimitKeys();
       return NextResponse.json({
         success: true,
         message: `Successfully reset login limits for all accounts (${deletedCount} keys deleted).`,
@@ -38,13 +48,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Explicit Reset Action
     if (action === "reset_all" || action === "reset") {
-      let deletedCount = 0;
-      if (isRedisReady()) {
-        const keys = await redisConnection.keys("ratelimit:login:*");
-        if (keys.length > 0) {
-          deletedCount = await redisConnection.del(...keys);
-        }
-      }
+      const deletedCount = await clearRateLimitKeys();
       return NextResponse.json({
         success: true,
         message: `Login limits reset for all accounts.`,
@@ -72,9 +76,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, allowed: true, dev: true });
     }
 
-    // Fallback to IP address if email is not available yet
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous_ip";
-    const userIdentifier = userEmail ? userEmail : `ip_${ip}`;
+    // Network-level rate limiting on client IP address (GDPR Recital 49 & Art 6(1)(f) compliant:
+    // Pure network/infrastructure cybersecurity protection; zero retention of deleted user account data/PII)
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = (forwarded ? forwarded.split(",")[0].trim() : null) || req.headers.get("x-real-ip") || req.headers.get("cf-connecting-ip") || "anonymous_ip";
+    const userIdentifier = `net_${ip.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
 
     const MAX_LOGIN_ATTEMPTS = 30; // 30 attempts per hour (sliding window)
     const WINDOW_SECONDS = 3600;

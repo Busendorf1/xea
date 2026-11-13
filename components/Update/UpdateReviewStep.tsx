@@ -37,10 +37,6 @@ export function UpdateReviewStep({
         <div className={styles.reviewCard}>
           <div className={styles.reviewCardTitle}>Personal</div>
           <div className={styles.reviewItem}>
-            <span className={styles.reviewLabel}>Username:</span>
-            <span className={styles.reviewValue}>{formData.username || dbProfile.username || "None"}</span>
-          </div>
-          <div className={styles.reviewItem}>
             <span className={styles.reviewLabel}>Name:</span>
             <span className={styles.reviewValue}>
               {`${formData.firstName || dbProfile.firstName || ""} ${formData.lastName || dbProfile.lastName || ""}`.trim() || "None"}

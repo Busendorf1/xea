@@ -49,6 +49,12 @@ export interface MutualUserItem {
   profile: AdvertiserProfileData;
 }
 
+export interface AgentNetworkQueryOptions {
+  bypassCache?: boolean;
+  cursor?: string | null;
+  limit?: number;
+}
+
 export interface AgentNetworkPayload {
   isAgent: boolean;
   agentRegisteredAt: string | null;
@@ -61,6 +67,8 @@ export interface AgentNetworkPayload {
   invites: DownlineInviteItem[];
   uplineAgent: UplineAgentInfo | null;
   mutuals: MutualUserItem[];
+  nextCursor?: string | null;
+  hasMoreInvites?: boolean;
 }
 
 export interface StoredReferralEdge {

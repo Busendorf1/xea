@@ -5,39 +5,27 @@ import { helpSchema } from "@/lib/validationSchemas";
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Resolve authentication email (web session or mobile Bearer JWT)
-    const authEmail = await getAuthenticatedEmail(req);
+    // 1. Require authenticated session (prevents unauthenticated spoofing & 48h rate-limit DoS)
+    const authEmail = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    if (!authEmail) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const targetEmail = authEmail.toLowerCase().trim();
 
     // 2. Parse request body
     let body;
     try {
       body = await req.json();
-    } catch (e) {
+    } catch {
       return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
     }
 
-    // 3. Extract submission data
-    const { name, email, category, subject, message } = body;
+    // 3. Extract submission data (account identity is strictly derived from authenticated session)
+    const { name, category, subject, message } = body || {};
 
-    // 4. Determine which identifier/email to validate and associate with the ticket.
-    const rawIdentifier = (authEmail || email || "").toLowerCase().trim();
-    let targetEmail = rawIdentifier;
-
-    if (rawIdentifier && !rawIdentifier.includes(".")) {
-      const cleanUsername = rawIdentifier.replace(/^@/, "");
-      const { data: userRow } = await supabaseAdmin
-        .from("users")
-        .select("email")
-        .ilike("username", cleanUsername)
-        .maybeSingle();
-      if (userRow?.email) {
-        targetEmail = userRow.email;
-      }
-    }
-
-    // 5. Validate the input payload
+    // 4. Validate the input payload
     const validationInput = {
-      name: name || "",
+      name: typeof name === "string" ? name : "",
       email: targetEmail,
       category,
       subject,
@@ -51,11 +39,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
-    // 6. Check Rate Limit: 1 ticket every 48 hours for targetEmail
+    // 5. Check Rate Limit: 1 ticket every 48 hours for authenticated account
     const { data: lastTicket, error: dbError } = await supabaseAdmin
       .from("help_tickets")
       .select("created_at")
-      .eq("user_email", targetEmail)
+      .ilike("user_email", targetEmail)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -98,7 +86,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/helpcenter:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }
 
@@ -113,7 +101,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("help_tickets")
       .select("*")
-      .eq("user_email", cleanEmail)
+      .ilike("user_email", cleanEmail)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -124,6 +112,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: true, tickets: data || [] });
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/helpcenter:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

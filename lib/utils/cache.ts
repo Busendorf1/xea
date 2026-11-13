@@ -496,10 +496,21 @@ export async function setCachedHighlights<T = Record<string, unknown>>(
 // Rely 100% on Natural TTL Expiry across the entire app
 export async function invalidateTargetedHighlightCache(_interest?: string, _country?: string | null, _state?: string | null): Promise<void> {
   l1HighlightsCache.clear();
+  if (isRedisReady()) {
+    redisConnection.del("highlights:active_pool:v3").catch(() => {});
+  }
 }
 
 export async function invalidateAllHighlights(): Promise<void> {
   l1HighlightsCache.clear();
+  if (l1HighlightsEvictionHandler) {
+    try {
+      l1HighlightsEvictionHandler();
+    } catch {}
+  }
+  if (isRedisReady()) {
+    redisConnection.del("highlights:active_pool:v3").catch(() => {});
+  }
 }
 
 // ----------------------------------------------------

@@ -3,29 +3,20 @@
 import React from "react";
 import {
   XCircle,
-  Megaphone,
-  ShieldAlert,
   User,
   Wallet,
   Shield,
   Users,
-  ExternalLink,
-  Sparkles,
-  Globe,
 } from "lucide-react";
 import styles from "./page.module.css";
-import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
 import { useAdminDialog } from "@/components/ui/AdminDialog";
 import RoleStarBadges from "@/components/ui/RoleStarBadges";
-import { AdminAdMediaBox } from "./AdminAdMediaBox";
-import { AdminUserSuiteSpecialRolesCard } from "./AdminUserSuiteSpecialRolesCard";
 import { AdminUserSuiteDownlineCard } from "./AdminUserSuiteDownlineCard";
 import { AdminUserSuiteProfileTab } from "./AdminUserSuiteProfileTab";
 import { AdminUserSuiteStatementTab } from "./AdminUserSuiteStatementTab";
 import { AdminUserSuiteSecurityTab } from "./AdminUserSuiteSecurityTab";
-
-const formatCurrency = (amount: number | string, country?: string | null) =>
-  globalFormatCurrency(amount, country);
+import { AdminUserSuiteCampaignInspectorModal } from "./AdminUserSuiteCampaignInspectorModal";
+import { AdminUserSuiteAgencyBanModal } from "./AdminUserSuiteAgencyBanModal";
 
 export interface AdminUserOperationsSuiteModalProps {
   selectedUser: any;
@@ -367,7 +358,6 @@ export function AdminUserOperationsSuiteModal({
                     <span className={styles.suiteBadgeMonetized}>Active</span>
                   )}
 
-                  {/* QUICK AGENT TOGGLE BUTTON */}
                   <div style={{ marginLeft: "auto", display: "inline-flex", gap: "4px" }}>
                     {isAgentBanned ? (
                       <button
@@ -449,7 +439,6 @@ export function AdminUserOperationsSuiteModal({
 
           {/* TAB CONTENTS */}
           <div className={styles.userSuiteContent}>
-            {/* TAB 1: PROFILE & EDIT */}
             {activeTab === "profile" && (
               <AdminUserSuiteProfileTab
                 activeUser={activeUser}
@@ -477,7 +466,6 @@ export function AdminUserOperationsSuiteModal({
               />
             )}
 
-            {/* TAB 2: WALLET & STATEMENT */}
             {activeTab === "statement" && (
               <AdminUserSuiteStatementTab
                 activeUser={activeUser}
@@ -490,7 +478,6 @@ export function AdminUserOperationsSuiteModal({
               />
             )}
 
-            {/* TAB 3: AGENT & FOLLOWERS */}
             {activeTab === "network" && (
               <AdminUserSuiteDownlineCard
                 activeUser={activeUser}
@@ -512,7 +499,6 @@ export function AdminUserOperationsSuiteModal({
               />
             )}
 
-            {/* TAB 4: SECURITY & ACCESS CONTROLS */}
             {activeTab === "security" && (
               <AdminUserSuiteSecurityTab
                 activeUser={activeUser}
@@ -567,323 +553,39 @@ export function AdminUserOperationsSuiteModal({
         </div>
       </div>
 
-      {/* MODAL: CAMPAIGN / HIGHLIGHT INSPECTOR */}
-      {inspectingCampaignItem && (
-        <div
-          role="presentation"
-          className={styles.modalOverlay}
-          style={{ zIndex: 1100 }}
-          onClick={() => setInspectingCampaignItem(null)}
-        >
-          <div
-            className={`${styles.modalContent} ${styles.adminCls_159}`}
-            style={{ maxWidth: 660, width: "100%", maxHeight: "90vh", overflowY: "auto" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={styles.modalHeader}>
-              <div className={styles.adminCls_172}>
-                {inspectingCampaignItem.type === "ad" ? (
-                  <Megaphone size={20} color="var(--primary)" />
-                ) : (
-                  <Sparkles size={20} color="#f59e0b" />
-                )}
-                <h3 className={styles.modalTitle}>
-                  {inspectingCampaignItem.type === "ad" ? "Ad Campaign Details" : "Business Highlight Details"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                className={styles.btnClose}
-                onClick={() => setInspectingCampaignItem(null)}
-                title="Close"
-              >
-                <XCircle size={24} />
-              </button>
-            </div>
+      <AdminUserSuiteCampaignInspectorModal
+        inspectingCampaignItem={inspectingCampaignItem}
+        onClose={() => setInspectingCampaignItem(null)}
+      />
 
-            <div className={styles.modalBody} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {/* Creative / Media */}
-              {inspectingCampaignItem.type === "ad" ? (
-                <AdminAdMediaBox
-                  adMedia={inspectingCampaignItem.item.ad_media || inspectingCampaignItem.item.ad_media_url || ""}
-                  adMediaType={inspectingCampaignItem.item.ad_media_type}
-                />
-              ) : (
-                <div style={{ borderRadius: 10, overflow: "hidden", maxHeight: 260, background: "var(--card-border, #000)", display: "flex", justifyContent: "center", alignItems: "center" }}>
-                  <img
-                    src={inspectingCampaignItem.item.image_url || inspectingCampaignItem.item.media || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60"}
-                    alt={inspectingCampaignItem.item.title || "Highlight cover"}
-                    style={{ maxHeight: 260, width: "100%", objectFit: "cover" }}
-                    onError={(e: any) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60";
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Title */}
-              <div>
-                <span style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)" }}>
-                  {inspectingCampaignItem.type === "ad" ? "Campaign / Product Title" : "Highlight Title"}
-                </span>
-                <h4 style={{ margin: "4px 0 0", fontSize: "1.15rem", fontWeight: 700, color: "var(--foreground)" }}>
-                  {inspectingCampaignItem.type === "ad"
-                    ? (inspectingCampaignItem.item.product_name || inspectingCampaignItem.item.title || "Ad Campaign")
-                    : (inspectingCampaignItem.item.title || "Business Highlight")}
-                </h4>
-              </div>
-
-              {/* Details Grid */}
-              <div className={styles.adminCls_173}>
-                <div><strong>ID:</strong> <code className={styles.breakAll}>{inspectingCampaignItem.item.id}</code></div>
-                <div><strong>Status:</strong> <span style={{ fontWeight: 700, color: inspectingCampaignItem.item.is_paused ? "#ef4444" : "#10b981" }}>{inspectingCampaignItem.item.is_paused ? "Paused" : "Live / Active"}</span></div>
-                <div><strong>Creator / Email:</strong> <code className={styles.breakAll}>{inspectingCampaignItem.item.user_email}</code></div>
-                {inspectingCampaignItem.type === "ad" ? (
-                  <>
-                    <div><strong>Ad Type:</strong> <span className={styles.adminCls_174}>{inspectingCampaignItem.item.ad_type || "Standard"}</span></div>
-                    <div><strong>Views Delivered:</strong> <span>{inspectingCampaignItem.item.impression_count || 0} / {inspectingCampaignItem.item.impressions || "∞"}</span></div>
-                    <div><strong>Mutual Attention:</strong> <span>{inspectingCampaignItem.item.mutual_adds_count || 0}</span></div>
-                    <div><strong>Bid / Cost:</strong> <span>₦{inspectingCampaignItem.item.cost_per_impression || 25} / view</span></div>
-                    <div><strong>Duration:</strong> <span>{inspectingCampaignItem.item.campaign_days || 5} Days</span></div>
-                    <div><strong>Frequency Cap:</strong> <span>{inspectingCampaignItem.item.user_frequency_cap || 1} view(s)/user</span></div>
-                  </>
-                ) : (
-                  <>
-                    <div><strong>Category / Interest:</strong> <span className={styles.adminCls_174}>{inspectingCampaignItem.item.interest || "General"}</span></div>
-                    <div><strong>Publisher Handle:</strong> <span>{inspectingCampaignItem.item.publisher_handle || (inspectingCampaignItem.item.user_email ? `@${inspectingCampaignItem.item.user_email.split("@")[0]}` : "@user")}</span></div>
-                    {inspectingCampaignItem.item.publisher_name && (
-                      <div><strong>Publisher Name:</strong> <span>{inspectingCampaignItem.item.publisher_name}</span></div>
-                    )}
-                    <div><strong>Target Region:</strong> <span>{inspectingCampaignItem.item.country || "Global"}{inspectingCampaignItem.item.state ? ` (${inspectingCampaignItem.item.state})` : ""}</span></div>
-                    <div><strong>Daily Rate:</strong> <span>₦{inspectingCampaignItem.item.bid_price || 1500}/day</span></div>
-                  </>
-                )}
-                <div><strong>Created:</strong> <span>{inspectingCampaignItem.item.created_at ? new Date(inspectingCampaignItem.item.created_at).toLocaleString() : "N/A"}</span></div>
-              </div>
-
-              {/* Text Content */}
-              {(inspectingCampaignItem.item.content || inspectingCampaignItem.item.ad_content) && (
-                <div className={styles.adminCls_175}>
-                  <strong className={styles.adminCls_85}>
-                    {inspectingCampaignItem.type === "ad" ? "Ad Copy / Content:" : "Highlight Story / Content:"}
-                  </strong>
-                  <p className={styles.adminCls_176} style={{ whiteSpace: "pre-line" }}>
-                    {inspectingCampaignItem.item.content || inspectingCampaignItem.item.ad_content}
-                  </p>
-                </div>
-              )}
-
-              {/* Website / Destination Link */}
-              {(inspectingCampaignItem.item.destination_url || inspectingCampaignItem.item.link_url || inspectingCampaignItem.item.target_url || inspectingCampaignItem.item.link || inspectingCampaignItem.item.website) && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: 8, background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
-                    <Globe size={16} color="var(--primary)" />
-                    <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Target URL:</span>
-                    <a
-                      href={inspectingCampaignItem.item.destination_url || inspectingCampaignItem.item.link_url || inspectingCampaignItem.item.target_url || inspectingCampaignItem.item.link || inspectingCampaignItem.item.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: "0.85rem", color: "var(--primary)", fontWeight: 600, textDecoration: "underline", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {inspectingCampaignItem.item.destination_url || inspectingCampaignItem.item.link_url || inspectingCampaignItem.item.target_url || inspectingCampaignItem.item.link || inspectingCampaignItem.item.website}
-                    </a>
-                  </div>
-                  <a
-                    href={inspectingCampaignItem.item.destination_url || inspectingCampaignItem.item.link_url || inspectingCampaignItem.item.target_url || inspectingCampaignItem.item.link || inspectingCampaignItem.item.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.btnAction}
-                    style={{ padding: "4px 10px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}
-                  >
-                    <span>Visit Link</span>
-                    <ExternalLink size={12} />
-                  </a>
-                </div>
-              )}
-
-              {/* Admin Statement */}
-              {inspectingCampaignItem.item.admin_statement && (
-                <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.3)", fontSize: "0.82rem" }}>
-                  <strong style={{ color: "#f59e0b" }}>Admin Statement / Note:</strong>
-                  <p style={{ margin: "4px 0 0", color: "var(--foreground)" }}>{inspectingCampaignItem.item.admin_statement}</p>
-                </div>
-              )}
-            </div>
-
-            <div className={styles.modalFooter}>
-              <button
-                type="button"
-                onClick={() => setInspectingCampaignItem(null)}
-                className={`${styles.btnAction} ${styles.adminCls_177}`}
-              >
-                Close Inspector
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: AGENCY BAN & SANCTIONS DIALOG */}
-      {showAgencyBanDialog && (
-        <div
-          role="presentation"
-          className={styles.modalOverlay}
-          style={{ zIndex: 1200 }}
-          onClick={() => setShowAgencyBanDialog(false)}
-        >
-          <div
-            className={`${styles.modalContent} ${styles.adminCls_159}`}
-            style={{ maxWidth: 560, width: "100%" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={styles.modalHeader}>
-              <div className={styles.adminCls_172}>
-                <ShieldAlert size={22} color="#ef4444" />
-                <h3 className={styles.modalTitle}>
-                  {agencyBanType === "perm" ? "Permanent Agency Ban" : "Temporary Agency Ban"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                className={styles.btnClose}
-                onClick={() => setShowAgencyBanDialog(false)}
-                title="Close"
-              >
-                <XCircle size={24} />
-              </button>
-            </div>
-
-            <div className={styles.modalBody} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <div style={{ background: "rgba(239, 68, 68, 0.08)", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(239, 68, 68, 0.2)" }}>
-                <div style={{ fontSize: "0.85rem", color: "var(--foreground)" }}>
-                  Target User: <strong>@{activeUser.username}</strong> ({activeUser.email})
-                </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 2 }}>
-                  This sanction restricts the user from earning agency commissions, revokes agency status, and prevents registration as an agent.
-                </div>
-              </div>
-
-              {/* Ban Scope Selector */}
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Ban Duration / Type</label>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => { setAgencyBanType("temp"); setAgencyBanDays(7); }}
-                    className={`${styles.btnAction} ${agencyBanType === "temp" && agencyBanDays === 7 ? styles.btnDanger : ""}`}
-                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                  >
-                    7 Days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAgencyBanType("temp"); setAgencyBanDays(30); }}
-                    className={`${styles.btnAction} ${agencyBanType === "temp" && agencyBanDays === 30 ? styles.btnDanger : ""}`}
-                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                  >
-                    30 Days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAgencyBanType("temp"); setAgencyBanDays(90); }}
-                    className={`${styles.btnAction} ${agencyBanType === "temp" && agencyBanDays === 90 ? styles.btnDanger : ""}`}
-                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                  >
-                    90 Days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAgencyBanType("perm"); }}
-                    className={`${styles.btnAction} ${agencyBanType === "perm" ? styles.btnDanger : ""}`}
-                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                  >
-                    Permanent Ban
-                  </button>
-                </div>
-              </div>
-
-              {agencyBanType === "temp" && (
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Days of Agency Ban</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={365}
-                    value={agencyBanDays}
-                    onChange={(e) => setAgencyBanDays(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className={styles.inputField}
-                  />
-                </div>
-              )}
-
-              {/* Reason for Complaint / Violation */}
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Reason / Complaint Note (Required)</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="e.g., User dispute, spamming referral link in prohibited forums, fraudulent referral chain..."
-                  value={agencyBanReason}
-                  onChange={(e) => setAgencyBanReason(e.target.value)}
-                  className={styles.textareaField}
-                />
-                <span className={styles.formHelperText}>
-                  This reason will be logged in the admin audit history and visible in the user's security profile.
-                </span>
-              </div>
-
-              {/* Detach Followers Checkbox */}
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", cursor: "pointer", background: "var(--card-bg)", padding: "10px", borderRadius: 8, border: "1px solid var(--card-border)" }}>
-                <input
-                  type="checkbox"
-                  checked={agencyBanDetachFollowers}
-                  onChange={(e) => setAgencyBanDetachFollowers(e.target.checked)}
-                  style={{ marginTop: 3, cursor: "pointer" }}
-                />
-                <div>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--foreground)" }}>
-                    Purge & Detach Existing Followers ({userNetwork?.invites?.length || userReferrals.length})
-                  </div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 2 }}>
-                    Releases downline users from this agent so they are no longer subject to commission deductions.
-                  </div>
-                </div>
-              </label>
-            </div>
-
-            <div className={styles.modalFooter}>
-              <button
-                type="button"
-                onClick={() => setShowAgencyBanDialog(false)}
-                className={styles.btnAction}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={userActionSubmitting || !agencyBanReason.trim()}
-                onClick={async () => {
-                  if (!agencyBanReason.trim()) {
-                    await alertDialog("Please enter a reason or complaint note for this ban.", "Reason Required");
-                    return;
-                  }
-                  setShowAgencyBanDialog(false);
-                  handleBanAgent &&
-                    handleBanAgent(activeUser, {
-                      banType: agencyBanType,
-                      days: agencyBanDays,
-                      reason: agencyBanReason.trim(),
-                      detachFollowers: agencyBanDetachFollowers,
-                    });
-                }}
-                className={`${styles.btnAction} ${styles.btnDanger}`}
-              >
-                {userActionSubmitting ? "Applying Ban..." : "Apply Agency Ban"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminUserSuiteAgencyBanModal
+        open={showAgencyBanDialog}
+        onClose={() => setShowAgencyBanDialog(false)}
+        activeUser={activeUser}
+        agencyBanType={agencyBanType}
+        setAgencyBanType={setAgencyBanType}
+        agencyBanDays={agencyBanDays}
+        setAgencyBanDays={setAgencyBanDays}
+        agencyBanReason={agencyBanReason}
+        setAgencyBanReason={setAgencyBanReason}
+        agencyBanDetachFollowers={agencyBanDetachFollowers}
+        setAgencyBanDetachFollowers={setAgencyBanDetachFollowers}
+        followersCount={userNetwork?.invites?.length || userReferrals.length}
+        userActionSubmitting={userActionSubmitting}
+        onAlertMissingReason={async () => {
+          await alertDialog("Please enter a reason or complaint note for this ban.", "Reason Required");
+        }}
+        onConfirmBan={() => {
+          setShowAgencyBanDialog(false);
+          handleBanAgent &&
+            handleBanAgent(activeUser, {
+              banType: agencyBanType,
+              days: agencyBanDays,
+              reason: agencyBanReason.trim(),
+              detachFollowers: agencyBanDetachFollowers,
+            });
+        }}
+      />
     </>
   );
 }

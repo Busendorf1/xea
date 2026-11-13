@@ -2,7 +2,6 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Activity, Clock, CheckCircle2, TrendingUp, Calendar } from "lucide-react";
 import styles from "../MyAds/page.module.css";
 
 interface HighlightKpiSummaryProps {
@@ -42,9 +41,6 @@ export default function HighlightKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Active Highlights</span>
-          <span className={styles.kpiIconBox}>
-            <Activity size={15} />
-          </span>
         </div>
         <span className={styles.kpiValue}>{activeLiveCount}</span>
         <span className={styles.kpiSub}>
@@ -61,9 +57,6 @@ export default function HighlightKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Pending Review</span>
-          <span className={`${styles.kpiIconBox} ${styles.kpiIconBoxMuted}`}>
-            <Clock size={15} />
-          </span>
         </div>
         <span className={`${styles.kpiValue} ${pendingCount === 0 ? styles.kpiValueMuted : ""}`}>
           {pendingCount}
@@ -82,9 +75,6 @@ export default function HighlightKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Approved Total</span>
-          <span className={styles.kpiIconBox}>
-            <CheckCircle2 size={15} />
-          </span>
         </div>
         <span className={styles.kpiValue}>{approvedTotalCount}</span>
         <span className={styles.kpiSub}>Approved &amp; published</span>
@@ -99,9 +89,6 @@ export default function HighlightKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Spotlight Bidded</span>
-          <span className={styles.kpiIconBox}>
-            <TrendingUp size={15} />
-          </span>
         </div>
         <div className={styles.kpiValueGroup}>
           <span className={styles.kpiValue}>{biddedCount}</span>
@@ -119,9 +106,6 @@ export default function HighlightKpiSummary({
       >
         <div className={styles.kpiHeaderRow}>
           <span className={styles.kpiLabel}>Coverage Window</span>
-          <span className={styles.kpiIconBox}>
-            <Calendar size={15} />
-          </span>
         </div>
         <span className={styles.kpiValue}>
           {totalScheduleDays} {totalScheduleDays === 1 ? "Day" : "Days"}

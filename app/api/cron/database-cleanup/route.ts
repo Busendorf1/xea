@@ -87,25 +87,40 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error purging completed ads:", err.message || err);
     }
 
-    // 4. Purge highlights older than campaign_days (1-5 days)
+    // 4. Purge highlights past their actual expires_at / scheduled_end_at / campaign_days
     try {
       console.log("🧹 Cron: Purging expired highlights...");
       const { error: errNews } = await supabaseAdmin.rpc("delete_expired_news");
       if (errNews) {
-        console.warn("⚠️ Cron: RPC delete_expired_news failed, executing direct fallback deletion:", errNews.message);
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-        const { data: expiredNews } = await supabaseAdmin
+        console.warn("⚠️ Cron: RPC delete_expired_news failed, executing duration-aware fallback deletion:", errNews.message);
+        const nowMs = Date.now();
+        const { data: activeNews } = await supabaseAdmin
           .from("newsactive")
-          .select("image_url")
-          .lt("created_at", twentyFourHoursAgo);
+          .select("id, image_url, expires_at, scheduled_end_at, scheduled_start_at, created_at, campaign_days")
+          .limit(1000);
 
-        if (expiredNews && expiredNews.length > 0) {
-          const imgList = expiredNews.map((n: any) => n.image_url).filter(Boolean);
+        const expiredRows = (activeNews || []).filter((n: any) => {
+          const createdMs = n.created_at ? new Date(n.created_at).getTime() : nowMs;
+          const scheduledStartMs = n.scheduled_start_at ? new Date(n.scheduled_start_at).getTime() : NaN;
+          const startMs = !isNaN(scheduledStartMs) && scheduledStartMs > 0 ? Math.max(createdMs, scheduledStartMs) : createdMs;
+          const explicitEndMs = n.expires_at
+            ? new Date(n.expires_at).getTime()
+            : n.scheduled_end_at
+            ? new Date(n.scheduled_end_at).getTime()
+            : NaN;
+          const days = Math.max(1, Math.min(90, Number(n.campaign_days || 1)));
+          const endMs = !isNaN(explicitEndMs) && explicitEndMs > startMs ? explicitEndMs : startMs + days * 86_400_000;
+          return nowMs > endMs;
+        });
+
+        if (expiredRows.length > 0) {
+          const imgList = expiredRows.map((n: any) => n.image_url).filter(Boolean);
           await purgeStorageMedia(imgList, "news");
+          const expiredIds = expiredRows.map((n: any) => n.id).filter(Boolean);
+          if (expiredIds.length > 0) {
+            await supabaseAdmin.from("newsactive").delete().in("id", expiredIds);
+          }
         }
-
-        await supabaseAdmin.from("newsactive").delete().lt("created_at", twentyFourHoursAgo);
       } else {
         console.log("✅ Cron: Expired highlights purged successfully.");
       }
@@ -171,7 +186,12 @@ async function handleCron(req: NextRequest) {
         if (resetIds.length > 0) {
           await supabaseAdmin
             .from("users")
-            .update({ monetized: "false", monetization_clicks: 0 })
+            .update({
+              monetized: "false",
+              monetization_clicks: 0,
+              atw_tier: "ATW1",
+              attention_worth_score: 0.1,
+            })
             .in("id", resetIds);
         }
       } else {
@@ -194,33 +214,73 @@ async function handleCron(req: NextRequest) {
       console.error("❌ Cron: Unexpected error inspecting auto-partitioning threshold:", err.message || err);
     }
 
-    // 9. Forfeit balances of accounts inactive for 60+ days (Exempts Admin, Career, and Affiliate accounts)
+    // 9. Forfeit balances & deactivate accounts inactive for 60+ days (Exempts Admin, Career, and Affiliate accounts)
     try {
       console.log("🧹 Cron: Checking for 60-day inactive accounts with unclaimed balances...");
-      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: candidateUsers } = await supabaseAdmin
-        .from("users")
-        .select("id, email, balance, is_affiliate, is_career")
-        .lt("last_active_at", sixtyDaysAgo)
-        .gt("balance", 0)
-        .limit(500);
+      const { data: dormancyRpcRes, error: dormancyRpcErr } = await supabaseAdmin.rpc(
+        "forfeit_dormant_user_balances_60_days"
+      );
 
-      const eligibleIds = (candidateUsers || [])
-        .filter((u: any) => !isExemptFromBarriersAndInactivity(u.email, u))
-        .map((u: any) => u.id);
-
-      let forfeitedUsers: any[] = [];
-      if (eligibleIds.length > 0) {
-        const { data: updatedRows } = await supabaseAdmin
+      if (dormancyRpcErr) {
+        console.warn("⚠️ Cron: RPC forfeit_dormant_user_balances_60_days failed, executing hardened fallback:", dormancyRpcErr.message);
+        const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: candidateUsers } = await supabaseAdmin
           .from("users")
-          .update({ balance: 0 })
-          .in("id", eligibleIds)
-          .select("email, balance");
-        forfeitedUsers = updatedRows || [];
-      }
+          .select("id, email, username, balance, is_affiliate, is_career, ad_account_status")
+          .lt("last_active_at", sixtyDaysAgo)
+          .neq("ad_account_status", "deactivated")
+          .limit(500);
 
-      if (forfeitedUsers.length > 0) {
-        console.log(`⚠️ Cron: Forfeited unclaimed balances for ${forfeitedUsers.length} account(s) inactive for 60+ days.`);
+        const eligibleUsers = (candidateUsers || []).filter(
+          (u: any) => !isExemptFromBarriersAndInactivity(u.email, u)
+        );
+
+        let forfeitedCount = 0;
+        const nowIso = new Date().toISOString();
+        for (const u of eligibleUsers) {
+          const emailLower = String(u.email || "").toLowerCase().trim();
+          const bal = Number(u.balance || 0);
+          if (bal > 0) {
+            await supabaseAdmin.from("forfeited_balances").insert({
+              user_email: emailLower,
+              username: u.username || null,
+              amount: bal,
+              currency: "NGN",
+              reason: "60-day dormant inactivity forfeiture",
+              status: "PENDING",
+              created_at: nowIso,
+            });
+            forfeitedCount++;
+          }
+
+          await supabaseAdmin
+            .from("users")
+            .update({
+              balance: 0,
+              monetized: "false",
+              monetization_clicks: 0,
+              atw_tier: "ATW1",
+              ad_account_status: "deactivated",
+            })
+            .eq("id", u.id);
+
+          try {
+            await supabaseAdmin.rpc("deactivate_user_atomic", { p_email: emailLower });
+          } catch {
+            await supabaseAdmin
+              .from("deactivated_users")
+              .upsert({ email: emailLower, reason: "60_day_inactivity", deactivated_at: nowIso }, { onConflict: "email" })
+              .then(() => {}, () => {});
+          }
+        }
+
+        if (eligibleUsers.length > 0) {
+          console.log(
+            `⚠️ Cron: Fallback processed ${eligibleUsers.length} 60-day dormant account(s) (${forfeitedCount} forfeited).`
+          );
+        }
+      } else {
+        console.log("✅ Cron: 60-day dormancy RPC completed:", dormancyRpcRes);
       }
     } catch (err: any) {
       console.error("❌ Cron: Error executing 60-day inactive balance forfeiture:", err.message || err);

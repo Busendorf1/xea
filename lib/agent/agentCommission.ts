@@ -22,19 +22,25 @@ export async function resolveLightweightUplineForEarner(earnerEmail: string): Pr
       const raw = await redisConnection.get(`agent:upline_fast:${earnerEmail}`);
       if (raw) {
         const parsed: FastUplineMeta = JSON.parse(raw);
-        setL1Upline(earnerEmail, { ...parsed, expiresAt: now + 60000 });
-        return parsed;
+        // Enforce strict direct-only commission (zero multi-level downlines)
+        const normalized: FastUplineMeta = {
+          ...parsed,
+          rate: parsed.rate >= 0.02 ? 0.02 : 0.01,
+          uplineOfUplineEmail: null,
+          expiresAt: now + 60000,
+        };
+        setL1Upline(earnerEmail, normalized);
+        return normalized;
       }
     } catch {}
   }
 
   let uplineEmail: string | null = null;
-  let rate = 0.01;
 
   try {
     const { data: refRow } = await supabaseAdmin
       .from("referrals")
-      .select("referrer_email, status, opt_out_status, commission_rate")
+      .select("referrer_email, status, opt_out_status")
       .ilike("referee_email", earnerEmail)
       .maybeSingle();
 
@@ -46,7 +52,6 @@ export async function resolveLightweightUplineForEarner(earnerEmail: string): Pr
       refRow.referrer_email
     ) {
       uplineEmail = String(refRow.referrer_email).toLowerCase().trim();
-      rate = Number(refRow.commission_rate) >= 0.02 ? 0.02 : 0.01;
     }
   } catch {}
 
@@ -56,7 +61,6 @@ export async function resolveLightweightUplineForEarner(earnerEmail: string): Pr
       uplineEmail = null;
     } else {
       uplineEmail = memEdge.referrerEmail;
-      rate = memEdge.commissionRate >= 0.02 ? 0.02 : 0.01;
     }
   }
 
@@ -75,17 +79,12 @@ export async function resolveLightweightUplineForEarner(earnerEmail: string): Pr
     return emptyMeta;
   }
 
-  const [{ isAgent: earnerIsAgent }, earnerRowRes, upOfUpRes] = await Promise.all([
+  const [{ isAgent: earnerIsAgent }, earnerRowRes] = await Promise.all([
     checkIsUserAgent(earnerEmail),
     supabaseAdmin
       .from("users")
       .select("monetized, monetization_clicks")
       .ilike("email", earnerEmail)
-      .maybeSingle(),
-    supabaseAdmin
-      .from("referrals")
-      .select("referrer_email, status, opt_out_status")
-      .ilike("referee_email", uplineEmail)
       .maybeSingle(),
   ]);
 
@@ -108,29 +107,14 @@ export async function resolveLightweightUplineForEarner(earnerEmail: string): Pr
     };
   }
 
-  if (earnerIsAgent) {
-    rate = 0.02;
-  }
-
-  let uplineOfUplineEmail: string | null = null;
-  if (
-    upOfUpRes.data &&
-    upOfUpRes.data.status !== "opted_out" &&
-    upOfUpRes.data.opt_out_status !== "accepted" &&
-    upOfUpRes.data.opt_out_status !== "forced" &&
-    upOfUpRes.data.referrer_email
-  ) {
-    const candidate = String(upOfUpRes.data.referrer_email).toLowerCase().trim();
-    if (candidate !== earnerEmail && candidate !== uplineEmail) {
-      uplineOfUplineEmail = candidate;
-    }
-  }
+  // Strict direct-only commission: 1% regular follower, 2% verified Agent, zero downline tiers
+  const rate = earnerIsAgent ? 0.02 : 0.01;
 
   const activeMeta: FastUplineMeta = {
     hasUpline: true,
     uplineEmail,
     rate,
-    uplineOfUplineEmail,
+    uplineOfUplineEmail: null,
     expiresAt: now + 120000,
   };
   setL1Upline(earnerEmail, activeMeta);
@@ -170,42 +154,62 @@ export async function creditAgentWalletAndEdge({
     publishLiveBalanceUpdate(cleanAgent, { delta: creditToWallet, newBalance: newBal }).catch(() => {});
   } else {
     // Fallback if migration is pending in current environment
-    const { data: agentUser } = await supabaseAdmin.from("users").select("balance").eq("email", cleanAgent).maybeSingle();
+    const { data: agentUser } = await supabaseAdmin.from("users").select("balance").ilike("email", cleanAgent).maybeSingle();
     if (agentUser) {
       const prevBal = Number(agentUser.balance) || 0;
       newBal = Math.round((prevBal + creditToWallet) * 100) / 100;
-      await supabaseAdmin.from("users").update({ balance: newBal }).eq("email", cleanAgent);
+      await supabaseAdmin.from("users").update({ balance: newBal }).ilike("email", cleanAgent);
       invalidateCachedProfile(cleanAgent).catch(() => {});
       publishLiveBalanceUpdate(cleanAgent, { delta: creditToWallet, newBalance: newBal }).catch(() => {});
     }
   }
 
-  const { data: refRow } = await supabaseAdmin
-    .from("referrals")
-    .select("id, total_commission_earned")
-    .eq("referee_email", cleanReferee)
-    .eq("referrer_email", cleanAgent)
-    .maybeSingle();
-
   let updatedEdgeTotal = grossCommissionFromReferee;
-  if (refRow) {
-    updatedEdgeTotal =
-      Math.round(((Number(refRow.total_commission_earned) || 0) + grossCommissionFromReferee) * 100) / 100;
-    await supabaseAdmin
+  let edgeAtomicSucceeded = false;
+
+  const { data: edgeAtomicRes, error: edgeAtomicErr } = await supabaseAdmin.rpc(
+    "increment_referral_commission_atomic",
+    {
+      p_referrer_email: cleanAgent,
+      p_referee_email: cleanReferee,
+      p_amount: grossCommissionFromReferee,
+      p_rate: rate,
+    }
+  );
+
+  if (!edgeAtomicErr && edgeAtomicRes && (edgeAtomicRes as any).success) {
+    edgeAtomicSucceeded = true;
+    updatedEdgeTotal = Number((edgeAtomicRes as any).totalCommissionEarned) || grossCommissionFromReferee;
+  } else {
+    // Fallback only if increment_referral_commission_atomic RPC migration has not been applied yet
+    const { data: refRow } = await supabaseAdmin
       .from("referrals")
-      .update({
-        total_commission_earned: updatedEdgeTotal,
-        commission_rate: rate,
-      })
-      .eq("id", refRow.id);
+      .select("id, total_commission_earned")
+      .ilike("referee_email", cleanReferee)
+      .ilike("referrer_email", cleanAgent)
+      .maybeSingle();
+
+    if (refRow) {
+      updatedEdgeTotal =
+        Math.round(((Number(refRow.total_commission_earned) || 0) + grossCommissionFromReferee) * 100) / 100;
+      await supabaseAdmin
+        .from("referrals")
+        .update({
+          total_commission_earned: updatedEdgeTotal,
+          commission_rate: rate,
+        })
+        .eq("id", refRow.id);
+    }
   }
 
   const memEdge = memoryReferralEdges.get(cleanReferee);
   if (memEdge && memEdge.referrerEmail === cleanAgent) {
-    updatedEdgeTotal = Math.max(
-      updatedEdgeTotal,
-      Math.round(((memEdge.totalCommissionEarned || 0) + grossCommissionFromReferee) * 100) / 100
-    );
+    updatedEdgeTotal = edgeAtomicSucceeded
+      ? updatedEdgeTotal
+      : Math.max(
+          updatedEdgeTotal,
+          Math.round(((memEdge.totalCommissionEarned || 0) + grossCommissionFromReferee) * 100) / 100
+        );
     memEdge.totalCommissionEarned = updatedEdgeTotal;
     memEdge.commissionRate = rate;
   }
@@ -214,7 +218,9 @@ export async function creditAgentWalletAndEdge({
     try {
       const raw = await redisConnection.get(`agent:edge:${cleanReferee}`);
       const existing: StoredReferralEdge | null = raw ? JSON.parse(raw) : null;
-      const nextTotal = existing
+      const nextTotal = edgeAtomicSucceeded
+        ? Math.max(updatedEdgeTotal, existing?.totalCommissionEarned || 0)
+        : existing
         ? Math.max(
             updatedEdgeTotal,
             Math.round(((existing.totalCommissionEarned || 0) + grossCommissionFromReferee) * 100) / 100

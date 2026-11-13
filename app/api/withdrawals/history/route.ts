@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
+import { normalizeReceiptTransaction } from "@/lib/payment/historyHelpers";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,18 @@ export async function GET(req: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
-    const cacheKey = `statement:withdrawals:${emailLower}`;
     const forceRefresh = url.searchParams.get("refresh") === "true";
+    const versionKey = `statement:ver:${emailLower}`;
+
+    if (forceRefresh) {
+      await Promise.all([
+        redisConnection.incr(versionKey).catch(() => {}),
+        redisConnection.del(`statement:withdrawals:${emailLower}`).catch(() => {}),
+      ]);
+    }
+
+    const ver = (await redisConnection.get(versionKey).catch(() => null)) || "0";
+    const cacheKey = `statement:withdrawals:v2:${emailLower}:v${ver}`;
 
     // 1. Redis Cache Read Path (<5ms response time)
     if (!forceRefresh) {
@@ -39,20 +50,21 @@ export async function GET(req: NextRequest) {
     const { data: withdrawals, error } = await supabaseReadOnly
       .from("payments")
       .select("id, reference, amount, status, type, description, metadata, created_at")
-      .eq("user_email", emailLower)
+      .ilike("user_email", emailLower)
       .eq("type", "withdrawal")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(250);
 
     if (error) {
       console.error("❌ Error fetching withdrawal history:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Try again later" }, { status: 500 });
     }
 
-    const payload = withdrawals || [];
+    const payload = (withdrawals || []).map(normalizeReceiptTransaction);
 
-    // Cache payload in Redis for fast re-reads
-    redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 604800).catch(() => {});
+    // Cache payload in Redis for fast re-reads (bounded TTL)
+    redisConnection.set(cacheKey, JSON.stringify(payload), "EX", 60).catch(() => {});
 
     return NextResponse.json(payload, {
       headers: {
@@ -61,6 +73,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in GET /api/withdrawals/history:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Try again later" }, { status: 500 });
   }
 }

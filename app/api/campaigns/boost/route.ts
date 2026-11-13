@@ -5,6 +5,7 @@ import { PayoutProvider } from "@/lib/payment/payoutProvider";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { spendWalletBalanceAtomic } from "@/lib/services/payoutSettlementService";
 import { invalidateCachedProfile, invalidateCachedUserCampaigns } from "@/lib/utils/cache";
+import { verifyTransactionPin, resolveStoredWalletPinHash } from "@/lib/security/walletPinHelper";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,9 @@ export async function POST(req: NextRequest) {
       state,
       province,
       industry,
-      interest
+      interest,
+      pin,
+      walletPin,
     } = await req.json();
 
     const adId = rawAdId || highlightId;
@@ -186,9 +189,8 @@ export async function POST(req: NextRequest) {
             : 0)
         ).toFixed(2))
       : Number((
-          addImpressionsNum > 0
-            ? addImpressionsNum * effectiveCost
-            : (effectiveCost > currentCost ? (effectiveCost - currentCost) * remainingImpressions : 0)
+          (addImpressionsNum > 0 ? addImpressionsNum * effectiveCost : 0) +
+          (effectiveCost > currentCost ? (effectiveCost - currentCost) * remainingImpressions : 0)
         ).toFixed(2));
 
     // Build targeting & specs update object
@@ -301,6 +303,38 @@ export async function POST(req: NextRequest) {
     }
 
     if (paymentMethod === "wallet") {
+      // Enforce 4-digit Wallet PIN (fail closed when unset) before acquiring lock or deducting balance
+      const { data: userPinData, error: userPinErr } = await supabaseAdmin
+        .from("users")
+        .select("wallet_pin_hash, passphrase")
+        .ilike("email", emailLower)
+        .maybeSingle();
+
+      if (userPinErr) {
+        return NextResponse.json(
+          { error: "Unable to verify Wallet PIN right now. Please try again." },
+          { status: 503 }
+        );
+      }
+
+      const pinCheck = await verifyTransactionPin({
+        email: emailLower,
+        pin: pin ?? walletPin,
+        storedPinHash: resolveStoredWalletPinHash(userPinData),
+      });
+
+      if (!pinCheck.valid) {
+        return NextResponse.json(
+          {
+            error: pinCheck.error,
+            code: pinCheck.code,
+            attemptsRemaining: pinCheck.attemptsRemaining,
+            retryAfter: pinCheck.retryAfter,
+          },
+          { status: pinCheck.statusCode || 401 }
+        );
+      }
+
       walletLockKey = `lock:wallet:${emailLower}`;
       if (isRedisReady()) {
         const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");

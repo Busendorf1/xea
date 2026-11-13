@@ -5,6 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Info, XCircle } from "lucide-react";
 import { HighlightItem } from "./types";
 import { formatCurrency } from "@/lib/utils/currency";
+import WalletPinField, {
+  isWalletPinErrorResponse,
+  formatWalletPinErrorMessage,
+} from "@/components/ui/WalletPinField";
 import styles from "./PublishHighlightPaymentModal.module.css";
 
 interface PublishHighlightPaymentModalProps {
@@ -24,6 +28,7 @@ export default function PublishHighlightPaymentModal({
 }: PublishHighlightPaymentModalProps) {
   const [step, setStep] = useState<"options" | "confirm">("options");
   const [paymentMethod, setPaymentMethod] = useState<"wallet" | "card">("wallet");
+  const [walletPin, setWalletPin] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -36,6 +41,7 @@ export default function PublishHighlightPaymentModal({
   useEffect(() => {
     if (isOpen && item) {
       setStep("options");
+      setWalletPin("");
       setIsSubmitting(false);
       setErrorMsg(null);
       const cost = calculateCost(item);
@@ -62,15 +68,24 @@ export default function PublishHighlightPaymentModal({
       setErrorMsg("Insufficient wallet balance. Please select Card / Bank Transfer to proceed.");
       return;
     }
+    setWalletPin("");
     setErrorMsg(null);
     setStep("confirm");
   };
+
+  const requiresWalletPin = !isFree && paymentMethod === "wallet";
+  const isWalletPinReady = !requiresWalletPin || /^\d{4}$/.test(walletPin);
 
   const handlePublish = async () => {
     if (isSubmitting) return;
 
     if (!isFree && hasInsufficientWallet) {
       setErrorMsg("Insufficient wallet balance. Please choose Card / Bank Transfer to pay.");
+      return;
+    }
+
+    if (requiresWalletPin && !/^\d{4}$/.test(walletPin)) {
+      setErrorMsg("Please enter your 4-digit Wallet PIN to authorize wallet payment.");
       return;
     }
 
@@ -85,6 +100,7 @@ export default function PublishHighlightPaymentModal({
           body: JSON.stringify({
             type: "publish_highlight",
             amount: isFree ? 0 : totalCost,
+            ...(requiresWalletPin ? { pin: walletPin } : {}),
             metadata: {
               type: "publish_highlight",
               highlightId: item.id,
@@ -92,9 +108,13 @@ export default function PublishHighlightPaymentModal({
           }),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error) {
-          throw new Error(data.error || "Failed to publish highlight.");
+          if (isWalletPinErrorResponse(res.status, data)) {
+            setWalletPin("");
+            throw new Error(formatWalletPinErrorMessage(data, `Wallet PIN verification failed (${res.status}).`));
+          }
+          throw new Error(data.error || `Failed to publish highlight (${res.status}).`);
         }
 
         try {
@@ -120,9 +140,9 @@ export default function PublishHighlightPaymentModal({
           }),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error) {
-          throw new Error(data.error || "Failed to initialize payment gateway.");
+          throw new Error(data.error || `Failed to initialize payment gateway (${res.status}).`);
         }
 
         const authUrl = data.authorization_url || data.data?.authorization_url;
@@ -261,6 +281,17 @@ export default function PublishHighlightPaymentModal({
                   {paymentMethod === "wallet" ? "Wallet" : "Card / Bank Transfer"} to
                   launch directly into the live feed.
                 </p>
+                {requiresWalletPin && (
+                  <WalletPinField
+                    id="publish-highlight-wallet-pin"
+                    value={walletPin}
+                    onChange={(val) => {
+                      setWalletPin(val);
+                      if (errorMsg) setErrorMsg(null);
+                    }}
+                    disabled={isSubmitting}
+                  />
+                )}
               </>
             )}
 
@@ -310,7 +341,7 @@ export default function PublishHighlightPaymentModal({
                     type="button"
                     className={styles.modalPrimaryBtn}
                     onClick={handlePayClick}
-                    disabled={hasInsufficientWallet}
+                    disabled={isSubmitting || hasInsufficientWallet}
                   >
                     Pay
                   </button>
@@ -329,7 +360,7 @@ export default function PublishHighlightPaymentModal({
                     type="button"
                     className={styles.modalPrimaryBtn}
                     onClick={handlePublish}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !isWalletPinReady}
                   >
                     {isSubmitting ? (
                       <>
