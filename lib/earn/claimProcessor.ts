@@ -8,6 +8,7 @@ import { creditAffiliatePlatformShare } from "@/lib/affiliateEngine";
 import { bufferAdImpression } from "@/lib/impressionBuffer";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { syncPostEarnCaches, publishEarnSideEffects } from "./redisSync";
+import { checkAndNotifyClickAndAtwMilestones } from "@/lib/notifications/milestoneNotifications";
 
 const LEGIT_REJECTION_CODES = new Set([
   "ALREADY_EARNED",
@@ -466,6 +467,26 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
 
     if (userUpdateErr) {
       console.error("❌ DB fallback error updating user balance:", userUpdateErr);
+    } else {
+      const prevMonetizedFallback = Boolean(
+        dbUser.monetized === true ||
+          dbUser.monetized === "true" ||
+          dbUser.monetized === "yes" ||
+          dbUser.monetized === "1" ||
+          dbUser.monetized === "t" ||
+          currentClicks >= 300
+      );
+      checkAndNotifyClickAndAtwMilestones({
+        email: emailKey,
+        prevClicks: currentClicks,
+        prevMonetized: prevMonetizedFallback,
+        prevAtwTier: dbUser.atw_tier,
+        nextClicks: liveClicks,
+        nextMonetized: Boolean(isMonetized || liveClicks >= 300),
+        nextAtwTier: tierDetails.tierCode,
+        attentionWorthScore,
+        isExempt: isExemptDbUser,
+      }).catch(() => {});
     }
 
     if (isMonetized && earnedRateNumber > 0) {
@@ -584,6 +605,26 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
 
   const isExemptEarn = isExemptFromBarriersAndInactivity(emailKey);
   const earnTier = computeAtwTierDetails(liveClicks, atomicResult?.atw_tier, isExemptEarn, attentionWorthScore);
+
+  if (atomicResult && atomicResult.success && !isExemptEarn) {
+    const prevClicksApprox = Math.max(0, liveClicks - 1);
+    const prevTierApprox =
+      atomicResult.prev_atw_tier ??
+      (prevClicksApprox > 0
+        ? computeAtwTierDetails(prevClicksApprox, undefined, isExemptEarn, attentionWorthScore).tierCode
+        : "ATW1");
+    checkAndNotifyClickAndAtwMilestones({
+      email: emailKey,
+      prevClicks: prevClicksApprox,
+      prevMonetized: typeof atomicResult.prev_monetized === "boolean" ? atomicResult.prev_monetized : prevClicksApprox >= 300,
+      prevAtwTier: prevTierApprox,
+      nextClicks: liveClicks,
+      nextMonetized: isEarnerNowMonetized || liveClicks >= 300,
+      nextAtwTier: earnTier.tierCode,
+      attentionWorthScore,
+      isExempt: isExemptEarn,
+    }).catch(() => {});
+  }
 
   await publishEarnSideEffects({
     emailKey,

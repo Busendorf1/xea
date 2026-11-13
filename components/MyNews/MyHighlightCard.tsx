@@ -23,6 +23,7 @@ import {
 import { formatCurrency } from "@/lib/utils/currency";
 import { HighlightItem, getHighlightScheduleInfo } from "./types";
 import MultimediaCarousel from "../MyAds/MultimediaCarousel";
+import AiContentTag from "@/components/ui/AiContentTag";
 import styles from "../MyAds/page.module.css";
 
 interface MyHighlightCardProps {
@@ -201,9 +202,7 @@ function MyHighlightCard({
             )}
 
             {item.is_ai_content && (
-              <span className={`${styles.tagPill} ${styles.tagPillAi}`} title="AI-generated content">
-                AI
-              </span>
+              <AiContentTag />
             )}
           </div>
 

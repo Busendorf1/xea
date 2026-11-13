@@ -131,8 +131,8 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
             className={styles.iconButton}
             type="button"
             onClick={() => {
-              handleCtaClick("share");
               void shareAdToDeviceOrClipboard(ad, showToast, onShare);
+              handleCtaClick("share");
             }}
           >
             <Share2 size={14} strokeWidth={1.5} />
@@ -178,7 +178,7 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
   return (
     <div className={styles.actionButtons}>
       <div className={styles.ctaButtonsGroup}>
-        {ad.product_cta_link && (
+        {ad.product_cta_link && ad.product_cta_type?.toLowerCase() !== "none" && (
           <a
             href={ad.product_cta_link.startsWith("http") ? ad.product_cta_link : `https://${ad.product_cta_link}`}
             target="_blank"
@@ -230,8 +230,8 @@ export const AdCardActionBar: React.FC<AdCardActionBarProps> = React.memo(functi
           className={styles.iconButton}
           type="button"
           onClick={() => {
-            handleCtaClick("share");
             void shareAdToDeviceOrClipboard(ad, showToast, onShare);
+            handleCtaClick("share");
           }}
         >
           <Share2 size={14} strokeWidth={1.5} />

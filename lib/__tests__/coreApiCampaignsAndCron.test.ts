@@ -27,6 +27,10 @@ describe("Core API Campaigns, Boost, Cron & Real-Time Buffers", () => {
     vi.doMock("@/lib/targetingEngine", () => import("../targetingEngine"));
     vi.doMock("@/lib/env", () => ({ env: { NODE_ENV: "test" } }));
     vi.doMock("@/lib/affiliateEngine", () => ({ flushPendingAffiliateYield: vi.fn(async () => 0) }));
+    vi.doMock("@/lib/notifications/milestoneNotifications", () => ({
+      snapshotUserLevelsByEmails: vi.fn(async () => new Map()),
+      notifyUpgradedUsersFromLevelMap: vi.fn(async () => {}),
+    }));
     vi.doMock("@/lib/queue", () => ({ adRatingQueue: { add: vi.fn(async () => {}) } }));
     vi.doMock("@/lib/utils/cache", () => ({
       invalidateCachedProfile: vi.fn(async () => {}),

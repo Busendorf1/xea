@@ -6,6 +6,7 @@ import { incrementCachedMutualCount } from "@/lib/utils/cache";
 import { bufferAdImpression } from "@/lib/impressionBuffer";
 import { dispatchEarningWebhook } from "@/lib/webhookDispatcher";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
+import { checkAndNotifyClickAndAtwMilestones } from "@/lib/notifications/milestoneNotifications";
 
 export interface MutualClaimInput {
   adId: string;
@@ -95,6 +96,13 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
         userRow.monetized === "yes" ||
         nextClicks >= 300;
 
+      const prevMonetized = Boolean(
+        dbUserBefore &&
+          (dbUserBefore.monetized === true ||
+            dbUserBefore.monetized === "true" ||
+            dbUserBefore.monetized === "yes")
+      );
+
       await supabaseAdmin
         .from("users")
         .update({
@@ -106,6 +114,18 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
           last_active_at: new Date().toISOString(),
         })
         .eq("id", userRow.id);
+
+      checkAndNotifyClickAndAtwMilestones({
+        email: emailKey,
+        prevClicks,
+        prevMonetized,
+        prevAtwTier: (dbUserBefore as any)?.atw_tier,
+        nextClicks,
+        nextMonetized,
+        nextAtwTier: mutTier.tierCode,
+        attentionWorthScore,
+        isExempt: isExemptMut,
+      }).catch(() => {});
 
       updatedBalance = Number(userRow.balance) || 0;
       liveClicks = nextClicks;

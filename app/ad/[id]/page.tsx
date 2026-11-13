@@ -19,7 +19,13 @@ export default async function SharedAdDeepLinkPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: rawId } = await params;
-  const decodedId = decodeSharedAdParam(decodeURIComponent(rawId || ""));
+  let uriDecoded = rawId || "";
+  try {
+    uriDecoded = decodeURIComponent(uriDecoded);
+  } catch {
+    uriDecoded = rawId || "";
+  }
+  const decodedId = decodeSharedAdParam(uriDecoded);
 
   let isAuthenticated = false;
   try {

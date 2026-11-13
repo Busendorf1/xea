@@ -186,8 +186,16 @@ export async function POST(req: NextRequest) {
       display_mutual_button: adData.displayMutualButton ?? true,
       product_price: adData.productPrice || null,
       product_name: adData.productName || null,
-      product_cta_type: adData.productCtaType || null,
-      product_cta_link: adData.productCtaLink || null,
+      product_cta_type: (() => {
+        const raw = typeof adData.productCtaType === "string" ? adData.productCtaType.trim() : "";
+        if (!raw || raw.toLowerCase() === "none") return null;
+        const knownLongCtas = new Set(["Learn More", "Visit Website"]);
+        return knownLongCtas.has(raw) ? raw : raw.slice(0, 10);
+      })(),
+      product_cta_link:
+        typeof adData.productCtaType === "string" && adData.productCtaType.trim().toLowerCase() === "none"
+          ? null
+          : adData.productCtaLink || null,
       action_ios: adData.actionIos || null,
       action_android: adData.actionAndroid || null,
       action_watch_now: adData.actionWatchNow || null,

@@ -16,6 +16,7 @@ import {
 import { dispatchImpressionWebhook } from "@/lib/webhookDispatcher";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
+import { checkAndNotifyClickAndAtwMilestones } from "@/lib/notifications/milestoneNotifications";
 
 // L1 In-Memory click deduplication map (15s TTL) so CTA clicks never fail when Redis is in quota cooldown
 const l1ClickLocks = new Map<string, number>();
@@ -114,6 +115,8 @@ export async function POST(request: NextRequest) {
     let clicksCount: number | undefined;
     let isMonetized: boolean | undefined;
     let impressionCount: number | undefined;
+    let resolvedAtwTier: string | null | undefined;
+    let resolvedAtwScore: number | null | undefined;
 
     await Promise.all([
       recordCoalescedAdClick(adId, canonicalClickType as CanonicalClickType),
@@ -132,6 +135,21 @@ export async function POST(request: NextRequest) {
         } catch {}
       })(),
       (async () => {
+        const { data: prevUserRow } = await supabaseAdmin
+          .from("users")
+          .select("id, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score")
+          .eq("email", emailLower)
+          .maybeSingle();
+
+        const prevClicks = Number(prevUserRow?.monetization_clicks || 0);
+        const prevMonetized =
+          prevUserRow?.monetized === true ||
+          prevUserRow?.monetized === "true" ||
+          prevUserRow?.monetized === "yes";
+        const hasCancelled = Boolean(prevUserRow?.has_cancelled_monetization);
+        const existingAtwTier: string | null | undefined = prevUserRow?.atw_tier;
+        const existingAtwScore: number | null | undefined = prevUserRow?.attention_worth_score;
+
         const [rpcRes, liveVal] = await Promise.all([
           supabaseAdmin.rpc("increment_user_click_progress", {
             p_email: emailLower,
@@ -150,35 +168,25 @@ export async function POST(request: NextRequest) {
 
         if (rpcCount !== null && rpcCount > 0) {
           clicksCount = Math.max(rpcCount, liveVal || 0);
-          isMonetized = !!rpcRes.data[0].is_now_monetized || clicksCount >= 300;
+          isMonetized = hasCancelled ? false : (!!rpcRes.data[0].is_now_monetized || clicksCount >= 300);
         } else {
-          const { data: userRow } = await supabaseAdmin
-            .from("users")
-            .select("id, monetization_clicks, monetized")
-            .eq("email", emailLower)
-            .maybeSingle();
-          const currentDbClicks = Number(userRow?.monetization_clicks || 0);
-          const nextDbClicks = Math.max(currentDbClicks + 1, liveVal || 0);
-          const nextMon =
-            userRow?.monetized === true ||
-            userRow?.monetized === "true" ||
-            userRow?.monetized === "yes" ||
-            nextDbClicks >= 300;
-          if (userRow?.id) {
+          const nextDbClicks = Math.max(prevClicks + 1, liveVal || 0);
+          const nextMon = hasCancelled ? false : (prevMonetized || nextDbClicks >= 300);
+          if (prevUserRow?.id) {
             await supabaseAdmin
               .from("users")
               .update({
                 monetization_clicks: nextDbClicks,
                 ...(nextMon ? { monetized: "true" } : {}),
               })
-              .eq("id", userRow.id);
+              .eq("id", prevUserRow.id);
           }
           clicksCount = nextDbClicks;
           isMonetized = nextMon;
         }
 
         const isExempt = isExemptFromBarriersAndInactivity(emailLower);
-        const tierDetails = computeAtwTierDetails(clicksCount || 0, undefined, isExempt);
+        const tierDetails = computeAtwTierDetails(clicksCount || 0, existingAtwTier, isExempt, existingAtwScore);
 
         supabaseAdmin
           .from("users")
@@ -189,16 +197,31 @@ export async function POST(request: NextRequest) {
           .eq("email", emailLower)
           .then(() => {});
 
+        checkAndNotifyClickAndAtwMilestones({
+          email: emailLower,
+          prevClicks,
+          prevMonetized,
+          prevAtwTier: existingAtwTier,
+          nextClicks: clicksCount || 0,
+          nextMonetized: Boolean(isMonetized),
+          nextAtwTier: tierDetails.tierCode,
+          attentionWorthScore: existingAtwScore,
+          isExempt,
+          hasCancelled,
+        }).catch(() => {});
+
         if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
           redisConnection.set(`user:live_clicks:v2:${emailLower}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});
           redisConnection.del(`monetize:status:v2:${emailLower}`).catch(() => {});
         }
         invalidateCachedProfile(emailLower).catch(() => {});
+        resolvedAtwTier = existingAtwTier;
+        resolvedAtwScore = existingAtwScore;
       })(),
     ]);
 
     const isExempt = isExemptFromBarriersAndInactivity(emailLower);
-    const tierDetails = computeAtwTierDetails(clicksCount || 0, undefined, isExempt);
+    const tierDetails = computeAtwTierDetails(clicksCount || 0, resolvedAtwTier, isExempt, resolvedAtwScore);
     if (typeof clicksCount === "number") {
       dispatchImpressionWebhook({
         event: "ad.seen",

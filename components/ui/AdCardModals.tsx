@@ -14,6 +14,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { shareAdToDeviceOrClipboard } from "@/lib/utils/adShare";
 import type { Ad } from "./AdCard";
 import type { InteractionData } from "@/lib/hooks/useFeedActions";
+import AiContentTag from "./AiContentTag";
 
 const FullscreenVideoPlayer = dynamic(() => import("@/components/MyAds/FullscreenVideoPlayer"), {
   ssr: false,
@@ -644,9 +645,7 @@ export const AdTextReaderModal = React.memo(function AdTextReaderModal({
                   <VerifiedBadge size={14} title="Verified Account" />
                 )}
                 {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
-                  <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                    AI
-                  </span>
+                  <AiContentTag placement="bottom" />
                 )}
               </div>
               <span className={styles.textReaderAuthorSub}>

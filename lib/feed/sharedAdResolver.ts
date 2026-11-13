@@ -32,7 +32,7 @@ export async function resolveSharedAdForFeed(params: {
 
   try {
     const cleanSharedId = String(sharedAdId).trim();
-    const isValidSharedId = /^[a-zA-Z0-9_-]{3,128}$/.test(cleanSharedId);
+    const isValidSharedId = /^[a-zA-Z0-9_-]{1,128}$/.test(cleanSharedId);
     if (!isValidSharedId) {
       return { pageAds, profilesMap, sharedAdUnavailable: true };
     }

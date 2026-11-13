@@ -20,6 +20,7 @@ interface Step3OfferAndCopySectionProps {
 }
 
 const PRODUCT_CTA_OPTIONS = [
+  "None",
   "Buy",
   "Shop",
   "Order",
@@ -30,9 +31,11 @@ const PRODUCT_CTA_OPTIONS = [
   "Join",
   "Learn More",
   "Visit Website",
+  "Custom",
 ];
 
 const ENGAGEMENT_CTA_OPTIONS = [
+  "None",
   "Comment",
   "Vote",
   "Donate",
@@ -46,7 +49,13 @@ const ENGAGEMENT_CTA_OPTIONS = [
   "Join",
   "Learn More",
   "Visit Website",
+  "Custom",
 ];
+
+const PRESET_CTA_SET = new Set([
+  ...PRODUCT_CTA_OPTIONS.filter((c) => c !== "Custom"),
+  ...ENGAGEMENT_CTA_OPTIONS.filter((c) => c !== "Custom"),
+]);
 
 function clampToMaxWords(rawText: string, maxWords: number) {
   const regex = /\S+/g;
@@ -174,11 +183,16 @@ export default function Step3OfferAndCopySection({
             <div className={styles.formGroup}>
               <label className={styles.fieldLabelBold}>Action Button</label>
               <CustomSelect
-                value={formSelections.productCtaType || "Buy"}
+                value={
+                  formSelections.productCtaType && !PRESET_CTA_SET.has(formSelections.productCtaType)
+                    ? "Custom"
+                    : formSelections.productCtaType || "Buy"
+                }
                 onChange={(val) =>
                   setFormSelections((prev) => ({
                     ...prev,
-                    productCtaType: val,
+                    productCtaType: val === "Custom" ? "" : val,
+                    ...(val === "None" ? { productCtaLink: "" } : {}),
                   }))
                 }
                 options={PRODUCT_CTA_OPTIONS.map((cta) => ({
@@ -188,15 +202,39 @@ export default function Step3OfferAndCopySection({
                 }))}
                 placeholder="Select Primary CTA"
               />
-              <div className={styles.ctaPreviewRow}>
-                <span className={styles.ctaPreviewLabel}>Preview:</span>
-                <span className={styles.ctaPreviewBtn}>
-                  {getCtaIcon(formSelections.productCtaType || "Buy")}
-                  <span>{formSelections.productCtaType || "Buy"}</span>
-                </span>
-              </div>
+              {(formSelections.productCtaType === "" ||
+                (formSelections.productCtaType && !PRESET_CTA_SET.has(formSelections.productCtaType))) && (
+                <div style={{ marginTop: "8px" }}>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    value={formSelections.productCtaType}
+                    placeholder="Custom button label (max 10 chars)"
+                    onChange={(e) =>
+                      setFormSelections((prev) => ({
+                        ...prev,
+                        productCtaType: e.target.value.slice(0, 10),
+                      }))
+                    }
+                    className={styles.inputBox}
+                  />
+                  <span className={styles.inputHelperText}>
+                    {(formSelections.productCtaType || "").length}/10 characters
+                  </span>
+                </div>
+              )}
+              {formSelections.productCtaType !== "None" && (
+                <div className={styles.ctaPreviewRow}>
+                  <span className={styles.ctaPreviewLabel}>Preview:</span>
+                  <span className={styles.ctaPreviewBtn}>
+                    {getCtaIcon(formSelections.productCtaType || "Buy")}
+                    <span>{formSelections.productCtaType || "Buy"}</span>
+                  </span>
+                </div>
+              )}
             </div>
 
+            {formSelections.productCtaType !== "None" && (
             <div className={styles.formGroup}>
               <div className={styles.ctaLabelRow}>
                 <label className={styles.fieldLabelBold}>Target URL (https://)</label>
@@ -229,6 +267,7 @@ export default function Step3OfferAndCopySection({
                 <p className={styles.error}>The link must be a secure link starting with https://</p>
               )}
             </div>
+            )}
           </div>
         </div>
       ) : (
@@ -241,11 +280,16 @@ export default function Step3OfferAndCopySection({
             <div className={styles.formGroup}>
               <label className={styles.fieldLabelBold}>Button Type</label>
               <CustomSelect
-                value={formSelections.productCtaType || "Comment"}
+                value={
+                  formSelections.productCtaType && !PRESET_CTA_SET.has(formSelections.productCtaType)
+                    ? "Custom"
+                    : formSelections.productCtaType || "Comment"
+                }
                 onChange={(val) =>
                   setFormSelections((prev) => ({
                     ...prev,
-                    productCtaType: val,
+                    productCtaType: val === "Custom" ? "" : val,
+                    ...(val === "None" ? { productCtaLink: "" } : {}),
                   }))
                 }
                 options={ENGAGEMENT_CTA_OPTIONS.map((cta) => ({
@@ -255,15 +299,39 @@ export default function Step3OfferAndCopySection({
                 }))}
                 placeholder="Select Engagement Action"
               />
-              <div className={styles.ctaPreviewRow}>
-                <span className={styles.ctaPreviewLabel}>Preview:</span>
-                <span className={styles.ctaPreviewBtn}>
-                  {getCtaIcon(formSelections.productCtaType || "Comment")}
-                  <span>{formSelections.productCtaType || "Comment"}</span>
-                </span>
-              </div>
+              {(formSelections.productCtaType === "" ||
+                (formSelections.productCtaType && !PRESET_CTA_SET.has(formSelections.productCtaType))) && (
+                <div style={{ marginTop: "8px" }}>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    value={formSelections.productCtaType}
+                    placeholder="Custom button label (max 10 chars)"
+                    onChange={(e) =>
+                      setFormSelections((prev) => ({
+                        ...prev,
+                        productCtaType: e.target.value.slice(0, 10),
+                      }))
+                    }
+                    className={styles.inputBox}
+                  />
+                  <span className={styles.inputHelperText}>
+                    {(formSelections.productCtaType || "").length}/10 characters
+                  </span>
+                </div>
+              )}
+              {formSelections.productCtaType !== "None" && (
+                <div className={styles.ctaPreviewRow}>
+                  <span className={styles.ctaPreviewLabel}>Preview:</span>
+                  <span className={styles.ctaPreviewBtn}>
+                    {getCtaIcon(formSelections.productCtaType || "Comment")}
+                    <span>{formSelections.productCtaType || "Comment"}</span>
+                  </span>
+                </div>
+              )}
             </div>
 
+            {formSelections.productCtaType !== "None" && (
             <div className={styles.formGroup}>
               <label className={styles.fieldLabelBold}>
                 CTA Target Link (WhatsApp, Chat App, Email or Website)
@@ -297,6 +365,7 @@ export default function Step3OfferAndCopySection({
                   </p>
                 )}
             </div>
+            )}
           </div>
         </div>
       )}

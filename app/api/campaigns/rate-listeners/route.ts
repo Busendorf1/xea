@@ -3,6 +3,10 @@ import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { adRatingQueue } from "@/lib/queue";
 import { getScoreIncrementForStars } from "@/lib/attentionTierEngine";
+import {
+  snapshotUserLevelsByEmails,
+  notifyUpgradedUsersFromLevelMap,
+} from "@/lib/notifications/milestoneNotifications";
 
 async function findCampaignOwnerEmail(adId: string): Promise<string | null> {
   const tables = ["completed_ads", "addscompleted", "addsactive", "adds"] as const;
@@ -91,6 +95,16 @@ export async function POST(req: NextRequest) {
       );
     } catch (queueErr) {
       console.warn("⚠️ BullMQ unavailable, executing direct RPC fallback:", queueErr);
+      const { data: impRows } = await supabaseAdmin
+        .from("ad_impressions")
+        .select("user_email")
+        .eq("ad_id", ad_id)
+        .limit(500);
+      const beforeSnapshot =
+        impRows && impRows.length > 0 && impRows.length <= 500
+          ? await snapshotUserLevelsByEmails(impRows.map((r: any) => String(r.user_email || "")))
+          : new Map<string, number>();
+
       const { error: rpcErr } = await supabaseAdmin.rpc("apply_ad_rating_to_listeners", {
         p_ad_id: ad_id,
         p_advertiser_email: emailLower,
@@ -108,6 +122,10 @@ export async function POST(req: NextRequest) {
           { error: rpcErr.message || "Failed to apply listener ratings." },
           { status: 500 }
         );
+      }
+
+      if (beforeSnapshot.size > 0) {
+        notifyUpgradedUsersFromLevelMap(beforeSnapshot).catch(() => {});
       }
     }
 

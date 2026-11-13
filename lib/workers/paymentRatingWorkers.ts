@@ -2,6 +2,11 @@ import { Worker } from "bullmq";
 import supabaseAdmin from "../utils/dbAdmin";
 import { invalidateCachedProfile } from "../utils/cache";
 import { AdRatingJobData, PaymentJobData, connectionOptions } from "./config";
+import {
+  syncSqlAtwUpgradeNotifications,
+  snapshotUserLevelsByEmails,
+  notifyUpgradedUsersFromLevelMap,
+} from "../notifications/milestoneNotifications";
 
 export const paymentWorker = new Worker<PaymentJobData>(
   "payment-processing",
@@ -154,6 +159,18 @@ export const adRatingWorker = new Worker<AdRatingJobData>(
       const CHUNK_SIZE = 5000;
       let increment = 0;
       let usedChunked = false;
+      let sqlReturnedUpgradedList = false;
+
+      // Capture lightweight snapshot for legacy unmigrated DB fallback (capped at 500 rows)
+      const { data: impRows } = await supabaseAdmin
+        .from("ad_impressions")
+        .select("user_email")
+        .eq("ad_id", adId)
+        .limit(500);
+      const fallbackSnapshot =
+        impRows && impRows.length > 0 && impRows.length <= 500
+          ? await snapshotUserLevelsByEmails(impRows.map((r: any) => String(r.user_email || "")))
+          : new Map<string, number>();
 
       while (hasMore) {
         batchCount++;
@@ -170,11 +187,24 @@ export const adRatingWorker = new Worker<AdRatingJobData>(
         }
 
         usedChunked = true;
-        const res = chunkRes as { updated_count: number; last_email: string | null; has_more: boolean; increment: number };
+        const res = chunkRes as {
+          updated_count: number;
+          last_email: string | null;
+          has_more: boolean;
+          increment: number;
+          upgraded_users?: Array<{ email: string; atw_tier: string; level: number }>;
+        };
         totalUpdated += res?.updated_count || 0;
         increment = res?.increment || 0;
         hasMore = Boolean(res?.has_more && res?.last_email);
         lastEmail = res?.last_email || null;
+
+        if (Array.isArray(res?.upgraded_users)) {
+          sqlReturnedUpgradedList = true;
+          if (res.upgraded_users.length > 0) {
+            await syncSqlAtwUpgradeNotifications(res.upgraded_users).catch(() => {});
+          }
+        }
 
         if (hasMore) {
           await new Promise((resolve) => setTimeout(resolve, 10));
@@ -182,6 +212,9 @@ export const adRatingWorker = new Worker<AdRatingJobData>(
       }
 
       if (usedChunked) {
+        if (!sqlReturnedUpgradedList && fallbackSnapshot.size > 0) {
+          await notifyUpgradedUsersFromLevelMap(fallbackSnapshot).catch(() => {});
+        }
         await supabaseAdmin.from("completed_ads_ratings").upsert(
           {
             ad_id: adId,
@@ -206,6 +239,10 @@ export const adRatingWorker = new Worker<AdRatingJobData>(
       if (rpcErr) {
         console.error(`❌ Ad Rating Worker RPC error for ad [${adId}]:`, rpcErr);
         throw new Error(rpcErr.message || "Failed to apply ad rating to listeners");
+      }
+
+      if (fallbackSnapshot.size > 0) {
+        await notifyUpgradedUsersFromLevelMap(fallbackSnapshot).catch(() => {});
       }
 
       console.log(`✅ Ad Rating Worker: Successfully applied +${legacyIncrement} ATW score increment to listeners of ad [${adId}].`);

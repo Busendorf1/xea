@@ -14,6 +14,7 @@ import {
   readUserCampaignsSyncCache,
 } from "@/lib/campaignsClient";
 import { NoticeModalData } from "./NoticeModal";
+import { shareAdToDeviceOrClipboard } from "@/lib/utils/adShare";
 
 export type FilterTab = "all" | "active" | "review" | "approved" | "paused" | "completed";
 export type SortOption = "newest" | "views" | "clicks" | "bid";
@@ -455,16 +456,18 @@ export function useMyAdsDashboard(session: Session) {
   };
 
   const handleShare = (adId: string) => {
-    if (typeof window !== "undefined") {
-      const encodedId = btoa(adId.toString());
-      const shareUrl = `${window.location.origin}/login?view&Earn Ads by Paayh=${encodedId}`;
-      navigator.clipboard
-        .writeText(shareUrl)
-        .then(() => {
-          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message: "Link copied to clipboard" } }));
-        })
-        .catch(() => setNoticeModal({ title: "Share Notice", message: "Failed to copy link to clipboard." }));
-    }
+    const targetAd = [...activeAds, ...reviewAds].find((a) => String(a.id) === String(adId));
+    void shareAdToDeviceOrClipboard(
+      targetAd || { id: adId },
+      (message) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("xea:toast", { detail: { message } }));
+        }
+      },
+      () => {
+        setNoticeModal({ title: "Share Notice", message: "Failed to copy link to clipboard." });
+      }
+    );
   };
 
   const handleEditAd = (adId: string) => {

@@ -81,6 +81,27 @@ export function buildAdSharePayload(ad: ShareableAdSummary, origin?: string): {
   return { title, text, url };
 }
 
+function copyTextFallback(text: string): boolean {
+  if (typeof document === "undefined" || !document.body) return false;
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    textarea.style.left = "-9999px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 export async function shareAdToDeviceOrClipboard(
   ad: ShareableAdSummary,
   showToast?: (message: string) => void,
@@ -100,7 +121,14 @@ export async function shareAdToDeviceOrClipboard(
       }
     }
 
+    const copiedSync = copyTextFallback(payload.url);
     if (navigator.clipboard?.writeText) {
+      if (copiedSync) {
+        // Fire-and-forget modern clipboard write after immediate synchronous copy so toast is instant
+        void navigator.clipboard.writeText(payload.url).catch(() => {});
+        showToast?.("Link copied to clipboard");
+        return;
+      }
       try {
         await navigator.clipboard.writeText(payload.url);
         showToast?.("Link copied to clipboard");
@@ -108,6 +136,9 @@ export async function shareAdToDeviceOrClipboard(
       } catch {
         // Fall through
       }
+    } else if (copiedSync) {
+      showToast?.("Link copied to clipboard");
+      return;
     }
   }
 
@@ -167,21 +198,31 @@ export function decodeSharedAdParam(raw: string | null | undefined): string | nu
     return trimmed;
   }
 
-  // Legacy base64 encoded ID
-  try {
-    const decoded =
-      typeof atob === "function"
-        ? atob(trimmed)
-        : Buffer.from(trimmed, "base64").toString("utf8");
-    const cleanDecoded = decoded.trim();
-    if (cleanDecoded && /^[a-zA-Z0-9_-]{3,128}$/.test(cleanDecoded)) {
-      return cleanDecoded;
+  // Legacy base64 encoded ID — require canonical base64 round-trip so short raw IDs (e.g. "a9") are never corrupted
+  if (/^[A-Za-z0-9+/]{4,}={0,2}$/.test(trimmed)) {
+    try {
+      const decoded =
+        typeof atob === "function"
+          ? atob(trimmed)
+          : Buffer.from(trimmed, "base64").toString("utf8");
+      const cleanDecoded = decoded.trim();
+      const reencoded =
+        typeof btoa === "function"
+          ? btoa(cleanDecoded)
+          : Buffer.from(cleanDecoded, "utf8").toString("base64");
+      if (
+        cleanDecoded &&
+        reencoded.replace(/=+$/, "") === trimmed.replace(/=+$/, "") &&
+        /^[a-zA-Z0-9_-]{1,128}$/.test(cleanDecoded)
+      ) {
+        return cleanDecoded;
+      }
+    } catch {
+      // Fall through if not valid base64
     }
-  } catch {
-    // Fall through if not base64
   }
 
-  if (/^[a-zA-Z0-9_-]{3,128}$/.test(trimmed)) {
+  if (/^[a-zA-Z0-9_-]{1,128}$/.test(trimmed)) {
     return trimmed;
   }
 

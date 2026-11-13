@@ -1,5 +1,9 @@
 import redisConnection, { isRedisReady } from "./redis";
 import supabaseAdmin from "./utils/dbAdmin";
+import {
+  snapshotUserLevelsByEmails,
+  notifyUpgradedUsersFromLevelMap,
+} from "./notifications/milestoneNotifications";
 
 /**
  * High-Throughput Write-Behind Aggregator for Audience Ratings & ATW Scores (100M+ Scale)
@@ -120,6 +124,7 @@ export async function flushAtwScoreBufferToDB(): Promise<{ flushedUsers: number;
       const batch = updates.slice(i, i + BATCH_SIZE);
       const emails = batch.map((u) => u.email);
       const deltas = batch.map((u) => u.delta);
+      const beforeSnapshot = await snapshotUserLevelsByEmails(emails).catch(() => new Map<string, number>());
 
       const { error: rpcErr } = await supabaseAdmin.rpc("bulk_apply_atw_deltas", {
         p_emails: emails,
@@ -131,6 +136,10 @@ export async function flushAtwScoreBufferToDB(): Promise<{ flushedUsers: number;
         // Rollback uncommitted items back into Redis
         await redisConnection.eval(LUA_RESTORE_BUFFER, 2, processingKey, REDIS_KEY_ATW_BUFFER);
         throw rpcErr;
+      }
+
+      if (beforeSnapshot.size > 0) {
+        notifyUpgradedUsersFromLevelMap(beforeSnapshot).catch(() => {});
       }
     }
 

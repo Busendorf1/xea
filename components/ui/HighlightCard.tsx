@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import styles from "./AdCard.module.css";
 import { Ad } from "./AdCard";
 import { mediaAspectRatioCache, saveRatioToCache } from "./MediaCarousel";
+import AiContentTag from "./AiContentTag";
 
 interface HighlightCardProps {
   ad: Ad;
@@ -99,9 +100,7 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
           <div className={styles.headerLeft}>
             <span className={styles.sponsorName} title={ad.title || undefined}>{ad.title}</span>
             {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
-              <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                AI
-              </span>
+              <AiContentTag />
             )}
           </div>
           <span className={`${styles.sponsorLabel} ${styles.highlightLabel}`}>

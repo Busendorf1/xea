@@ -14,6 +14,7 @@ import VerifiedBadge from "./VerifiedBadge";
 import RoleStarBadges from "./RoleStarBadges";
 import { AdMediaLightboxModal, AdTextReaderModal } from "./AdCardModals";
 import { AdCardActionBar } from "./AdCardActionBar";
+import AiContentTag from "./AiContentTag";
 import {
   preloadCallbacks,
   playCallbacks,
@@ -515,9 +516,7 @@ function AdCard({
               </div>
             </AdvertiserHoverCard>
             {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
-              <span className={styles.aiBadge} title="AI-generated or AI-assisted content">
-                AI
-              </span>
+              <AiContentTag />
             )}
           </div>
 

@@ -59,7 +59,7 @@ function setL1(adId: string, res: PublicAdResolution) {
  */
 export async function resolvePublicAdAvailability(rawId: string): Promise<PublicAdResolution> {
   const adId = String(rawId || "").trim();
-  if (!adId || !/^[a-zA-Z0-9_-]{3,128}$/.test(adId)) {
+  if (!adId || !/^[a-zA-Z0-9_-]{1,128}$/.test(adId)) {
     return { available: false, reason: "invalid_id" };
   }
 

@@ -19,6 +19,7 @@ import MultimediaCarousel from "./MultimediaCarousel";
 import AdPerformanceChart from "./AdPerformanceChart";
 import CampaignSpecsDrawer from "./CampaignSpecsDrawer";
 import MyAdCardFooter from "./MyAdCardFooter";
+import AiContentTag from "@/components/ui/AiContentTag";
 import styles from "./page.module.css";
 
 export { getCampaignDaysInfo };
@@ -205,9 +206,7 @@ function MyAdCard({
             )}
 
             {(ad.is_ai_content || (ad as any).isAiContent) && (
-              <span className={`${styles.tagPill} ${styles.tagPillAi}`} title="AI-generated content">
-                AI
-              </span>
+              <AiContentTag />
             )}
           </div>
 

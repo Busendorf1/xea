@@ -140,6 +140,9 @@ describe("Core API Security & Architecture Hardening", () => {
     vi.doMock("@/lib/botDetection", () => ({ evaluateEarningVelocity: vi.fn(async () => ({ isFlagged: false, reasons: [] })) }));
     vi.doMock("@/lib/clickhouse", () => ({ streamImpressionsToClickHouse: vi.fn(async () => {}) }));
     vi.doMock("@/lib/agentSystem", () => ({ applyAgentCommissionOnEarning: vi.fn(async () => {}) }));
+    vi.doMock("@/lib/notifications/milestoneNotifications", () => ({
+      checkAndNotifyClickAndAtwMilestones: vi.fn(async () => {}),
+    }));
     vi.doMock("@/lib/utils/cache", () => ({
       atomicCheckAndAcquireEarnLock: vi.fn(async () => ({ allowed: true })),
       releaseEarnLock: vi.fn(async () => {}),
@@ -258,6 +261,9 @@ describe("Core API Security & Architecture Hardening", () => {
     vi.doMock("@/lib/botDetection", () => ({ evaluateEarningVelocity: vi.fn(async () => ({ isFlagged: false, reasons: [] })) }));
     vi.doMock("@/lib/clickhouse", () => ({ streamImpressionsToClickHouse: vi.fn(async () => {}) }));
     vi.doMock("@/lib/agentSystem", () => ({ applyAgentCommissionOnEarning: vi.fn(async () => {}) }));
+    vi.doMock("@/lib/notifications/milestoneNotifications", () => ({
+      checkAndNotifyClickAndAtwMilestones: vi.fn(async () => {}),
+    }));
     vi.doMock("@/lib/utils/cache", () => ({
       atomicCheckAndAcquireEarnLock: vi.fn(async () => ({ allowed: true })),
       releaseEarnLock: vi.fn(async () => {}),
@@ -363,6 +369,9 @@ describe("Core API Security & Architecture Hardening", () => {
     vi.doMock("@/lib/botDetection", () => ({ evaluateEarningVelocity: vi.fn(async () => ({ isFlagged: false, reasons: [] })) }));
     vi.doMock("@/lib/clickhouse", () => ({ streamImpressionsToClickHouse: vi.fn(async () => {}) }));
     vi.doMock("@/lib/agentSystem", () => ({ applyAgentCommissionOnEarning: vi.fn(async () => {}) }));
+    vi.doMock("@/lib/notifications/milestoneNotifications", () => ({
+      checkAndNotifyClickAndAtwMilestones: vi.fn(async () => {}),
+    }));
     vi.doMock("@/lib/utils/cache", () => ({
       getCachedProfile: vi.fn(async () => viewerProfile),
       registerL1FeedEvictionHandler: vi.fn(),
@@ -450,6 +459,9 @@ describe("Core API Security & Architecture Hardening", () => {
     vi.doMock("@/lib/targetingEngine", () => import("../targetingEngine"));
     vi.doMock("@/lib/env", () => ({ env: { NODE_ENV: "test" } }));
     vi.doMock("@/lib/clickhouse", () => ({ streamImpressionsToClickHouse: vi.fn(async () => {}) }));
+    vi.doMock("@/lib/notifications/milestoneNotifications", () => ({
+      checkAndNotifyClickAndAtwMilestones: vi.fn(async () => {}),
+    }));
     vi.doMock("@/lib/impressionBuffer", () => ({ recordCoalescedAdSeen: vi.fn(async () => {}) }));
     vi.doMock("@/lib/webhookDispatcher", () => ({ dispatchImpressionWebhook: vi.fn(async () => {}) }));
     vi.doMock("@/lib/utils/cache", () => ({
