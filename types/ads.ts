@@ -30,11 +30,19 @@ export interface Ad {
   user_frequency_cap?: number;
   daily_impression_cap?: number;
   daily_impression_count?: number;
+  last_reset_date?: string | null;
+  rollover_balance?: number | null;
   campaign_days?: number;
   impressions?: number;
   impression_count?: number | null;
   view_count?: number | null;
   completed_at?: string | null;
+  approved_at?: string | null;
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
+  is_rollover?: boolean | null;
+  rollover_started_at?: string | null;
+  broadening_stage?: number | null;
 
   // Targeting fields
   interest?: string[] | string | null;

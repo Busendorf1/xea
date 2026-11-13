@@ -1,5 +1,4 @@
 import redisConnection, { isRedisReady } from "@/lib/redis";
-import { cleanupExpiredApprovedCampaigns } from "./cleanupService";
 
 export interface JobDefinition {
   name: string;
@@ -22,7 +21,19 @@ const JOBS: Record<string, JobDefinition> = {
     name: "approved-campaigns-cleanup",
     maxIntervalSeconds: 300, // 5 minutes
     lockTtlSeconds: 60,
-    run: async () => cleanupExpiredApprovedCampaigns(true),
+    run: async () => {
+      const { cleanupExpiredApprovedCampaigns } = await import("./cleanupService");
+      return cleanupExpiredApprovedCampaigns(true);
+    },
+  },
+  "process-rollover": {
+    name: "process-rollover",
+    maxIntervalSeconds: 180, // 3 minutes self-healing catch-up between daily crons
+    lockTtlSeconds: 120,
+    run: async () => {
+      const { runRolloverSweep } = await import("./rolloverService");
+      return runRolloverSweep({ batchSize: 200, maxBatches: 5 });
+    },
   },
   "database-cleanup": {
     name: "database-cleanup",
@@ -30,8 +41,11 @@ const JOBS: Record<string, JobDefinition> = {
     lockTtlSeconds: 300,
     run: async () => {
       const { default: supabaseAdmin } = await import("@/lib/utils/dbAdmin");
+      const { runRolloverSweep } = await import("./rolloverService");
+      const { cleanupExpiredApprovedCampaigns } = await import("./cleanupService");
+      await runRolloverSweep({ batchSize: 200, maxBatches: 10 }).catch(() => {});
       // Archive expired platform ads
-      await supabaseAdmin.rpc("archive_expired_platform_ads");
+      await supabaseAdmin.rpc("archive_expired_platform_ads", { p_batch_size: 250 });
       // Purge expired approved campaigns older than 3 days
       await cleanupExpiredApprovedCampaigns(true).catch(() => {});
     },

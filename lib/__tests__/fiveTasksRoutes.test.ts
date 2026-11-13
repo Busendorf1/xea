@@ -89,6 +89,9 @@ describe("Route Regression Guards: /api/profile & /api/feed", () => {
     vi.doMock("@/lib/utils/cdnUrl", () => ({
       transformMediaUrlsToCdn: vi.fn((u: unknown) => u),
     }));
+    vi.doMock("../services/cronOrchestrator", () => ({
+      triggerSelfHealingJobsIfDue: vi.fn(),
+    }));
     vi.doMock("@/lib/targetingEngine", () => ({
       computeCampaignBroadeningPlan,
       evaluateAdTargeting,
@@ -219,24 +222,36 @@ describe("Route Regression Guards: /api/profile & /api/feed", () => {
 
     const { GET } = await import("../../app/api/feed/route");
 
-    // 1. Invalid sharedAdId should immediately mark sharedAdUnavailable without DB PK lookup
+    // 1. Invalid sharedAdId should immediately mark sharedAdUnavailable without DB PK lookup and return 0 ads
     const badRes = await GET(new NextRequest("https://paayh.com/api/feed?sharedAdId=bad%20id!!"));
     const badJson = await badRes.json();
     expect(badRes.status).toBe(200);
+    expect(badJson.sharedAdMode).toBe(true);
     expect(badJson.sharedAdUnavailable).toBe(true);
+    expect(badJson.ads).toHaveLength(0);
     expect(sharedPkLookupSpy).not.toHaveBeenCalled();
 
-    // 2. Valid sharedAdId already in pageAds at index 1 must be moved to index 0 without duplicate
+    // 2. Valid sharedAdId renders ONLY that single ad (zero other feed ads leaked)
     const goodRes = await GET(new NextRequest("https://paayh.com/api/feed?sharedAdId=ad_shared_2"));
     const goodJson = await goodRes.json();
     expect(goodRes.status).toBe(200);
+    expect(goodJson.sharedAdMode).toBe(true);
+    expect(goodJson.ads).toHaveLength(1);
     expect(goodJson.ads?.[0]?.id).toBe("ad_shared_2");
-    expect(goodJson.ads?.filter((a: { id: string }) => a.id === "ad_shared_2")).toHaveLength(1);
 
-    // 3. Valid sharedAdId outside pool must be prepended and its publisher profile hydrated
+    // 3. Pagination (offset > 0) in sharedAdId mode returns empty array (no extra ads around it)
+    const pagedRes = await GET(new NextRequest("https://paayh.com/api/feed?sharedAdId=ad_shared_2&offset=10"));
+    const pagedJson = await pagedRes.json();
+    expect(pagedRes.status).toBe(200);
+    expect(pagedJson.sharedAdMode).toBe(true);
+    expect(pagedJson.ads).toHaveLength(0);
+
+    // 4. Valid sharedAdId outside pool renders ONLY that single ad and hydrates its publisher profile
     const extRes = await GET(new NextRequest("https://paayh.com/api/feed?sharedAdId=ad_shared_ext"));
     const extJson = await extRes.json();
     expect(extRes.status).toBe(200);
+    expect(extJson.sharedAdMode).toBe(true);
+    expect(extJson.ads).toHaveLength(1);
     expect(extJson.ads?.[0]?.id).toBe("ad_shared_ext");
     expect(extJson.profiles?.["extpub@paayh.com"]?.business_name).toBe("External Brand Co");
   });

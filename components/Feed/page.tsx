@@ -12,6 +12,8 @@ import {
   FeedLocationSkippedState,
   FeedEmptyInventoryState,
   FeedScrollTopButton,
+  FeedSharedAdBanner,
+  FeedSharedAdUnavailableState,
 } from "./FeedStateViews";
 import { useFeedPullToRefresh } from "./useFeedPullToRefresh";
 import { isVideoUrl } from "../ui/MediaCarousel";
@@ -25,9 +27,29 @@ import { useLiveFeedUpdates } from "@/lib/hooks/useLiveFeedUpdates";
 import {
   AD_UNAVAILABLE_DISMISS_MS,
   AD_UNAVAILABLE_MESSAGE,
+  decodeSharedAdParam,
   extractSharedAdIdFromSearchParams,
 } from "@/lib/utils/adShare";
 import { toClientFriendlyError } from "@/lib/utils/clientError";
+
+function readInitialSharedAdTarget(): { sharedAdId: string | null; unavailable: boolean } {
+  if (typeof window === "undefined") return { sharedAdId: null, unavailable: false };
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("adStatus") === "unavailable") {
+      return { sharedAdId: null, unavailable: true };
+    }
+    const fromUrl = extractSharedAdIdFromSearchParams(urlParams);
+    if (fromUrl) {
+      return { sharedAdId: fromUrl, unavailable: false };
+    }
+    const fromStorage = decodeSharedAdParam(localStorage.getItem("sharedAdId"));
+    if (fromStorage) {
+      return { sharedAdId: fromStorage, unavailable: false };
+    }
+  } catch {}
+  return { sharedAdId: null, unavailable: false };
+}
 
 interface FeedProps {
   userEmail: string;
@@ -60,17 +82,28 @@ function readFeedClientCache(email?: string): { ads: Ad[]; profiles: Record<stri
 }
 
 const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialHighlights, onEarnSuccess, onMutualSuccess }: FeedProps) => {
+  const initialSharedTarget = useMemo(() => readInitialSharedAdTarget(), []);
+  const [activeSharedAdId, setActiveSharedAdId] = useState<string | null>(initialSharedTarget.sharedAdId);
+  const [sharedAdUnavailable, setSharedAdUnavailable] = useState<boolean>(initialSharedTarget.unavailable);
+  const [isClientMounted, setIsClientMounted] = useState(false);
+  const isSharedAdMode = Boolean(activeSharedAdId || sharedAdUnavailable);
+  const activeSharedAdIdRef = useRef<string | null>(activeSharedAdId);
+  activeSharedAdIdRef.current = activeSharedAdId;
+
   const [ads, setAds] = useState<Ad[]>(() => {
+    if (initialSharedTarget.sharedAdId || initialSharedTarget.unavailable) return [];
     if (initialAds && initialAds.length > 0) return initialAds;
     return [];
   });
   const [loading, setLoading] = useState<boolean>(() => {
+    if (initialSharedTarget.unavailable) return false;
+    if (initialSharedTarget.sharedAdId) return true;
     if (initialAds && initialAds.length > 0) return false;
     return true;
   });
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(() => !(initialSharedTarget.sharedAdId || initialSharedTarget.unavailable));
   const [loadingMore, setLoadingMore] = useState(false);
   const [advertiserProfiles, setAdvertiserProfiles] = useState<
     Record<
@@ -134,6 +167,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   }, [showTimedToast]);
 
   useEffect(() => {
+    setIsClientMounted(true);
     if (typeof window === "undefined") return;
     try {
       const url = new URL(window.location.href);
@@ -142,8 +176,13 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       let urlChanged = false;
 
       if (urlSharedId) {
+        activeSharedAdIdRef.current = urlSharedId;
+        setActiveSharedAdId(urlSharedId);
+        setSharedAdUnavailable(false);
+        setHasMore(false);
         localStorage.setItem("sharedAdId", urlSharedId);
         url.searchParams.delete("sharedAdId");
+        url.searchParams.delete("ad");
         url.searchParams.delete("adId");
         url.searchParams.delete("blurb");
         url.searchParams.delete("Earn Ads by Paayh");
@@ -151,6 +190,12 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       }
 
       if (adStatus === "unavailable") {
+        activeSharedAdIdRef.current = null;
+        setActiveSharedAdId(null);
+        setSharedAdUnavailable(true);
+        setAds([]);
+        setLoading(false);
+        setHasMore(false);
         localStorage.removeItem("sharedAdId");
         url.searchParams.delete("adStatus");
         urlChanged = true;
@@ -242,7 +287,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
   // Fetch highlights when mobile if not already SSR-hydrated
   useEffect(() => {
-    if (userEmail && isMobile && !highlightsFetched && highlights.length === 0) {
+    if (!isSharedAdMode && userEmail && isMobile && !highlightsFetched && highlights.length === 0) {
       const rawInterest = viewerProfile?.interest || initialProfile?.interest;
       const parsedInterests = Array.isArray(rawInterest)
         ? rawInterest
@@ -253,13 +298,31 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         fetchHighlights(parsedInterests);
       }
     }
-  }, [userEmail, isMobile, highlightsFetched, highlights.length, viewerProfile?.interest, initialProfile?.interest, fetchHighlights]);
+  }, [isSharedAdMode, userEmail, isMobile, highlightsFetched, highlights.length, viewerProfile?.interest, initialProfile?.interest, fetchHighlights]);
 
   // Paginated Feed Fetcher
   const fetchRelevantAds = useCallback(
-    async (pageNum: number, isLoadMore = false, isSilentRefresh = false) => {
+    async (pageNum: number, isLoadMore = false, isSilentRefresh = false, overrideSharedAdId?: string | null) => {
+      let targetSharedId: string | null = null;
+      if (overrideSharedAdId !== undefined) {
+        targetSharedId = overrideSharedAdId;
+      } else {
+        targetSharedId = activeSharedAdIdRef.current;
+        if (!targetSharedId && !isLoadMore && typeof window !== "undefined") {
+          try {
+            targetSharedId = decodeSharedAdParam(localStorage.getItem("sharedAdId"));
+          } catch {}
+        }
+      }
+
+      if (targetSharedId && isLoadMore) {
+        setLoadingMore(false);
+        setHasMore(false);
+        return;
+      }
+
       const isExplicitRefresh = typeof window !== "undefined" && (window as any).__xea_force_refresh === true;
-      const requestKey = `${userEmail || ""}:${pageNum}:${isExplicitRefresh ? "refresh" : "std"}`;
+      const requestKey = `${userEmail || ""}:${pageNum}:${targetSharedId ? `shared:${targetSharedId}` : "feed"}:${isExplicitRefresh ? "refresh" : "std"}`;
       if (!isExplicitRefresh && inFlightFeedKeyRef.current === requestKey) {
         return;
       }
@@ -268,11 +331,11 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       if (isLoadMore) {
         setLoadingMore(true);
       } else {
-        if (!isSilentRefresh && !hasAdsRef.current) {
+        if (targetSharedId || (!isSilentRefresh && !hasAdsRef.current)) {
           setLoading(true);
         }
         setPage(0);
-        if (!isSilentRefresh) {
+        if (!isSilentRefresh || targetSharedId) {
           setSeenAds([]);
         }
       }
@@ -280,11 +343,12 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
       try {
         let sharedAdParam = "";
-        if (!isLoadMore && typeof window !== "undefined") {
-          const sharedAdId = localStorage.getItem("sharedAdId");
-          if (sharedAdId) {
-            sharedAdParam = `&sharedAdId=${encodeURIComponent(sharedAdId)}`;
-            localStorage.removeItem("sharedAdId");
+        if (targetSharedId && !isLoadMore) {
+          sharedAdParam = `&sharedAdId=${encodeURIComponent(targetSharedId)}`;
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.removeItem("sharedAdId");
+            } catch {}
           }
         }
 
@@ -317,11 +381,29 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           throw new Error(`Failed to fetch ad feed (Status: ${response.status})`);
         }
         const data = await response.json();
+        const feedAds: Ad[] = data.ads || [];
+        const profilesMap = data.profiles || {};
+
+        if (targetSharedId) {
+          const matched = feedAds.filter((a) => String(a?.id) === String(targetSharedId)).slice(0, 1);
+          if (Object.keys(profilesMap).length > 0) {
+            setAdvertiserProfiles((prev) => ({ ...prev, ...profilesMap }));
+          }
+          setHasMore(false);
+          if (data?.sharedAdUnavailable || matched.length === 0) {
+            setSharedAdUnavailable(true);
+            setAds([]);
+            showTimedToast(AD_UNAVAILABLE_MESSAGE, AD_UNAVAILABLE_DISMISS_MS);
+          } else {
+            setSharedAdUnavailable(false);
+            setAds(matched);
+          }
+          return;
+        }
+
         if (data?.sharedAdUnavailable && !isLoadMore) {
           showTimedToast(AD_UNAVAILABLE_MESSAGE, AD_UNAVAILABLE_DISMISS_MS);
         }
-        const feedAds: Ad[] = data.ads || [];
-        const profilesMap = data.profiles || {};
 
         if (Object.keys(profilesMap).length > 0) {
           setAdvertiserProfiles((prev) => {
@@ -385,8 +467,27 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
   const fetchRelevantAdsRef = useRef<typeof fetchRelevantAds | null>(null);
   fetchRelevantAdsRef.current = fetchRelevantAds;
 
+  const exitSharedAdMode = useCallback(() => {
+    activeSharedAdIdRef.current = null;
+    setActiveSharedAdId(null);
+    setSharedAdUnavailable(false);
+    setHasMore(true);
+    setLoading(true);
+    try {
+      localStorage.removeItem("sharedAdId");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sharedAdId");
+      url.searchParams.delete("ad");
+      url.searchParams.delete("adId");
+      url.searchParams.delete("adStatus");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch {}
+    fetchRelevantAdsRef.current?.(0, false, false, null);
+  }, []);
+
   // Persist SSR-preloaded initialAds into sessionStorage so subsequent tab switches are 0ms
   useEffect(() => {
+    if (isSharedAdMode) return;
     if (initialAds && initialAds.length > 0 && typeof window !== "undefined" && userEmail) {
       try {
         sessionStorage.setItem(
@@ -399,35 +500,46 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         );
       } catch {}
     }
-  }, [initialAds, initialProfiles, userEmail]);
+  }, [isSharedAdMode, initialAds, initialProfiles, userEmail]);
 
   useEffect(() => {
-    let hasSharedAd = false;
+    let urlSharedId: string | null = null;
+    let urlUnavailable = false;
     if (typeof window !== "undefined") {
       try {
-        hasSharedAd = Boolean(
-          localStorage.getItem("sharedAdId") ||
-            extractSharedAdIdFromSearchParams(new URLSearchParams(window.location.search))
-        );
+        const searchParams = new URLSearchParams(window.location.search);
+        urlUnavailable = searchParams.get("adStatus") === "unavailable";
+        urlSharedId =
+          extractSharedAdIdFromSearchParams(searchParams) ||
+          decodeSharedAdParam(localStorage.getItem("sharedAdId"));
       } catch {}
+    }
+    const targetId = activeSharedAdIdRef.current || urlSharedId;
+
+    if (urlUnavailable || sharedAdUnavailable) {
+      setLoading(false);
+      return;
+    }
+
+    if (targetId) {
+      setLoading(true);
+      fetchRelevantAds(0, false, false, targetId);
+      return;
     }
 
     if (!initialAds || initialAds.length === 0) {
       // Keep skeleton loading active while verifying fresh feed to prevent ghost ad flashes
       setLoading(true);
       fetchRelevantAds(0, false, false);
-    } else if (hasSharedAd) {
-      // Ensure shared deep-link ad is pinned or displays the 5s unavailable notice even when SSR hydrated initialAds
-      fetchRelevantAds(0, false, true);
     }
-  }, [fetchRelevantAds, initialAds, userEmail]);
+  }, [fetchRelevantAds, initialAds, sharedAdUnavailable, userEmail]);
 
   const loadMore = useCallback(() => {
-    if (loading || loadingMore || !hasMore) return;
+    if (loading || loadingMore || !hasMore || isSharedAdMode) return;
     const nextPage = page + 1;
     setPage(nextPage);
     fetchRelevantAds(nextPage, true);
-  }, [loading, loadingMore, hasMore, page, fetchRelevantAds]);
+  }, [loading, loadingMore, hasMore, isSharedAdMode, page, fetchRelevantAds]);
 
   const handleDismissAd = useCallback(
     (adId: string, advertiserEmail?: string, reportType?: AdReportType) => {
@@ -470,6 +582,12 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
 
   const parentRef = useRef<HTMLDivElement>(null);
   const displayFeed = useMemo(() => {
+    if (sharedAdUnavailable) return [];
+    if (activeSharedAdId) {
+      return ads
+        .filter((item) => item?.id && String(item.id) === String(activeSharedAdId))
+        .slice(0, 1);
+    }
     if (locationSkipped) return [];
     const rawFeed = buildDisplayFeed(ads);
     const seen = new Set<string>();
@@ -478,7 +596,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       seen.add(item.id);
       return true;
     });
-  }, [ads, buildDisplayFeed, locationSkipped]);
+  }, [ads, activeSharedAdId, sharedAdUnavailable, buildDisplayFeed, locationSkipped]);
 
   const virtualizer = useVirtualizer({
     count: displayFeed.length,
@@ -652,11 +770,17 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         isPullRefreshing={isPullRefreshing}
         isActivelyPulling={isActivelyPulling}
       />
-      {!locationSkipped && <NewPostsPill count={pendingCount} onClick={handlePillClick} />}
-      {loading && <FeedSkeleton count={3} />}
+      {isClientMounted && isSharedAdMode && <FeedSharedAdBanner onExit={exitSharedAdMode} />}
+      {!locationSkipped && !isSharedAdMode && <NewPostsPill count={pendingCount} onClick={handlePillClick} />}
+      {loading && <FeedSkeleton count={isSharedAdMode ? 1 : 3} />}
       {!loading && error && <FeedErrorState onRetry={() => fetchRelevantAds(0, false)} />}
-      {!loading && !error && locationSkipped && <FeedLocationSkippedState />}
-      {!loading && !error && !locationSkipped && ads.length === 0 && <FeedEmptyInventoryState />}
+      {!loading && !error && !isSharedAdMode && locationSkipped && <FeedLocationSkippedState />}
+      {!loading && !error && isClientMounted && sharedAdUnavailable && (
+        <FeedSharedAdUnavailableState onBrowseFeed={exitSharedAdMode} />
+      )}
+      {!loading && !error && !locationSkipped && !sharedAdUnavailable && ads.length === 0 && (
+        <FeedEmptyInventoryState />
+      )}
 
       {!loading && !error && displayFeed.length > 0 && (
         <div

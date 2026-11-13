@@ -542,7 +542,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
                   <div className={styles.titleIconBox}>
                     <Award size={18} color="var(--primary)" />
                   </div>
-                  <span>
+                  <span className={styles.cardSectionTitleText}>
                     {isUnlimited
                       ? `Next Milestone: ${currentMilestoneTarget} Ad Clicks (Unlimited Tier • Unlimited Cap)`
                       : clicksCount < 300

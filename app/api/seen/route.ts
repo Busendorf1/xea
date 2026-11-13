@@ -10,7 +10,7 @@ import {
   invalidateCachedUserCampaigns,
 } from "@/lib/utils/cache";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
-import { getEarnTokenSecret } from "@/lib/targetingEngine";
+import { computeCampaignBroadeningPlan, getEarnTokenSecret } from "@/lib/targetingEngine";
 import { env } from "@/lib/env";
 import { recordCoalescedAdSeen } from "@/lib/impressionBuffer";
 import { dispatchImpressionWebhook } from "@/lib/webhookDispatcher";
@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
     // 3. Server-side Anti-Bot Pacing Lock, Token Burn & Atomic Frequency Cap Enforcement
     const todayDate = nowIso.slice(0, 10);
     let userCap = 1;
+    let maxPossibleCap = 3;
     let isPlatformPost = false;
     let checkedFromCache = false;
     let currentLifetimeViews = 0;
@@ -175,10 +176,12 @@ export async function POST(request: NextRequest) {
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
-            userCap = Math.max(1, Number(parsed.user_frequency_cap || 1));
+            const plan = computeCampaignBroadeningPlan(parsed);
+            userCap = plan.effectiveUserCap;
+            maxPossibleCap = plan.maxPossibleUserCap ?? userCap;
             adOwnerEmail = parsed.user_email || parsed.email || null;
             adCpi = Number(parsed.cost_per_impression || 0);
-            isPlatformPost = Boolean(
+            isPlatformPost = plan.isPlatformPost ?? Boolean(
               parsed.is_admin_post ||
               !parsed.cost_per_impression ||
               Number(parsed.cost_per_impression) <= 0 ||
@@ -198,16 +201,20 @@ export async function POST(request: NextRequest) {
       try {
         const { data: adRow } = await supabaseAdmin
           .from("addsactive")
-          .select("is_admin_post, cost_per_impression, impressions, impression_count, user_frequency_cap, user_email")
+          .select(
+            "is_admin_post, cost_per_impression, impressions, impression_count, user_frequency_cap, user_email, campaign_days, created_at, approved_at, scheduled_start_at, scheduled_end_at"
+          )
           .eq("id", adId)
           .maybeSingle();
         if (adRow) {
-          userCap = Math.max(1, Number(adRow.user_frequency_cap || 1));
+          const plan = computeCampaignBroadeningPlan(adRow as any);
+          userCap = plan.effectiveUserCap;
+          maxPossibleCap = plan.maxPossibleUserCap ?? userCap;
           adOwnerEmail = adRow.user_email || null;
           adCpi = Number(adRow.cost_per_impression || 0);
           dbImpressionsTarget = Number(adRow.impressions || 0);
           dbImpressionCount = Number(adRow.impression_count || 0);
-          isPlatformPost = Boolean(
+          isPlatformPost = plan.isPlatformPost ?? Boolean(
             adRow.is_admin_post ||
             !adRow.cost_per_impression ||
             Number(adRow.cost_per_impression) <= 0 ||
@@ -244,11 +251,18 @@ export async function POST(request: NextRequest) {
 
     if (!isAdminEmail(emailKey) && currentLifetimeViews >= userCap) {
       if (isRedisReady()) {
-        await Promise.all([
+        const ops: Promise<any>[] = [
           redisConnection.hset(`user:freq_lifetime:${emailKey}`, adId, String(currentLifetimeViews)).catch(() => {}),
-          redisConnection.sadd(`seen:ads:${emailKey}`, adId).catch(() => {}),
-          redisConnection.expire(`seen:ads:${emailKey}`, 86400 * 30).catch(() => {}),
-        ]);
+        ];
+        // Only mark in long-lived seen:ads when user reaches max rollover cap (or platform post)
+        // so Stage 1 / Stage 2 rollover cap expansion automatically unlocks eligible viewers.
+        if (isPlatformPost || currentLifetimeViews >= maxPossibleCap) {
+          ops.push(
+            redisConnection.sadd(`seen:ads:${emailKey}`, adId).catch(() => {}),
+            redisConnection.expire(`seen:ads:${emailKey}`, 86400 * 30).catch(() => {})
+          );
+        }
+        await Promise.all(ops);
       }
       return NextResponse.json({
         success: true,
@@ -279,7 +293,7 @@ export async function POST(request: NextRequest) {
         freqPipe.hset(`user:last_viewed:${emailKey}`, adId, nowIso);
         freqPipe.expire(`user:last_viewed:${emailKey}`, 86400 * 30);
 
-        if (newLifetimeViews >= userCap) {
+        if (isPlatformPost || newLifetimeViews >= maxPossibleCap) {
           freqPipe.sadd(`seen:ads:${emailKey}`, adId);
           freqPipe.expire(`seen:ads:${emailKey}`, 86400 * 30);
         }

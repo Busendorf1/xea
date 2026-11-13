@@ -26,6 +26,7 @@ import {
 import { hydratePublisherProfiles, loadSharedActiveAdsForCountry } from "../../../lib/feed/poolLoader";
 import { buildOrderedCandidateFeed, UserImpressionInfo } from "../../../lib/feed/feedRankerAndInterleaver";
 import { resolveSharedAdForFeed } from "../../../lib/feed/sharedAdResolver";
+import { triggerSelfHealingJobsIfDue } from "../../../lib/services/cronOrchestrator";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,55 @@ export async function GET(req: NextRequest) {
     const sharedAdId = searchParams.get("sharedAdId");
 
     const emailKey = email.toLowerCase().trim();
+    const origin = req.nextUrl.origin || "https://paayh.com";
+    const signFeedAds = (adsToSign: Ad[]) =>
+      adsToSign.map((ad: Ad) => {
+        const isPlatformPost = Boolean(
+          ad.is_admin_post ||
+            isAdminEmail(ad.user_email || (ad as any).email) ||
+            !ad.cost_per_impression ||
+            Number(ad.cost_per_impression) <= 0 ||
+            !ad.impressions ||
+            Number(ad.impressions) <= 0
+        );
+        const token = signAdImpressionToken(String(ad.id), emailKey, servedAt);
+        return {
+          ...ad,
+          ad_media: transformMediaUrlsToCdn(ad.ad_media, origin),
+          is_admin_post: isPlatformPost,
+          cost_per_impression: isPlatformPost ? 0 : Number(ad.cost_per_impression || 0),
+          impressions: isPlatformPost ? 0 : Number(ad.impressions || 0),
+          _token: token,
+          _served_at: servedAt,
+          verification_token: token,
+          served_at: servedAt,
+        };
+      });
+
+    // Dedicated single-ad branch: return ONLY the shared ad (never other feed ads)
+    if (sharedAdId) {
+      const sharedResult = await resolveSharedAdForFeed({
+        sharedAdId,
+        offset,
+        pageAds: [],
+        profilesMap: {},
+      });
+      const signedSharedAds = signFeedAds(sharedResult.pageAds);
+      return NextResponse.json(
+        {
+          ads: signedSharedAds,
+          profiles: sharedResult.profilesMap,
+          sharedAdMode: true,
+          ...(sharedResult.sharedAdUnavailable ? { sharedAdUnavailable: true } : {}),
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
+        }
+      );
+    }
+
     const isViewerAdmin = isAdminEmail(emailKey);
     const adIdsCacheKey = `feed:ad_ids:${emailKey}`;
     const legacyAdsCacheKey = `feed:ads:${emailKey}`;
@@ -346,20 +396,30 @@ export async function GET(req: NextRequest) {
               if (impressionsTarget > 0 && impressionCount >= impressionsTarget) return false;
 
               const plan = computeCampaignBroadeningPlan(ad as any, now.getTime());
-              if (plan.isScheduledFuture) return false;
+              if (plan.isScheduledFuture || plan.isExpiredPlatformPost) return false;
+
+              const dailyCap = Number((ad as any).daily_impression_cap || 0);
+              if (dailyCap > 0 && (ad as any).last_reset_date === todayDate) {
+                const effectiveDailyCap = dailyCap + Math.max(0, Number((ad as any).rollover_balance || 0));
+                if (Number((ad as any).daily_impression_count || 0) >= effectiveDailyCap) return false;
+              }
 
               const check = evaluateAdTargeting(
                 ad as any,
                 { ...viewerProfile, email: emailKey },
-                { allowRolloverPsychographics: true, broadeningStage: plan.broadeningStage }
+                {
+                  allowRolloverPsychographics: plan.broadeningStage >= 1,
+                  broadeningStage: plan.broadeningStage,
+                }
               );
               if (!check.matches) return false;
 
               const imp = userImpressionMap.get(ad.id);
-              const totalViews = Math.max(
-                imp?.view_count || 0,
-                seenAdIdsSet.has(ad.id) ? plan.effectiveUserCap : 0
-              );
+              const totalViews = imp
+                ? imp.view_count || 0
+                : seenAdIdsSet.has(ad.id)
+                ? plan.baseUserCap
+                : 0;
               if (!isViewerAdmin && !ad.is_admin_post && totalViews >= plan.effectiveUserCap) return false;
 
               const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
@@ -458,45 +518,13 @@ export async function GET(req: NextRequest) {
       pageAds = orderedCandidateAds.slice(offset, offset + limit);
     }
 
-    const sharedResult = await resolveSharedAdForFeed({
-      sharedAdId,
-      offset,
-      pageAds,
-      profilesMap,
-    });
-    pageAds = sharedResult.pageAds;
-    profilesMap = sharedResult.profilesMap;
-    const sharedAdUnavailable = sharedResult.sharedAdUnavailable;
-
-    const origin = req.nextUrl.origin || "https://paayh.com";
-    const signedAds = pageAds.map((ad: Ad) => {
-      const isPlatformPost = Boolean(
-        ad.is_admin_post ||
-          isAdminEmail(ad.user_email || (ad as any).email) ||
-          !ad.cost_per_impression ||
-          Number(ad.cost_per_impression) <= 0 ||
-          !ad.impressions ||
-          Number(ad.impressions) <= 0
-      );
-      const token = signAdImpressionToken(String(ad.id), emailKey, servedAt);
-      return {
-        ...ad,
-        ad_media: transformMediaUrlsToCdn(ad.ad_media, origin),
-        is_admin_post: isPlatformPost,
-        cost_per_impression: isPlatformPost ? 0 : Number(ad.cost_per_impression || 0),
-        impressions: isPlatformPost ? 0 : Number(ad.impressions || 0),
-        _token: token,
-        _served_at: servedAt,
-        verification_token: token,
-        served_at: servedAt,
-      };
-    });
+    const signedAds = signFeedAds(pageAds);
+    triggerSelfHealingJobsIfDue().catch(() => {});
 
     return NextResponse.json(
       {
         ads: signedAds,
         profiles: profilesMap,
-        ...(sharedAdUnavailable ? { sharedAdUnavailable: true } : {}),
         ...(!locationEnabled ? { locationRequired: true } : {}),
       },
       {

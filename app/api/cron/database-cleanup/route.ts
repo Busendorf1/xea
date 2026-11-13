@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
 import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
+import { runRolloverSweep } from "../../../../lib/services/rolloverService";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { flushPendingAffiliateYield } from "@/lib/affiliateEngine";
 
@@ -38,6 +39,14 @@ async function handleCron(req: NextRequest) {
       console.log("✅ Cron: Expired approved campaigns purge result:", cleanupApprovedRes);
     } catch (cleanupErr: any) {
       console.error("❌ Cron: Error purging expired approved campaigns:", cleanupErr?.message || cleanupErr);
+    }
+
+    // 1.5. Transition eligible paid campaigns into Rollover Mode & roll unspent daily caps
+    try {
+      const rolloverRes = await runRolloverSweep({ batchSize: 200, maxBatches: 15 });
+      console.log("✅ Cron: Ad rollover sweep result:", rolloverRes);
+    } catch (rolloverErr: any) {
+      console.error("❌ Cron: Error in rollover sweep:", rolloverErr?.message || rolloverErr);
     }
 
     // 2. Archive expired active platform campaigns (moving them from addsactive -> completed_ads)

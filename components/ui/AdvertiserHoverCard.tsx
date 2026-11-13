@@ -6,7 +6,7 @@ import styles from "./AdvertiserHoverCard.module.css";
 import Avatar from "./Avatar";
 import VerifiedBadge from "./VerifiedBadge";
 import RoleStarBadges from "./RoleStarBadges";
-import { Calendar, MapPin } from "lucide-react";
+import { Calendar, MapPin, Star } from "lucide-react";
 
 export interface AdvertiserProfileData {
   email?: string;
@@ -49,6 +49,10 @@ export default function AdvertiserHoverCard({
 }: AdvertiserHoverCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLogoZoomed, setIsLogoZoomed] = useState(false);
+  const [revealedRoleLabels, setRevealedRoleLabels] = useState<{
+    career?: string;
+    affiliate?: string;
+  }>({});
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const zoomTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -141,7 +145,14 @@ export default function AdvertiserHoverCard({
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    setRevealedRoleLabels({});
+  }, [profile?.email, profile?.is_career, profile?.is_affiliate, profile?.affiliate_role]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setRevealedRoleLabels({});
+      return;
+    }
     updatePosition();
     const raf = requestAnimationFrame(updatePosition);
 
@@ -235,6 +246,17 @@ export default function AdvertiserHoverCard({
     return null;
   })();
 
+  const handleRoleBadgeClick = useCallback(
+    (roleKey: "career" | "affiliate", label: string) => {
+      setRevealedRoleLabels((prev) => ({
+        ...prev,
+        [roleKey]: prev[roleKey] ? undefined : label,
+      }));
+      requestAnimationFrame(updatePosition);
+    },
+    [updatePosition]
+  );
+
   const isVerified = isPlatformPost || !!profile?.monetized;
 
   const popoverNode =
@@ -296,11 +318,31 @@ export default function AdvertiserHoverCard({
                     affiliateRole={profile?.affiliate_role}
                     size={14}
                     variant="compact"
+                    suppressTooltip
+                    onBadgeClick={handleRoleBadgeClick}
                   />
                 </div>
                 <div className={styles.popoverHandle}>{handleText}</div>
               </div>
             </div>
+
+            {/* Bounded inline role badges revealed when Career / Affiliate stars are clicked */}
+            {(revealedRoleLabels.career || revealedRoleLabels.affiliate) && (
+              <div className={styles.revealedRolesRow}>
+                {revealedRoleLabels.career && (
+                  <span className={`${styles.revealedRolePill} ${styles.revealedRolePillCareer}`}>
+                    <Star size={11} className={styles.revealedStarPurple} aria-hidden="true" />
+                    <span>{revealedRoleLabels.career}</span>
+                  </span>
+                )}
+                {revealedRoleLabels.affiliate && (
+                  <span className={`${styles.revealedRolePill} ${styles.revealedRolePillAffiliate}`}>
+                    <Star size={11} className={styles.revealedStarGold} aria-hidden="true" />
+                    <span>{revealedRoleLabels.affiliate}</span>
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* User Bio Section */}
             <div className={styles.popoverBio}>

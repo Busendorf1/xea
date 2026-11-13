@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
+import { bridgeMobilePaymentCallbackUrl } from "../../../../../lib/payment/paymentLookup";
 import {
   spendWalletBalanceAtomic,
   refundWalletDeductionAtomic,
@@ -211,7 +212,11 @@ export async function POST(req: NextRequest) {
     // 3. Handle Card Payment Initialization (via active gateway Kora or Paystack)
     if (payment_method === "card") {
       try {
-        const callback = callback_url || `${process.env.NEXT_PUBLIC_BASE_URL || ""}/business/subscribe?payment=success`;
+        const rawCallback =
+          typeof callback_url === "string" && callback_url.trim()
+            ? callback_url.trim()
+            : `${process.env.NEXT_PUBLIC_BASE_URL || ""}/business/subscribe?payment=success`;
+        const callback = bridgeMobilePaymentCallbackUrl(rawCallback, req.nextUrl.origin);
         const paymentMetadata = {
           type: "brand_subscription",
           subscriber_id: subscriber.id,

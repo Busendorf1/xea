@@ -32,7 +32,7 @@ async function evictExhaustedAdCaches(adId: string): Promise<void> {
   } catch {}
   if (isRedisReady() && redisConnection) {
     redisConnection
-      .del(`ad:detail:${adId}`, "campaigns:shared_pool:v1", "bids:zset:global")
+      .del(`ad:detail:${adId}`, `ad:public:status:${adId}`, "campaigns:shared_pool:v1", "bids:zset:global")
       .catch(() => {});
   }
 }

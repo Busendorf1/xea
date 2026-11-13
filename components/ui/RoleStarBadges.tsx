@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Star } from "lucide-react";
 import { getSpecialRoleProfile } from "@/lib/adminHelper";
 import styles from "./RoleStarBadges.module.css";
@@ -15,6 +15,8 @@ export interface RoleStarBadgesProps {
   showLabels?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  onBadgeClick?: (roleKey: "career" | "affiliate", label: string) => void;
+  suppressTooltip?: boolean;
 }
 
 /**
@@ -23,8 +25,8 @@ export interface RoleStarBadgesProps {
  * - Affiliate Badge: Yellow / Gold Star (earns 10% platform share)
  *
  * Only the stars are shown by default (no inline text pills).
- * The role title is revealed on hover via a floating tooltip.
- * Strictly used on User Profile Dashboards and Admin Dashboards (never on Advertiser Info Modal).
+ * The role title is revealed on hover via a floating tooltip, or via onBadgeClick
+ * when rendered inside constrained modals.
  */
 export default function RoleStarBadges({
   email,
@@ -36,7 +38,18 @@ export default function RoleStarBadges({
   showLabels = false,
   className = "",
   style = {},
+  onBadgeClick,
+  suppressTooltip = false,
 }: RoleStarBadgesProps) {
+  const [activeRole, setActiveRole] = useState<"career" | "affiliate" | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   const resolved = getSpecialRoleProfile(email, {
     is_career: isCareer,
     is_affiliate: isAffiliate,
@@ -50,6 +63,24 @@ export default function RoleStarBadges({
   const effectiveSize = size || (variant === "compact" ? 14 : 16);
   const roleText = (resolved.affiliateRole || "Platform Affiliate").trim();
 
+  const handleActivate = (
+    e: React.MouseEvent | React.KeyboardEvent,
+    roleKey: "career" | "affiliate",
+    label: string
+  ) => {
+    e.stopPropagation();
+    if (onBadgeClick) {
+      onBadgeClick(roleKey, label);
+      return;
+    }
+    if (suppressTooltip) return;
+    setActiveRole((prev) => (prev === roleKey ? null : roleKey));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setActiveRole((prev) => (prev === roleKey ? null : prev));
+    }, 2500);
+  };
+
   return (
     <span
       className={`${styles.container} ${className}`.trim()}
@@ -59,18 +90,29 @@ export default function RoleStarBadges({
       {/* Career Badge: Purple Star (earns 0%) */}
       {resolved.isCareer && (
         <span
-          className={styles.starItem}
+          className={`${styles.starItem} ${!suppressTooltip && activeRole === "career" ? styles.starItemActive : ""}`.trim()}
           title="Career"
           aria-label="Career"
+          role="button"
+          tabIndex={0}
+          onClick={(e) => handleActivate(e, "career", "Career")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleActivate(e, "career", "Career");
+            }
+          }}
         >
           <Star
             size={effectiveSize}
             className={styles.starPurple}
             aria-hidden="true"
           />
-          <span className={styles.tooltip} role="tooltip">
-            Career
-          </span>
+          {!suppressTooltip && (
+            <span className={styles.tooltip} role="tooltip">
+              Career
+            </span>
+          )}
           {showLabels && <span className={styles.labelPurple}>Career</span>}
         </span>
       )}
@@ -78,18 +120,29 @@ export default function RoleStarBadges({
       {/* Affiliate Badge: Yellow Star (earns 10% platform share) */}
       {resolved.isAffiliate && (
         <span
-          className={styles.starItem}
+          className={`${styles.starItem} ${!suppressTooltip && activeRole === "affiliate" ? styles.starItemActive : ""}`.trim()}
           title={roleText}
           aria-label={roleText}
+          role="button"
+          tabIndex={0}
+          onClick={(e) => handleActivate(e, "affiliate", roleText)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleActivate(e, "affiliate", roleText);
+            }
+          }}
         >
           <Star
             size={effectiveSize}
             className={styles.starGold}
             aria-hidden="true"
           />
-          <span className={styles.tooltip} role="tooltip">
-            {roleText}
-          </span>
+          {!suppressTooltip && (
+            <span className={styles.tooltip} role="tooltip">
+              {roleText}
+            </span>
+          )}
           {showLabels && <span className={styles.labelGold}>{roleText}</span>}
         </span>
       )}

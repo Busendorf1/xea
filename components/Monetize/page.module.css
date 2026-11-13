@@ -99,6 +99,13 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.statusTitleGroup > div:last-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .iconBadgeSuccess {
@@ -230,11 +237,14 @@
   border: 1px solid var(--card-border);
   padding: 3px 10px;
   border-radius: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 2px;
 }
 
 .metricsGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -607,6 +617,8 @@
 .statusActionsRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
   gap: 10px;
 }
 
@@ -619,14 +631,25 @@
 .progressHeaderRow {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 14px;
+  min-width: 0;
 }
 
 .cardSectionTitleFlex {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cardSectionTitleText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  line-height: 1.35;
 }
 
 .cardInstructionText {

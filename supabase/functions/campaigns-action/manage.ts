@@ -1,5 +1,6 @@
 import { errorResponse, isAdminEmail, jsonResponse, sanitizeCsvArray } from "../_shared/cors.ts";
 import { deductWalletAtomic, refundWalletAtomic } from "../_shared/paymentActivation.ts";
+import { initializePayment } from "../_shared/payoutProvider.ts";
 import { validateSafeMediaUrl, validateSafeUrl } from "../_shared/urlValidation.ts";
 import { verifyTransactionPinEdge } from "../_shared/walletPin.ts";
 import { buildEdgeCampaignAnalyticsPayload, computeAdSpendMetricsEdge } from "./analytics.ts";
@@ -247,15 +248,26 @@ export async function handleBoostCampaignOrHighlight(
     return errorResponse("Campaign or highlight ID is required.", 400);
   }
 
-  const table = action === "boost_ad" ? "addsactive" : "newsactive";
-  const { data: item, error: itemErr } = await supabase
-    .from(table)
-    .select("*")
-    .eq("id", targetId)
-    .maybeSingle();
+  const tableCandidates =
+    action === "boost_ad" ? ["addsactive", "adds", "completed_ads"] : ["newsactive", "news"];
+  // deno-lint-ignore no-explicit-any
+  let item: any = null;
+  let table = tableCandidates[0];
+  for (const candidate of tableCandidates) {
+    const { data: found, error: findErr } = await supabase
+      .from(candidate)
+      .select("*")
+      .eq("id", targetId)
+      .maybeSingle();
+    if (!findErr && found) {
+      item = found;
+      table = candidate;
+      break;
+    }
+  }
 
-  if (itemErr || !item) {
-    return errorResponse("Active campaign not found.", 404);
+  if (!item) {
+    return errorResponse("Campaign not found.", 404);
   }
   if (String(item.user_email || "").toLowerCase().trim() !== cleanEmail) {
     return errorResponse("You do not own this campaign.", 403);
@@ -277,40 +289,67 @@ export async function handleBoostCampaignOrHighlight(
 
   const isAdmin = isAdminEmail(cleanEmail);
   let totalCost = 0;
+  let effectiveCostPerUnit = MIN_CPI;
+  let addImpNum = 0;
+  let addDays = 0;
   let updateFields: Record<string, unknown> = {};
 
   if (action === "boost_ad") {
-    const addImpNum = Math.max(0, Math.floor(Number(body?.addImpressions || body?.add_impressions || 0)));
+    addImpNum = Math.max(
+      0,
+      Math.floor(Number(body?.additionalImpressions ?? body?.addImpressions ?? body?.add_impressions ?? 0)),
+    );
+    addDays = Math.max(0, Math.floor(Number(body?.additionalDays ?? body?.addDays ?? body?.add_days ?? 0)));
     const currentImp = Math.max(0, Number(item.impressions || 0));
     const deliveredImp = Math.max(0, Number(item.impression_count || 0));
     const remainingImp = Math.max(0, currentImp - deliveredImp);
 
-    const currentCpi = Number(item.bid_price || item.cost_per_impression || MIN_CPI);
+    const currentCpi = Math.max(15, Number(item.cost_per_impression || item.bid_price || 25));
     const requestedNewCpi = Number(
-      body?.newCostPerImpression ?? body?.new_cpi ?? body?.bidPrice ?? currentCpi,
+      body?.newCostPerImpression ?? body?.newBidPrice ?? body?.new_cpi ?? body?.bidPrice ?? currentCpi,
     );
     if (!isAdmin && requestedNewCpi < currentCpi) {
       return errorResponse("Cannot decrease cost per impression during boost.", 400);
     }
 
-    const effectiveCpi = isAdmin ? 0 : Math.round(requestedNewCpi * 100) / 100;
-    // Simultaneous upgrade formula: new impressions at effectiveCpi + (newCost - oldCost) * remainingImpressions
-    const upgradeCost =
-      effectiveCpi > currentCpi ? (effectiveCpi - currentCpi) * remainingImp : 0;
-    totalCost = isAdmin ? 0 : Math.round((addImpNum * effectiveCpi + upgradeCost) * 100) / 100;
+    const effectiveCpi = isAdmin ? 0 : Math.round(Math.max(requestedNewCpi, currentCpi) * 100) / 100;
+    effectiveCostPerUnit = effectiveCpi;
+    const upgradeCost = effectiveCpi > currentCpi ? (effectiveCpi - currentCpi) * remainingImp : 0;
+    totalCost = isAdmin
+      ? 0
+      : Math.round(
+          (addImpNum > 0 ? addImpNum * effectiveCpi + (effectiveCpi > currentCpi ? upgradeCost : 0) : upgradeCost) *
+            100,
+        ) / 100;
 
     updateFields = {
       impressions: currentImp + addImpNum,
+      ...(addDays > 0 ? { campaign_days: Number(item.campaign_days || 1) + addDays } : {}),
       cost_per_impression: effectiveCpi,
       bid_price: isAdmin ? 0 : Math.max(Number(item.bid_price || 0), effectiveCpi),
       is_bidded: !isAdmin && Boolean(item.is_bidded || effectiveCpi > currentCpi),
       total_cost: isAdmin ? 0 : Number(item.total_cost || 0) + totalCost,
       is_admin_post: isAdmin || Boolean(item.is_admin_post),
+      completed_at: null,
+      is_paused: false,
     };
   } else {
-    const addDays = Math.max(0, Math.floor(Number(body?.addDays || body?.add_days || 0)));
-    const bidIncrease = isAdmin ? 0 : Math.max(0, Number(body?.bidIncrease || body?.amount || 0));
-    totalCost = isAdmin ? 0 : Math.round((addDays * HIGHLIGHT_DAILY_RATE + bidIncrease) * 100) / 100;
+    addDays = Math.max(0, Math.floor(Number(body?.additionalDays ?? body?.addDays ?? body?.add_days ?? 0)));
+    const currentDaily =
+      item.is_bidded && Number(item.bid_price || 0) >= HIGHLIGHT_DAILY_RATE
+        ? Number(item.bid_price)
+        : 1000;
+    const requestedDaily = Number(body?.newBidPrice ?? body?.newCostPerImpression ?? currentDaily);
+    const effectiveDaily = requestedDaily > currentDaily ? requestedDaily : currentDaily;
+    effectiveCostPerUnit = effectiveDaily;
+    const explicitIncrease = Number(body?.bidIncrease ?? body?.amount ?? 0);
+    const rateUpgradeCost =
+      effectiveDaily > currentDaily
+        ? (effectiveDaily - currentDaily) * Math.max(1, Number(item.campaign_days || 1))
+        : explicitIncrease > 0
+        ? explicitIncrease
+        : 0;
+    totalCost = isAdmin ? 0 : Math.round((addDays * effectiveDaily + rateUpgradeCost) * 100) / 100;
 
     const currentDays = Math.max(1, Number(item.campaign_days || 1));
     if (currentDays + addDays > MAX_HIGHLIGHT_DAYS) {
@@ -320,10 +359,11 @@ export async function handleBoostCampaignOrHighlight(
     updateFields = {
       campaign_days: currentDays + addDays,
       expires_at: addDays > 0 ? new Date(baseExpiry + addDays * 86400 * 1000).toISOString() : item.expires_at,
-      bid_price: isAdmin ? 0 : Number(item.bid_price || HIGHLIGHT_DAILY_RATE) + bidIncrease,
-      is_bidded: !isAdmin,
+      bid_price: isAdmin ? 0 : Math.max(effectiveDaily, currentDaily),
+      is_bidded: !isAdmin && (Boolean(item.is_bidded) || effectiveDaily > 1000),
       total_cost: isAdmin ? 0 : Number(item.total_cost || 0) + totalCost,
       is_admin_post: isAdmin || Boolean(item.is_admin_post),
+      is_paused: false,
     };
   }
 
@@ -333,11 +373,62 @@ export async function handleBoostCampaignOrHighlight(
 
   const paymentMethod = String(body?.paymentMethod || "wallet").toLowerCase();
   if (!isAdmin && paymentMethod !== "wallet") {
+    const boostRef = `BOOST-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const baseCallback = String(body?.callbackUrl || "xea-auth://payment-callback").trim();
+    const sep = baseCallback.includes("?") ? "&" : "?";
+    const fullCallback = `${baseCallback}${sep}boost_ref=${encodeURIComponent(boostRef)}${
+      action === "boost_highlight" ? "&type=boost_highlight&tab=highlights" : "&type=boost_campaign"
+    }`;
+    const boostMeta: Record<string, unknown> = {
+      user_email: cleanEmail,
+      ad_id: targetId,
+      type: action === "boost_ad" ? "boost_campaign" : "boost_highlight",
+      is_highlight: action === "boost_highlight",
+      additional_impressions: addImpNum,
+      additional_days: addDays,
+      cost_per_impression: effectiveCostPerUnit,
+      boost_reference: boostRef,
+      payment_method: "card",
+    };
+
+    const initRes = await initializePayment({
+      email: cleanEmail,
+      amount: totalCost,
+      reference: boostRef,
+      callbackUrl: fullCallback,
+      metadata: boostMeta,
+      customerName: cleanEmail.split("@")[0] || "Paayh Advertiser",
+    });
+
+    if (!initRes.success || !initRes.authorization_url) {
+      return errorResponse(initRes.error || "Failed to initialize payment gateway.", 502);
+    }
+
+    await supabase.from("payments").insert([
+      {
+        user_email: cleanEmail,
+        reference: boostRef,
+        amount: totalCost,
+        status: "pending",
+        type: action === "boost_ad" ? "boost_campaign" : "boost_highlight",
+        description: `Card payment boost top-up (${action})`,
+        metadata: {
+          ...boostMeta,
+          provider: initRes.provider,
+          kora_reference: initRes.reference !== boostRef ? initRes.reference : undefined,
+          gateway_reference: initRes.reference !== boostRef ? initRes.reference : undefined,
+        },
+      },
+    ]);
+
     return jsonResponse({
       success: true,
-      requiresCheckout: true,
+      paymentMethod: "card",
+      paymentUrl: initRes.authorization_url,
+      authorization_url: initRes.authorization_url,
+      reference: initRes.reference || boostRef,
+      boostReference: boostRef,
       totalCost,
-      targetId,
       type: action === "boost_ad" ? "boost_campaign" : "boost_highlight",
     });
   }
@@ -363,8 +454,29 @@ export async function handleBoostCampaignOrHighlight(
     newBalance = deduction.newBalance;
   }
 
-  const { error: updErr } = await supabase.from(table).update(updateFields).eq("id", targetId);
-  if (updErr) {
+  const applyError = await (async () => {
+    if (table === "completed_ads") {
+      const reactivated = { ...item, ...updateFields, created_at: new Date().toISOString() };
+      const { error: upErr } = await supabase.from("addsactive").upsert([reactivated]);
+      if (upErr) return upErr;
+      await Promise.all([
+        supabase.from("adds").update(updateFields).eq("id", targetId),
+        supabase.from("completed_ads").delete().eq("id", targetId),
+      ]);
+      return null;
+    }
+    const { error: updErr } = await supabase.from(table).update(updateFields).eq("id", targetId);
+    if (!updErr && action === "boost_ad") {
+      const peer = table === "addsactive" ? "adds" : "addsactive";
+      await supabase.from(peer).update(updateFields).eq("id", targetId);
+    } else if (!updErr && action === "boost_highlight") {
+      const peer = table === "newsactive" ? "news" : "newsactive";
+      await supabase.from(peer).update(updateFields).eq("id", targetId);
+    }
+    return updErr;
+  })();
+
+  if (applyError) {
     if (effectiveCost > 0) {
       await refundWalletAtomic(supabase, cleanEmail, effectiveCost, `${action}_rollback`, `refund_${boostRef}`);
     }
@@ -395,8 +507,11 @@ export async function handleBoostCampaignOrHighlight(
 
   return jsonResponse({
     success: true,
+    paymentMethod: "wallet",
     reference: boostRef,
     totalCost: effectiveCost,
+    boostedAmount: effectiveCost,
+    boostedAt: new Date().toISOString(),
     newBalance,
     message: "Boost applied successfully!",
   });

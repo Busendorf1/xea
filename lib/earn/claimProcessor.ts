@@ -9,6 +9,7 @@ import { bufferAdImpression } from "@/lib/impressionBuffer";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { syncPostEarnCaches, publishEarnSideEffects } from "./redisSync";
 import { checkAndNotifyClickAndAtwMilestones } from "@/lib/notifications/milestoneNotifications";
+import { computeCampaignBroadeningPlan } from "@/lib/targetingEngine";
 
 const LEGIT_REJECTION_CODES = new Set([
   "ALREADY_EARNED",
@@ -44,6 +45,7 @@ export interface EarnClaimOutput {
   liveClicks: number;
   atomicViews: number;
   atomicCap: number;
+  maxCap?: number;
   attentionWorthScore?: number | null;
 }
 
@@ -73,6 +75,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
   let liveClicks = 0;
   let atomicViews = 1;
   let atomicCap = 1;
+  let maxCap = 3;
   let attentionWorthScore: number | null | undefined;
   let isEarnerNowMonetized = false;
 
@@ -212,7 +215,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     const { data: adRow, error: adFetchErr } = await supabaseAdmin
       .from("addsactive")
       .select(
-        "cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at, is_admin_post, user_email"
+        "cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at, is_paused, is_admin_post, user_email, campaign_days, created_at, approved_at, scheduled_start_at, scheduled_end_at"
       )
       .eq("id", adId)
       .maybeSingle();
@@ -285,10 +288,17 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     }
 
     const adCpi = Number(adRow.cost_per_impression) || 0;
-    const userFreqCap = Math.max(1, Number(adRow.user_frequency_cap || 1));
+    const plan = computeCampaignBroadeningPlan(adRow as any);
+    const userFreqCap = plan.effectiveUserCap;
+    maxCap = plan.maxPossibleUserCap ?? userFreqCap;
     const impressionsTarget = Number(adRow.impressions || 0);
     const impressionCount = Number(adRow.impression_count || 0);
-    const adCompleted = Boolean(adRow.completed_at) || (impressionsTarget > 0 && impressionCount >= impressionsTarget);
+    const adCompleted =
+      Boolean(adRow.completed_at) ||
+      Boolean((adRow as any).is_paused === true) ||
+      plan.isScheduledFuture ||
+      plan.isExpiredPlatformPost ||
+      (impressionsTarget > 0 && impressionCount >= impressionsTarget);
 
     if (adCompleted) {
       return {
@@ -305,11 +315,12 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
         updatedBalance: null,
         liveClicks: 0,
         atomicViews: 1,
-        atomicCap: 1,
+        atomicCap: userFreqCap,
+        maxCap,
       };
     }
 
-    // Enforce per-user frequency cap in fallback
+    // Enforce rollover-aware per-user frequency cap in fallback
     const { data: existingImp } = await supabaseAdmin
       .from("ad_impressions")
       .select("id, view_count")
@@ -319,15 +330,15 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
 
     const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
     if (existingViews >= userFreqCap) {
-      if (isRedisReady()) {
+      if (isRedisReady() && existingViews >= maxCap) {
         await redisConnection.sadd(earnedSetKey, adId).catch(() => {});
       }
       return {
         errorResponse: NextResponse.json(
           {
             success: false,
-            code: "ALREADY_EARNED",
-            error: "This ad reward has already been claimed on your account.",
+            code: "FREQUENCY_CAP_REACHED",
+            error: "Frequency cap reached for this campaign.",
             views: existingViews,
             cap: userFreqCap,
           },
@@ -339,6 +350,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
         liveClicks: 0,
         atomicViews: existingViews,
         atomicCap: userFreqCap,
+        maxCap,
       };
     }
 
@@ -539,6 +551,9 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     }
     if (atomicResult.max_views || atomicResult.cap) {
       atomicCap = Number(atomicResult.max_views ?? atomicResult.cap);
+      const stage = Number(atomicResult.broadening_stage ?? 0);
+      const remainingHeadroom = stage >= 2 ? 0 : stage === 1 ? 1 : 2;
+      maxCap = Math.min(102, atomicCap + remainingHeadroom);
     }
     if (atomicResult.is_exhausted || atomicResult.completed) {
       await evictExhaustedAdCaches(adId);
@@ -600,6 +615,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     updatedBalance,
     atomicViews,
     atomicCap,
+    maxCap,
     attentionWorthScore,
   });
 
@@ -643,6 +659,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     liveClicks,
     atomicViews,
     atomicCap,
+    maxCap,
     attentionWorthScore,
   };
 }

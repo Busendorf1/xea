@@ -6,6 +6,7 @@ import redisConnection, { isRedisReady } from "@/lib/redis";
 import { spendWalletBalanceAtomic } from "@/lib/services/payoutSettlementService";
 import { invalidateCachedProfile, invalidateCachedUserCampaigns } from "@/lib/utils/cache";
 import { verifyTransactionPin, resolveStoredWalletPinHash } from "@/lib/security/walletPinHelper";
+import { bridgeMobilePaymentCallbackUrl } from "../../../../lib/payment/paymentLookup";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -438,9 +439,28 @@ export async function POST(req: NextRequest) {
           ? "xea-auth://payment-callback"
           : `${origin}/logged-in`;
       const separator = baseCallback.includes("?") ? "&" : "?";
-      const callbackUrl = `${baseCallback}${separator}boost_ref=${encodeURIComponent(reference)}${
-        isHighlight ? "&type=highlight&tab=highlights" : ""
+      const rawCallbackUrl = `${baseCallback}${separator}boost_ref=${encodeURIComponent(reference)}${
+        isHighlight ? "&type=boost_highlight&tab=highlights" : "&type=boost_campaign"
       }`;
+      const callbackUrl = bridgeMobilePaymentCallbackUrl(rawCallbackUrl, origin);
+
+      const boostMetadata: Record<string, unknown> = {
+        user_email: emailLower,
+        ad_id: adId,
+        type: isHighlight ? "boost_highlight" : "boost_campaign",
+        is_highlight: isHighlight,
+        additional_impressions: addImpressionsNum,
+        additional_days: addDaysNum,
+        cost_per_impression: effectiveCost,
+        user_frequency_cap: userFrequencyCap,
+        gender,
+        country,
+        state,
+        province,
+        industry,
+        interest,
+        payment_method: "card",
+      };
 
       // Insert pending payment record so verify endpoint and webhooks recognize it
       await supabaseAdmin.from("payments").insert({
@@ -452,23 +472,7 @@ export async function POST(req: NextRequest) {
         description: isHighlight
           ? `Card payment boost top-up for Highlight #${adId.substring(0, 8)}`
           : `Card payment boost top-up for Ad #${adId.substring(0, 8)}`,
-        metadata: {
-          user_email: emailLower,
-          ad_id: adId,
-          type: isHighlight ? "boost_highlight" : "boost_campaign",
-          is_highlight: isHighlight,
-          additional_impressions: additionalImpressions,
-          additional_days: additionalDays,
-          cost_per_impression: effectiveCost,
-          user_frequency_cap: userFrequencyCap,
-          gender,
-          country,
-          state,
-          province,
-          industry,
-          interest,
-          payment_method: "card"
-        }
+        metadata: boostMetadata,
       });
 
       try {
@@ -477,13 +481,7 @@ export async function POST(req: NextRequest) {
           amountInNaira: totalCost,
           callbackUrl,
           metadata: {
-            user_email: emailLower,
-            ad_id: adId,
-            type: isHighlight ? "boost_highlight" : "boost_campaign",
-            is_highlight: isHighlight,
-            additional_impressions: additionalImpressions,
-            additional_days: additionalDays,
-            cost_per_impression: effectiveCost,
+            ...boostMetadata,
             boost_reference: reference,
           },
           narration: isHighlight
@@ -491,32 +489,28 @@ export async function POST(req: NextRequest) {
             : `Paayh Boost for Ad #${adId.substring(0, 8)}`,
         });
 
-        // If gateway generated a different reference (e.g. kora_pay_*), update payment record so either reference can be resolved
+        // If gateway generated a different reference (e.g. kora_pay_*), preserve full metadata + gateway reference so either resolves
         if (paymentData.reference && paymentData.reference !== reference) {
           await supabaseAdmin
             .from("payments")
             .update({
-              gateway_reference: paymentData.reference,
               metadata: {
-                user_email: emailLower,
-                ad_id: adId,
-                type: "boost_campaign",
-                additional_impressions: additionalImpressions,
-                additional_days: additionalDays,
-                cost_per_impression: effectiveCost,
-                user_frequency_cap: userFrequencyCap,
-                gender,
-                country,
-                state,
-                province,
-                industry,
-                interest,
-                payment_method: "card",
+                ...boostMetadata,
+                boost_reference: reference,
                 kora_reference: paymentData.reference,
                 gateway_reference: paymentData.reference,
               },
             })
             .eq("reference", reference);
+
+          try {
+            await supabaseAdmin
+              .from("payments")
+              .update({ gateway_reference: paymentData.reference })
+              .eq("reference", reference);
+          } catch {
+            // Optional column in older DB schemas
+          }
         }
 
         return NextResponse.json({
@@ -524,6 +518,7 @@ export async function POST(req: NextRequest) {
           paymentMethod: "card",
           paymentUrl: paymentData.authorization_url,
           reference: paymentData.reference || reference,
+          boostReference: reference,
           totalCost,
         });
       } catch (err: any) {

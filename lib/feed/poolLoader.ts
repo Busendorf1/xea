@@ -41,12 +41,19 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
 
   const fetchPromise = (async () => {
     try {
-      const buildQuery = (fields: string) => {
-        let q = supabaseReadOnly
+      const buildQuery = async (fields: string, rolloverOnly = false) => {
+        let q: any = supabaseReadOnly
           .from("addsactive")
           .select(fields)
           .is("completed_at", null)
           .or("is_paused.is.null,is_paused.eq.false");
+
+        if (rolloverOnly) {
+          if (typeof q?.eq !== "function") {
+            return { data: [], error: null };
+          }
+          q = q.eq("is_rollover", true);
+        }
 
         if (poolKey !== "__global__") {
           const safeCountry = cleanCountry.replace(/[,()]/g, "");
@@ -59,19 +66,35 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
           .order("bid_price", { ascending: false })
           .order("cost_per_impression", { ascending: false })
           .order("created_at", { ascending: false })
-          .limit(250);
+          .limit(rolloverOnly ? 60 : 250);
       };
 
-      const { data: initialAds, error: queryErr } = await buildQuery(AD_SELECT_FIELDS);
-      let fallbackAds = initialAds;
-      if (queryErr) {
-        const fallbackRes = await buildQuery(AD_SELECT_FIELDS_FALLBACK);
+      const [primaryRes, rolloverRes] = await Promise.all([
+        buildQuery(AD_SELECT_FIELDS, false),
+        buildQuery(AD_SELECT_FIELDS, true).catch(() => ({ data: null, error: null })),
+      ]);
+
+      let fallbackAds = primaryRes.data;
+      if (primaryRes.error) {
+        const fallbackRes = await buildQuery(AD_SELECT_FIELDS_FALLBACK, false);
         fallbackAds = fallbackRes.data;
       }
 
-      // 500M-scale exclusion: deactivated accounts have active ads removed on deactivation;
-      // check Redis O(k) set membership only for loaded owners if available (never scan 5000 SQL rows).
-      let rows = fallbackAds || [];
+      // Merge dedicated rollover slice (uses partial index idx_addsactive_rollover_pool_bid)
+      // so lower-bid rollover ads never starve behind 250 high-bid active campaigns
+      const mergedById = new Map<string, any>();
+      (fallbackAds || []).forEach((ad: any) => {
+        if (ad?.id) mergedById.set(String(ad.id), ad);
+      });
+      if (!rolloverRes?.error && Array.isArray(rolloverRes?.data)) {
+        rolloverRes.data.forEach((ad: any) => {
+          if (ad?.id && !mergedById.has(String(ad.id))) {
+            mergedById.set(String(ad.id), ad);
+          }
+        });
+      }
+
+      let rows = Array.from(mergedById.values());
       if (rows.length > 0 && isRedisReady()) {
         try {
           const ownerEmails = Array.from(

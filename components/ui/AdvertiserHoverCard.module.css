@@ -90,7 +90,10 @@
 .popoverDisplayNameRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .popoverDisplayName {
@@ -100,6 +103,56 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.revealedRolesRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  max-width: 100%;
+}
+
+.revealedRolePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  line-height: 1.3;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  border: 1px solid transparent;
+}
+
+.revealedRolePillCareer {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.14);
+  border-color: rgba(168, 85, 247, 0.36);
+}
+
+.revealedRolePillAffiliate {
+  color: #ca8a04;
+  background: rgba(234, 179, 8, 0.14);
+  border-color: rgba(234, 179, 8, 0.38);
+}
+
+.revealedStarPurple {
+  fill: #a855f7;
+  stroke: #7e22ce;
+  flex-shrink: 0;
+}
+
+.revealedStarGold {
+  fill: #eab308;
+  stroke: #b45309;
+  flex-shrink: 0;
 }
 
 .verifiedBadge {

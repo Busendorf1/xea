@@ -1,29 +1,51 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import LoggedInClientContainer, { TabKey } from "@/app/user/logged-in/LoggedInClientContainer";
-import DashboardClient from "@/components/DashboardClient/page";
 import { getUserProfileForDashboard } from "@/lib/getUserProfileForDashboard";
 import { isAdminEmail } from "@/lib/authHelper";
+import { extractSharedAdIdFromSearchParams } from "@/lib/utils/adShare";
 
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-  searchParams?: Promise<{ view?: string; id?: string; retry?: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
-
-const SETTINGS_TABS = ["adPage", "monetize", "myads", "profile", "statement", "news", "deactivate"];
 
 export default async function LoggedInPage({ searchParams }: PageProps) {
   const [session, resolvedParams, cookieStore] = await Promise.all([
     auth0.getSession(),
-    searchParams ? searchParams : Promise.resolve({} as { view?: string; id?: string; retry?: string }),
+    searchParams ? searchParams : Promise.resolve({} as Record<string, string | string[] | undefined>),
     cookies(),
   ]);
 
+  const urlParams = new URLSearchParams();
+  for (const [k, v] of Object.entries(resolvedParams || {})) {
+    if (typeof v === "string") urlParams.set(k, v);
+    else if (Array.isArray(v) && v.length > 0 && typeof v[0] === "string") urlParams.set(k, v[0]);
+  }
+  const sharedAdId = extractSharedAdIdFromSearchParams(urlParams);
+  const isUnavailableStatus = urlParams.get("adStatus") === "unavailable";
+
   if (!session || !session.user?.email) {
+    if (sharedAdId) {
+      redirect(`/ad/${encodeURIComponent(sharedAdId)}`);
+    }
+    if (isUnavailableStatus) {
+      redirect("/?adStatus=unavailable");
+    }
     redirect("/");
+  }
+
+  const rawView = urlParams.get("view") || undefined;
+  const rawRetry = urlParams.get("retry") || undefined;
+
+  if ((sharedAdId || isUnavailableStatus) && rawView !== "feed") {
+    const forward = new URLSearchParams({ view: "feed" });
+    if (sharedAdId) forward.set("sharedAdId", sharedAdId);
+    if (isUnavailableStatus) forward.set("adStatus", "unavailable");
+    redirect(`/logged-in?${forward.toString()}`);
   }
 
   const email = session.user.email.toLowerCase().trim();
@@ -41,8 +63,11 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
     } catch (retryErr: any) {
       console.error("❌ [LoggedInPage] Persistent profile fetch failure:", retryErr?.message || retryErr);
       // Only retry once via redirect to avoid infinite reload loops on persistent DB outages
-      if (!resolvedParams?.retry) {
-        redirect("/logged-in?view=feed&retry=1");
+      if (!rawRetry) {
+        const retryParams = new URLSearchParams({ view: "feed", retry: "1" });
+        if (sharedAdId) retryParams.set("sharedAdId", sharedAdId);
+        if (isUnavailableStatus) retryParams.set("adStatus", "unavailable");
+        redirect(`/logged-in?${retryParams.toString()}`);
       }
       redirect("/user/profile-setup");
     }
@@ -56,11 +81,11 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
     redirect("/user/profile-setup");
   }
 
+  const isSharedAdMode = Boolean(sharedAdId || isUnavailableStatus);
   const tabCookie = cookieStore.get("paayh_active_tab")?.value as TabKey | undefined;
-  const requestedView = (resolvedParams?.view || tabCookie || "feed") as TabKey;
+  const requestedView = (isSharedAdMode ? "feed" : (rawView || tabCookie || "feed")) as TabKey;
 
   const clicks = Number(profileResult.user.monetization_clicks) || 0;
-  const invites = Number(profileResult.user.referral_downloads_count) || 0;
   const initialAtwTier = profileResult.user.atw_tier || "ATW1";
   const isExemptAccount = isAdmin || Boolean(profileResult.user.is_career || profileResult.user.is_affiliate);
   const initialHasCancelled = Boolean(profileResult.user.has_cancelled_monetization);
@@ -80,9 +105,9 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
       user={profileResult.user}
       parsedInterest={profileResult.parsedInterest}
       email={profileResult.email}
-      initialAds={profileResult.initialAds}
-      initialProfiles={profileResult.initialProfiles}
-      initialHighlights={profileResult.initialHighlights}
+      initialAds={isSharedAdMode ? undefined : profileResult.initialAds}
+      initialProfiles={isSharedAdMode ? {} : profileResult.initialProfiles}
+      initialHighlights={isSharedAdMode ? [] : profileResult.initialHighlights}
     />
   );
 }

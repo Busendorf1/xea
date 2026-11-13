@@ -165,13 +165,15 @@ export async function syncPostEarnCaches(params: {
   updatedBalance: number | null;
   atomicViews: number;
   atomicCap: number;
+  maxCap?: number;
   attentionWorthScore?: number | null;
 }): Promise<void> {
-  const { emailKey, adId, liveClicks, updatedBalance, atomicViews, atomicCap, attentionWorthScore } = params;
+  const { emailKey, adId, liveClicks, updatedBalance, atomicViews, atomicCap, maxCap, attentionWorthScore } = params;
   if (!isRedisReady()) return;
 
   try {
-    const reachedCap = atomicViews >= atomicCap;
+    const permanentCap = maxCap !== undefined ? Math.max(atomicCap, maxCap) : atomicCap;
+    const reachedCap = atomicViews >= permanentCap;
     const nowIso = new Date().toISOString();
     const todayDate = nowIso.slice(0, 10);
     const earnedSetKey = `earned:ads:${emailKey}`;
@@ -229,13 +231,20 @@ export async function syncPostEarnCaches(params: {
   }
 }
 
-export async function syncPacingAndSeenSet(emailKey: string, adId: string, atomicViews: number, atomicCap: number): Promise<void> {
+export async function syncPacingAndSeenSet(
+  emailKey: string,
+  adId: string,
+  atomicViews: number,
+  atomicCap: number,
+  maxCap?: number
+): Promise<void> {
   if (!isRedisReady()) return;
   try {
     const todayDate = new Date().toISOString().slice(0, 10);
     const seenSetKey = `seen:ads:${emailKey}`;
     const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
-    const reachedCap = atomicViews >= atomicCap;
+    const permanentCap = maxCap !== undefined ? Math.max(atomicCap, maxCap) : atomicCap;
+    const reachedCap = atomicViews >= permanentCap;
 
     const pacingPromises: Promise<any>[] = [
       redisConnection.hincrby(pacingHashKey, adId, 1).catch(() => null),

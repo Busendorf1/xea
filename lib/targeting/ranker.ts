@@ -88,10 +88,16 @@ function scoreNearestAvailableMatch(ad: TargetableAd, viewer: ViewerTargetingPro
 export function rankAndFilterTargetedAds<T extends TargetableAd>(
   ads: T[],
   viewer: ViewerTargetingProfile,
-  options: { minResults?: number; seenAdIds?: Set<string>; allowNearestFallback?: boolean } = {}
+  options: {
+    minResults?: number;
+    seenAdIds?: Set<string>;
+    userViewCounts?: Map<string, number>;
+    allowNearestFallback?: boolean;
+  } = {}
 ): T[] {
   const minResults = options.minResults ?? 10;
   const seenAdIds = options.seenAdIds;
+  const userViewCounts = options.userViewCounts;
   const nowMs = Date.now();
   const disableNearestFallback = options.allowNearestFallback === false;
 
@@ -101,10 +107,19 @@ export function rankAndFilterTargetedAds<T extends TargetableAd>(
 
   for (const ad of ads) {
     if (!ad || !ad.id) continue;
-    if (seenAdIds && seenAdIds.has(String(ad.id))) continue;
 
     const plan = computeCampaignBroadeningPlan(ad, nowMs);
-    if (plan.isScheduledFuture) continue;
+    if (plan.isScheduledFuture || plan.isExpiredPlatformPost) continue;
+
+    if (seenAdIds && seenAdIds.has(String(ad.id))) {
+      const knownViews = userViewCounts?.get(String(ad.id));
+      if (plan.broadeningStage === 0) continue;
+      if (knownViews !== undefined) {
+        if (knownViews >= plan.effectiveUserCap) continue;
+      } else if (plan.effectiveUserCap <= plan.baseUserCap) {
+        continue;
+      }
+    }
 
     const strictEval = evaluateAdTargeting(ad, viewer, {
       allowRolloverPsychographics: false,

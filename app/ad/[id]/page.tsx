@@ -1,17 +1,16 @@
 import { redirect } from "next/navigation";
 import { auth0 } from "@/lib/auth0";
-import { resolvePublicAdAvailability } from "@/lib/ads/publicAdResolver";
+import { resolvePublicAdAvailability, resolvePublicSharedAdDetail } from "@/lib/ads/publicAdResolver";
 import { decodeSharedAdParam } from "@/lib/utils/adShare";
+import PublicSharedAdView from "./PublicSharedAdView";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Canonical Shared Ad & Deep Link Handler (/ad/[id]).
- * - On devices with the Paayh app installed, Universal Links / App Links open this URL natively in the app.
- * - On devices without the app (or fallback web view):
- *   - Active ads redirect cleanly into the web feed with sharedAdId preserved.
- *   - Expired / completed / missing ads NEVER show 404; they redirect to web with ?adStatus=unavailable
- *     so the user sees the 5-second auto-dismissing "This ad is no longer available" notice.
+ * - Authenticated users redirect directly into the feed single-ad view (/logged-in?view=feed&sharedAdId=...).
+ * - Unauthenticated users render ONLY that single public-safe ad (no full landing wall, no other ads).
+ * - Expired / completed / missing ads NEVER show 404 or silently show the full feed.
  */
 export default async function SharedAdDeepLinkPage({
   params,
@@ -35,20 +34,25 @@ export default async function SharedAdDeepLinkPage({
     isAuthenticated = false;
   }
 
+  if (isAuthenticated) {
+    if (!decodedId) {
+      redirect("/logged-in?view=feed&adStatus=unavailable");
+    }
+    const resolution = await resolvePublicAdAvailability(decodedId);
+    if (!resolution.available) {
+      redirect("/logged-in?view=feed&adStatus=unavailable");
+    }
+    redirect(`/logged-in?view=feed&sharedAdId=${encodeURIComponent(resolution.adId)}`);
+  }
+
   if (!decodedId) {
-    redirect(isAuthenticated ? "/logged-in?view=feed&adStatus=unavailable" : "/?adStatus=unavailable");
+    return <PublicSharedAdView unavailable reason="invalid_id" />;
   }
 
-  const resolution = await resolvePublicAdAvailability(decodedId);
-
-  if (!resolution.available) {
-    redirect(isAuthenticated ? "/logged-in?view=feed&adStatus=unavailable" : "/?adStatus=unavailable");
+  const detail = await resolvePublicSharedAdDetail(decodedId);
+  if (!detail.available) {
+    return <PublicSharedAdView unavailable reason={detail.reason} adId={decodedId} />;
   }
 
-  const encodedId = encodeURIComponent(resolution.adId);
-  redirect(
-    isAuthenticated
-      ? `/logged-in?view=feed&sharedAdId=${encodedId}`
-      : `/?sharedAdId=${encodedId}`
-  );
+  return <PublicSharedAdView ad={detail.ad} profile={detail.profile} adId={detail.ad.id} />;
 }

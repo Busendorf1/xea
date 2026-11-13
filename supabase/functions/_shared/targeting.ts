@@ -36,6 +36,10 @@ export interface CampaignCandidate {
   user_frequency_cap?: number | null;
   broadening_level?: number | null;
   created_at?: string | null;
+  approved_at?: string | null;
+  is_admin_post?: boolean | null;
+  is_rollover?: boolean | null;
+  broadening_stage?: number | null;
   bid_price?: number | null;
   is_bidded?: boolean | null;
   cost_per_impression?: number | null;
@@ -116,24 +120,45 @@ export function matchesAgeRange(targetAge: unknown, viewerAge: number | null): b
 }
 
 /**
- * Computes progressive broadening level (0 = strict, 1 = relax secondary interests,
- * 2 = relax location city/state to country, 3 = broad gender/age + country) as a
- * campaign ages past slow delivery milestones.
+ * Computes progressive broadening level (0 = strict, 1 = 80%+ duration & <80% delivery,
+ * 2 = Rollover Mode: duration ended with remaining paid impressions) aligned with web/SQL.
  */
 export function computeCampaignBroadeningLevel(ad: CampaignCandidate): number {
-  const explicit = Number(ad.broadening_level ?? 0);
+  const explicit = Number(ad.broadening_level ?? ad.broadening_stage ?? 0);
   if (Number.isFinite(explicit) && explicit > 0) {
     return Math.min(3, Math.floor(explicit));
   }
-  const created = ad.created_at ? new Date(ad.created_at).getTime() : 0;
-  if (!created || Number.isNaN(created)) return 0;
-  const ageHours = (Date.now() - created) / (1000 * 60 * 60);
-  const target = Math.max(1, Number(ad.impressions || 0));
-  const delivered = Math.max(0, Number(ad.impression_count || 0));
+
+  const isUnpaidPlatform = Boolean(
+    ad.is_admin_post ||
+      (ad.cost_per_impression !== undefined && Number(ad.cost_per_impression) <= 0) ||
+      (ad.impressions !== undefined && Number(ad.impressions) <= 0)
+  );
+  if (isUnpaidPlatform) return 0;
+
+  const schedStart = ad.scheduled_start_at ? new Date(ad.scheduled_start_at).getTime() : NaN;
+  const approved = ad.approved_at ? new Date(ad.approved_at).getTime() : NaN;
+  const created = ad.created_at ? new Date(ad.created_at).getTime() : NaN;
+  const baseLaunch = !Number.isNaN(approved) && approved > 0 ? approved : created;
+  if (!baseLaunch || Number.isNaN(baseLaunch)) return 0;
+
+  const nowMs = Date.now();
+  if (!Number.isNaN(schedStart) && schedStart > nowMs) return 0;
+  const startMs = !Number.isNaN(schedStart) && schedStart > 0 ? Math.max(baseLaunch, schedStart) : baseLaunch;
+
+  const days = Math.max(1, Math.min(365, Number(ad.campaign_days) || 1));
+  const schedEnd = ad.scheduled_end_at ? new Date(ad.scheduled_end_at).getTime() : NaN;
+  const endMs = !Number.isNaN(schedEnd) && schedEnd > startMs ? schedEnd : startMs + days * 86_400_000;
+
+  const durationMs = Math.max(3_600_000, endMs - startMs);
+  const durationRatio = Math.max(0, nowMs - startMs) / durationMs;
+
+  const target = Math.max(1, Number(ad.impressions || 1000));
+  const delivered = Math.max(0, Number(ad.impression_count ?? ad.seen_count ?? 0));
   const progress = delivered / target;
 
-  if (ageHours >= 72 && progress < 0.25) return 2;
-  if (ageHours >= 24 && progress < 0.15) return 1;
+  if (durationRatio >= 1.0 && delivered < target) return 2;
+  if (durationRatio >= 0.8 && progress < 0.8) return 1;
   return 0;
 }
 

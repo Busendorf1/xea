@@ -7,6 +7,7 @@ import redisConnection from "@/lib/redis";
 import { processSuccessfulPayment } from "@/lib/payment/processPayment";
 import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
+import { findPaymentByAnyReference } from "../../../../lib/payment/paymentLookup";
 
 function safeCompareHex(a: string, b: string): boolean {
   const bufA = Buffer.from(a, "utf8");
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
     const bodyText = await req.text();
     const candidateSecrets = [
       process.env.KORA_SECRET_KEY,
+      process.env.KORAPAY_SECRET_KEY,
+      process.env.KORA_SECRET,
       process.env.KORA_LIVE_SECRET_KEY,
       process.env.KORA_TEST_SECRET_KEY,
     ]
@@ -87,14 +90,18 @@ export async function POST(req: NextRequest) {
 
     const isSuccessful =
       event === "transfer.success" ||
+      event === "charge.success" ||
       data.status === "success" ||
       data.status === "successful";
 
     const isFailed =
       event === "transfer.failed" ||
       event === "transfer.reversed" ||
+      event === "charge.failed" ||
+      event === "charge.expired" ||
       data.status === "failed" ||
-      data.status === "reversed";
+      data.status === "reversed" ||
+      data.status === "expired";
 
     // 3. Await Deterministic Processing Before Returning 200 OK
     await executeKoraWebhook(reference, event, data, isSuccessful, isFailed);
@@ -119,26 +126,27 @@ async function executeKoraWebhook(
   isSuccessful: boolean,
   isFailed: boolean
 ) {
-  const { data: payment, error: fetchErr } = await supabaseAdmin
-    .from("payments")
-    .select("*")
-    .eq("reference", reference)
-    .maybeSingle();
+  const { data: payment, error: fetchErr } = await findPaymentByAnyReference(
+    reference,
+    data?.metadata?.boost_reference || data?.payment_reference
+  );
 
   if (fetchErr) {
     throw new Error(`Kora Webhook: Failed to fetch payment record: ${fetchErr.message}`);
   }
+
+  const canonicalRef = String(payment?.reference || reference);
 
   if (isSuccessful) {
     const amount = typeof data.amount === "number" ? data.amount : parseFloat(data.amount || payment?.amount || 0);
 
     // Branch A: Payout / Withdrawal Completion
     if (payment && payment.type === "withdrawal") {
-      await settleWithdrawalByReference(reference, "success", "Kora transfer.success", {
+      await settleWithdrawalByReference(canonicalRef, "success", "Kora transfer.success", {
         kora_fee: data.fee,
         kora_data: data,
       });
-      console.log(`✅ Kora Webhook: Withdrawal finalized successfully for ${payment.user_email} [${reference}]`);
+      console.log(`✅ Kora Webhook: Withdrawal finalized successfully for ${payment.user_email} [${canonicalRef}]`);
     } else {
       // Branch B: Inbound Collection (Ad, Highlight, Boost, Monetization, or Brand Subscription)
       const metadata = {
@@ -147,22 +155,22 @@ async function executeKoraWebhook(
       };
       const userEmail = metadata.user_email || metadata.userEmail || metadata.email || payment?.user_email;
 
-      await processSuccessfulPayment(reference, metadata, amount);
+      await processSuccessfulPayment(canonicalRef, metadata, amount);
       if (userEmail) {
         await invalidateCachedProfile(userEmail);
       }
-      console.log(`✅ Kora Webhook: Inbound payment processed successfully for ${userEmail} [${reference}]`);
+      console.log(`✅ Kora Webhook: Inbound payment processed successfully for ${userEmail} [${canonicalRef}]`);
     }
   } else if (isFailed) {
     if (payment && payment.type === "withdrawal") {
       const outcome = event === "transfer.reversed" || data.status === "reversed" ? "reversed" : "failed";
       await settleWithdrawalByReference(
-        reference,
+        canonicalRef,
         outcome,
         data.message || "Payout rejected or reversed by bank",
         { kora_data: data }
       );
-      console.log(`⚠️ Kora Webhook: Withdrawal ${outcome} and refunded for ${payment.user_email} [${reference}]`);
+      console.log(`⚠️ Kora Webhook: Withdrawal ${outcome} and refunded for ${payment.user_email} [${canonicalRef}]`);
     } else if (payment && payment.status !== "failed") {
       await supabaseAdmin
         .from("payments")
@@ -174,7 +182,7 @@ async function executeKoraWebhook(
             kora_data: data,
           },
         })
-        .eq("reference", reference);
+        .eq("reference", canonicalRef);
     }
   }
 }

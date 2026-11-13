@@ -15,7 +15,9 @@ import { verifyTransactionPinEdge } from "../_shared/walletPin.ts";
 function isSafeCallbackUrl(url: unknown): string {
   const raw = String(url || "").trim();
   if (!raw) return "xea-auth://payment-callback";
-  if (raw.startsWith("xea-auth://")) return raw;
+  if (raw.startsWith("xea-auth://") || raw.startsWith("xea://") || raw.startsWith("exp://")) {
+    return raw;
+  }
   const checked = validateSafeUrl(raw, { allowRelativePath: false });
   return checked.valid && checked.sanitized
     ? checked.sanitized
@@ -367,21 +369,58 @@ export async function handleVerify(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const reference = String(body?.reference || body?.tx_ref || "").trim();
+  const gatewayRefParam = String(body?.gateway_reference || "").trim();
   if (!reference) {
     return errorResponse("Payment reference is required.", 400);
   }
 
   // 1. Require existing payment record in DB (fixes !existingPayment replay bypass)
-  const { data: existingPayment, error: lookupErr } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("reference", reference)
-    .maybeSingle();
+  // Resolve by primary reference or stored gateway reference (e.g. kora_pay_*)
+  // deno-lint-ignore no-explicit-any
+  let existingPayment: any = null;
+  let lookupErr: { message?: string } | null = null;
+  for (const cand of [reference, gatewayRefParam].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i)) {
+    const { data: d1, error: e1 } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("reference", cand)
+      .maybeSingle();
+    if (e1) {
+      lookupErr = e1;
+      break;
+    }
+    if (d1) {
+      existingPayment = d1;
+      break;
+    }
+    try {
+      const { data: d2, error: e2 } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("gateway_reference", cand)
+        .maybeSingle();
+      if (!e2 && d2) {
+        existingPayment = d2;
+        break;
+      }
+    } catch {
+      // Optional column
+    }
+    const [{ data: d3 }, { data: d4 }] = await Promise.all([
+      supabase.from("payments").select("*").contains("metadata", { kora_reference: cand }).maybeSingle(),
+      supabase.from("payments").select("*").contains("metadata", { gateway_reference: cand }).maybeSingle(),
+    ]);
+    if (d3 || d4) {
+      existingPayment = d3 || d4;
+      break;
+    }
+  }
 
   if (lookupErr || !existingPayment) {
     return errorResponse("Payment record not found for this reference.", 404);
   }
 
+  const canonicalRef = String(existingPayment.reference || reference);
   const recordOwner = String(existingPayment.user_email || "").toLowerCase().trim();
   if (verifiedIdentity !== "service_role" && recordOwner !== cleanEmail) {
     return errorResponse("You do not own this payment reference.", 403);
@@ -391,8 +430,9 @@ export async function handleVerify(
   if (currentStatus === "success" || currentStatus === "completed") {
     return jsonResponse({
       success: true,
+      status: "success",
       alreadyProcessed: true,
-      reference,
+      reference: canonicalRef,
       message: "Payment has already been verified and applied.",
     });
   }
@@ -403,9 +443,24 @@ export async function handleVerify(
     : String(existingPayment.description || "").toLowerCase().includes("kora")
     ? "kora"
     : undefined;
+  const targetGatewayRef = String(
+    gatewayRefParam ||
+      existingPayment.metadata?.gateway_reference ||
+      existingPayment.metadata?.kora_reference ||
+      existingPayment.gateway_reference ||
+      canonicalRef,
+  ).trim();
 
-  const verified = await verifyPaymentWithProvider(reference, preferredProvider);
+  const verified = await verifyPaymentWithProvider(targetGatewayRef, preferredProvider);
   if (!verified.success || verified.status !== "success") {
+    if (verified.status === "pending") {
+      return jsonResponse({
+        success: false,
+        status: "pending",
+        reference: canonicalRef,
+        message: verified.error || "Payment is still confirming on gateway.",
+      });
+    }
     return errorResponse(verified.error || "Gateway payment verification failed.", 400);
   }
 
@@ -422,7 +477,7 @@ export async function handleVerify(
           gateway_currency: verified.currency,
         },
       })
-      .eq("reference", reference)
+      .eq("reference", canonicalRef)
       .eq("status", "pending");
 
     return errorResponse(
@@ -438,7 +493,7 @@ export async function handleVerify(
       status: "success",
       verified_at: new Date().toISOString(),
     })
-    .eq("reference", reference)
+    .eq("reference", canonicalRef)
     .eq("status", "pending")
     .select("*")
     .maybeSingle();
@@ -446,8 +501,9 @@ export async function handleVerify(
   if (claimErr || !claimed) {
     return jsonResponse({
       success: true,
+      status: "success",
       alreadyProcessed: true,
-      reference,
+      reference: canonicalRef,
       message: "Payment already claimed and processed.",
     });
   }
@@ -458,7 +514,7 @@ export async function handleVerify(
     payType,
     recordOwner,
     expectedAmount,
-    { ...(claimed.metadata || {}), reference },
+    { ...(claimed.metadata || {}), reference: canonicalRef },
   );
 
   if (!activation.success) {
@@ -468,20 +524,22 @@ export async function handleVerify(
       recordOwner,
       expectedAmount,
       `gateway_activation_fallback:${payType}`,
-      `fallback_${reference}`,
+      `fallback_${canonicalRef}`,
     );
     return jsonResponse({
       success: true,
+      status: "success",
       fallbackCredited: true,
-      reference,
+      reference: canonicalRef,
       message: `Payment succeeded, but activation could not complete (${activation.error}). Funds have been safely credited to your wallet.`,
     });
   }
 
   return jsonResponse({
     success: true,
+    status: "success",
     provider: verified.provider,
-    reference,
+    reference: canonicalRef,
     amount: expectedAmount,
     activatedId: activation.activatedId,
     message: activation.message || "Payment verified and applied successfully.",

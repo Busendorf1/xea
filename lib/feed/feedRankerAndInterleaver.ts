@@ -44,10 +44,16 @@ export function buildOrderedCandidateFeed(params: BuildFeedCandidatesParams): {
     nowMs,
   } = params;
 
+  const userViewCounts = new Map<string, number>();
+  userImpressionMap.forEach((info, id) => {
+    userViewCounts.set(id, Number(info?.view_count || 0));
+  });
+
   // Enforce strict demographic/geo/psychographic targeting WITHOUT unconditional Pass 3 fallback bypass
   const ads = rankAndFilterTargetedAds(rawAds, { ...viewerProfile, email: emailKey }, {
     minResults: 15,
     seenAdIds: seenAdIdsSet,
+    userViewCounts,
     allowNearestFallback: false,
   });
 
@@ -67,16 +73,26 @@ export function buildOrderedCandidateFeed(params: BuildFeedCandidatesParams): {
     if (impressionsTarget > 0 && impressionCount >= impressionsTarget) return;
 
     const plan = computeCampaignBroadeningPlan(ad, nowMs);
-    if (plan.isScheduledFuture) return;
+    if (plan.isScheduledFuture || plan.isExpiredPlatformPost) return;
+
+    const dailyCap = Number(ad.daily_impression_cap || 0);
+    if (dailyCap > 0 && ad.last_reset_date === todayDate) {
+      const effectiveDailyCap = dailyCap + Math.max(0, Number(ad.rollover_balance || 0));
+      if (Number(ad.daily_impression_count || 0) >= effectiveDailyCap) return;
+    }
 
     const imp = userImpressionMap.get(ad.id);
-    const totalViews = Math.max(
-      imp?.view_count || 0,
-      seenAdIdsSet.has(ad.id) ? plan.effectiveUserCap : 0
-    );
+    const totalViews = imp
+      ? imp.view_count || 0
+      : seenAdIdsSet.has(ad.id)
+      ? plan.baseUserCap
+      : 0;
 
     if (!isViewerAdmin && !ad.is_admin_post && totalViews >= plan.effectiveUserCap) {
-      completedOrCappedAdIds.push(ad.id);
+      // Only add to long-lived seen:ads Redis set once user reaches maximum possible rollover cap
+      if (totalViews >= plan.maxPossibleUserCap) {
+        completedOrCappedAdIds.push(ad.id);
+      }
       return;
     }
 
@@ -94,13 +110,8 @@ export function buildOrderedCandidateFeed(params: BuildFeedCandidatesParams): {
       }
     }
 
-    const isRollover = plan.durationRatio >= 1.0 && impressionsTarget > 0 && impressionCount < impressionsTarget;
-    ad.is_rollover = isRollover;
+    ad.is_rollover = plan.isRollover;
     ad.broadening_stage = plan.broadeningStage;
-
-    const isPlatformFreeAd =
-      (!ad.cost_per_impression || Number(ad.cost_per_impression) === 0) && impressionsTarget === 0;
-    if (isPlatformFreeAd && plan.durationRatio > 1.0) return;
 
     seenCandidateIds.add(ad.id);
     if (totalViews > 0) {

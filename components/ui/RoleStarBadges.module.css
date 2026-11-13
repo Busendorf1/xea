@@ -1,9 +1,12 @@
 .container {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
   vertical-align: middle;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  max-width: 100%;
+  min-width: 0;
   user-select: none;
 }
 
@@ -12,8 +15,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: help;
+  cursor: pointer;
   line-height: 1;
+  flex-shrink: 1;
+  max-width: 100%;
   transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -35,7 +40,10 @@
   letter-spacing: 0.02em;
   padding: 3px 8px;
   border-radius: 5px;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: min(200px, calc(100vw - 24px));
+  text-align: center;
+  line-height: 1.25;
   pointer-events: none;
   z-index: 1000;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
@@ -54,7 +62,8 @@
   border-color: rgba(18, 18, 18, 0.96) transparent transparent transparent;
 }
 
-.starItem:hover .tooltip {
+.starItem:hover .tooltip,
+.starItemActive .tooltip {
   visibility: visible;
   opacity: 1;
   transform: translateX(-50%) translateY(-1px);
@@ -79,6 +88,8 @@
   font-weight: 700;
   color: #9333ea;
   margin-left: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .labelGold {
@@ -86,4 +97,6 @@
   font-weight: 700;
   color: #ca8a04;
   margin-left: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

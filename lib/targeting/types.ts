@@ -52,6 +52,14 @@ export interface TargetableAd {
   is_boosted?: boolean | null;
   boosted_amount?: number | string | null;
   boosted_at?: string | null;
+  is_rollover?: boolean | null;
+  rollover_started_at?: string | null;
+  rollover_notified_at?: string | null;
+  rollover_balance?: number | null;
+  daily_impression_cap?: number | null;
+  daily_impression_count?: number | null;
+  last_reset_date?: string | null;
+  broadening_stage?: number | null;
   [key: string]: any;
 }
 
@@ -59,6 +67,9 @@ export type BroadeningStage = 0 | 1 | 2;
 
 export interface CampaignBroadeningPlan {
   isScheduledFuture: boolean;
+  isPlatformPost: boolean;
+  isRollover: boolean;
+  isExpiredPlatformPost: boolean;
   startMs: number;
   endMs: number;
   durationMs: number;
@@ -69,6 +80,7 @@ export interface CampaignBroadeningPlan {
   broadeningStage: BroadeningStage;
   baseUserCap: number;
   effectiveUserCap: number;
+  maxPossibleUserCap: number;
   dailyUserCap: number;
   minSpacingMs: number;
   urgencyMultiplier: number;

@@ -9,6 +9,7 @@ import { invalidateCachedProfile } from "@/lib/utils/cache";
 import redisConnection from "@/lib/redis";
 import { captureApiException } from "@/lib/logger";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
+import { findPaymentByAnyReference } from "../../../../lib/payment/paymentLookup";
 
 export async function GET(req: NextRequest) {
   let email: string | null = null;
@@ -25,12 +26,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Reference parameter is required" }, { status: 400 });
     }
 
-    // 1. Fetch payment from DB to make sure it belongs to the current user
-    const { data: payment, error: dbError } = await supabaseAdmin
-      .from("payments")
-      .select("*")
-      .eq("reference", reference)
-      .maybeSingle();
+    // 1. Fetch payment from DB by primary reference or stored gateway reference (e.g. kora_pay_*)
+    const { data: payment, error: dbError } = await findPaymentByAnyReference(
+      reference,
+      paramGatewayRef
+    );
 
     if (dbError) {
       console.error("❌ Error fetching payment for verification:", dbError);
@@ -102,6 +102,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const canonicalRef = String(payment.reference || reference);
+
     // 3. Branch B: Inbound Payment Verification (Ads, Highlights, Brand Subscriptions)
     // Use gateway reference (e.g. kora_pay_*) if available from query param, metadata, or column
     const targetGatewayRef =
@@ -109,7 +111,7 @@ export async function GET(req: NextRequest) {
       (payment.metadata?.gateway_reference as string) ||
       (payment.metadata?.kora_reference as string) ||
       (payment.gateway_reference as string) ||
-      reference;
+      canonicalRef;
     
     let verifyResult: {
       success: boolean;
@@ -130,16 +132,20 @@ export async function GET(req: NextRequest) {
       }, { status: 200 });
     }
 
+    const gatewayStatusLower = String(verifyResult.status || "").toLowerCase().trim();
     if (!verifyResult.success) {
-      if (verifyResult.status === "failed") {
+      if (gatewayStatusLower === "failed" || gatewayStatusLower === "expired" || gatewayStatusLower === "abandoned") {
         await supabaseAdmin
           .from("payments")
           .update({ status: "failed" })
-          .eq("reference", reference);
+          .eq("reference", canonicalRef);
       }
       return NextResponse.json({
         success: false,
-        status: verifyResult.status,
+        status:
+          gatewayStatusLower === "pending" || gatewayStatusLower === "processing"
+            ? "pending"
+            : gatewayStatusLower || verifyResult.status,
         message: `Payment status on gateway is: ${verifyResult.status}`,
       });
     }
@@ -148,11 +154,11 @@ export async function GET(req: NextRequest) {
     const expectedAmount = Number(payment.amount || 0);
     const paidAmount = Number(verifyResult.amount || 0);
     if (!Number.isFinite(paidAmount) || paidAmount <= 0 || (expectedAmount > 0 && paidAmount < expectedAmount - 0.01)) {
-      console.error(`❌ Gateway amount mismatch for ${reference}: paid=${paidAmount}, expected=${expectedAmount}`);
+      console.error(`❌ Gateway amount mismatch for ${canonicalRef}: paid=${paidAmount}, expected=${expectedAmount}`);
       await supabaseAdmin
         .from("payments")
         .update({ status: "failed" })
-        .eq("reference", reference)
+        .eq("reference", canonicalRef)
         .eq("status", "pending");
       return NextResponse.json(
         {
@@ -169,7 +175,7 @@ export async function GET(req: NextRequest) {
       ...(payment.metadata || {}),
       ...(verifyResult.metadata || {}),
     };
-    const processResult = await processSuccessfulPayment(reference, metadata, paidAmount);
+    const processResult = await processSuccessfulPayment(canonicalRef, metadata, paidAmount);
 
     // Invalidate user cache and statement cache
     const emailLower = email.toLowerCase().trim();

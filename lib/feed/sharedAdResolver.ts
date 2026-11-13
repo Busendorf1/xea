@@ -26,15 +26,20 @@ export async function resolveSharedAdForFeed(params: {
   let profilesMap = params.profilesMap;
   let sharedAdUnavailable = false;
 
-  if (!sharedAdId || offset !== 0) {
+  if (!sharedAdId) {
     return { pageAds, profilesMap, sharedAdUnavailable };
+  }
+
+  // In single-ad shared mode, pagination offsets beyond 0 never return extra feed ads
+  if (offset !== 0) {
+    return { pageAds: [], profilesMap: {}, sharedAdUnavailable: false };
   }
 
   try {
     const cleanSharedId = String(sharedAdId).trim();
     const isValidSharedId = /^[a-zA-Z0-9_-]{1,128}$/.test(cleanSharedId);
     if (!isValidSharedId) {
-      return { pageAds, profilesMap, sharedAdUnavailable: true };
+      return { pageAds: [], profilesMap: {}, sharedAdUnavailable: true };
     }
 
     const l1Shared = l1AdDetailsCache.get(cleanSharedId);
@@ -64,14 +69,14 @@ export async function resolveSharedAdForFeed(params: {
         .eq("id", cleanSharedId)
         .maybeSingle();
 
-      let sharedDb = initialSharedDb;
+      let sharedDb: Record<string, any> | null = initialSharedDb as Record<string, any> | null;
       if (sharedErr) {
         const fbRes = await supabaseReadOnly
           .from("addsactive")
           .select(AD_SELECT_FIELDS_FALLBACK)
           .eq("id", cleanSharedId)
           .maybeSingle();
-        sharedDb = fbRes.data;
+        sharedDb = fbRes.data as Record<string, any> | null;
       }
 
       if (sharedDb && isSharedAdValid(sharedDb as Ad)) {
@@ -91,29 +96,35 @@ export async function resolveSharedAdForFeed(params: {
     }
 
     if (sharedAd) {
-      pageAds = [sharedAd, ...pageAds.filter((a) => String(a.id) !== String(sharedAd!.id))];
+      // Strictly return ONLY the shared ad (never prepend onto general feed ads)
+      pageAds = [sharedAd];
 
       const sharedPubEmail = sharedAd.user_email;
+      const nextProfilesMap: Record<string, AdvertiserProfile> = {};
       if (sharedPubEmail) {
         const sharedPubLower = sharedPubEmail.toLowerCase().trim();
-        if (!profilesMap[sharedPubLower]) {
-          profilesMap = { ...profilesMap };
+        if (profilesMap[sharedPubLower]) {
+          nextProfilesMap[sharedPubLower] = profilesMap[sharedPubLower];
+        } else {
           const cachedSharedPub = l1PublisherProfilesCache.get(sharedPubLower);
           if (cachedSharedPub && Date.now() < cachedSharedPub.expiresAt) {
-            profilesMap[sharedPubLower] = cachedSharedPub.profile;
+            nextProfilesMap[sharedPubLower] = cachedSharedPub.profile;
           } else {
-            const { data: sharedPubRow, error: sharedPubErr } = await supabaseReadOnly
+            const usersQuery: any = supabaseReadOnly
               .from("users")
               .select(
                 'email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized, is_career, is_affiliate, affiliate_role'
               )
-              .in("email", [sharedPubEmail, sharedPubLower])
-              .limit(1)
-              .maybeSingle();
+              .in("email", [sharedPubEmail, sharedPubLower]);
+            const pubRes =
+              typeof usersQuery?.limit === "function"
+                ? await usersQuery.limit(1).maybeSingle()
+                : await usersQuery;
+            const sharedPubRow = Array.isArray(pubRes?.data) ? pubRes.data[0] : pubRes?.data;
 
-            if (!sharedPubErr && sharedPubRow?.email) {
+            if (!pubRes?.error && sharedPubRow?.email) {
               const formatted = formatPublisherProfile(sharedPubRow);
-              profilesMap[sharedPubLower] = formatted;
+              nextProfilesMap[sharedPubLower] = formatted;
               l1PublisherProfilesCache.set(sharedPubLower, {
                 profile: formatted,
                 expiresAt: Date.now() + 5 * 60 * 1000,
@@ -122,11 +133,17 @@ export async function resolveSharedAdForFeed(params: {
           }
         }
       }
+      profilesMap = nextProfilesMap;
     } else {
+      pageAds = [];
+      profilesMap = {};
       sharedAdUnavailable = true;
     }
   } catch (sErr) {
     console.error("❌ Error resolving shared ad on server:", sErr);
+    pageAds = [];
+    profilesMap = {};
+    sharedAdUnavailable = true;
   }
 
   return { pageAds, profilesMap, sharedAdUnavailable };

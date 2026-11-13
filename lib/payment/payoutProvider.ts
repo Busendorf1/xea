@@ -213,7 +213,8 @@ export class PayoutProvider {
           params.amountInNaira,
           params.callbackUrl,
           params.metadata,
-          params.narration
+          params.narration,
+          params.channels
         );
         return {
           authorization_url: res.checkout_url,
@@ -244,15 +245,18 @@ export class PayoutProvider {
     reference: string;
     metadata?: Record<string, unknown>;
   }> {
-    const isKoraRef = reference.startsWith("kora_");
+    const cleanRef = String(reference || "").trim();
+    const isKoraRef = cleanRef.startsWith("kora_");
+    const isPaystackRef = cleanRef.startsWith("ref_") || cleanRef.startsWith("BOOST-") || cleanRef.startsWith("sub_");
     const active = this.getActiveGateway();
 
-    if (isKoraRef || active === "kora") {
+    if (isKoraRef || (active === "kora" && !cleanRef.startsWith("ref_"))) {
       try {
-        const res = await KoraService.verifyCharge(reference);
+        const res = await KoraService.verifyCharge(cleanRef);
+        const normalized = String(res.status || "").toLowerCase().trim();
         return {
-          success: res.status === "success" || res.status === "successful",
-          status: res.status,
+          success: normalized === "success" || normalized === "successful",
+          status: normalized,
           amount: res.amount,
           reference: res.reference,
           metadata: res.metadata,
@@ -261,15 +265,17 @@ export class PayoutProvider {
         console.warn("⚠️ Kora charge verification failed, checking Paystack fallback:", getErrorMessage(koraErr));
         if (!isKoraRef) {
           try {
-            const paystackRes = await PaystackService.verifyTransaction(reference);
+            const paystackRes = await PaystackService.verifyTransaction(cleanRef);
+            const normalized = String(paystackRes.status || "").toLowerCase().trim();
             return {
-              success: paystackRes.status === "success",
-              status: paystackRes.status,
+              success: normalized === "success",
+              status: normalized,
               amount: paystackRes.amount / 100,
               reference: paystackRes.reference,
               metadata: paystackRes.metadata,
             };
           } catch {
+            if (!isPaystackRef) throw koraErr;
             throw koraErr;
           }
         }
@@ -279,20 +285,22 @@ export class PayoutProvider {
 
     // Paystack primary mode with fallback to Kora
     try {
-      const paystackRes = await PaystackService.verifyTransaction(reference);
+      const paystackRes = await PaystackService.verifyTransaction(cleanRef);
+      const normalized = String(paystackRes.status || "").toLowerCase().trim();
       return {
-        success: paystackRes.status === "success",
-        status: paystackRes.status,
+        success: normalized === "success",
+        status: normalized,
         amount: paystackRes.amount / 100,
         reference: paystackRes.reference,
         metadata: paystackRes.metadata,
       };
     } catch (paystackErr: unknown) {
       console.warn("⚠️ Paystack verification failed, attempting Kora fallback:", getErrorMessage(paystackErr));
-      const res = await KoraService.verifyCharge(reference);
+      const res = await KoraService.verifyCharge(cleanRef);
+      const normalized = String(res.status || "").toLowerCase().trim();
       return {
-        success: res.status === "success" || res.status === "successful",
-        status: res.status,
+        success: normalized === "success" || normalized === "successful",
+        status: normalized,
         amount: res.amount,
         reference: res.reference,
         metadata: res.metadata,

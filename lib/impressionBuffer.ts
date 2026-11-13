@@ -199,6 +199,35 @@ async function applyBatchedSeenDeltaToAd(
   adOwnerEmail?: string | null
 ): Promise<number | undefined> {
   if (delta <= 0) return undefined;
+
+  // Prefer atomic PostgreSQL sharded increment RPC (handles concurrent flushes, daily rollover & archival)
+  try {
+    const rpcOut = await supabaseAdmin.rpc("increment_ad_impressions_bulk", {
+      p_ad_id: adId,
+      p_count: delta,
+    });
+    if (!rpcOut?.error && rpcOut?.data) {
+      const row = Array.isArray(rpcOut.data) ? rpcOut.data[0] : rpcOut.data;
+      const newCount = Number((row as any)?.new_impression_count ?? 0);
+      const isExhausted = Boolean((row as any)?.is_exhausted);
+      if (isExhausted) {
+        try {
+          const { evictAdFromL1FeedCaches } = await import("@/lib/utils/cache");
+          evictAdFromL1FeedCaches(adId);
+        } catch {}
+        if (isRedisReady()) {
+          redisConnection
+            .del(`ad:detail:${adId}`, `ad:public:status:${adId}`, "campaigns:shared_pool:v1", "bids:zset:global")
+            .catch(() => {});
+        }
+      }
+      if (adOwnerEmail) {
+        invalidateCachedUserCampaigns(adOwnerEmail).catch(() => {});
+      }
+      return newCount;
+    }
+  } catch {}
+
   const nowIso = new Date().toISOString();
 
   let targetTable = "addsactive";
@@ -271,7 +300,7 @@ async function applyBatchedSeenDeltaToAd(
     } catch {}
     if (isRedisReady()) {
       redisConnection
-        .del(`ad:detail:${adId}`, "campaigns:shared_pool:v1", "bids:zset:global")
+        .del(`ad:detail:${adId}`, `ad:public:status:${adId}`, "campaigns:shared_pool:v1", "bids:zset:global")
         .catch(() => {});
     }
   }

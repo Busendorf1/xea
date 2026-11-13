@@ -134,11 +134,56 @@ export function calculateGatewayCharge(amountNaira: number): {
   };
 }
 
+function bridgeEdgeCallbackUrl(callbackUrl?: string): string {
+  const raw = String(callbackUrl || "").trim();
+  if (!raw) return "https://paayh.com/logged-in";
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("http://") || lower.startsWith("https://")) {
+    return raw;
+  }
+  const baseCallback = (Deno.env.get("APP_BASE_URL") || "https://paayh.com").replace(/\/+$/, "");
+  const qIndex = raw.indexOf("?");
+  const baseScheme = qIndex === -1 ? raw : raw.slice(0, qIndex);
+  const url = new URL(`${baseCallback}/api/payments/mobile-callback`);
+  url.searchParams.set("redirect", baseScheme);
+  if (qIndex !== -1) {
+    const extra = new URLSearchParams(raw.slice(qIndex + 1));
+    extra.forEach((v, k) => {
+      if (k !== "redirect") url.searchParams.set(k, v);
+    });
+  }
+  return url.toString();
+}
+
+function sanitizeKoraMetadata(
+  email: string,
+  metadata?: Record<string, unknown>,
+): Record<string, string | number | boolean> {
+  const clean: Record<string, string | number | boolean> = {
+    type: String(metadata?.type || "campaign").slice(0, 50),
+    user_email: String(metadata?.user_email || email).slice(0, 50),
+  };
+  if (!metadata) return clean;
+  for (const [key, val] of Object.entries(metadata)) {
+    if (key === "type" || key === "user_email" || val === null || val === undefined) continue;
+    if (typeof val === "number" && Number.isFinite(val)) {
+      clean[key] = val;
+    } else if (typeof val === "boolean") {
+      clean[key] = val;
+    } else if (typeof val === "string" && val.trim() !== "") {
+      clean[key] = val.slice(0, 50);
+    }
+  }
+  return clean;
+}
+
 export async function initializePayment(
   params: InitializePaymentParams,
 ): Promise<InitializePaymentResult> {
   const primary = getActiveGateway();
   const order: GatewayName[] = primary === "kora" ? ["kora", "paystack"] : ["paystack", "kora"];
+  const normalizedAmount = Math.round(Number(params.amount) * 100) / 100;
+  const resolvedCallback = bridgeEdgeCallbackUrl(params.callbackUrl);
 
   let lastError = "No payment gateway configured";
 
@@ -147,53 +192,36 @@ export async function initializePayment(
       const secret = getKoraSecretKey();
       if (!secret) continue;
       try {
+        const koraMeta = sanitizeKoraMetadata(params.email, params.metadata);
         const buildKoraBody = (redirectTarget: string) =>
           JSON.stringify({
-            amount: params.amount,
+            amount: normalizedAmount,
             redirect_url: redirectTarget,
             notification_url:
               Deno.env.get("KORA_WEBHOOK_URL") ||
               "https://paayh.com/api/payments/kora-webhook",
             currency: "NGN",
             reference: params.reference,
-            narration: (params.metadata?.type as string) || "XEA Wallet/Campaign Payment",
-            channels: params.channels || ["card", "bank_transfer"],
-            default_channel: "card",
+            narration: String(params.metadata?.type || "XEA Wallet/Campaign Payment").slice(0, 100),
+            ...(params.channels && params.channels.length > 0
+              ? { channels: params.channels, default_channel: params.channels[0] }
+              : {}),
             customer: {
-              email: params.email,
-              name: params.customerName || params.email.split("@")[0] || "XEA User",
+              email: params.email.toLowerCase().trim(),
+              name: (params.customerName || params.email.split("@")[0] || "XEA User").slice(0, 60),
             },
-            metadata: params.metadata || {},
+            metadata: koraMeta,
           });
 
-        let res = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
+        const res = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${secret}`,
             "Content-Type": "application/json",
           },
-          body: buildKoraBody(params.callbackUrl || "https://paayh.com"),
+          body: buildKoraBody(resolvedCallback),
         });
-        let data = await res.json().catch(() => ({}));
-        if (
-          (!res.ok || !data?.status) &&
-          params.callbackUrl &&
-          !params.callbackUrl.startsWith("http://") &&
-          !params.callbackUrl.startsWith("https://")
-        ) {
-          const bounceUrl = `https://paayh.com/api/payments/mobile-callback?redirect=${encodeURIComponent(
-            params.callbackUrl,
-          )}`;
-          res = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${secret}`,
-              "Content-Type": "application/json",
-            },
-            body: buildKoraBody(bounceUrl),
-          });
-          data = await res.json().catch(() => ({}));
-        }
+        const data = await res.json().catch(() => ({}));
         if (res.ok && data?.status && data?.data?.checkout_url) {
           return {
             success: true,
@@ -221,9 +249,9 @@ export async function initializePayment(
           },
           body: JSON.stringify({
             email: params.email,
-            amount: Math.round(params.amount * 100),
+            amount: Math.round(normalizedAmount * 100),
             reference: params.reference,
-            callback_url: params.callbackUrl,
+            callback_url: resolvedCallback,
             metadata: params.metadata || {},
           }),
         });
@@ -257,13 +285,21 @@ export async function verifyPaymentWithProvider(
   reference: string,
   preferredProvider?: GatewayName,
 ): Promise<VerifyPaymentResult> {
-  const order: GatewayName[] = preferredProvider
+  const cleanRef = String(reference || "").trim();
+  const isKoraRef = cleanRef.startsWith("kora_");
+  const isPaystackRef = cleanRef.startsWith("ref_");
+  const order: GatewayName[] = isKoraRef
+    ? ["kora", "paystack"]
+    : isPaystackRef
+    ? ["paystack", "kora"]
+    : preferredProvider
     ? [preferredProvider, preferredProvider === "kora" ? "paystack" : "kora"]
     : getActiveGateway() === "kora"
     ? ["kora", "paystack"]
     : ["paystack", "kora"];
 
   let lastError = "Verification failed";
+  let lastStatus: string = "failed";
 
   for (const provider of order) {
     if (provider === "kora") {
@@ -271,7 +307,7 @@ export async function verifyPaymentWithProvider(
       if (!secret) continue;
       try {
         const res = await fetch(
-          `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,
+          `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(cleanRef)}`,
           {
             headers: {
               Authorization: `Bearer ${secret}`,
@@ -280,20 +316,24 @@ export async function verifyPaymentWithProvider(
           },
         );
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data?.status && data?.data?.status === "success") {
+        const koraStatus = String(data?.data?.status || "").toLowerCase().trim();
+        if (res.ok && data?.status && (koraStatus === "success" || koraStatus === "successful")) {
           return {
             success: true,
             provider: "kora",
             status: "success",
-            amountPaid: Number(data.data.amount || 0),
+            amountPaid: Number(data.data.amount ?? data.data.amount_paid ?? 0),
             currency: String(data.data.currency || "NGN").toUpperCase(),
-            reference: String(data.data.reference || reference),
+            reference: String(data.data.reference || cleanRef),
             customerEmail: data.data.customer?.email
               ? String(data.data.customer.email).toLowerCase().trim()
               : undefined,
           };
         }
-        lastError = data?.message || `Kora status: ${data?.data?.status || "unknown"}`;
+        if (koraStatus === "pending" || koraStatus === "processing") {
+          lastStatus = "pending";
+        }
+        lastError = data?.message || `Kora status: ${koraStatus || "unknown"}`;
       } catch (e: unknown) {
         lastError = e instanceof Error ? e.message : "Kora verify failed";
       }
@@ -304,26 +344,30 @@ export async function verifyPaymentWithProvider(
       if (!secret) continue;
       try {
         const res = await fetch(
-          `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+          `https://api.paystack.co/transaction/verify/${encodeURIComponent(cleanRef)}`,
           {
             headers: { Authorization: `Bearer ${secret}` },
           },
         );
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data?.status && data?.data?.status === "success") {
+        const paystackStatus = String(data?.data?.status || "").toLowerCase().trim();
+        if (res.ok && data?.status && paystackStatus === "success") {
           return {
             success: true,
             provider: "paystack",
             status: "success",
             amountPaid: Number(data.data.amount || 0) / 100,
             currency: String(data.data.currency || "NGN").toUpperCase(),
-            reference: String(data.data.reference || reference),
+            reference: String(data.data.reference || cleanRef),
             customerEmail: data.data.customer?.email
               ? String(data.data.customer.email).toLowerCase().trim()
               : undefined,
           };
         }
-        lastError = data?.message || `Paystack status: ${data?.data?.status || "unknown"}`;
+        if (paystackStatus === "ongoing" || paystackStatus === "pending" || paystackStatus === "processing") {
+          lastStatus = "pending";
+        }
+        lastError = data?.message || `Paystack status: ${paystackStatus || "unknown"}`;
       } catch (e: unknown) {
         lastError = e instanceof Error ? e.message : "Paystack verify failed";
       }
@@ -333,10 +377,10 @@ export async function verifyPaymentWithProvider(
   return {
     success: false,
     provider: order[0],
-    status: "failed",
+    status: lastStatus === "pending" ? "pending" : "failed",
     amountPaid: 0,
     currency: "NGN",
-    reference,
+    reference: cleanRef,
     error: lastError,
   };
 }

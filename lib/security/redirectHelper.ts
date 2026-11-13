@@ -14,8 +14,14 @@ export function sanitizeRedirectUrl(rawUrl: string | null): string {
   if (!rawUrl) return DEFAULT_REDIRECT;
   const trimmed = rawUrl.trim();
 
-  // 1. Safe deep links: xea-auth:// or xea:// followed by valid path/query characters
+  // 1. Safe deep links: xea-auth:// or xea:// (and exp:// in non-production Expo Go dev)
   if (/^xea(-auth)?:\/\/[a-zA-Z0-9_.\-\/?=&%]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (
+    process.env.NODE_ENV !== "production" &&
+    /^exp:\/\/[a-zA-Z0-9_.:\/\-?=&%]+$/.test(trimmed)
+  ) {
     return trimmed;
   }
 

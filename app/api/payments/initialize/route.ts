@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
+import { bridgeMobilePaymentCallbackUrl } from "../../../../lib/payment/paymentLookup";
 // PaystackService is also accessible via PayoutProvider or directly from "@/lib/payment/paystack"
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
@@ -216,10 +217,14 @@ export async function POST(req: NextRequest) {
     };
 
     // Initialize with active gateway (Kora or Paystack)
+    const rawCallback =
+      typeof callbackUrl === "string" && callbackUrl.trim()
+        ? callbackUrl.trim()
+        : `${req.nextUrl.origin}/logged-in`;
     const paymentData = await PayoutProvider.initializePayment({
       email,
       amountInNaira: verifiedAmount,
-      callbackUrl: callbackUrl || `${req.nextUrl.origin}/logged-in`,
+      callbackUrl: bridgeMobilePaymentCallbackUrl(rawCallback, req.nextUrl.origin),
       metadata: paymentMetadata,
       channels,
       narration: `Payment for ${type.replace("_", " ")}`,

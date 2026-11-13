@@ -1,5 +1,6 @@
 // lib/payment/kora.ts
 import redisConnection from "@/lib/redis";
+import { bridgeMobilePaymentCallbackUrl, resolvePublicPaymentOrigin } from "./paymentLookup";
 
 export interface KoraBank {
   name: string;
@@ -451,7 +452,7 @@ export class KoraService {
       };
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/charges/${reference}`, {
+    const response = await fetch(`${this.getBaseUrl()}/charges/${encodeURIComponent(reference)}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this.getSecretKey()}`,
@@ -465,11 +466,12 @@ export class KoraService {
     }
 
     const data = result.data || {};
+    const normalizedStatus = String(data.status || "").toLowerCase().trim() || "pending";
     return {
-      status: data.status,
+      status: normalizedStatus,
       reference: data.reference || reference,
-      amount: parseFloat(data.amount || data.amount_paid || 0),
-      currency: data.currency || "NGN",
+      amount: parseFloat(String(data.amount ?? data.amount_paid ?? 0)),
+      currency: String(data.currency || "NGN").toUpperCase(),
       metadata: data.metadata,
     };
   }
@@ -482,13 +484,20 @@ export class KoraService {
     amountInNaira: number,
     redirectUrl: string,
     metadata: Record<string, unknown> = {},
-    narration: string = "Paayh Campaign Payment"
+    narration: string = "Paayh Campaign Payment",
+    channels?: string[]
   ): Promise<{ checkout_url: string; reference: string }> {
+    const normalizedAmount = Math.round(Number(amountInNaira) * 100) / 100;
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      throw new Error("Payment amount must be greater than zero.");
+    }
+
     const reference = `kora_pay_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const safeRedirectUrl = bridgeMobilePaymentCallbackUrl(redirectUrl);
 
     if (this.isMock()) {
       console.log(`⚠️ Kora MOCK mode: Initializing mock checkout charge ref=${reference}`);
-      const url = new URL(redirectUrl);
+      const url = new URL(safeRedirectUrl);
       url.searchParams.set("reference", reference);
       url.searchParams.set("status", "success");
       return {
@@ -508,24 +517,34 @@ export class KoraService {
     if (typeof metadata?.campaign_days === "number") {
       cleanMetadata.campaign_days = metadata.campaign_days;
     }
-    if (typeof metadata?.subscriber_id === "string") {
+    if (typeof metadata?.subscriber_id === "string" && metadata.subscriber_id) {
       cleanMetadata.subscriber_id = metadata.subscriber_id.slice(0, 50);
     }
+    if (typeof metadata?.ad_id === "string" && metadata.ad_id) {
+      cleanMetadata.ad_id = metadata.ad_id.slice(0, 50);
+    }
+    if (typeof metadata?.highlight_id === "string" && metadata.highlight_id) {
+      cleanMetadata.highlight_id = metadata.highlight_id.slice(0, 50);
+    }
+    if (typeof metadata?.boost_reference === "string" && metadata.boost_reference) {
+      cleanMetadata.boost_reference = metadata.boost_reference.slice(0, 50);
+    }
 
-    const customerName = (metadata?.name as string) || email.split("@")[0] || "Paayh Customer";
-    const baseAppUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://paayh.com";
+    const customerName = String((metadata?.name as string) || email.split("@")[0] || "Paayh Customer").trim() || "Paayh Customer";
+    const publicBaseUrl = resolvePublicPaymentOrigin(process.env.NEXT_PUBLIC_BASE_URL);
     const isCustomScheme =
       redirectUrl &&
       !redirectUrl.startsWith("http://") &&
       !redirectUrl.startsWith("https://");
 
     const buildPayload = (targetRedirectUrl: string) => ({
-      amount: amountInNaira,
+      amount: normalizedAmount,
       currency: "NGN",
       reference,
       narration: (narration || "Paayh Payment").slice(0, 100),
       redirect_url: targetRedirectUrl,
-      notification_url: `${baseAppUrl}/api/payments/kora-webhook`,
+      notification_url: `${publicBaseUrl}/api/payments/kora-webhook`,
+      ...(channels && channels.length > 0 ? { channels, default_channel: channels[0] } : {}),
       customer: {
         name: customerName.slice(0, 60),
         email: email.toLowerCase().trim(),
@@ -539,14 +558,14 @@ export class KoraService {
         Authorization: `Bearer ${this.getSecretKey()}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(buildPayload(redirectUrl)),
+      body: JSON.stringify(buildPayload(safeRedirectUrl)),
     });
 
-    let result = await response.json();
+    let result = await response.json().catch(() => ({}));
 
-    // If Kora rejects a non-HTTP custom scheme (e.g. exp:// in Expo Go dev), bounce via HTTPS mobile-callback
-    if ((!response.ok || !result.status) && isCustomScheme) {
-      const bounceUrl = `${baseAppUrl}/api/payments/mobile-callback?redirect=${encodeURIComponent(redirectUrl)}`;
+    // Fallback safety if caller still passed a relative/unbridged URL and first request fails
+    if ((!response.ok || !result.status) && isCustomScheme && safeRedirectUrl === redirectUrl) {
+      const bounceUrl = bridgeMobilePaymentCallbackUrl(redirectUrl, publicBaseUrl);
       response = await fetch(`${this.getBaseUrl()}/charges/initialize`, {
         method: "POST",
         headers: {
@@ -555,7 +574,7 @@ export class KoraService {
         },
         body: JSON.stringify(buildPayload(bounceUrl)),
       });
-      result = await response.json();
+      result = await response.json().catch(() => ({}));
     }
     if (!response.ok || !result.status) {
       let detailedErr = result.message || "Failed to initialize payment checkout on Korapay";

@@ -1,6 +1,7 @@
 // lib/payment/paystack.ts
 import redisConnection from "@/lib/redis";
 import crypto from "crypto";
+import { bridgeMobilePaymentCallbackUrl } from "./paymentLookup";
 
 export interface PaystackInitializeResponse {
   authorization_url: string;
@@ -71,7 +72,8 @@ export class PaystackService {
 
     if (this.isMock()) {
       console.log(`⚠️ Paystack MOCK mode: Initializing mock transaction ref=${reference}`);
-      const url = new URL(callbackUrl);
+      const safeCallbackUrl = bridgeMobilePaymentCallbackUrl(callbackUrl);
+      const url = new URL(safeCallbackUrl);
       url.searchParams.set("reference", reference);
       url.searchParams.set("trxref", reference);
       return {
@@ -84,7 +86,7 @@ export class PaystackService {
     const payload: Record<string, unknown> = {
       email,
       amount: amountInKobo,
-      callback_url: callbackUrl,
+      callback_url: bridgeMobilePaymentCallbackUrl(callbackUrl),
       reference,
       metadata,
     };

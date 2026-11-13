@@ -4,7 +4,7 @@
  */
 
 export const CANONICAL_WEB_ORIGIN = "https://paayh.com";
-export const APP_CUSTOM_SCHEME = "xea";
+export const APP_CUSTOM_SCHEME = "xea-auth";
 export const AD_UNAVAILABLE_MESSAGE = "This ad is no longer available";
 export const AD_UNAVAILABLE_DISMISS_MS = 5000;
 

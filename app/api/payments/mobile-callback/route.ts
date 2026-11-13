@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Returning to App...</title>
+  <meta http-equiv="refresh" content="0;url=${safeHref}" />
+  <title>Returning to Paayh App...</title>
   <style>
     body {
       margin: 0;
@@ -75,12 +76,28 @@ export async function GET(req: NextRequest) {
 </head>
 <body>
   <div class="card">
-    <h2>Payment Confirmed</h2>
-    <p>Redirecting you back to the app automatically...</p>
-    <a class="btn" href="${safeHref}">Return to App</a>
+    <h2>Returning to Paayh App</h2>
+    <p>Taking you back into the app to confirm your payment...</p>
+    <a id="returnBtn" class="btn" href="${safeHref}">Open Paayh App</a>
   </div>
   <script>
-    window.location.replace(${safeJsUrl});
+    (function () {
+      var target = ${safeJsUrl};
+      try {
+        window.location.replace(target);
+      } catch (e) {}
+      setTimeout(function () {
+        try {
+          window.location.href = target;
+        } catch (e) {}
+      }, 250);
+      setTimeout(function () {
+        try {
+          var btn = document.getElementById("returnBtn");
+          if (btn) btn.click();
+        } catch (e) {}
+      }, 700);
+    })();
   </script>
 </body>
 </html>`;

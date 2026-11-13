@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
   let adIdToUnlock: string | null = null;
   let atomicViews = 1;
   let atomicCap = 1;
+  let maxCap = 3;
 
   try {
     const email = await getAuthenticatedEmail(request);
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
       liveClicks = claimResult.liveClicks;
       atomicViews = claimResult.atomicViews;
       atomicCap = claimResult.atomicCap;
+      maxCap = claimResult.maxCap ?? claimResult.atomicCap;
       attentionWorthScore = claimResult.attentionWorthScore;
     } else {
       const mutualResult = await processMutualClaim({ adId, emailKey, deviceId });
@@ -133,7 +135,7 @@ export async function POST(request: NextRequest) {
       attentionWorthScore = mutualResult.attentionWorthScore;
     }
 
-    await syncPacingAndSeenSet(emailKey, adId, atomicViews, atomicCap);
+    await syncPacingAndSeenSet(emailKey, adId, atomicViews, atomicCap, maxCap);
 
     const isExemptFinal = isExemptFromBarriersAndInactivity(emailKey);
     const finalTier = computeAtwTierDetails(liveClicks, undefined, isExemptFinal, attentionWorthScore);
