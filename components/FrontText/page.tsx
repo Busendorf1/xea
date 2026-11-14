@@ -54,7 +54,7 @@ export default function FrontText() {
           <div className={styles.stepItem}>
             <div className={styles.stepNum}>5</div>
             <p className={styles.stepText}>
-              <strong>100% Free to Join:</strong> Completely free with no subscription fees or upfront deposits. Qualify for monetization naturally through regular activity or reaching 300 verified interactions.
+              <strong>100% Free to Join:</strong> Completely free with no subscription fees or upfront deposits. Qualify for monetization naturally through regular activity or reaching 500 verified interactions.
             </p>
           </div>
           <div className={styles.termsCallout}>

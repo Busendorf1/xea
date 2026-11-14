@@ -3,6 +3,7 @@ import { supabaseReadOnly } from "../utils/dbAdmin";
 import type { Ad, AdvertiserProfile } from "../../types/ads";
 import { transformMediaUrlsToCdn } from "../utils/cdnUrl";
 import { isAdminEmail } from "../authHelper";
+import { decodeSharedAdParam } from "../utils/adShare";
 
 export type PublicAdResolution =
   | { available: true; adId: string }
@@ -21,7 +22,7 @@ const PUBLIC_AD_SELECT_FIELDS =
   "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, bid_price, is_bidded, is_boosted, boosted_amount, boosted_at, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, approved_at, scheduled_start_at, scheduled_end_at, is_rollover, rollover_started_at, broadening_stage, rollover_balance, daily_impression_cap, daily_impression_count, last_reset_date, is_ai_content";
 
 const PUBLIC_AD_SELECT_FIELDS_FALLBACK =
-  "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, bid_price, is_bidded, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, approved_at, scheduled_start_at, scheduled_end_at";
+  "id, user_email, ad_media, ad_media_type, ad_content, ad_type, product_name, product_price, product_cta_type, product_cta_link, action_phone, action_whatsapp, action_email, action_website, action_ios, action_android, action_watch_now, ad_action_buttons, cost_per_impression, bid_price, is_bidded, display_mutual_button, mutual_targets, mutual_adds_count, interest, industry, behavior, lifestyle, personality, country, state, province, gender, employment_status, age_range, targeting_all, is_paused, is_admin_post, user_frequency_cap, campaign_days, impressions, impression_count, completed_at, created_at, approved_at";
 
 const l1PublicAdCache = new Map<string, { res: PublicAdResolution; expiresAt: number }>();
 const l1AdDetailsCache = new Map<string, { ad: Ad; expiresAt: number }>();
@@ -130,7 +131,7 @@ function setL1(adId: string, res: PublicAdResolution) {
  * Uses single-flight coalescing so viral shared links at 500M+ traffic trigger at most 1 DB read per TTL.
  */
 export async function resolvePublicAdAvailability(rawId: string): Promise<PublicAdResolution> {
-  const adId = String(rawId || "").trim();
+  const adId = decodeSharedAdParam(rawId) || String(rawId || "").trim();
   if (!adId || !/^[a-zA-Z0-9_-]{1,128}$/.test(adId)) {
     return { available: false, reason: "invalid_id" };
   }
@@ -157,13 +158,25 @@ export async function resolvePublicAdAvailability(rawId: string): Promise<Public
         }
       }
 
-      const { data, error } = await supabaseReadOnly
+      let { data, error } = await supabaseReadOnly
         .from("addsactive")
         .select(
           "id, completed_at, is_paused, is_admin_post, cost_per_impression, impressions, impression_count, campaign_days, created_at, approved_at, scheduled_start_at, scheduled_end_at"
         )
         .eq("id", adId)
         .maybeSingle();
+
+      if (error) {
+        const fbAvailability = await supabaseReadOnly
+          .from("addsactive")
+          .select(
+            "id, completed_at, is_paused, is_admin_post, cost_per_impression, impressions, impression_count, campaign_days, created_at, approved_at"
+          )
+          .eq("id", adId)
+          .maybeSingle();
+        data = fbAvailability.data as any;
+        error = fbAvailability.error;
+      }
 
       if (error) {
         console.error("[publicAdResolver] Lookup error:", error.message);
@@ -200,7 +213,7 @@ export async function resolvePublicSharedAdDetail(
   rawId: string,
   origin?: string
 ): Promise<PublicSharedAdDetailResolution> {
-  const adId = String(rawId || "").trim();
+  const adId = decodeSharedAdParam(rawId) || String(rawId || "").trim();
   if (!adId || !/^[a-zA-Z0-9_-]{1,128}$/.test(adId)) {
     return { available: false, reason: "invalid_id" };
   }

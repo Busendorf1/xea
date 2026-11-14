@@ -187,22 +187,34 @@ async function runFallbackKeysetBatch(cursorId: string | null, batchSize: number
   };
 
   try {
-    let q: any = supabaseAdmin
-      .from("addsactive")
-      .select(
-        "id, user_email, product_name, ad_content, impressions, impression_count, cost_per_impression, is_admin_post, is_paused, completed_at, is_rollover, rollover_notified_at, broadening_stage, created_at, approved_at, scheduled_start_at, scheduled_end_at, campaign_days, user_frequency_cap"
+    const buildBatchQuery = (selectFields: string) => {
+      let q: any = supabaseAdmin.from("addsactive").select(selectFields);
+      if (typeof q?.is === "function") q = q.is("completed_at", null);
+      if (typeof q?.or === "function") q = q.or("is_paused.is.null,is_paused.eq.false");
+      if (typeof q?.gt === "function") {
+        q = q.gt("impressions", 0).gt("cost_per_impression", 0);
+        if (cursorId) q = q.gt("id", cursorId);
+      }
+      if (typeof q?.order === "function") q = q.order("id", { ascending: true });
+      return typeof q?.limit === "function" ? q.limit(batchSize) : null;
+    };
+
+    const primaryBatchQ = buildBatchQuery(
+      "id, user_email, product_name, ad_content, impressions, impression_count, cost_per_impression, is_admin_post, is_paused, completed_at, is_rollover, rollover_notified_at, broadening_stage, created_at, approved_at, scheduled_start_at, scheduled_end_at, campaign_days, user_frequency_cap"
+    );
+    if (!primaryBatchQ) return emptyResult;
+
+    let { data: rows, error } = await primaryBatchQ;
+    if (error) {
+      const fbBatchQ = buildBatchQuery(
+        "id, user_email, product_name, ad_content, impressions, impression_count, cost_per_impression, is_admin_post, is_paused, completed_at, is_rollover, rollover_notified_at, broadening_stage, created_at, approved_at, campaign_days, user_frequency_cap"
       );
-
-    if (typeof q?.is === "function") q = q.is("completed_at", null);
-    if (typeof q?.or === "function") q = q.or("is_paused.is.null,is_paused.eq.false");
-    if (typeof q?.gt === "function") {
-      q = q.gt("impressions", 0).gt("cost_per_impression", 0);
-      if (cursorId) q = q.gt("id", cursorId);
+      if (fbBatchQ) {
+        const fbRes = await fbBatchQ;
+        rows = fbRes.data;
+        error = fbRes.error;
+      }
     }
-    if (typeof q?.order === "function") q = q.order("id", { ascending: true });
-    if (typeof q?.limit !== "function") return emptyResult;
-
-    const { data: rows, error } = await q.limit(batchSize);
     if (error || !Array.isArray(rows)) {
       return emptyResult;
     }

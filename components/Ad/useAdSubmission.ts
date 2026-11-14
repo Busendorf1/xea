@@ -122,31 +122,30 @@ export function useAdSubmission({
             } catch (optErr) {
               console.warn("Image 1080p optimization notice:", optErr);
             }
-          } else if (isVid && file instanceof File) {
-            try {
-              optimizedFile = await compressVideoIfHeavy(file);
-            } catch (vidOptErr) {
-              console.warn("Video compression notice:", vidOptErr);
+          } else if (isVid) {
+            if (file instanceof File) {
+              try {
+                optimizedFile = await compressVideoIfHeavy(file);
+              } catch (vidOptErr) {
+                console.warn("Video compression notice:", vidOptErr);
+              }
             }
 
-            // Enterprise Fast-Start MP4 Remux & Vercel CDN Upload
-            try {
-              const videoFormData = new FormData();
-              videoFormData.append("file", optimizedFile);
-              videoFormData.append("bucket", "ad-media");
-              const vidRes = await fetch("/api/campaigns/upload-video", {
-                method: "POST",
-                body: videoFormData,
-              });
-              if (vidRes.ok) {
-                const vidJson = await vidRes.json();
-                if (vidJson?.publicUrl) {
-                  return vidJson.publicUrl as string;
-                }
-              }
-            } catch (vidUploadErr) {
-              console.warn("Faststart video upload notice, falling back to signed URL:", vidUploadErr);
+            // Server-enforced Fast-Start MP4 Remux, 180s Duration Gate & CDN Upload (fail-closed)
+            const videoFormData = new FormData();
+            videoFormData.append("file", optimizedFile, uniqueFileName);
+            videoFormData.append("bucket", "ad-media");
+            const vidRes = await fetch("/api/campaigns/upload-video", {
+              method: "POST",
+              body: videoFormData,
+            });
+            const vidJson = await vidRes.json().catch(() => null);
+            if (!vidRes.ok || !vidJson?.publicUrl) {
+              throw new Error(
+                vidJson?.error || "Video upload rejected (max 180 seconds, 50MB)."
+              );
             }
+            return vidJson.publicUrl as string;
           }
 
           const resolvedContentType = file.type || (isVid ? "video/mp4" : "image/jpeg");

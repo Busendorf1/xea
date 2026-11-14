@@ -13,13 +13,14 @@
  * Result: Video begins playing instantly within <50ms of the first byte arriving!
  */
 
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import os from "os";
 import path from "path";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface Mp4Box {
   type: string;
@@ -81,6 +82,355 @@ export function isFaststartMp4(buffer: Buffer): boolean {
   if (moovIndex === -1) return false; // Missing moov
   if (mdatIndex === -1) return true;  // No mdat yet
   return moovIndex < mdatIndex;
+}
+
+/**
+ * Extracts exact media duration in seconds from an ISO-BMFF (MP4 / MOV / M4V) buffer
+ * by inspecting `mvhd` (and `mvex`/`mehd` or `trak`/`tkhd` fallback for fragmented MP4) inside `moov`.
+ * Returns `null` if the buffer is not an ISO-BMFF file with a readable movie header.
+ */
+export function extractMp4DurationSeconds(buffer: Buffer): number | null {
+  if (!buffer || buffer.length < 16) return null;
+  const boxes = parseTopLevelBoxes(buffer);
+  const moovBox = boxes.find((b) => b.type === "moov");
+  if (!moovBox) return null;
+
+  let mvhdTimescale: number | null = null;
+  let mvhdDuration: number | null = null;
+  let mehdDuration: number | null = null;
+  let maxTkhdDuration = 0;
+
+  let pos = moovBox.start + moovBox.headerSize;
+  const end = moovBox.start + moovBox.size;
+
+  while (pos + 8 <= end) {
+    let boxSize = buffer.readUInt32BE(pos);
+    const boxType = buffer.toString("ascii", pos + 4, pos + 8);
+    let headerSize = 8;
+
+    if (boxSize === 1) {
+      if (pos + 16 > end) break;
+      boxSize = Number(buffer.readBigUInt64BE(pos + 8));
+      headerSize = 16;
+    } else if (boxSize === 0) {
+      boxSize = end - pos;
+    }
+
+    if (boxSize < headerSize || pos + boxSize > end) break;
+
+    if (boxType === "mvhd") {
+      const payloadStart = pos + headerSize;
+      if (payloadStart + 1 > pos + boxSize) return null;
+      const version = buffer.readUInt8(payloadStart);
+
+      if (version === 0) {
+        if (payloadStart + 20 > pos + boxSize) return null;
+        mvhdTimescale = buffer.readUInt32BE(payloadStart + 12);
+        mvhdDuration = buffer.readUInt32BE(payloadStart + 16);
+      } else if (version === 1) {
+        if (payloadStart + 32 > pos + boxSize) return null;
+        mvhdTimescale = buffer.readUInt32BE(payloadStart + 20);
+        mvhdDuration = Number(buffer.readBigUInt64BE(payloadStart + 24));
+      } else {
+        return null;
+      }
+
+      if (mvhdTimescale <= 0 || !Number.isFinite(mvhdDuration)) return null;
+      if (mvhdDuration > 0) {
+        return mvhdDuration / mvhdTimescale;
+      }
+    } else if (boxType === "mvex") {
+      // Fragmented MP4 Movie Extends -> mehd (Movie Extends Header)
+      let childPos = pos + headerSize;
+      const childEnd = pos + boxSize;
+      while (childPos + 8 <= childEnd) {
+        let cSize = buffer.readUInt32BE(childPos);
+        const cType = buffer.toString("ascii", childPos + 4, childPos + 8);
+        let cHeader = 8;
+        if (cSize === 1 && childPos + 16 <= childEnd) {
+          cSize = Number(buffer.readBigUInt64BE(childPos + 8));
+          cHeader = 16;
+        } else if (cSize === 0) {
+          cSize = childEnd - childPos;
+        }
+        if (cSize < cHeader || childPos + cSize > childEnd) break;
+
+        if (cType === "mehd") {
+          const p = childPos + cHeader;
+          if (p + 8 <= childPos + cSize) {
+            const ver = buffer.readUInt8(p);
+            if (ver === 0 && p + 8 <= childPos + cSize) {
+              mehdDuration = buffer.readUInt32BE(p + 4);
+            } else if (ver === 1 && p + 12 <= childPos + cSize) {
+              mehdDuration = Number(buffer.readBigUInt64BE(p + 4));
+            }
+          }
+        }
+        childPos += cSize;
+      }
+    } else if (boxType === "trak") {
+      let childPos = pos + headerSize;
+      const childEnd = pos + boxSize;
+      while (childPos + 8 <= childEnd) {
+        let cSize = buffer.readUInt32BE(childPos);
+        const cType = buffer.toString("ascii", childPos + 4, childPos + 8);
+        let cHeader = 8;
+        if (cSize === 1 && childPos + 16 <= childEnd) {
+          cSize = Number(buffer.readBigUInt64BE(childPos + 8));
+          cHeader = 16;
+        } else if (cSize === 0) {
+          cSize = childEnd - childPos;
+        }
+        if (cSize < cHeader || childPos + cSize > childEnd) break;
+
+        if (cType === "tkhd") {
+          const p = childPos + cHeader;
+          if (p + 4 <= childPos + cSize) {
+            const ver = buffer.readUInt8(p);
+            let tkDuration = 0;
+            if (ver === 0 && p + 24 <= childPos + cSize) {
+              tkDuration = buffer.readUInt32BE(p + 20);
+            } else if (ver === 1 && p + 36 <= childPos + cSize) {
+              tkDuration = Number(buffer.readBigUInt64BE(p + 28));
+            }
+            if (Number.isFinite(tkDuration) && tkDuration > maxTkhdDuration) {
+              maxTkhdDuration = tkDuration;
+            }
+          }
+        }
+        childPos += cSize;
+      }
+    }
+
+    pos += boxSize;
+  }
+
+  if (mvhdTimescale && mvhdTimescale > 0) {
+    if (mehdDuration !== null && Number.isFinite(mehdDuration) && mehdDuration > 0) {
+      return mehdDuration / mvhdTimescale;
+    }
+    if (maxTkhdDuration > 0) {
+      return maxTkhdDuration / mvhdTimescale;
+    }
+    if (mvhdDuration !== null) {
+      return mvhdDuration / mvhdTimescale;
+    }
+  }
+
+  return null;
+}
+
+function readEbmlId(buffer: Buffer, offset: number, end: number): { id: number; next: number } | null {
+  if (offset >= end) return null;
+  const first = buffer[offset];
+  if (first === 0) return null;
+
+  let len = 1;
+  let mask = 0x80;
+  while (len <= 4 && (first & mask) === 0) {
+    mask >>= 1;
+    len++;
+  }
+  if (len > 4 || offset + len > end) return null;
+
+  let id = 0;
+  for (let i = 0; i < len; i++) {
+    id = id * 256 + buffer[offset + i];
+  }
+  return { id, next: offset + len };
+}
+
+function readEbmlSize(
+  buffer: Buffer,
+  offset: number,
+  end: number
+): { size: number; unknownSize: boolean; next: number } | null {
+  if (offset >= end) return null;
+  const first = buffer[offset];
+  if (first === 0) return null;
+
+  let len = 1;
+  let mask = 0x80;
+  while (len <= 8 && (first & mask) === 0) {
+    mask >>= 1;
+    len++;
+  }
+  if (len > 8 || offset + len > end) return null;
+
+  const firstVal = first & (mask - 1);
+  let allOnes = firstVal === mask - 1;
+  let size = firstVal;
+  for (let i = 1; i < len; i++) {
+    const b = buffer[offset + i];
+    if (b !== 0xff) allOnes = false;
+    size = size * 256 + b;
+  }
+
+  if (allOnes) {
+    return { size: 0, unknownSize: true, next: offset + len };
+  }
+  if (!Number.isSafeInteger(size)) return null;
+
+  return { size, unknownSize: false, next: offset + len };
+}
+
+function readUnsignedBigEndian(buffer: Buffer, start: number, len: number): number | null {
+  if (len <= 0 || len > 8 || start + len > buffer.length) return null;
+  let val = 0;
+  for (let i = 0; i < len; i++) {
+    val = val * 256 + buffer[start + i];
+    if (!Number.isSafeInteger(val)) return null;
+  }
+  return val;
+}
+
+/**
+ * Extracts exact media duration in seconds from a WebM / Matroska (EBML) buffer
+ * by reading Segment -> Info -> TimestampScale (`0x2AD7B1`) and Duration (`0x4489`).
+ */
+export function extractWebmDurationSeconds(buffer: Buffer): number | null {
+  if (!buffer || buffer.length < 16) return null;
+  if (buffer.readUInt32BE(0) !== 0x1a45dfa3) return null;
+
+  let pos = 0;
+  const len = buffer.length;
+
+  while (pos < len) {
+    const idRes = readEbmlId(buffer, pos, len);
+    if (!idRes) break;
+    const sizeRes = readEbmlSize(buffer, idRes.next, len);
+    if (!sizeRes) break;
+
+    const payloadStart = sizeRes.next;
+    const payloadEnd = sizeRes.unknownSize ? len : Math.min(len, payloadStart + sizeRes.size);
+
+    if (idRes.id === 0x18538067) {
+      // Segment container: scan direct children for Info (0x1549A966)
+      let segPos = payloadStart;
+      while (segPos < payloadEnd) {
+        const childId = readEbmlId(buffer, segPos, payloadEnd);
+        if (!childId) break;
+        const childSize = readEbmlSize(buffer, childId.next, payloadEnd);
+        if (!childSize) break;
+
+        const cStart = childSize.next;
+        const cEnd = childSize.unknownSize ? payloadEnd : Math.min(payloadEnd, cStart + childSize.size);
+
+        if (childId.id === 0x1549a966) {
+          // Info element
+          let infoPos = cStart;
+          let timestampScale = 1_000_000; // Default 1ms in nanoseconds per EBML/Matroska spec
+          let durationRaw: number | null = null;
+
+          while (infoPos < cEnd) {
+            const propId = readEbmlId(buffer, infoPos, cEnd);
+            if (!propId) break;
+            const propSize = readEbmlSize(buffer, propId.next, cEnd);
+            if (!propSize || propSize.unknownSize) break;
+
+            const pStart = propSize.next;
+            const pEnd = pStart + propSize.size;
+            if (pEnd > cEnd) break;
+
+            if (propId.id === 0x2ad7b1) {
+              const scale = readUnsignedBigEndian(buffer, pStart, propSize.size);
+              if (scale !== null && scale > 0) timestampScale = scale;
+            } else if (propId.id === 0x4489) {
+              if (propSize.size === 4 && pStart + 4 <= cEnd) {
+                durationRaw = buffer.readFloatBE(pStart);
+              } else if (propSize.size === 8 && pStart + 8 <= cEnd) {
+                durationRaw = buffer.readDoubleBE(pStart);
+              }
+            }
+
+            infoPos = pEnd;
+          }
+
+          if (durationRaw !== null && Number.isFinite(durationRaw) && timestampScale > 0) {
+            return (durationRaw * timestampScale) / 1e9;
+          }
+          return null;
+        }
+
+        if (childSize.unknownSize) break;
+        segPos = cEnd;
+      }
+      return null;
+    }
+
+    if (sizeRes.unknownSize) break;
+    pos = payloadEnd;
+  }
+
+  return null;
+}
+
+export function detectVideoContainer(buffer: Buffer): "mp4" | "webm" | "unknown" {
+  if (!buffer || buffer.length < 8) return "unknown";
+  if (buffer.readUInt32BE(0) === 0x1a45dfa3) {
+    return "webm";
+  }
+  const boxes = parseTopLevelBoxes(buffer);
+  if (boxes.some((b) => b.type === "ftyp" || b.type === "moov" || b.type === "mdat")) {
+    return "mp4";
+  }
+  return "unknown";
+}
+
+/**
+ * Extracts media duration across supported containers (MP4/MOV and WebM/Matroska).
+ */
+export function extractVideoDurationSeconds(buffer: Buffer): {
+  durationSeconds: number | null;
+  container: "mp4" | "webm" | "unknown";
+} {
+  const container = detectVideoContainer(buffer);
+  if (container === "mp4") {
+    return { durationSeconds: extractMp4DurationSeconds(buffer), container };
+  }
+  if (container === "webm") {
+    return { durationSeconds: extractWebmDurationSeconds(buffer), container };
+  }
+  return { durationSeconds: null, container: "unknown" };
+}
+
+/**
+ * Optional ffprobe fallback when installed on host (returns null cleanly if ffprobe is absent).
+ */
+export async function probeVideoDurationWithFfprobe(
+  buffer: Buffer,
+  extHint = "mp4"
+): Promise<number | null> {
+  const safeExt = /^[a-z0-9]{2,5}$/i.test(extHint) ? extHint.toLowerCase() : "mp4";
+  let tempDir: string | null = null;
+  try {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ffprobe_"));
+    const inPath = path.join(tempDir, `input.${safeExt}`);
+    fs.writeFileSync(inPath, buffer);
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        inPath,
+      ],
+      { timeout: 5000 }
+    );
+    const parsed = Number.parseFloat(String(stdout || "").trim());
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  } catch {
+    return null;
+  } finally {
+    if (tempDir) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
+    }
+  }
 }
 
 /**

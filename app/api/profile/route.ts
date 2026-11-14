@@ -30,7 +30,7 @@ async function applyLiveMonetizationAndCooldown(
       if (liveVal !== null && liveVal !== undefined && !user.has_cancelled_monetization) {
         const liveClicks = Number(liveVal) || 0;
         user.monetization_clicks = Math.max(Number(user.monetization_clicks) || 0, liveClicks);
-        if (user.monetization_clicks >= 300) {
+        if (user.monetization_clicks >= 500) {
           user.monetized = "true";
         }
       }
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
     }
 
     const BASELINE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", has_updated_profile, bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, wallet_pin_hash, ad_account_status, has_cancelled_monetization`;
-    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", has_updated_profile, bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, attention_worth_score, is_career, is_affiliate, wallet_pin_hash, suspended_until, ad_account_status, has_cancelled_monetization`;
+    const PROFILE_COLUMNS = `id, "profileImage", username, "firstName", "lastName", "lastUpdated", has_updated_profile, bio, interest, email, industry, behavior, lifestyle, personality, gender, monetized, monetized_at, created_at, monetized_until, monetization_type, country, state, location, phone, business_name, mutual_count, balance, withdrawal, monetization_clicks, last_active_at, referral_code, referral_downloads_count, atw_tier, attention_worth_score, is_career, is_affiliate, is_agent, agent_invites_count, agent_total_earned, wallet_pin_hash, suspended_until, ad_account_status, has_cancelled_monetization`;
 
     let error: any = null;
     const attempts = 3;
@@ -232,6 +232,21 @@ export async function GET(req: NextRequest) {
     }
 
     if (user) {
+      if (
+        (user.is_agent || Number(user.agent_invites_count || 0) > 0) &&
+        typeof (supabaseAdmin as any).rpc === "function"
+      ) {
+        try {
+          const flushRes = await (supabaseAdmin as any).rpc("flush_agent_commission_shards_atomic", {
+            p_target_email: emailLower,
+          });
+          const flushedAmt = Number(flushRes?.data?.credited || 0);
+          if (flushedAmt > 0) {
+            user.balance = Math.round((Number(user.balance || 0) + flushedAmt) * 100) / 100;
+            user.agent_total_earned = Math.round((Number(user.agent_total_earned || 0) + flushedAmt) * 100) / 100;
+          }
+        } catch {}
+      }
       await evaluateInactivitySafely(user, emailLower);
       user = sanitizeProfileResponse(user);
       await applyLiveMonetizationAndCooldown(user, emailLower, `user:live_clicks:v2:${emailLower}`);

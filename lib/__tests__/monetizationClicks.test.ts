@@ -2,30 +2,30 @@ import { describe, it, expect } from "vitest";
 
 describe("Monetization Click Progress & Free Monetization Thresholds", () => {
   it("should accurately calculate clicksRemaining and isMonetized status", () => {
-    const target = 300;
+    const target = 500;
     
     // Initial state
     const initialClicks = 0;
-    expect(Math.max(0, target - initialClicks)).toBe(300);
+    expect(Math.max(0, target - initialClicks)).toBe(500);
     expect(initialClicks >= target).toBe(false);
 
     // Intermediate state (e.g. 181 clicks)
     const currentClicks = 181;
-    expect(Math.max(0, target - currentClicks)).toBe(119);
+    expect(Math.max(0, target - currentClicks)).toBe(319);
     expect(currentClicks >= target).toBe(false);
 
     // Incrementing by 1
     const nextClicks = currentClicks + 1;
     expect(nextClicks).toBe(182);
-    expect(Math.max(0, target - nextClicks)).toBe(118);
+    expect(Math.max(0, target - nextClicks)).toBe(318);
 
-    // Threshold reach at 300
-    const thresholdClicks = 300;
+    // Threshold reach at 500
+    const thresholdClicks = 500;
     expect(Math.max(0, target - thresholdClicks)).toBe(0);
     expect(thresholdClicks >= target).toBe(true);
 
     // Beyond threshold
-    const overClicks = 350;
+    const overClicks = 550;
     expect(Math.max(0, target - overClicks)).toBe(0);
     expect(overClicks >= target).toBe(true);
   });

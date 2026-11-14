@@ -56,7 +56,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
           (initialProfile.monetized === "yes" ||
             initialProfile.monetized === "true" ||
             initialProfile.monetized === true ||
-            clicks >= 300),
+            clicks >= 500),
         suspended_until: initialProfile.suspended_until || null,
         cooldown_until: initialProfile.cooldown_until || null,
         cooldown_type: initialProfile.cooldown_type || null,
@@ -81,7 +81,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
             : currentBalance;
           const mutualCount = Math.max(currentMutualCount, Number(data.mutual_count) || 0);
           const isMonetized =
-            data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 300;
+            data.monetized === "yes" || data.monetized === "true" || data.monetized === true || clicks >= 500;
 
           return {
             balance,
@@ -141,7 +141,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
                 newRow.monetized === "yes" ||
                 newRow.monetized === "true" ||
                 newRow.monetized === true ||
-                updatedClicks >= 300;
+                updatedClicks >= 500;
 
               // If balance increased from an external device, dispatch a visual live event
               if (typeof window !== "undefined" && updatedBalance > prevBalance) {
@@ -187,7 +187,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
                 ...prev,
                 balance: newBalance,
                 monetization_clicks: typeof clicks === "number" ? Math.max(prev.monetization_clicks, clicks) : prev.monetization_clicks,
-                monetized: (typeof clicks === "number" && clicks >= 300) || prev.monetized,
+                monetized: (typeof clicks === "number" && clicks >= 500) || prev.monetized,
               }
             : null
         );
@@ -210,7 +210,7 @@ export function useViewerProfile(userEmail: string, initialProfile?: InitialProf
     setViewerProfile((prev) => {
       if (!prev) return null;
       const nextClicks = (prev.monetization_clicks || 0) + delta;
-      const isNowMonetized = nextClicks >= 300 ? true : prev.monetized;
+      const isNowMonetized = nextClicks >= 500 ? true : prev.monetized;
       return {
         ...prev,
         monetization_clicks: nextClicks,

@@ -98,7 +98,7 @@ async function insertDeduplicatedNotification(params: {
 }
 
 /**
- * Notifies a user once when reaching 300 clicks and unlocking monetization.
+ * Notifies a user once when reaching 500 clicks and unlocking monetization.
  */
 export async function notifyMonetizationUnlocked(email: string): Promise<boolean> {
   const emailLower = String(email || "").toLowerCase().trim();
@@ -108,8 +108,8 @@ export async function notifyMonetizationUnlocked(email: string): Promise<boolean
     emailLower,
     title: "Monetization Unlocked! Welcome to ATW1",
     message:
-      "Congratulations! You have reached 300 clicks and unlocked monetization (ATW1, ₦30,000 balance cap). Start earning on ads now, and remember to withdraw promptly.",
-    dedupKey: `notif:milestone:monetized:300:${emailLower}`,
+      "Congratulations! You have reached 500 clicks and unlocked monetization (ATW1, ₦30,000 balance cap). Start earning on ads now, and remember to withdraw promptly.",
+    dedupKey: `notif:milestone:monetized:500:${emailLower}`,
     dedupTtlSeconds: 86400 * 7,
     dbDedupLookbackDays: 7,
   });
@@ -150,7 +150,7 @@ export interface ClickAndAtwMilestoneCheckInput {
 }
 
 /**
- * Checks whether a click/earn/mutual update unlocked monetization at 300 clicks or raised ATW level,
+ * Checks whether a click/earn/mutual update unlocked monetization at 500 clicks or raised ATW level,
  * and emits warm, deduplicated congratulatory notifications.
  */
 export async function checkAndNotifyClickAndAtwMilestones(
@@ -173,10 +173,10 @@ export async function checkAndNotifyClickAndAtwMilestones(
 
   const crossedMonetizationThreshold =
     nextMonetized &&
-    nextClicks >= 300 &&
+    nextClicks >= 500 &&
     (prevMonetized === false ||
-      (typeof prevClicks === "number" && prevClicks < 300) ||
-      nextClicks === 300);
+      (typeof prevClicks === "number" && prevClicks < 500) ||
+      nextClicks === 500);
 
   const nextDetails = computeAtwTierDetails(
     nextClicks,

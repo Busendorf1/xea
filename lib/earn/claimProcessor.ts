@@ -212,13 +212,25 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     }
 
     // Fallback NEVER queries unapproved `adds` and NEVER pays when `!adRow`
-    const { data: adRow, error: adFetchErr } = await supabaseAdmin
+    let { data: adRow, error: adFetchErr } = await supabaseAdmin
       .from("addsactive")
       .select(
         "cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at, is_paused, is_admin_post, user_email, campaign_days, created_at, approved_at, scheduled_start_at, scheduled_end_at"
       )
       .eq("id", adId)
       .maybeSingle();
+
+    if (adFetchErr) {
+      const fbAd = await supabaseAdmin
+        .from("addsactive")
+        .select(
+          "cost_per_impression, user_frequency_cap, impressions, impression_count, completed_at, is_paused, is_admin_post, user_email, campaign_days, created_at, approved_at"
+        )
+        .eq("id", adId)
+        .maybeSingle();
+      adRow = fbAd.data as any;
+      adFetchErr = fbAd.error;
+    }
 
     if (adFetchErr || !adRow) {
       return {
@@ -323,7 +335,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     // Enforce rollover-aware per-user frequency cap in fallback
     const { data: existingImp } = await supabaseAdmin
       .from("ad_impressions")
-      .select("id, view_count")
+      .select("id, view_count, today_view_count, last_viewed_at")
       .eq("ad_id", adId)
       .ilike("user_email", emailKey)
       .maybeSingle();
@@ -367,7 +379,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
         dbUser.monetized === "yes" ||
         dbUser.monetized === "1" ||
         dbUser.monetized === "t" ||
-        currentClicks >= 300 ||
+        currentClicks >= 500 ||
         currentInvites >= 12
     );
     isEarnerNowMonetized = isMonetized;
@@ -393,30 +405,54 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     earnedRateNumber = netCredited;
     rawCpi = adCpi;
 
+    const nowIso = new Date().toISOString();
+    const todayUtc = nowIso.slice(0, 10);
+
     if (existingImp) {
+      const impLastDate = existingImp.last_viewed_at
+        ? String(existingImp.last_viewed_at).slice(0, 10)
+        : "";
+      const nextTodayViews =
+        impLastDate === todayUtc ? Number((existingImp as any).today_view_count || 0) + 1 : 1;
       await supabaseAdmin
         .from("ad_impressions")
-        .update({ view_count: atomicViews, last_viewed_at: new Date().toISOString() })
+        .update({
+          view_count: atomicViews,
+          today_view_count: nextTodayViews,
+          last_viewed_at: nowIso,
+        })
         .eq("id", existingImp.id);
     } else {
       await supabaseAdmin.from("ad_impressions").insert({
         ad_id: adId,
         user_email: emailKey,
         view_count: 1,
-        last_viewed_at: new Date().toISOString(),
+        today_view_count: 1,
+        last_viewed_at: nowIso,
       });
     }
 
     const isNowExhausted = impressionsTarget > 0 && impressionCount + 1 >= impressionsTarget;
-    const completedIso = isNowExhausted ? new Date().toISOString() : null;
+    const completedIso = isNowExhausted ? nowIso : null;
     let updatedAdRow: any = null;
 
     if (isRedisReady()) {
       bufferAdImpression(adId).catch(() => {});
     } else {
+      const adLastReset = (adRow as any).last_reset_date
+        ? String((adRow as any).last_reset_date).slice(0, 10)
+        : "";
+      const nextDailyImpCount =
+        adLastReset === todayUtc ? Number((adRow as any).daily_impression_count || 0) + 1 : 1;
+
       const adUpdateRes = await supabaseAdmin
         .from("addsactive")
-        .update({ impression_count: impressionCount + 1, completed_at: completedIso })
+        .update({
+          impression_count: impressionCount + 1,
+          daily_impression_count: nextDailyImpCount,
+          last_reset_date: todayUtc,
+          completed_at: completedIso,
+        })
         .eq("id", adId)
         .select("*")
         .maybeSingle();
@@ -424,7 +460,11 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
 
       await supabaseAdmin
         .from("adds")
-        .update({ impression_count: impressionCount + 1 })
+        .update({
+          impression_count: impressionCount + 1,
+          daily_impression_count: nextDailyImpCount,
+          last_reset_date: todayUtc,
+        })
         .eq("id", adId);
 
       if (isNowExhausted) {
@@ -459,7 +499,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
         balance: updatedBalance,
         monetization_clicks: liveClicks,
         atw_tier: tierDetails.tierCode,
-        monetized: isMonetized || liveClicks >= 300 || isExemptDbUser ? "true" : dbUser.monetized ? "true" : "false",
+        monetized: isMonetized || liveClicks >= 500 || isExemptDbUser ? "true" : dbUser.monetized ? "true" : "false",
         last_active_at: new Date().toISOString(),
       })
       .ilike("email", emailKey);
@@ -486,7 +526,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
           dbUser.monetized === "yes" ||
           dbUser.monetized === "1" ||
           dbUser.monetized === "t" ||
-          currentClicks >= 300
+          currentClicks >= 500
       );
       checkAndNotifyClickAndAtwMilestones({
         email: emailKey,
@@ -494,7 +534,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
         prevMonetized: prevMonetizedFallback,
         prevAtwTier: dbUser.atw_tier,
         nextClicks: liveClicks,
-        nextMonetized: Boolean(isMonetized || liveClicks >= 300),
+        nextMonetized: Boolean(isMonetized || liveClicks >= 500),
         nextAtwTier: tierDetails.tierCode,
         attentionWorthScore,
         isExempt: isExemptDbUser,
@@ -544,7 +584,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     atomicViews = Number(atomicResult.views_used ?? atomicResult.views ?? atomicResult.ad_views ?? 1);
     attentionWorthScore = atomicResult.attention_worth_score;
     isEarnerNowMonetized = Boolean(
-      atomicResult.is_monetized ?? atomicResult.monetized ?? liveClicks >= 300
+      atomicResult.is_monetized ?? atomicResult.monetized ?? liveClicks >= 500
     );
     if (atomicResult.raw_cpi && Number(atomicResult.raw_cpi) > 0) {
       rawCpi = Number(atomicResult.raw_cpi);
@@ -632,10 +672,10 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     checkAndNotifyClickAndAtwMilestones({
       email: emailKey,
       prevClicks: prevClicksApprox,
-      prevMonetized: typeof atomicResult.prev_monetized === "boolean" ? atomicResult.prev_monetized : prevClicksApprox >= 300,
+      prevMonetized: typeof atomicResult.prev_monetized === "boolean" ? atomicResult.prev_monetized : prevClicksApprox >= 500,
       prevAtwTier: prevTierApprox,
       nextClicks: liveClicks,
-      nextMonetized: isEarnerNowMonetized || liveClicks >= 300,
+      nextMonetized: isEarnerNowMonetized || liveClicks >= 500,
       nextAtwTier: earnTier.tierCode,
       attentionWorthScore,
       isExempt: isExemptEarn,

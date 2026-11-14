@@ -4,6 +4,9 @@ import LoggedInClientContainer, { TabKey } from "@/app/user/logged-in/LoggedInCl
 import { getUserProfileForDashboard } from "@/lib/getUserProfileForDashboard";
 import { isAdminEmail } from "@/lib/authHelper";
 import { extractSharedAdIdFromSearchParams } from "@/lib/utils/adShare";
+import { resolveSharedAdForFeed } from "@/lib/feed/sharedAdResolver";
+import { signAdImpressionToken } from "@/lib/targetingEngine";
+import { transformMediaUrlsToCdn } from "@/lib/utils/cdnUrl";
 
 import { cookies } from "next/headers";
 
@@ -85,13 +88,56 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
   const tabCookie = cookieStore.get("paayh_active_tab")?.value as TabKey | undefined;
   const requestedView = (isSharedAdMode ? "feed" : (rawView || tabCookie || "feed")) as TabKey;
 
+  let resolvedSharedAdId: string | null = sharedAdId;
+  let resolvedSharedAdUnavailable = Boolean(isUnavailableStatus);
+  let resolvedSharedAd: any = null;
+  let resolvedSharedAdProfiles: Record<string, any> = {};
+
+  if (sharedAdId && !isUnavailableStatus) {
+    const sharedResult = await resolveSharedAdForFeed({
+      sharedAdId,
+      offset: 0,
+      pageAds: [],
+      profilesMap: {},
+    });
+    if (sharedResult.sharedAdUnavailable || sharedResult.pageAds.length === 0) {
+      resolvedSharedAdId = null;
+      resolvedSharedAdUnavailable = true;
+    } else {
+      const rawAd = sharedResult.pageAds[0];
+      const servedAt = Date.now();
+      const isPlatformPost = Boolean(
+        rawAd.is_admin_post ||
+          isAdminEmail(rawAd.user_email || (rawAd as any).email) ||
+          !rawAd.cost_per_impression ||
+          Number(rawAd.cost_per_impression) <= 0 ||
+          !rawAd.impressions ||
+          Number(rawAd.impressions) <= 0
+      );
+      const token = signAdImpressionToken(String(rawAd.id), email, servedAt);
+      resolvedSharedAdId = String(rawAd.id);
+      resolvedSharedAd = {
+        ...rawAd,
+        ad_media: transformMediaUrlsToCdn(rawAd.ad_media, "https://paayh.com"),
+        is_admin_post: isPlatformPost,
+        cost_per_impression: isPlatformPost ? 0 : Number(rawAd.cost_per_impression || 0),
+        impressions: isPlatformPost ? 0 : Number(rawAd.impressions || 0),
+        _token: token,
+        _served_at: servedAt,
+        verification_token: token,
+        served_at: servedAt,
+      };
+      resolvedSharedAdProfiles = sharedResult.profilesMap || {};
+    }
+  }
+
   const clicks = Number(profileResult.user.monetization_clicks) || 0;
   const initialAtwTier = profileResult.user.atw_tier || "ATW1";
   const isExemptAccount = isAdmin || Boolean(profileResult.user.is_career || profileResult.user.is_affiliate);
   const initialHasCancelled = Boolean(profileResult.user.has_cancelled_monetization);
   const initialMonetized = Boolean(
     !initialHasCancelled &&
-    (isExemptAccount || clicks >= 300)
+    (isExemptAccount || clicks >= 500)
   );
 
   return (
@@ -108,6 +154,10 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
       initialAds={isSharedAdMode ? undefined : profileResult.initialAds}
       initialProfiles={isSharedAdMode ? {} : profileResult.initialProfiles}
       initialHighlights={isSharedAdMode ? [] : profileResult.initialHighlights}
+      initialSharedAdId={resolvedSharedAdId}
+      initialSharedAdUnavailable={resolvedSharedAdUnavailable}
+      initialSharedAd={resolvedSharedAd}
+      initialSharedAdProfiles={resolvedSharedAdProfiles}
     />
   );
 }

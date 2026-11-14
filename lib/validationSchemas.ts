@@ -86,18 +86,18 @@ export type ProfileSetupStep2 = z.infer<typeof profileSetupStep2Schema>;
 export const adAudienceSchema = z.object({
   impressions: z
     .number()
-    .min(100, "Minimum 100 impressions")
-    .max(5_000_000, "Maximum 5,000,000 impressions"),
+    .min(100, "Minimum 100 attentions")
+    .max(5_000_000, "Maximum 5,000,000 attentions"),
 
   campaignDays: z
     .number()
     .min(1, "Minimum 1 day")
-    .max(365, "Maximum 365 days"),
+    .max(90, "Maximum 90 days"),
 
   userFrequencyCap: z
     .number()
-    .min(1, "Minimum 1 view per user")
-    .max(100, "Maximum 100 views per user"),
+    .min(1, "Minimum 1 attention per user")
+    .max(100, "Maximum 100 attentions per user"),
 
   minAge: z.number().min(18, "Minimum age is 18").max(100).optional(),
   maxAge: z.number().min(18).max(100, "Maximum age is 100").optional(),
@@ -252,7 +252,7 @@ export const newsSchema = z.object({
   content: safeStr("Content", 2000).min(10, "Content must be at least 10 characters"),
   interest: z.string().min(1, "Select an interest category"),
   country: z.string().min(1, "Select a country"),
-  campaignDays: z.number().min(1, "Minimum 1 day").max(365, "Maximum 365 days"),
+  campaignDays: z.number().min(1, "Minimum 1 day").max(90, "Maximum 90 days"),
   bidPrice: z.number().min(100, "Minimum bid is ₦100").optional(),
 });
 
@@ -325,8 +325,8 @@ export const boostSchema = z.object({
   adId: z.string().min(1, "Ad ID is required"),
   bidAmount: z
     .number()
-    .min(15, "Minimum bid amount is ₦15")
-    .max(1_000_000, "Maximum bid amount per boost is ₦1,000,000"),
+    .min(0.07, "Bid amount is below minimum floor")
+    .max(1_000_000, "Maximum bid amount per boost is 1,000,000"),
   paymentMethod: z.enum(["card", "wallet"]),
 });
 

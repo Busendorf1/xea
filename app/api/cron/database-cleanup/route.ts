@@ -32,6 +32,11 @@ async function handleCron(req: NextRequest) {
       await flushPendingAffiliateYield();
     } catch {}
 
+    // Refresh O(1) ad capacity rollup stats (advisory-locked + TABLESAMPLE at scale, non-fatal)
+    try {
+      await supabaseAdmin.rpc("refresh_ad_capacity_stats");
+    } catch {}
+
     // Purge approved campaigns not published after 3 days
     try {
       console.log("🧹 Cron: Purging expired approved campaigns older than 3 days...");

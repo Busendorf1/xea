@@ -116,7 +116,7 @@ function MyAdCard({
     personalityList.length +
     employmentList.length;
 
-  const targetImpressions = ad.impressions ?? 1000;
+  const targetImpressions = ad.impressions ?? 500;
   const remainingImpressions = Math.max(0, targetImpressions - seenCount);
   const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
 
@@ -195,7 +195,7 @@ function MyAdCard({
                 ) : (
                   <>
                     {ad.is_bidded ? "Priority" : "Boosted"} •{" "}
-                    {formatCurrency(ad.cost_per_impression, ad.country)}/view
+                    {formatCurrency(ad.cost_per_impression, ad.country)}/attention
                   </>
                 )}
               </span>
@@ -268,7 +268,7 @@ function MyAdCard({
                 Delivery Progress • <strong>{deliveryPercent}%</strong>
               </span>
               <span className={styles.deliveryCountText}>
-                {seenCount.toLocaleString()} / {targetImpressions.toLocaleString()} views
+                {seenCount.toLocaleString()} / {targetImpressions.toLocaleString()} attentions
                 {remainingImpressions > 0 ? ` (${remainingImpressions.toLocaleString()} left)` : ""}
               </span>
             </div>

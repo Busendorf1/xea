@@ -139,11 +139,9 @@ export function buildOrderedCandidateFeed(params: BuildFeedCandidatesParams): {
       freshAdded++;
     }
     if (rIdx < retargetedAdsList.length) {
-      if (itemsSinceLastRetarget >= 3) {
+      if (itemsSinceLastRetarget >= 3 || fIdx >= freshAdsList.length) {
         candidateAds.push(retargetedAdsList[rIdx++]);
         itemsSinceLastRetarget = 0;
-      } else if (fIdx >= freshAdsList.length) {
-        break;
       }
     }
   }

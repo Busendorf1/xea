@@ -132,31 +132,31 @@ describe("Enterprise Retargeting Spacing", () => {
 });
 
 describe("Monetization Opt-Out & Reapplication State Handling", () => {
-  it("should evaluate isMonetized to false when has_cancelled_monetization is true even with 300+ clicks", () => {
+  it("should evaluate isMonetized to false when has_cancelled_monetization is true even with 500+ clicks", () => {
     const userProfile = {
-      monetization_clicks: 500,
+      monetization_clicks: 600,
       has_cancelled_monetization: true,
       monetized: "true",
     };
 
     const hasCancelled = Boolean(userProfile.has_cancelled_monetization);
     const clicks = Number(userProfile.monetization_clicks);
-    const isMonetized = !hasCancelled && clicks >= 300;
+    const isMonetized = !hasCancelled && clicks >= 500;
 
     expect(hasCancelled).toBe(true);
     expect(isMonetized).toBe(false);
   });
 
-  it("should evaluate isMonetized to true when has_cancelled_monetization is false and clicks >= 300", () => {
+  it("should evaluate isMonetized to true when has_cancelled_monetization is false and clicks >= 500", () => {
     const userProfile = {
-      monetization_clicks: 350,
+      monetization_clicks: 550,
       has_cancelled_monetization: false,
       monetized: "true",
     };
 
     const hasCancelled = Boolean(userProfile.has_cancelled_monetization);
     const clicks = Number(userProfile.monetization_clicks);
-    const isMonetized = !hasCancelled && clicks >= 300;
+    const isMonetized = !hasCancelled && clicks >= 500;
 
     expect(hasCancelled).toBe(false);
     expect(isMonetized).toBe(true);

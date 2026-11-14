@@ -176,13 +176,89 @@ export default function AdInteractionHandler({
     };
   }, [forceInView]);
 
-  // Dynamic Scroll-Away Seen Registration
+  // Dynamic Scroll-Away Seen Registration & Per-Card Viewport Start Verification
   const isAutoSeenTriggered = useRef(false);
+  const viewStartDataRef = useRef<{ adId: string; viewStartedAt: number; viewToken: string } | null>(null);
+  const viewStartInFlightRef = useRef<Promise<{ adId: string; viewStartedAt: number; viewToken: string } | null> | null>(null);
+
+  const VIEW_START_DEBOUNCE_MS = 2500;
+
+  const adId = ad?.id;
+  const adToken = ad?.verification_token || (ad as any)?._token || "";
+  const adServedAt = ad?.served_at || (ad as any)?._served_at || "";
+
+  const ensureViewStarted = useCallback(
+    async (debounceMs = 0) => {
+      if (isPlatformPost || isOwner || !adId) return null;
+      if (viewStartDataRef.current && viewStartDataRef.current.adId === adId) {
+        return viewStartDataRef.current;
+      }
+      if (viewStartInFlightRef.current) {
+        return viewStartInFlightRef.current;
+      }
+
+      if (!adToken || !adServedAt) return null;
+
+      const task = (async () => {
+        try {
+          const res = await fetch("/api/feed/view-start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              adId,
+              token: adToken,
+              servedAt: adServedAt,
+              ...(debounceMs > 0 ? { debounceMs } : {}),
+            }),
+          });
+          if (!res.ok) return null;
+          const data = await res.json().catch(() => null);
+          if (data?.success && data?.viewToken && data?.viewStartedAt) {
+            const entry = {
+              adId,
+              viewStartedAt: Number(data.viewStartedAt),
+              viewToken: String(data.viewToken),
+            };
+            viewStartDataRef.current = entry;
+            return entry;
+          }
+        } catch {}
+        return null;
+      })();
+
+      viewStartInFlightRef.current = task;
+      try {
+        return await task;
+      } finally {
+        if (viewStartInFlightRef.current === task) {
+          viewStartInFlightRef.current = null;
+        }
+      }
+    },
+    [adId, adToken, adServedAt, isPlatformPost, isOwner]
+  );
 
   useEffect(() => {
     setBonusSecondsLeft(16);
     bonusTimerCancelled.current = false;
+    if (viewStartDataRef.current && viewStartDataRef.current.adId !== ad.id) {
+      viewStartDataRef.current = null;
+    }
+    viewStartInFlightRef.current = null;
   }, [ad.id]);
+
+  // Mint per-card viewStartedAt + viewToken only after a 2.5s scroll debounce
+  // so rapid feed scrolling triggers zero /api/feed/view-start calls.
+  useEffect(() => {
+    if (isPlatformPost || isOwner || !inView || !tabVisible) return;
+    if (viewStartDataRef.current?.adId === ad.id) return;
+
+    const timer = setTimeout(() => {
+      void ensureViewStarted(VIEW_START_DEBOUNCE_MS);
+    }, VIEW_START_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [ad.id, isPlatformPost, isOwner, inView, tabVisible, ensureViewStarted]);
   const hasTakenAction = useRef(false);
 
   // Auto-register seen when user unlocks interaction buttons but scrolls away without clicking
@@ -657,10 +733,13 @@ export default function AdInteractionHandler({
                     hasTakenAction.current = true;
                     const finalBonusSecs = 16 - bonusSecondsLeft;
                     handleAction("earn", async () => {
+                      const viewEntry = await ensureViewStarted();
                       const success = await onAdEarn(ad, {
                         telemetry: recordedTelemetryRef.current,
                         bonusSeconds: finalBonusSecs,
                         focusDurationSeconds: 16 + finalBonusSecs,
+                        viewStartedAt: viewEntry?.viewStartedAt,
+                        viewToken: viewEntry?.viewToken,
                       });
                       if (!success) {
                         handleRetryChallenge();

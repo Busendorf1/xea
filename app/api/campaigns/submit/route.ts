@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { cleanupExpiredApprovedCampaigns } from "@/lib/services/cleanupService";
 import { invalidateCachedUserCampaigns } from "@/lib/utils/cache";
+import { validateAndComputeAdPricing } from "../../../../lib/ads/pricingEnforcement";
+import { assessAdDeliveryCapacity } from "../../../../lib/ads/capacityEstimator";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +22,10 @@ export async function POST(req: NextRequest) {
       console.warn("Background auto-cleanup notice:", err)
     );
 
-    // 2. Check advertiser account status
+    // 2. Check advertiser account status & resolve pricing country from user record
     const { data: userProfile } = await supabaseAdmin
       .from("users")
-      .select("ad_account_status, ad_ban_until, ad_ban_reason")
+      .select("ad_account_status, ad_ban_until, ad_ban_reason, country")
       .ilike("email", emailLower)
       .maybeSingle();
 
@@ -92,24 +94,75 @@ export async function POST(req: NextRequest) {
     }
 
     const adId = editingId || adData.id || crypto.randomUUID();
-    const isBidded = !!adData.isBidded;
-    const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
-    const CATEGORY_FLOOR_RATES: Record<string, number> = {
-      politics: 30,
-      product: 25,
-      service: 25,
-      business: 25,
-      event: 20,
-      public: 20,
-      individual: 15,
-    };
-    const adCategory = String(adData.adType || "business").toLowerCase();
-    const floorRate = CATEGORY_FLOOR_RATES[adCategory] ?? 15;
-    const clientCpi = Number(adData.costPerImpression || floorRate);
-    const rawEffectiveRate = isBidded && bidPrice ? bidPrice : clientCpi;
-    const effectiveRate = Math.max(floorRate, rawEffectiveRate);
-    const impressionsCount = Math.max(100, Number(adData.impressions || 1000));
-    const computedTotalCost = Math.round(effectiveRate * impressionsCount);
+    const isAdmin = isAdminEmail(emailLower);
+    const resolvedProductCtaLink =
+      typeof adData.productCtaType === "string" && adData.productCtaType.trim().toLowerCase() === "none"
+        ? null
+        : adData.productCtaLink || null;
+
+    const pricing = await validateAndComputeAdPricing(supabaseAdmin, {
+      adType: adData.adType,
+      impressions: adData.impressions,
+      costPerImpression: adData.costPerImpression,
+      isBidded: adData.isBidded,
+      bidPrice: adData.bidPrice,
+      clientTotalCost: adData.totalCost,
+      productCtaLink: resolvedProductCtaLink,
+      userCountry: userProfile?.country,
+      isAdmin,
+    });
+
+    if (!pricing.ok) {
+      return NextResponse.json({ error: pricing.error }, { status: pricing.status });
+    }
+
+    const campaignDaysNum = Number(adData.campaignDays ?? 1);
+    if (!Number.isFinite(campaignDaysNum) || campaignDaysNum < 1 || campaignDaysNum > 90) {
+      return NextResponse.json(
+        { error: "Campaign duration must be between 1 and 90 days." },
+        { status: 400 }
+      );
+    }
+    const normalizedCampaignDays = Math.floor(campaignDaysNum);
+
+    if (!pricing.isAdminFreePost) {
+      const capacity = await assessAdDeliveryCapacity(supabaseAdmin, {
+        requestedImpressions: pricing.impressionsCount,
+        userFrequencyCap: adData.userFrequencyCap || 1,
+        campaignDays: normalizedCampaignDays,
+        targetingAll: adData.targetingAll ?? false,
+        country: adData.country || null,
+        state: adData.state || null,
+        province: adData.province || null,
+        gender: adData.gender || null,
+        ageRange: adData.ageRange || [18, 65],
+        employmentStatus: adData.employmentStatus || null,
+        industry: adData.industry || [],
+        interest: adData.interest || [],
+        lifestyle: adData.lifestyle || [],
+        behavior: adData.behavior || [],
+        personality: adData.personality || [],
+        advertiserEmail: emailLower,
+      });
+
+      if (capacity.telemetryAvailable && !capacity.allowed) {
+        return NextResponse.json(
+          {
+            error: capacity.message,
+            capacityCapped: true,
+            maxOrderableImpressions: capacity.maxOrderableImpressions,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const isBidded = pricing.isBidded;
+    const bidPrice = pricing.isBidded ? pricing.effectiveRate : null;
+    const adCategory = pricing.adCategory;
+    const effectiveRate = pricing.effectiveRate;
+    const impressionsCount = pricing.impressionsCount;
+    const computedTotalCost = pricing.computedTotalCost;
 
     // Check if editing an active delivering campaign & verify ownership (prevents IDOR)
     let isDeliveringActive = false;
@@ -165,7 +218,7 @@ export async function POST(req: NextRequest) {
       age_range: adData.ageRange || [18, 65],
       targeting_all: adData.targetingAll ?? false,
       impressions: impressionsCount,
-      campaign_days: adData.campaignDays || 1,
+      campaign_days: normalizedCampaignDays,
       user_frequency_cap: adData.userFrequencyCap || 1,
       country: adData.country || null,
       state: adData.state || null,
@@ -192,16 +245,13 @@ export async function POST(req: NextRequest) {
         const knownLongCtas = new Set(["Learn More", "Visit Website"]);
         return knownLongCtas.has(raw) ? raw : raw.slice(0, 10);
       })(),
-      product_cta_link:
-        typeof adData.productCtaType === "string" && adData.productCtaType.trim().toLowerCase() === "none"
-          ? null
-          : adData.productCtaLink || null,
+      product_cta_link: resolvedProductCtaLink,
       action_ios: adData.actionIos || null,
       action_android: adData.actionAndroid || null,
       action_watch_now: adData.actionWatchNow || null,
       admin_statement: "Status: Pending review",
       is_paused: false,
-      is_admin_post: false,
+      is_admin_post: pricing.isAdminFreePost,
     };
 
     const rawScheduledStart = adData.scheduledStartAt || adData.scheduled_start_at || null;

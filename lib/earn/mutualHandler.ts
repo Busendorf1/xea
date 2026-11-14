@@ -94,7 +94,7 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
         userRow.monetized === true ||
         userRow.monetized === "true" ||
         userRow.monetized === "yes" ||
-        nextClicks >= 300;
+        nextClicks >= 500;
 
       const prevMonetized = Boolean(
         dbUserBefore &&
@@ -200,7 +200,7 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
       amount: 0,
       newBalance: updatedBalance ?? 0,
       clicks: liveClicks,
-      monetized: liveClicks >= 300,
+      monetized: liveClicks >= 500,
       impressionCount: updatedImpressionCount,
       mutualAdded: publisherEmail,
       mutualCount: updatedMutualCount,

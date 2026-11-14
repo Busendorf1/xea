@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { env } from "@/lib/env";
-import { getEarnTokenSecret } from "../targetingEngine";
+import { getEarnTokenSecret, verifyHmacSignature } from "../targetingEngine";
 import { getCachedProfile, setCachedProfile } from "@/lib/utils/cache";
 
 export interface EarnSecurityCheckInput {
@@ -10,9 +10,12 @@ export interface EarnSecurityCheckInput {
   type: "earn" | "mutual";
   emailKey: string;
   rawEmail: string;
-  userId: string;
+  userId?: string;
+  resolveLegacyUserId?: () => Promise<string | null>;
   token?: unknown;
   servedAt?: unknown;
+  viewToken?: unknown;
+  viewStartedAt?: unknown;
   telemetry?: unknown;
   bonusSecondsInput?: unknown;
   rapidClickLockKey?: string;
@@ -43,8 +46,11 @@ export async function validateEarnSecurityAndPoh(
     emailKey,
     rawEmail,
     userId,
+    resolveLegacyUserId,
     token,
     servedAt,
+    viewToken,
+    viewStartedAt,
     telemetry,
     bonusSecondsInput,
     rapidClickLockKey,
@@ -79,15 +85,34 @@ export async function validateEarnSecurityAndPoh(
       };
     }
 
-    const payloads = [
-      `${adId}:${userId}:${servedAt}`,
+    let resolvedLegacyUserId: string | undefined = userId;
+    const getLegacyUserId = async (): Promise<string | undefined> => {
+      if (resolvedLegacyUserId !== undefined) return resolvedLegacyUserId;
+      if (!resolveLegacyUserId) return undefined;
+      try {
+        resolvedLegacyUserId = (await resolveLegacyUserId()) || undefined;
+      } catch {
+        resolvedLegacyUserId = undefined;
+      }
+      return resolvedLegacyUserId;
+    };
+
+    const primaryPayloads = [
       `${adId}:${emailKey}:${servedAt}`,
       `${adId}:${rawEmail.trim()}:${servedAt}`,
     ];
+    if (resolvedLegacyUserId && resolvedLegacyUserId !== emailKey && resolvedLegacyUserId !== rawEmail.trim()) {
+      primaryPayloads.unshift(`${adId}:${resolvedLegacyUserId}:${servedAt}`);
+    }
     const candidateKeys = Array.from(new Set([secretKey, fallbackAuth0Key].filter(Boolean)));
-    const isValidToken = candidateKeys.some((k) =>
-      payloads.some((p) => crypto.createHmac("sha256", k).update(p).digest("hex") === token)
-    );
+    let isValidToken = verifyHmacSignature(primaryPayloads, String(token), candidateKeys);
+
+    if (!isValidToken && resolvedLegacyUserId === undefined && resolveLegacyUserId) {
+      const legacyId = await getLegacyUserId();
+      if (legacyId && legacyId !== emailKey && legacyId !== rawEmail.trim()) {
+        isValidToken = verifyHmacSignature([`${adId}:${legacyId}:${servedAt}`], String(token), candidateKeys);
+      }
+    }
 
     if (!isValidToken) {
       console.warn("🚨 Potential ad fraud: HMAC Token mismatch in /api/earn for user:", emailKey, "Ad:", adId);
@@ -103,31 +128,135 @@ export async function validateEarnSecurityAndPoh(
     }
 
     const parsedServedAt = parseInt(String(servedAt), 10);
-    const viewDuration = now - parsedServedAt;
-    verifiedViewDurationMs = isNaN(viewDuration) ? 0 : viewDuration;
-
-    if (isNaN(parsedServedAt) || viewDuration < 12000) {
-      return {
-        errorResponse: NextResponse.json(
-          { error: "Minimum attention duration not met. Please view the ad completely before claiming." },
-          { status: 400 }
-        ),
-        verifiedViewDurationMs,
-        bonusSeconds: 0,
-        attentionSharePercent: 0.3,
-      };
-    }
-
-    if (viewDuration > 1800000) {
+    const batchDuration = now - parsedServedAt;
+    if (isNaN(parsedServedAt) || batchDuration > 1800000) {
       return {
         errorResponse: NextResponse.json(
           { error: "Ad session expired (Max 30m). Please refresh feed." },
           { status: 400 }
         ),
-        verifiedViewDurationMs,
+        verifiedViewDurationMs: 0,
         bonusSeconds: 0,
         attentionSharePercent: 0.3,
       };
+    }
+
+    if (type === "earn") {
+      // Strictly require a per-card viewport-entry HMAC token so batch wait time cannot unlock subsequent ads
+      if (!viewToken || viewStartedAt === undefined || viewStartedAt === null) {
+        return {
+          errorResponse: NextResponse.json(
+            {
+              error: "Per-card view verification required. Please view the ad completely before claiming.",
+              code: "VIEW_START_REQUIRED",
+            },
+            { status: 403 }
+          ),
+          verifiedViewDurationMs: 0,
+          bonusSeconds: 0,
+          attentionSharePercent: 0.3,
+        };
+      }
+
+      const viewPayloads = [
+        `view:${adId}:${emailKey}:${viewStartedAt}:${servedAt}`,
+        `view:${adId}:${rawEmail.trim()}:${viewStartedAt}:${servedAt}`,
+      ];
+      if (resolvedLegacyUserId && resolvedLegacyUserId !== emailKey && resolvedLegacyUserId !== rawEmail.trim()) {
+        viewPayloads.splice(1, 0, `view:${adId}:${resolvedLegacyUserId}:${viewStartedAt}:${servedAt}`);
+      }
+      let isValidViewToken = verifyHmacSignature(viewPayloads, String(viewToken), candidateKeys);
+      if (!isValidViewToken && resolvedLegacyUserId === undefined && resolveLegacyUserId) {
+        const legacyId = await getLegacyUserId();
+        if (legacyId && legacyId !== emailKey && legacyId !== rawEmail.trim()) {
+          isValidViewToken = verifyHmacSignature(
+            [`view:${adId}:${legacyId}:${viewStartedAt}:${servedAt}`],
+            String(viewToken),
+            candidateKeys
+          );
+        }
+      }
+      if (!isValidViewToken) {
+        console.warn("🚨 Invalid viewToken HMAC in /api/earn for user:", emailKey, "Ad:", adId);
+        return {
+          errorResponse: NextResponse.json(
+            { error: "Per-card cryptographic view verification failed. Reward rejected." },
+            { status: 403 }
+          ),
+          verifiedViewDurationMs: 0,
+          bonusSeconds: 0,
+          attentionSharePercent: 0.3,
+        };
+      }
+
+      const parsedViewStartedAt = Number.parseInt(String(viewStartedAt), 10);
+      if (
+        !Number.isFinite(parsedViewStartedAt) ||
+        parsedViewStartedAt > now + 15000 ||
+        parsedViewStartedAt < parsedServedAt - 15000
+      ) {
+        return {
+          errorResponse: NextResponse.json(
+            { error: "Invalid card view timestamp. Please refresh feed." },
+            { status: 400 }
+          ),
+          verifiedViewDurationMs: 0,
+          bonusSeconds: 0,
+          attentionSharePercent: 0.3,
+        };
+      }
+
+      if (now - parsedViewStartedAt > 1800000) {
+        return {
+          errorResponse: NextResponse.json(
+            { error: "Ad view session expired (Max 30m). Please refresh feed." },
+            { status: 400 }
+          ),
+          verifiedViewDurationMs: 0,
+          bonusSeconds: 0,
+          attentionSharePercent: 0.3,
+        };
+      }
+
+      // Anchor sequential attention clock against previous successful earn claim (if any)
+      let lastEarnAtMs = 0;
+      if (isRedisReady()) {
+        try {
+          const lastEarnRaw = await redisConnection.get(`user:last_earn_at:${emailKey}`);
+          const parsedLastEarn = lastEarnRaw ? Number.parseInt(lastEarnRaw, 10) : NaN;
+          if (Number.isFinite(parsedLastEarn) && parsedLastEarn > 0 && parsedLastEarn <= now) {
+            lastEarnAtMs = parsedLastEarn;
+          }
+        } catch {}
+      }
+
+      const effectiveStartMs = Math.max(parsedViewStartedAt, lastEarnAtMs);
+      verifiedViewDurationMs = Math.max(0, now - effectiveStartMs);
+
+      if (verifiedViewDurationMs < 14000) {
+        return {
+          errorResponse: NextResponse.json(
+            { error: "Minimum attention duration not met. Please view the ad completely before claiming." },
+            { status: 400 }
+          ),
+          verifiedViewDurationMs,
+          bonusSeconds: 0,
+          attentionSharePercent: 0.3,
+        };
+      }
+    } else {
+      verifiedViewDurationMs = isNaN(batchDuration) ? 0 : batchDuration;
+      if (verifiedViewDurationMs < 12000) {
+        return {
+          errorResponse: NextResponse.json(
+            { error: "Minimum attention duration not met. Please view the ad completely before claiming." },
+            { status: 400 }
+          ),
+          verifiedViewDurationMs,
+          bonusSeconds: 0,
+          attentionSharePercent: 0.3,
+        };
+      }
     }
   } else if (type === "mutual" && isRedisReady()) {
     try {
@@ -287,7 +416,8 @@ export async function validateEarnSecurityAndPoh(
             .join("|");
           const telemetryHash = crypto.createHash("sha256").update(normalizedSig).digest("hex").slice(0, 24);
           const telemetryReplayKey = `used:telemetry:${emailKey}:${telemetryHash}`;
-          const isFreshTelemetry = await redisConnection.set(telemetryReplayKey, "1", "EX", 86400, "NX");
+          // 35m TTL (2100s) covers the 30m MAX_AD_SESSION_MS + 5m skew without 24h Redis bloat
+          const isFreshTelemetry = await redisConnection.set(telemetryReplayKey, "1", "EX", 2100, "NX");
           if (!isFreshTelemetry) {
             console.warn("🚨 Telemetry replay attack blocked in /api/earn for user:", emailKey);
             if (rapidClickLockKey) {

@@ -153,7 +153,7 @@ export default function Step5Launch({
         amountFormatted={formatCurrency(calculateTotalCost())}
         paymentMethodText={paymentMethod === "wallet" ? "Wallet Balance" : "Card / Bank Transfer"}
         summaryItems={[
-          { label: "Target Attention", value: `${formSelections.impressions.toLocaleString()} views` },
+          { label: "Target Attention", value: `${formSelections.impressions.toLocaleString()} attentions` },
           {
             label: "Duration",
             value: `${formSelections.campaignDays} ${formSelections.campaignDays === 1 ? "day" : "days"}`,

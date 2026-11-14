@@ -23,7 +23,7 @@ import {
   l1UserFeedCache,
   setL1UserFeed,
 } from "../../../lib/feed/feedCaches";
-import { hydratePublisherProfiles, loadSharedActiveAdsForCountry } from "../../../lib/feed/poolLoader";
+import { hydratePublisherProfiles, isPublisherAccountBlocked, loadSharedActiveAdsForCountry } from "../../../lib/feed/poolLoader";
 import { buildOrderedCandidateFeed, UserImpressionInfo } from "../../../lib/feed/feedRankerAndInterleaver";
 import { resolveSharedAdForFeed } from "../../../lib/feed/sharedAdResolver";
 import { triggerSelfHealingJobsIfDue } from "../../../lib/services/cronOrchestrator";
@@ -49,11 +49,11 @@ export async function GET(req: NextRequest) {
     const refresh = searchParams.get("refresh") === "true";
     const locationSkipped = searchParams.get("locationSkipped") === "true";
 
+    // Pre-auth IP DDoS guard only (high ceiling so 500M carrier CGNAT & localhost never get locked out)
     const rateLimit = await checkRateLimit(req, {
-      limit: refresh ? 8 : 45,
+      limit: 600,
       windowSeconds: 60,
-      identifierPrefix: refresh ? "feed_refresh" : "feed_paginate",
-      blockDurationSeconds: refresh ? 21600 : undefined,
+      identifierPrefix: "feed_ip_guard",
     });
     if (!rateLimit.allowed) {
       return rateLimit.response!;
@@ -66,6 +66,29 @@ export async function GET(req: NextRequest) {
     const sharedAdId = searchParams.get("sharedAdId");
 
     const emailKey = email.toLowerCase().trim();
+
+    // Per-user sliding-window rate limit (no multi-hour IP lockout at 500M+ NAT scale)
+    const userRateLimit = await checkRateLimit(req, {
+      limit: refresh ? 25 : 90,
+      windowSeconds: 60,
+      identifier: emailKey,
+      identifierPrefix: refresh ? "feed_user_refresh" : "feed_user_paginate",
+    });
+    if (!userRateLimit.allowed) {
+      return (
+        userRateLimit.response ||
+        NextResponse.json(
+          { error: "Too many feed requests. Please wait a moment and try again." },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(userRateLimit.reset || 60),
+            },
+          }
+        )
+      );
+    }
+
     const origin = req.nextUrl.origin || "https://paayh.com";
     const signFeedAds = (adsToSign: Ad[]) =>
       adsToSign.map((ad: Ad) => {
@@ -239,6 +262,7 @@ export async function GET(req: NextRequest) {
     });
 
     const isInstantEmptyL1Hit = !refresh && cachedAdIdsStr === "[]";
+    let impressionsTruncated = false;
     if (userImpressionMap.size === 0 && !isInstantEmptyL1Hit && locationEnabled) {
       try {
         const { data: dbImpressions } = await supabaseReadOnly
@@ -248,6 +272,9 @@ export async function GET(req: NextRequest) {
           .order("last_viewed_at", { ascending: false })
           .limit(1000);
 
+        if (dbImpressions && dbImpressions.length >= 1000) {
+          impressionsTruncated = true;
+        }
         if (dbImpressions && dbImpressions.length > 0) {
           const backfillPipe = isRedisReady() ? redisConnection.pipeline() : null;
           dbImpressions.forEach((imp: any) => {
@@ -386,58 +413,100 @@ export async function GET(req: NextRequest) {
             }
           }
 
-          pageAds = slicedIds
-            .map((id) => fetchedDetailsMap[id])
-            .filter(Boolean)
-            .filter((ad: Ad) => {
-              if ((ad as any).is_paused === true || ad.completed_at) return false;
-              const impressionsTarget = Number(ad.impressions || 0);
-              const impressionCount = Number(ad.impression_count ?? ad.view_count ?? 0);
-              if (impressionsTarget > 0 && impressionCount >= impressionsTarget) return false;
+          if (impressionsTruncated && slicedIds.length > 0) {
+            const uncheckedIds = slicedIds.filter((id) => !userImpressionMap.has(id));
+            if (uncheckedIds.length > 0) {
+              try {
+                const { data: extraImps } = await supabaseReadOnly
+                  .from("ad_impressions")
+                  .select("ad_id, view_count, today_view_count, last_viewed_at")
+                  .eq("user_email", emailKey)
+                  .in("ad_id", uncheckedIds.slice(0, 200));
+                (extraImps || []).forEach((imp: any) => {
+                  if (imp?.ad_id) {
+                    userImpressionMap.set(imp.ad_id, {
+                      view_count: Number(imp.view_count || 0),
+                      today_view_count: Number(imp.today_view_count || 0),
+                      last_viewed_at: imp.last_viewed_at,
+                    });
+                  }
+                });
+              } catch {}
+            }
+          }
 
-              const plan = computeCampaignBroadeningPlan(ad as any, now.getTime());
-              if (plan.isScheduledFuture || plan.isExpiredPlatformPost) return false;
+          const strictCacheAds: Ad[] = [];
+          const relaxedGeoDemoCacheAds: Ad[] = [];
 
-              const dailyCap = Number((ad as any).daily_impression_cap || 0);
-              if (dailyCap > 0 && (ad as any).last_reset_date === todayDate) {
-                const effectiveDailyCap = dailyCap + Math.max(0, Number((ad as any).rollover_balance || 0));
-                if (Number((ad as any).daily_impression_count || 0) >= effectiveDailyCap) return false;
+          for (const id of slicedIds) {
+            const ad = fetchedDetailsMap[id];
+            if (!ad) continue;
+            if ((ad as any).is_paused === true || ad.completed_at) continue;
+            const impressionsTarget = Number(ad.impressions || 0);
+            const impressionCount = Number(ad.impression_count ?? ad.view_count ?? 0);
+            if (impressionsTarget > 0 && impressionCount >= impressionsTarget) continue;
+
+            const plan = computeCampaignBroadeningPlan(ad as any, now.getTime());
+            if (plan.isScheduledFuture || plan.isExpiredPlatformPost) continue;
+
+            const dailyCap = Number((ad as any).daily_impression_cap || 0);
+            if (dailyCap > 0 && (ad as any).last_reset_date === todayDate) {
+              const effectiveDailyCap = dailyCap + Math.max(0, Number((ad as any).rollover_balance || 0));
+              if (Number((ad as any).daily_impression_count || 0) >= effectiveDailyCap) continue;
+            }
+
+            const imp = userImpressionMap.get(ad.id);
+            const totalViews = imp
+              ? imp.view_count || 0
+              : seenAdIdsSet.has(ad.id)
+              ? plan.baseUserCap
+              : 0;
+            if (!isViewerAdmin && !ad.is_admin_post && totalViews >= plan.effectiveUserCap) continue;
+
+            const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
+            const viewsToday = Math.max(
+              Number(todayPacingMap[ad.id] || 0),
+              isToday ? imp?.today_view_count || 0 : 0
+            );
+            if (totalViews > 0) {
+              if (viewsToday >= plan.dailyUserCap) continue;
+              if (imp?.last_viewed_at) {
+                const lastViewedMs = new Date(imp.last_viewed_at).getTime();
+                if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < plan.minSpacingMs) {
+                  continue;
+                }
               }
+            }
 
-              const check = evaluateAdTargeting(
+            const check = evaluateAdTargeting(
+              ad as any,
+              { ...viewerProfile, email: emailKey },
+              {
+                allowRolloverPsychographics: plan.broadeningStage >= 1,
+                broadeningStage: plan.broadeningStage,
+              }
+            );
+            if (check.matches) {
+              strictCacheAds.push(ad);
+            } else if (plan.broadeningStage === 0) {
+              const relaxedCheck = evaluateAdTargeting(
                 ad as any,
                 { ...viewerProfile, email: emailKey },
                 {
-                  allowRolloverPsychographics: plan.broadeningStage >= 1,
-                  broadeningStage: plan.broadeningStage,
+                  allowRolloverPsychographics: true,
+                  broadeningStage: 0,
                 }
               );
-              if (!check.matches) return false;
-
-              const imp = userImpressionMap.get(ad.id);
-              const totalViews = imp
-                ? imp.view_count || 0
-                : seenAdIdsSet.has(ad.id)
-                ? plan.baseUserCap
-                : 0;
-              if (!isViewerAdmin && !ad.is_admin_post && totalViews >= plan.effectiveUserCap) return false;
-
-              const isToday = imp?.last_viewed_at && imp.last_viewed_at.slice(0, 10) === todayDate;
-              const viewsToday = Math.max(
-                Number(todayPacingMap[ad.id] || 0),
-                isToday ? imp?.today_view_count || 0 : 0
-              );
-              if (totalViews > 0) {
-                if (viewsToday >= plan.dailyUserCap) return false;
-                if (imp?.last_viewed_at) {
-                  const lastViewedMs = new Date(imp.last_viewed_at).getTime();
-                  if (!isNaN(lastViewedMs) && now.getTime() - lastViewedMs < plan.minSpacingMs) {
-                    return false;
-                  }
-                }
+              if (relaxedCheck.matches) {
+                relaxedGeoDemoCacheAds.push(ad);
               }
-              return true;
-            });
+            }
+          }
+
+          pageAds =
+            strictCacheAds.length < 15 && relaxedGeoDemoCacheAds.length > 0
+              ? [...strictCacheAds, ...relaxedGeoDemoCacheAds]
+              : strictCacheAds;
         }
 
         cacheHit = true;
@@ -466,6 +535,30 @@ export async function GET(req: NextRequest) {
         rawAds = await loadSharedActiveAdsForCountry(viewerProfile?.country || "");
       }
 
+      if (impressionsTruncated && rawAds.length > 0) {
+        const uncheckedColdIds = rawAds
+          .map((a: any) => String(a?.id || ""))
+          .filter((id: string) => id && !userImpressionMap.has(id));
+        if (uncheckedColdIds.length > 0) {
+          try {
+            const { data: extraColdImps } = await supabaseReadOnly
+              .from("ad_impressions")
+              .select("ad_id, view_count, today_view_count, last_viewed_at")
+              .eq("user_email", emailKey)
+              .in("ad_id", uncheckedColdIds.slice(0, 350));
+            (extraColdImps || []).forEach((imp: any) => {
+              if (imp?.ad_id) {
+                userImpressionMap.set(imp.ad_id, {
+                  view_count: Number(imp.view_count || 0),
+                  today_view_count: Number(imp.today_view_count || 0),
+                  last_viewed_at: imp.last_viewed_at,
+                });
+              }
+            });
+          } catch {}
+        }
+      }
+
       const built = buildOrderedCandidateFeed({
         rawAds,
         viewerProfile,
@@ -482,18 +575,22 @@ export async function GET(req: NextRequest) {
       const orderedCandidateAds = built.orderedCandidateAds;
       completedOrCappedAdIds.push(...built.completedOrCappedAdIds);
 
-      const candidateAdIds = orderedCandidateAds.map((a: Ad) => a.id);
       const publisherEmails = Array.from(
         new Set(orderedCandidateAds.map((ad: Ad) => ad.user_email).filter(Boolean))
       ) as string[];
 
       await hydratePublisherProfiles(publisherEmails, profilesMap);
-      setL1UserFeed(emailKey, candidateAdIds, profilesMap);
+      const activeOrderedAds = orderedCandidateAds.filter(
+        (ad: Ad) => !isPublisherAccountBlocked(ad.user_email || (ad as any).email)
+      );
+      setL1UserFeed(emailKey, activeOrderedAds.map((a: Ad) => a.id), profilesMap);
 
       const detailExp = Date.now() + AD_DETAIL_TTL_SECONDS * 1000;
-      orderedCandidateAds.forEach((ad: Ad) => {
+      activeOrderedAds.forEach((ad: Ad) => {
         l1AdDetailsCache.set(ad.id, { ad, expiresAt: detailExp });
       });
+
+      const candidateAdIds = activeOrderedAds.map((a: Ad) => a.id);
 
       if (isRedisReady()) {
         try {
@@ -507,7 +604,7 @@ export async function GET(req: NextRequest) {
             pipeline.expire(seenAdsSetKey, 86400 * 30);
           }
 
-          orderedCandidateAds.forEach((ad: Ad) => {
+          activeOrderedAds.forEach((ad: Ad) => {
             pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
           });
 
@@ -515,7 +612,7 @@ export async function GET(req: NextRequest) {
         } catch {}
       }
 
-      pageAds = orderedCandidateAds.slice(offset, offset + limit);
+      pageAds = activeOrderedAds.slice(offset, offset + limit);
     }
 
     const signedAds = signFeedAds(pageAds);

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     const cleanUserEmail = userEmail.toLowerCase().trim();
 
-    // Reset monetization_clicks to 0 and set monetized to false to start 300 clicks path
+    // Reset monetization_clicks to 0 and set monetized to false to start 500 clicks path
     // Uses indexed exact match for 0-lock, sub-millisecond execution at 500M+ users
     const { error: updateErr } = await supabaseAdmin
       .from("users")
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Monetization path resumed! Complete 300 clicks on feed ads to activate your account monetization.",
+      message: "Monetization path resumed! Complete 500 clicks on feed ads to activate your account monetization.",
     });
   } catch (err: any) {
     console.error("❌ Error in POST /api/monetize/resume:", err);

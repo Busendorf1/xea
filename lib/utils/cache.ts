@@ -79,7 +79,7 @@ export async function publishLiveBalanceUpdate(
         balance: event.newBalance,
         delta: event.delta,
         monetization_clicks: event.clicks,
-        monetized: event.clicks !== undefined ? event.clicks >= 300 : undefined,
+        monetized: event.clicks !== undefined ? event.clicks >= 500 : undefined,
         earnedAdId: event.earnedAdId,
         email: emailLower,
         timestamp: Date.now(),

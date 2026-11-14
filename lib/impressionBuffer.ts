@@ -139,21 +139,35 @@ export async function recordCoalescedAdSeen(
       if (error) {
         const { data: existingImp } = await supabaseAdmin
           .from("ad_impressions")
-          .select("id, view_count")
+          .select("id, view_count, today_view_count, last_viewed_at")
           .eq("ad_id", adId)
           .ilike("user_email", emailKey)
           .maybeSingle();
 
+        const todayUtc = nowIso.slice(0, 10);
         const existingViews = existingImp ? Number(existingImp.view_count || 0) : 0;
         if (existingImp?.id) {
+          const impLastDate = existingImp.last_viewed_at
+            ? String(existingImp.last_viewed_at).slice(0, 10)
+            : "";
+          const nextTodayViews =
+            impLastDate === todayUtc ? Number(existingImp.today_view_count || 0) + 1 : 1;
           await supabaseAdmin
             .from("ad_impressions")
-            .update({ view_count: existingViews + 1, last_viewed_at: nowIso })
+            .update({
+              view_count: existingViews + 1,
+              today_view_count: nextTodayViews,
+              last_viewed_at: nowIso,
+            })
             .eq("id", existingImp.id);
         } else {
-          await supabaseAdmin
-            .from("ad_impressions")
-            .insert({ ad_id: adId, user_email: emailKey, view_count: 1, last_viewed_at: nowIso });
+          await supabaseAdmin.from("ad_impressions").insert({
+            ad_id: adId,
+            user_email: emailKey,
+            view_count: 1,
+            today_view_count: 1,
+            last_viewed_at: nowIso,
+          });
         }
       }
     } catch {}
@@ -235,7 +249,7 @@ async function applyBatchedSeenDeltaToAd(
 
   const { data: liveAd } = await supabaseAdmin
     .from("addsactive")
-    .select("impressions, impression_count, user_email")
+    .select("impressions, impression_count, daily_impression_count, last_reset_date, user_email")
     .eq("id", adId)
     .maybeSingle();
 
@@ -245,7 +259,7 @@ async function applyBatchedSeenDeltaToAd(
   } else {
     const { data: addsRow } = await supabaseAdmin
       .from("adds")
-      .select("impressions, impression_count, user_email")
+      .select("impressions, impression_count, daily_impression_count, last_reset_date, user_email")
       .eq("id", adId)
       .maybeSingle();
     if (addsRow) {
@@ -256,10 +270,14 @@ async function applyBatchedSeenDeltaToAd(
 
   if (!targetRow) return undefined;
 
+  const todayUtc = nowIso.slice(0, 10);
   const currentImpCount = Number(targetRow.impression_count || 0);
   const targetImps = Number(targetRow.impressions || 0);
   const resolvedOwner = adOwnerEmail || targetRow.user_email || null;
   const nextImpCount = currentImpCount + delta;
+  const prevResetDate = targetRow.last_reset_date ? String(targetRow.last_reset_date).slice(0, 10) : "";
+  const nextDailyImpCount =
+    prevResetDate === todayUtc ? Number(targetRow.daily_impression_count || 0) + delta : delta;
   const isNowExhausted = !isPlatformPost && targetImps > 0 && nextImpCount >= targetImps;
   const completedIso = isNowExhausted ? nowIso : null;
 
@@ -267,6 +285,8 @@ async function applyBatchedSeenDeltaToAd(
     .from(targetTable)
     .update({
       impression_count: nextImpCount,
+      daily_impression_count: nextDailyImpCount,
+      last_reset_date: todayUtc,
       ...(completedIso ? { completed_at: completedIso } : {}),
     })
     .eq("id", adId)
@@ -275,7 +295,15 @@ async function applyBatchedSeenDeltaToAd(
 
   // If active ad, also synchronize counter to public.adds for unified reporting
   if (targetTable === "addsactive") {
-    supabaseAdmin.from("adds").update({ impression_count: nextImpCount }).eq("id", adId).then(() => {}, () => {});
+    supabaseAdmin
+      .from("adds")
+      .update({
+        impression_count: nextImpCount,
+        daily_impression_count: nextDailyImpCount,
+        last_reset_date: todayUtc,
+      })
+      .eq("id", adId)
+      .then(() => {}, () => {});
   }
 
   if (isNowExhausted) {

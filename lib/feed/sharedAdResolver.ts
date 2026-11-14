@@ -1,7 +1,8 @@
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { Ad, AdvertiserProfile } from "@/types/ads";
-import { isAdRowActiveAndAvailable } from "@/lib/ads/publicAdResolver";
+import { isAdRowActiveAndAvailable } from "../ads/publicAdResolver";
+import { decodeSharedAdParam } from "../utils/adShare";
 import {
   AD_DETAIL_TTL_SECONDS,
   AD_SELECT_FIELDS,
@@ -36,7 +37,7 @@ export async function resolveSharedAdForFeed(params: {
   }
 
   try {
-    const cleanSharedId = String(sharedAdId).trim();
+    const cleanSharedId = decodeSharedAdParam(sharedAdId) || String(sharedAdId).trim();
     const isValidSharedId = /^[a-zA-Z0-9_-]{1,128}$/.test(cleanSharedId);
     if (!isValidSharedId) {
       return { pageAds: [], profilesMap: {}, sharedAdUnavailable: true };

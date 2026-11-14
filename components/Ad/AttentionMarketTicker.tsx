@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { TrendingUp, ChevronRight, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import styles from "./AttentionMarketTicker.module.css";
 import RollingCounter from "@/components/ui/RollingCounter";
+import {
+  formatCurrency as globalFormatCurrency,
+  getLocalizedAdFloorRate,
+  getUserCurrency,
+  NGN_PER_USD,
+} from "@/lib/utils/currency";
 
 export interface MarketRate {
   floorPrice: number;
@@ -14,6 +20,7 @@ export interface MarketRate {
 
 interface AttentionMarketTickerProps {
   selectedCategory: string;
+  country?: string | null;
   isBiddingEnabled: boolean;
   onToggleBidding: (enabled: boolean) => void;
   bidPrice: number;
@@ -32,6 +39,7 @@ const CATEGORY_NAMES: Record<string, string> = {
 
 function AttentionMarketTicker({
   selectedCategory,
+  country,
   isBiddingEnabled,
   onToggleBidding,
   bidPrice,
@@ -39,11 +47,11 @@ function AttentionMarketTicker({
   impressions,
 }: AttentionMarketTickerProps) {
   const [rates, setRates] = useState<Record<string, MarketRate>>({
-    politics: { floorPrice: 1500, highestBid: 1500, totalBids: 0 },
+    politics: { floorPrice: 900, highestBid: 900, totalBids: 0 },
     business: { floorPrice: 45, highestBid: 45, totalBids: 0 },
-    government: { floorPrice: 2000, highestBid: 2000, totalBids: 0 },
+    government: { floorPrice: 750, highestBid: 750, totalBids: 0 },
     individual: { floorPrice: 25, highestBid: 25, totalBids: 0 },
-    religion: { floorPrice: 1500, highestBid: 1500, totalBids: 0 },
+    religion: { floorPrice: 900, highestBid: 900, totalBids: 0 },
     product_sales: { floorPrice: 55, highestBid: 55, totalBids: 0 },
   });
   const [inputError, setInputError] = useState("");
@@ -77,33 +85,59 @@ function AttentionMarketTicker({
     return () => clearInterval(interval);
   }, [isBiddingEnabled, fetchRates]);
 
+  const isUSD = getUserCurrency(country) === "USD";
   const catKey = (selectedCategory || "business").toLowerCase();
-  const currentCategoryRate = rates[catKey] || {
+  const rawCategoryRate = rates[catKey] || {
     floorPrice: 45,
     highestBid: 45,
     totalBids: 0,
   };
+  const localizedFloor = getLocalizedAdFloorRate(catKey, country);
+  const currentCategoryRate: MarketRate = useMemo(() => {
+    if (!isUSD) {
+      return {
+        floorPrice: Math.max(localizedFloor, rawCategoryRate.floorPrice || localizedFloor),
+        highestBid: Math.max(localizedFloor, rawCategoryRate.highestBid || localizedFloor),
+        totalBids: rawCategoryRate.totalBids,
+      };
+    }
+    const convertedTopBid = Math.round(((rawCategoryRate.highestBid || 45) / NGN_PER_USD) * 4 * 100) / 100;
+    return {
+      floorPrice: localizedFloor,
+      highestBid: Math.max(localizedFloor, convertedTopBid),
+      totalBids: rawCategoryRate.totalBids,
+    };
+  }, [isUSD, localizedFloor, rawCategoryRate.floorPrice, rawCategoryRate.highestBid, rawCategoryRate.totalBids]);
 
   const categoryDisplayName = CATEGORY_NAMES[catKey] || catKey;
 
-  // Sync initial bid price to floor or highest bid if 0 or below floor
+  const formatCurrency = (amt: number) => {
+    if (isUSD) return globalFormatCurrency(amt, country);
+    return "₦" + Math.round(amt).toLocaleString("en-NG");
+  };
+
+  const prevIsUsdRef = useRef(isUSD);
+
+  // Sync initial bid price to floor or highest bid if currency changes, 0, or below floor
   useEffect(() => {
-    if (isBiddingEnabled && (bidPrice <= 0 || bidPrice < currentCategoryRate.floorPrice)) {
+    const currencyChanged = prevIsUsdRef.current !== isUSD;
+    prevIsUsdRef.current = isUSD;
+    if (isBiddingEnabled && (currencyChanged || bidPrice <= 0 || bidPrice < currentCategoryRate.floorPrice)) {
       const suggestedBid = Math.max(currentCategoryRate.highestBid, currentCategoryRate.floorPrice);
       onBidPriceChange(suggestedBid);
     }
-  }, [isBiddingEnabled, catKey, bidPrice, currentCategoryRate.floorPrice, currentCategoryRate.highestBid, onBidPriceChange]);
+  }, [isBiddingEnabled, isUSD, catKey, bidPrice, currentCategoryRate.floorPrice, currentCategoryRate.highestBid, onBidPriceChange]);
 
   const handlePriceInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     if (isNaN(val)) {
       onBidPriceChange(0);
-      setInputError(`Bid must be at least ₦${currentCategoryRate.floorPrice.toLocaleString()}`);
+      setInputError(`Bid must be at least ${formatCurrency(currentCategoryRate.floorPrice)}`);
       return;
     }
     onBidPriceChange(val);
     if (val < currentCategoryRate.floorPrice) {
-      setInputError(`Bid cannot be lower than floor rate (₦${currentCategoryRate.floorPrice.toLocaleString()})`);
+      setInputError(`Bid cannot be lower than floor rate (${formatCurrency(currentCategoryRate.floorPrice)})`);
     } else {
       setInputError("");
     }
@@ -111,17 +145,15 @@ function AttentionMarketTicker({
 
   const handlePresetClick = (multiplier: number, addition: number = 0) => {
     const base = Math.max(currentCategoryRate.highestBid, currentCategoryRate.floorPrice);
-    const newBid = Math.ceil(base * multiplier + addition);
+    const newBid = isUSD
+      ? Math.round((base * multiplier + addition) * 100) / 100
+      : Math.ceil(base * multiplier + addition);
     onBidPriceChange(newBid);
     setInputError("");
   };
 
-  const formatCurrency = (amt: number) => {
-    return "₦" + Math.round(amt).toLocaleString("en-NG");
-  };
-
   const activeBidRate = bidPrice || currentCategoryRate.floorPrice;
-  const totalBiddedCost = activeBidRate * (impressions || 1000);
+  const totalBiddedCost = activeBidRate * (impressions || 100);
 
   // Projected Rank Logic
   const rankStatus = useMemo(() => {
@@ -232,21 +264,21 @@ function AttentionMarketTicker({
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.96 }}
-                  className={`${styles.presetChip} ${bidPrice === Math.ceil(currentCategoryRate.highestBid * 1.1) ? styles.presetChipActive : ""}`}
+                  className={`${styles.presetChip} ${bidPrice === (isUSD ? Math.round(currentCategoryRate.highestBid * 1.1 * 100) / 100 : Math.ceil(currentCategoryRate.highestBid * 1.1)) ? styles.presetChipActive : ""}`}
                   onClick={() => handlePresetClick(1.1)}
                 >
                   <span>+10% Lead</span>
-                  <strong>{formatCurrency(Math.ceil(currentCategoryRate.highestBid * 1.1))}</strong>
+                  <strong>{formatCurrency(isUSD ? Math.round(currentCategoryRate.highestBid * 1.1 * 100) / 100 : Math.ceil(currentCategoryRate.highestBid * 1.1))}</strong>
                 </motion.button>
 
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.96 }}
-                  className={`${styles.presetChip} ${bidPrice === Math.ceil(currentCategoryRate.highestBid * 1.25) ? styles.presetChipActive : ""}`}
+                  className={`${styles.presetChip} ${bidPrice === (isUSD ? Math.round(currentCategoryRate.highestBid * 1.25 * 100) / 100 : Math.ceil(currentCategoryRate.highestBid * 1.25)) ? styles.presetChipActive : ""}`}
                   onClick={() => handlePresetClick(1.25)}
                 >
                   <span>+25% Outbid</span>
-                  <strong>{formatCurrency(Math.ceil(currentCategoryRate.highestBid * 1.25))}</strong>
+                  <strong>{formatCurrency(isUSD ? Math.round(currentCategoryRate.highestBid * 1.25 * 100) / 100 : Math.ceil(currentCategoryRate.highestBid * 1.25))}</strong>
                 </motion.button>
               </div>
             </div>
@@ -255,12 +287,12 @@ function AttentionMarketTicker({
             <div className={styles.customBidSection}>
               <div className={styles.inputHeader}>
                 <span className={styles.sectionLabel}>Custom Bid Rate (per attention)</span>
-                <span className={styles.currencyBadge}>NGN</span>
+                <span className={styles.currencyBadge}>{isUSD ? "USD" : "NGN"}</span>
               </div>
               <div className={styles.inputContainer}>
                 <input
                   type="number"
-                  step="1"
+                  step={isUSD ? "0.01" : "1"}
                   min={currentCategoryRate.floorPrice}
                   className={`${styles.bidInput} ${inputError ? styles.bidInputError : ""}`}
                   value={bidPrice || ""}
@@ -284,7 +316,7 @@ function AttentionMarketTicker({
               <div className={`${styles.calcRow} ${styles.calcTotalRow}`}>
                 <span className={styles.totalLabel}>Total Campaign Cost:</span>
                 <div className={styles.totalNumberWrap}>
-                  <RollingCounter value={totalBiddedCost} currencyPrefix="₦" decimals={0} durationMs={600} />
+                  <RollingCounter value={totalBiddedCost} currencyPrefix={isUSD ? "$" : "₦"} decimals={isUSD ? 2 : 0} durationMs={600} />
                 </div>
               </div>
             </div>

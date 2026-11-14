@@ -28,7 +28,7 @@ export const faqs: FaqItem[] = [
   {
     question: "How do I become monetized?",
     answer:
-      "Monetization is completely free, with no subscriptions, fees, or charges. To qualify, your account must accumulate at least 300 verified interactions (\"Seen\" or \"Mutual\") or meet authorized eligibility criteria. Once monetized, you can start earning attention rewards."
+      "Monetization is completely free, with no subscriptions, fees, or charges. To qualify, your account must accumulate at least 500 verified interactions (\"Seen\" or \"Mutual\") or meet authorized eligibility criteria. Once monetized, you can start earning attention rewards."
   },
   {
     question: "How does ad viewing and impression tracking work?",
@@ -43,7 +43,7 @@ export const faqs: FaqItem[] = [
   {
     question: "Can I cancel or opt out of monetization, and what happens if I do?",
     answer:
-      "Yes, monetization is 100% voluntary and you can cancel or opt out at any time from your Monetization settings dashboard. When you cancel, your account switches to browsing-only mode: you can continue discovering feed content without restriction, and your existing wallet balance is completely preserved for withdrawal. Your feed \"Seen\" interaction count continues to increment normally, and you will NEVER be automatically re-monetized at 300 seens. If you ever wish to earn again, return to Monetization settings, click \"Reapply for Monetization\" (which resets clicks to 0, ATW tier to ATW1, and score to 0.1000), and complete 300 fresh verified interactions."
+      "Yes, monetization is 100% voluntary and you can cancel or opt out at any time from your Monetization settings dashboard. When you cancel, your account switches to browsing-only mode: you can continue discovering feed content without restriction, and your existing wallet balance is completely preserved for withdrawal. Your feed \"Seen\" interaction count continues to increment normally, and you will NEVER be automatically re-monetized at 500 seens. If you ever wish to earn again, return to Monetization settings, click \"Reapply for Monetization\" (which resets clicks to 0, ATW tier to ATW1, and score to 0.1000), and complete 500 fresh verified interactions."
   },
   {
     question: "What is the Earn+ button and how are attention rewards calculated?",
@@ -63,7 +63,7 @@ export const faqs: FaqItem[] = [
   {
     question: "Why should I withdraw promptly and how do ATW tiers (ATW1–ATW14) and star ratings work?",
     answer:
-      "Paayh is an attention exchange, not a bank or savings vault, so we strongly advise withdrawing promptly once reaching ₦10,000 [approx. $6.67 USD]. Wallets are governed by unified Attention Worth Tiers scaling from ATW1 (₦30,000 cap) up to ATW14 (₦420,000 max cap, increasing by ₦30,000 per level). Both verified interactions (300 clicks per level) and verified 1–5 star advertiser ratings (boosting your attention-worth score above baseline 0.1000) advance your ATW tier. Any earnings above your current ATW ceiling are forfeited to platform liquidity until you withdraw."
+      "Paayh is an attention exchange, not a bank or savings vault, so we strongly advise withdrawing promptly once reaching ₦10,000 [approx. $6.67 USD]. Wallets are governed by unified Attention Worth Tiers scaling from ATW1 (₦30,000 cap) up to ATW14 (₦420,000 max cap, increasing by ₦30,000 per level). Both verified interactions (500 clicks per level) and verified 1–5 star advertiser ratings (boosting your attention-worth score above baseline 0.1000) advance your ATW tier. Any earnings above your current ATW ceiling are forfeited to platform liquidity until you withdraw."
   },
   {
     question: "Can I get a refund on advertising campaigns or deposited funds?",

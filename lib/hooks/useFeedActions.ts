@@ -12,6 +12,8 @@ export interface InteractionData {
   turnstileToken?: string;
   bonusSeconds?: number;
   focusDurationSeconds?: number;
+  viewStartedAt?: number;
+  viewToken?: string;
 }
 
 interface UseFeedActionsProps {
@@ -81,7 +83,7 @@ export function useFeedActions({
         try {
           const data = await response.json();
           if (data && typeof data.clicksCount === "number") {
-            const isNowMonetized = Boolean(data.isMonetized || data.clicksCount >= 300);
+            const isNowMonetized = Boolean(data.isMonetized || data.clicksCount >= 500);
 
             if (setViewerProfile) {
               setViewerProfile((prev) =>
@@ -157,7 +159,7 @@ export function useFeedActions({
 
       // 1. INSTANT OPTIMISTIC UI: Only monetized users receive balance increment
       const isExempt = isExemptFromBarriersAndInactivity(userEmail);
-      const isMonetized = Boolean(isExempt || viewerProfile?.monetized === true || (viewerProfile?.monetization_clicks || 0) >= 300);
+      const isMonetized = Boolean(isExempt || viewerProfile?.monetized === true || (viewerProfile?.monetization_clicks || 0) >= 500);
       const effectiveRate = isMonetized ? expectedRate : 0;
 
       if (effectiveRate > 0) {
@@ -175,6 +177,8 @@ export function useFeedActions({
             adId: ad.id,
             token: ad.verification_token || (ad as any)._token,
             servedAt: ad.served_at || (ad as any)._served_at,
+            viewStartedAt: interactionData?.viewStartedAt,
+            viewToken: interactionData?.viewToken,
             type: "earn",
             telemetry: interactionData?.telemetry || [],
             turnstileToken: interactionData?.turnstileToken || undefined,
@@ -283,7 +287,7 @@ export function useFeedActions({
                     ...prev,
                     balance: authBal,
                     monetization_clicks: typeof authClicks === "number" ? authClicks : prev.monetization_clicks,
-                    monetized: (typeof authClicks === "number" && authClicks >= 300) || prev.monetized,
+                    monetized: (typeof authClicks === "number" && authClicks >= 500) || prev.monetized,
                   }
                 : null
             );
@@ -311,7 +315,7 @@ export function useFeedActions({
                   email: userEmail ? userEmail.toLowerCase() : parsed.email,
                   clicksCount: authClicks,
                   clicksRemaining: details.clicksRemaining,
-                  isMonetized: isExempt || authClicks >= 300 || Boolean(parsed.isMonetized),
+                  isMonetized: isExempt || authClicks >= 500 || Boolean(parsed.isMonetized),
                   atwTier: details.tierCode,
                 };
                 const serialized = JSON.stringify(updatedCache);
@@ -324,7 +328,7 @@ export function useFeedActions({
                   detail: {
                     delta: 1,
                     totalClicks: authClicks,
-                    isMonetized: isExempt || authClicks >= 300,
+                    isMonetized: isExempt || authClicks >= 500,
                     atwTier: details.tierCode,
                   },
                 })
@@ -450,7 +454,7 @@ export function useFeedActions({
               email: userEmail ? userEmail.toLowerCase() : parsed.email,
               clicksCount: authClicks,
               clicksRemaining: details.clicksRemaining,
-              isMonetized: isExempt || authClicks >= 300 || Boolean(parsed.isMonetized),
+              isMonetized: isExempt || authClicks >= 500 || Boolean(parsed.isMonetized),
               atwTier: details.tierCode,
             };
             const serialized = JSON.stringify(updatedCache);
@@ -463,7 +467,7 @@ export function useFeedActions({
               detail: {
                 delta: 1,
                 totalClicks: authClicks,
-                isMonetized: isExempt || authClicks >= 300,
+                isMonetized: isExempt || authClicks >= 500,
                 atwTier: details.tierCode,
               },
             })

@@ -16,24 +16,24 @@ function makeJsonReq(url: string, method = "POST", body?: Record<string, unknown
 }
 
 describe("Canonical ATW & Rating Score Engine", () => {
-  it("matches SQL compute_atw_level progression (300/tier, capped at ATW14 ₦420k) and integrates rating boost", () => {
+  it("matches SQL compute_atw_level progression (500/tier, capped at ATW14 ₦420k) and integrates rating boost", () => {
     const entry = computeAtwTierDetails(0, "ATW1", false, 0.1);
     expect(entry.tierCode).toBe("ATW1");
     expect(entry.holdingCap).toBe(30000);
 
-    const step1 = computeAtwTierDetails(300, "ATW1", false, 0.1);
+    const step1 = computeAtwTierDetails(500, "ATW1", false, 0.1);
     expect(step1.tierCode).toBe("ATW1");
     expect(step1.holdingCap).toBe(30000);
 
-    // 585 clicks + 0.15 score (+0.05 = +15 click-equivalents) => 600 effectiveClicks => ATW2
-    const rated = computeAtwTierDetails(585, "ATW1", false, 0.15);
-    expect(rated.ratingBonusClicks).toBe(15);
-    expect(rated.effectiveClicks).toBe(600);
+    // 975 clicks + 0.15 score (+0.05 = +25 click-equivalents) => 1000 effectiveClicks => ATW2
+    const rated = computeAtwTierDetails(975, "ATW1", false, 0.15);
+    expect(rated.ratingBonusClicks).toBe(25);
+    expect(rated.effectiveClicks).toBe(1000);
     expect(rated.tierCode).toBe("ATW2");
     expect(rated.holdingCap).toBe(60000);
-    expect(getAtwBalanceLimit("ATW1", false, 585, 0.15)).toBe(60000);
+    expect(getAtwBalanceLimit("ATW1", false, 975, 0.15)).toBe(60000);
 
-    const max = computeAtwTierDetails(6000, "ATW10", false, 2.0);
+    const max = computeAtwTierDetails(7000, "ATW10", false, 2.0);
     expect(max.tierCode).toBe("ATW14");
     expect(max.holdingCap).toBe(420000);
   });
@@ -198,11 +198,13 @@ describe("Core API Security & Architecture Hardening", () => {
       },
     }));
 
-    const { getEarnTokenSecret } = await import("../targetingEngine");
+    const { getEarnTokenSecret, signAdViewStartToken } = await import("../targetingEngine");
     const secret = getEarnTokenSecret();
     const adId = "11111111-1111-1111-1111-111111111111";
     const servedAt = Date.now() - 20000;
+    const viewStartedAt = Date.now() - 17000;
     const token = crypto.createHmac("sha256", secret).update(`${adId}:user@paayh.com:${servedAt}`).digest("hex");
+    const viewToken = signAdViewStartToken(adId, "user@paayh.com", viewStartedAt, servedAt);
 
     const { POST } = await import("../../app/api/earn/route");
 
@@ -213,6 +215,8 @@ describe("Core API Security & Architecture Hardening", () => {
         type: "earn",
         token,
         servedAt,
+        viewToken,
+        viewStartedAt,
         telemetry: [{ x: 1, y: 1, t: 100 }],
       })
     );
@@ -229,6 +233,8 @@ describe("Core API Security & Architecture Hardening", () => {
         type: "earn",
         token,
         servedAt,
+        viewToken,
+        viewStartedAt,
         telemetry: [{ x: 12, y: 34, t: 200, p: 0.5 }],
       })
     );
@@ -284,13 +290,15 @@ describe("Core API Security & Architecture Hardening", () => {
       },
     }));
 
-    const { getEarnTokenSecret } = await import("../targetingEngine");
+    const { getEarnTokenSecret, signAdViewStartToken } = await import("../targetingEngine");
     const adId = "22222222-2222-2222-2222-222222222222";
     const servedAt = Date.now() - 20000;
+    const viewStartedAt = Date.now() - 17000;
     const token = crypto
       .createHmac("sha256", getEarnTokenSecret())
       .update(`${adId}:user@paayh.com:${servedAt}`)
       .digest("hex");
+    const viewToken = signAdViewStartToken(adId, "user@paayh.com", viewStartedAt, servedAt);
 
     const { POST } = await import("../../app/api/earn/route");
     const res = await POST(
@@ -299,6 +307,8 @@ describe("Core API Security & Architecture Hardening", () => {
         type: "earn",
         token,
         servedAt,
+        viewToken,
+        viewStartedAt,
         telemetry: [{ x: 10, y: 20, t: 300 }],
       })
     );
@@ -308,15 +318,18 @@ describe("Core API Security & Architecture Hardening", () => {
     expect(fromSpy).not.toHaveBeenCalled();
 
     atomicCode = "FREQUENCY_CAP_REACHED";
+    const capAdId = "33333333-3333-3333-3333-333333333333";
     const capRes = await POST(
       makeJsonReq("http://localhost:3000/api/earn", "POST", {
-        adId: "33333333-3333-3333-3333-333333333333",
+        adId: capAdId,
         type: "earn",
         token: crypto
           .createHmac("sha256", getEarnTokenSecret())
-          .update(`33333333-3333-3333-3333-333333333333:user@paayh.com:${servedAt}`)
+          .update(`${capAdId}:user@paayh.com:${servedAt}`)
           .digest("hex"),
         servedAt,
+        viewToken: signAdViewStartToken(capAdId, "user@paayh.com", viewStartedAt, servedAt),
+        viewStartedAt,
         telemetry: [{ x: 10, y: 20, t: 300 }],
       })
     );

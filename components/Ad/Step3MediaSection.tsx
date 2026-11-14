@@ -12,7 +12,7 @@ interface Step3MediaSectionProps {
 }
 
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50MB per video (matches Supabase Storage bucket limit)
-const MAX_VIDEO_DURATION_SECONDS = 3600; // 60 minutes
+const MAX_VIDEO_DURATION_SECONDS = 180; // 3 minutes
 
 const isImageFile = (f: File) =>
   f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(f.name);
@@ -20,31 +20,54 @@ const isImageFile = (f: File) =>
 const isVideoFile = (f: File) =>
   f.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|3gp)$/i.test(f.name);
 
-async function checkVideoDuration(file: File): Promise<boolean> {
+async function checkVideoDuration(file: File): Promise<{ ok: boolean; reason?: string }> {
   try {
-    return await new Promise<boolean>((resolve) => {
+    return await new Promise<{ ok: boolean; reason?: string }>((resolve) => {
       const videoEl = document.createElement("video");
       videoEl.preload = "metadata";
       const objectUrl = URL.createObjectURL(file);
       const timer = setTimeout(() => {
         URL.revokeObjectURL(objectUrl);
-        resolve(file.size <= MAX_VIDEO_BYTES);
-      }, 5000);
+        resolve({
+          ok: false,
+          reason: `Could not verify duration for ${file.name}. Please upload a valid video of 3 minutes (180s) or less.`,
+        });
+      }, 8000);
 
       videoEl.onloadedmetadata = () => {
         clearTimeout(timer);
         URL.revokeObjectURL(objectUrl);
-        resolve(videoEl.duration <= MAX_VIDEO_DURATION_SECONDS);
+        if (!Number.isFinite(videoEl.duration) || videoEl.duration <= 0) {
+          resolve({
+            ok: false,
+            reason: `Could not verify duration for ${file.name}. Please select a valid video file.`,
+          });
+          return;
+        }
+        if (videoEl.duration > MAX_VIDEO_DURATION_SECONDS) {
+          resolve({
+            ok: false,
+            reason: `Video ${file.name} exceeds the 3-minute (180 seconds) maximum duration.`,
+          });
+          return;
+        }
+        resolve({ ok: true });
       };
       videoEl.onerror = () => {
         clearTimeout(timer);
         URL.revokeObjectURL(objectUrl);
-        resolve(file.size <= MAX_VIDEO_BYTES);
+        resolve({
+          ok: false,
+          reason: `Unable to read video metadata for ${file.name}. Please use MP4 or MOV up to 180 seconds.`,
+        });
       };
       videoEl.src = objectUrl;
     });
   } catch {
-    return file.size <= MAX_VIDEO_BYTES;
+    return {
+      ok: false,
+      reason: `Could not verify duration for ${file.name}.`,
+    };
   }
 }
 
@@ -91,13 +114,13 @@ export default function Step3MediaSection({
         return;
       }
       if (videos.length > 2) {
-        showAppleAlert("You can upload at most 2 videos (up to 60 minutes each).", "warning");
+        showAppleAlert("You can upload at most 2 videos (up to 3 minutes / 180 seconds each).", "warning");
         e.target.value = "";
         return;
       }
     } else if (formSelections.adMediaType === "mixed") {
       if (videos.length > 2) {
-        showAppleAlert("You can upload at most 2 videos (up to 60 minutes each).", "warning");
+        showAppleAlert("You can upload at most 2 videos (up to 3 minutes / 180 seconds each).", "warning");
         e.target.value = "";
         return;
       }
@@ -132,9 +155,9 @@ export default function Step3MediaSection({
           e.target.value = "";
           return;
         }
-        const durationOk = await checkVideoDuration(file);
-        if (!durationOk) {
-          showAppleAlert(`Video ${file.name} must be 60 minutes or less.`, "warning");
+        const durationCheck = await checkVideoDuration(file);
+        if (!durationCheck.ok) {
+          showAppleAlert(durationCheck.reason || `Video ${file.name} must be 3 minutes (180 seconds) or less.`, "warning");
           e.target.value = "";
           return;
         }
@@ -166,8 +189,8 @@ export default function Step3MediaSection({
     {
       value: "video",
       title: "Video(s)",
-      badge: "1–2 Videos (≤60m)",
-      desc: "1–2 videos (MP4, MOV · max 50MB).",
+      badge: "1–2 Videos (≤3m)",
+      desc: "1–2 videos (MP4, MOV · max 180s / 50MB).",
       icon: <Video size={15} color="var(--foreground)" />,
     },
     {
@@ -221,7 +244,7 @@ export default function Step3MediaSection({
             <label className={styles.fieldLabelBold}>
               Upload Files{" "}
               <span className={styles.charCount}>
-                ({formSelections.adMediaFiles.length}/4 selected • max 2 videos, up to 60 mins each)
+                ({formSelections.adMediaFiles.length}/4 selected • max 2 videos, up to 3 mins / 180s each)
               </span>
             </label>
             <input

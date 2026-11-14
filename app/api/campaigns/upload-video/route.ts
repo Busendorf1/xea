@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
-import { ensureFaststartMp4 } from "@/lib/utils/faststart";
+import {
+  ensureFaststartMp4,
+  extractVideoDurationSeconds,
+  probeVideoDurationWithFfprobe,
+} from "@/lib/utils/faststart";
 import { toVercelCdnUrl } from "@/lib/utils/cdnUrl";
 
 export const dynamic = "force-dynamic";
 
 // Maximum 60MB video upload limit to prevent memory exhaustion
 const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+const MAX_VIDEO_DURATION_SECONDS = 180; // 3 minutes max per campaign video
 const ALLOWED_VIDEO_TYPES = new Set([
   "video/mp4",
   "video/quicktime",
@@ -57,7 +62,23 @@ export async function POST(req: NextRequest) {
 
     if (file.size > MAX_VIDEO_BYTES) {
       return NextResponse.json(
-        { error: "Video file exceeds maximum allowed limit of 60MB. Please select a shorter or more compressed video." },
+        { error: "Video rejected: file exceeds maximum allowed limit of 60MB (180 seconds max)." },
+        { status: 400 }
+      );
+    }
+
+    const normalizedType = String(file.type || "").toLowerCase().split(";")[0].trim();
+    if (
+      normalizedType &&
+      normalizedType !== "application/octet-stream" &&
+      !ALLOWED_VIDEO_TYPES.has(normalizedType)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Upload rejected: unsupported video MIME type. Only MP4, MOV, WebM, and MKV videos up to 180 seconds are allowed.",
+          maxDurationSeconds: MAX_VIDEO_DURATION_SECONDS,
+        },
         { status: 400 }
       );
     }
@@ -65,26 +86,82 @@ export async function POST(req: NextRequest) {
     const cleanEmail = email.toLowerCase().trim().replace(/[^a-z0-9]/g, "_").slice(0, 24);
     const originalName = file.name || "video.mp4";
     const rawExt = originalName.split(".").pop()?.toLowerCase() || "mp4";
-    const fileExt = ["mp4", "mov", "webm"].includes(rawExt) ? rawExt : "mp4";
-    const uniqueFileName = `${Date.now()}_${cleanEmail}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+    const extHint = ["mp4", "mov", "webm", "mkv", "m4v"].includes(rawExt) ? rawExt : "mp4";
 
-    // Read video buffer into memory for Fast-Start remuxing
+    // Read video buffer into memory for duration verification and Fast-Start remuxing
     const originalBuffer = Buffer.from(await file.arrayBuffer());
 
-    // Execute Fast-Start remuxing (moves `moov` atom to byte 0)
-    let uploadBuffer: any = originalBuffer;
-    let contentType = file.type || "video/mp4";
+    // Enforce strict server-side maximum duration (180 seconds / 3 minutes), failing closed
+    const { durationSeconds: parsedDuration, container } = extractVideoDurationSeconds(originalBuffer);
+    let durationSec = parsedDuration;
+    if (durationSec === null) {
+      durationSec = await probeVideoDurationWithFfprobe(originalBuffer, extHint);
+    }
 
-    if (fileExt === "mp4" || fileExt === "mov" || file.type.includes("mp4") || file.type.includes("quicktime")) {
+    if (durationSec === null) {
+      return NextResponse.json(
+        {
+          error:
+            "Upload rejected: unable to verify video duration against the 180 seconds maximum. Please upload a valid MP4, MOV, or WebM video.",
+          maxDurationSeconds: MAX_VIDEO_DURATION_SECONDS,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isFinite(durationSec) || durationSec <= 0) {
+      return NextResponse.json(
+        {
+          error: "Upload rejected: video appears empty or has an invalid duration (max 180 seconds).",
+          maxDurationSeconds: MAX_VIDEO_DURATION_SECONDS,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (durationSec > MAX_VIDEO_DURATION_SECONDS) {
+      return NextResponse.json(
+        {
+          error: `Video rejected: duration (${Math.ceil(durationSec)}s) exceeds the maximum allowed 180 seconds (3 minutes).`,
+          maxDurationSeconds: MAX_VIDEO_DURATION_SECONDS,
+        },
+        { status: 400 }
+      );
+    }
+
+    const fileExt =
+      container === "webm"
+        ? rawExt === "mkv"
+          ? "mkv"
+          : "webm"
+        : container === "mp4"
+          ? rawExt === "mov"
+            ? "mov"
+            : "mp4"
+          : extHint;
+    const uniqueFileName = `${Date.now()}_${cleanEmail}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+    // Execute Fast-Start remuxing for ISO-BMFF containers (moves `moov` atom to byte 0)
+    let uploadBuffer: any = originalBuffer;
+    let contentType =
+      container === "webm"
+        ? fileExt === "mkv"
+          ? "video/x-matroska"
+          : "video/webm"
+        : normalizedType && ALLOWED_VIDEO_TYPES.has(normalizedType)
+          ? normalizedType
+          : "video/mp4";
+
+    if (container === "mp4") {
       try {
         uploadBuffer = await ensureFaststartMp4(originalBuffer);
-        contentType = "video/mp4";
+        contentType = fileExt === "mov" ? "video/quicktime" : "video/mp4";
       } catch (faststartErr) {
         console.warn("⚠️ Fast-Start remux warning, falling back to original buffer:", faststartErr);
       }
     }
 
-    // Upload remuxed Fast-Start video to Supabase Storage
+    // Upload verified (and fast-start remuxed if MP4) video to Supabase Storage
     const { error: uploadError } = await supabaseAdmin.storage
       .from(bucket)
       .upload(uniqueFileName, uploadBuffer, {
@@ -109,6 +186,7 @@ export async function POST(req: NextRequest) {
       fileName: uniqueFileName,
       publicUrl: cdnUrl,
       rawUrl: rawPublicUrl,
+      durationSeconds: Number(durationSec.toFixed(2)),
       faststartApplied: uploadBuffer !== originalBuffer,
     });
   } catch (err: any) {

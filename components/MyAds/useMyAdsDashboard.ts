@@ -557,7 +557,7 @@ export function useMyAdsDashboard(session: Session) {
     const filteredActiveList = activeAds
       .filter((ad) => {
         if (!matchesQuery(ad)) return false;
-        const isComp = !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 1000);
+        const isComp = !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 500);
         if (activeTab === "paused") return !!ad.is_paused && !isComp;
         if (activeTab === "completed") return isComp;
         if (activeTab === "active") return !ad.is_paused && !isComp;
@@ -571,7 +571,7 @@ export function useMyAdsDashboard(session: Session) {
   const pausedCount = useMemo(
     () =>
       activeAds.filter(
-        (ad) => !!ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 1000)
+        (ad) => !!ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 500)
       ).length,
     [activeAds]
   );
@@ -579,7 +579,7 @@ export function useMyAdsDashboard(session: Session) {
   const completedCount = useMemo(
     () =>
       activeAds.filter(
-        (ad) => !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 1000)
+        (ad) => !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 500)
       ).length,
     [activeAds]
   );
@@ -587,7 +587,7 @@ export function useMyAdsDashboard(session: Session) {
   const deliveringCount = useMemo(
     () =>
       activeAds.filter(
-        (ad) => !ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 1000)
+        (ad) => !ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 500)
       ).length,
     [activeAds]
   );

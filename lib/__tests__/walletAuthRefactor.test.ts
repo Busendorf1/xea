@@ -114,7 +114,7 @@ describe("Auth, Profile & Permanent Deactivation", () => {
 
   it("GET /api/profile reads :v2: live clicks, respects has_cancelled_monetization, and blocks deactivated users with 403", async () => {
     const getSpy = vi.fn().mockImplementation((key: string) => {
-      if (key === "user:live_clicks:v2:alice@paayh.com") return Promise.resolve("420");
+      if (key === "user:live_clicks:v2:alice@paayh.com") return Promise.resolve("520");
       return Promise.resolve(null);
     });
 
@@ -183,9 +183,9 @@ describe("Auth, Profile & Permanent Deactivation", () => {
     expect(res.status).toBe(200);
     expect(getSpy).toHaveBeenCalledWith("user:live_clicks:v2:alice@paayh.com");
     expect(json.monetized).toBe("true");
-    expect(json.monetization_clicks).toBe(420);
+    expect(json.monetization_clicks).toBe(520);
 
-    // Verify has_cancelled_monetization keeps monetized=false even with 420 live clicks
+    // Verify has_cancelled_monetization keeps monetized=false even with 520 live clicks
     userRow.has_cancelled_monetization = true;
     const cancelledRes = await GET(new NextRequest("https://paayh.com/api/profile"));
     const cancelledJson = await cancelledRes.json();

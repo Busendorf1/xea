@@ -183,6 +183,12 @@ export async function handleWalletPay(
     return errorResponse(
       validation.error || "Invalid campaign or payment resource.",
       validation.statusCode,
+      validation.capacityCapped
+        ? {
+            capacityCapped: true,
+            maxOrderableImpressions: validation.maxOrderableImpressions,
+          }
+        : {},
     );
   }
 
@@ -300,6 +306,12 @@ export async function handleInitialize(
     return errorResponse(
       validation.error || "Invalid payable resource.",
       validation.statusCode,
+      validation.capacityCapped
+        ? {
+            capacityCapped: true,
+            maxOrderableImpressions: validation.maxOrderableImpressions,
+          }
+        : {},
     );
   }
 

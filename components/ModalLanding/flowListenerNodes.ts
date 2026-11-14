@@ -258,7 +258,7 @@ export const listenerFlowNodes: Record<string, FlowNode> = {
   listener_l6: {
     id: 'listener_l6',
     aiMessage:
-      'You need at least 300 verified views to unlock full monetization. For Paayh, this shows genuine commitment and ensures our community consists of dedicated, authentic people.',
+      'You need at least 500 verified views to unlock full monetization. For Paayh, this shows genuine commitment and ensures our community consists of dedicated, authentic people.',
     referralLink: {
       label: 'Review Monetization Policy in Terms',
       url: '/terms',

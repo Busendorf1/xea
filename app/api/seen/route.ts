@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         success: true,
         duplicate: true,
         clicksCount: fallbackClicks,
-        isMonetized: fallbackClicks !== undefined ? fallbackClicks >= 300 : undefined,
+        isMonetized: fallbackClicks !== undefined ? fallbackClicks >= 500 : undefined,
       });
     }
     l1SeenLocks.set(l1SeenKey, now + 2500);
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
             success: true,
             duplicate: true,
             clicksCount: fallbackClicks,
-            isMonetized: fallbackClicks !== undefined ? fallbackClicks >= 300 : undefined,
+            isMonetized: fallbackClicks !== undefined ? fallbackClicks >= 500 : undefined,
           });
         }
 
@@ -392,7 +392,7 @@ export async function POST(request: NextRequest) {
           const nextDbClicks = Math.max(prevClicks + 1, liveVal || 0);
           const nextMon = hasCancelled
             ? false
-            : (prevMonetized || nextDbClicks >= 300);
+            : (prevMonetized || nextDbClicks >= 500);
 
           if (prevUserRow?.id) {
             await supabaseAdmin

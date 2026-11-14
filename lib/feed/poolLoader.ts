@@ -5,6 +5,7 @@ import {
   AD_DETAIL_TTL_SECONDS,
   AD_SELECT_FIELDS,
   AD_SELECT_FIELDS_FALLBACK,
+  AD_SELECT_FIELDS_MINIMAL,
   L1_SHARED_ADS_POOL_TTL_MS,
   inFlightCampaignPoolPromises,
   l1AdDetailsCache,
@@ -69,21 +70,30 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
           .limit(rolloverOnly ? 60 : 250);
       };
 
-      const [primaryRes, rolloverRes] = await Promise.all([
-        buildQuery(AD_SELECT_FIELDS, false),
-        buildQuery(AD_SELECT_FIELDS, true).catch(() => ({ data: null, error: null })),
-      ]);
+      let activeFieldList = AD_SELECT_FIELDS;
+      const primaryRes = await buildQuery(AD_SELECT_FIELDS, false);
+      let mainAds = primaryRes.data;
 
-      let fallbackAds = primaryRes.data;
       if (primaryRes.error) {
+        activeFieldList = AD_SELECT_FIELDS_FALLBACK;
         const fallbackRes = await buildQuery(AD_SELECT_FIELDS_FALLBACK, false);
-        fallbackAds = fallbackRes.data;
+        mainAds = fallbackRes.data;
+        if (fallbackRes.error) {
+          activeFieldList = AD_SELECT_FIELDS_MINIMAL;
+          const minimalRes = await buildQuery(AD_SELECT_FIELDS_MINIMAL, false);
+          mainAds = minimalRes.data;
+        }
       }
+
+      const rolloverRes = await buildQuery(activeFieldList, true).catch(() => ({
+        data: null,
+        error: null,
+      }));
 
       // Merge dedicated rollover slice (uses partial index idx_addsactive_rollover_pool_bid)
       // so lower-bid rollover ads never starve behind 250 high-bid active campaigns
       const mergedById = new Map<string, any>();
-      (fallbackAds || []).forEach((ad: any) => {
+      (mainAds || []).forEach((ad: any) => {
         if (ad?.id) mergedById.set(String(ad.id), ad);
       });
       if (!rolloverRes?.error && Array.isArray(rolloverRes?.data)) {
@@ -94,8 +104,15 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
         });
       }
 
-      let rows = Array.from(mergedById.values());
-      if (rows.length > 0 && isRedisReady()) {
+      let rows = Array.from(mergedById.values()).filter((ad: any) => {
+        if (!ad || ad.completed_at || ad.is_paused === true) return false;
+        const targetImp = Number(ad.impressions || 0);
+        const currentImp = Number(ad.impression_count || 0);
+        if (!ad.is_admin_post && targetImp > 0 && currentImp >= targetImp) return false;
+        return true;
+      });
+
+      if (rows.length > 0) {
         try {
           const ownerEmails = Array.from(
             new Set(
@@ -104,21 +121,21 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
                 .filter(Boolean)
             )
           );
-          if (ownerEmails.length > 0 && typeof (redisConnection as any).smismember === "function") {
+          if (ownerEmails.length > 0 && isRedisReady() && typeof (redisConnection as any).smismember === "function") {
+            const deactSet = new Set<string>();
             const flags: number[] = await (redisConnection as any)
               .smismember("deactivated:users", ...ownerEmails)
               .catch(() => []);
             if (Array.isArray(flags) && flags.length === ownerEmails.length) {
-              const deactSet = new Set<string>();
               ownerEmails.forEach((em, idx) => {
                 if (flags[idx] === 1) deactSet.add(em);
               });
-              if (deactSet.size > 0) {
-                rows = rows.filter((ad: any) => {
-                  const owner = (ad.user_email || ad.email || "").toLowerCase().trim();
-                  return !owner || !deactSet.has(owner);
-                });
-              }
+            }
+            if (deactSet.size > 0) {
+              rows = rows.filter((ad: any) => {
+                const owner = (ad.user_email || ad.email || "").toLowerCase().trim();
+                return !owner || !deactSet.has(owner);
+              });
             }
           }
         } catch {}
@@ -171,6 +188,14 @@ export function formatPublisherProfile(p: any): AdvertiserProfile {
   };
 }
 
+const l1BlockedPublishersCache = new Map<string, { blocked: boolean; expiresAt: number }>();
+
+export function isPublisherAccountBlocked(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const cached = l1BlockedPublishersCache.get(email.toLowerCase().trim());
+  return Boolean(cached && Date.now() < cached.expiresAt && cached.blocked);
+}
+
 export async function hydratePublisherProfiles(
   publisherEmails: string[],
   profilesMap: Record<string, AdvertiserProfile>
@@ -193,7 +218,7 @@ export async function hydratePublisherProfiles(
   const { data: profiles, error: profilesError } = await supabaseReadOnly
     .from("users")
     .select(
-      'email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized, is_career, is_affiliate, affiliate_role'
+      'email, username, business_name, "firstName", "lastName", "profileImage", gender, bio, location, country, created_at, monetized, is_career, is_affiliate, affiliate_role, ad_account_status'
     )
     .in("email", missingPublisherEmails);
 
@@ -202,6 +227,11 @@ export async function hydratePublisherProfiles(
     profiles.forEach((p: any) => {
       if (p.email) {
         const lower = p.email.toLowerCase();
+        const status = String(p.ad_account_status || "active").toLowerCase().trim();
+        l1BlockedPublishersCache.set(lower, {
+          blocked: status === "deactivated" || status === "perm_banned",
+          expiresAt: pubExp,
+        });
         const formatted = formatPublisherProfile(p);
         profilesMap[lower] = formatted;
         l1PublisherProfilesCache.set(lower, { profile: formatted, expiresAt: pubExp });

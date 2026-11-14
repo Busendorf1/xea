@@ -12,6 +12,8 @@ export {
   WILDCARD_VALUES,
   getEarnTokenSecret,
   signAdImpressionToken,
+  signAdViewStartToken,
+  verifyHmacSignature,
   normalizeStringArray,
   isUnrestrictedTarget,
   normalizeLocationToken,

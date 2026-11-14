@@ -168,10 +168,10 @@ export async function POST(request: NextRequest) {
 
         if (rpcCount !== null && rpcCount > 0) {
           clicksCount = Math.max(rpcCount, liveVal || 0);
-          isMonetized = hasCancelled ? false : (!!rpcRes.data[0].is_now_monetized || clicksCount >= 300);
+          isMonetized = hasCancelled ? false : (!!rpcRes.data[0].is_now_monetized || clicksCount >= 500);
         } else {
           const nextDbClicks = Math.max(prevClicks + 1, liveVal || 0);
-          const nextMon = hasCancelled ? false : (prevMonetized || nextDbClicks >= 300);
+          const nextMon = hasCancelled ? false : (prevMonetized || nextDbClicks >= 500);
           if (prevUserRow?.id) {
             await supabaseAdmin
               .from("users")

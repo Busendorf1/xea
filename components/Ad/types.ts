@@ -24,11 +24,11 @@ export type MultiStepAdFormProps = {
 };
 
 export const adRates: Record<string, number> = {
-  politics: 1500,
+  politics: 900,
   business: 45,
-  government: 2000,
+  government: 750,
   individual: 25,
-  religion: 1500,
+  religion: 900,
   product_sales: 55,
 };
 

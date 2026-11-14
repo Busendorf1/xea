@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth0 } from "@/lib/auth0";
 import { resolvePublicAdAvailability, resolvePublicSharedAdDetail } from "@/lib/ads/publicAdResolver";
-import { decodeSharedAdParam } from "@/lib/utils/adShare";
+import { decodeAdBlurbToken, decodeSharedAdParam, encodeAdBlurbToken } from "@/lib/utils/adShare";
 import PublicSharedAdView from "./PublicSharedAdView";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,10 @@ export default async function SharedAdDeepLinkPage({
     if (!resolution.available) {
       redirect("/logged-in?view=feed&adStatus=unavailable");
     }
-    redirect(`/logged-in?view=feed&sharedAdId=${encodeURIComponent(resolution.adId)}`);
+    const maskedParam = decodeAdBlurbToken(uriDecoded)
+      ? uriDecoded.trim()
+      : encodeAdBlurbToken(resolution.adId);
+    redirect(`/logged-in?view=feed&sharedAdId=${encodeURIComponent(maskedParam)}`);
   }
 
   if (!decodedId) {

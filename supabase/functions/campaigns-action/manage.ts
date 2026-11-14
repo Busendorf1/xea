@@ -1,12 +1,22 @@
 import { errorResponse, isAdminEmail, jsonResponse, sanitizeCsvArray } from "../_shared/cors.ts";
+import { assessAdDeliveryCapacityEdge } from "../_shared/adCapacity.ts";
 import { deductWalletAtomic, refundWalletAtomic } from "../_shared/paymentActivation.ts";
 import { initializePayment } from "../_shared/payoutProvider.ts";
 import { validateSafeMediaUrl, validateSafeUrl } from "../_shared/urlValidation.ts";
 import { verifyTransactionPinEdge } from "../_shared/walletPin.ts";
 import { buildEdgeCampaignAnalyticsPayload, computeAdSpendMetricsEdge } from "./analytics.ts";
+import {
+  applyProductSalesSubsidyEdge,
+  getLocalizedAdFloorRateEdge,
+  getUserCurrencyEdge,
+  isVerifiedSubscriberProductLinkEdge,
+  MAX_AD_DURATION_DAYS,
+  MIN_AD_ATTENTIONS,
+  resolveUserPricingCountryEdge,
+  validateAndComputeAdPricingEdge,
+} from "../_shared/adPricing.ts";
 
-const MIN_CPI = 5;
-const MAX_HIGHLIGHT_DAYS = 90;
+const MAX_HIGHLIGHT_DAYS = MAX_AD_DURATION_DAYS;
 const HIGHLIGHT_DAILY_RATE = 500;
 
 async function ensureActiveAdvertiser(
@@ -32,6 +42,34 @@ async function ensureActiveAdvertiser(
     return { ok: false, status: 403, error: "Your account is temporarily suspended." };
   }
   return { ok: true };
+}
+
+export async function handleCheckCapacity(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  cleanEmail: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const targetPayload = (body?.adData as Record<string, unknown>) || body || {};
+  const capacity = await assessAdDeliveryCapacityEdge(supabase, {
+    requestedImpressions: Number(targetPayload.impressions ?? targetPayload.requestedImpressions ?? 0),
+    userFrequencyCap: (targetPayload.userFrequencyCap ?? targetPayload.user_frequency_cap ?? 1) as number | string,
+    campaignDays: (targetPayload.campaignDays ?? targetPayload.campaign_days ?? 1) as number | string,
+    targetingAll: Boolean(targetPayload.targetingAll ?? targetPayload.targeting_all),
+    country: (targetPayload.country as string | string[] | null) ?? null,
+    state: (targetPayload.state as string | string[] | null) ?? null,
+    province: (targetPayload.province as string | string[] | null) ?? null,
+    gender: (targetPayload.gender as string | string[] | null) ?? null,
+    ageRange: (targetPayload.ageRange ?? targetPayload.age_range ?? null) as number[] | string[] | string | null,
+    employmentStatus: (targetPayload.employmentStatus ?? targetPayload.employment_status ?? null) as string | string[] | null,
+    industry: (targetPayload.industry as string[] | string | null) ?? null,
+    interest: (targetPayload.interest as string[] | string | null) ?? null,
+    lifestyle: (targetPayload.lifestyle as string[] | string | null) ?? null,
+    behavior: (targetPayload.behavior as string[] | string | null) ?? null,
+    personality: (targetPayload.personality as string[] | string | null) ?? null,
+    advertiserEmail: cleanEmail,
+  });
+  return jsonResponse(capacity, 200);
 }
 
 export async function handleSubmitAd(
@@ -101,17 +139,64 @@ export async function handleSubmitAd(
   }
 
   const isAdmin = isAdminEmail(cleanEmail);
-  const impressions = Math.max(100, Math.floor(Number(body?.impressions || 1000)));
-  const requestedCpi = Number(body?.bid_price ?? body?.cost_per_impression ?? (isAdmin ? 0 : MIN_CPI));
-  const cpi = isAdmin
-    ? 0
-    : Math.max(MIN_CPI, Math.round(requestedCpi * 100) / 100);
-  const totalCost = isAdmin ? 0 : Math.round(impressions * cpi * 100) / 100;
-  const isBidded = !isAdmin && Boolean(body?.is_bidded || cpi > MIN_CPI);
+  const userCountry = await resolveUserPricingCountryEdge(supabase, cleanEmail);
+  const pricing = await validateAndComputeAdPricingEdge(supabase, {
+    adType,
+    impressions: body?.impressions,
+    costPerImpression: body?.cost_per_impression ?? body?.costPerImpression,
+    isBidded: body?.is_bidded ?? body?.isBidded,
+    bidPrice: body?.bid_price ?? body?.bidPrice,
+    clientTotalCost: body?.total_cost ?? body?.totalCost,
+    productCtaLink: prodCtaCheck.sanitized,
+    userCountry,
+    isAdmin,
+  });
+
+  if (!pricing.ok) {
+    return errorResponse(pricing.error, pricing.status);
+  }
+
+  const rawDays = Number(body?.campaign_days ?? body?.campaignDays ?? 5);
+  if (!Number.isFinite(rawDays) || rawDays < 1 || rawDays > MAX_AD_DURATION_DAYS) {
+    return errorResponse(`Campaign duration must be between 1 and ${MAX_AD_DURATION_DAYS} days.`, 400);
+  }
+  const campaignDays = Math.floor(rawDays);
+
+  if (!isAdmin) {
+    const capacity = await assessAdDeliveryCapacityEdge(supabase, {
+      requestedImpressions: pricing.impressionsCount,
+      userFrequencyCap: (body?.user_frequency_cap ?? body?.userFrequencyCap ?? body?.frequency_cap ?? 1) as number | string,
+      campaignDays,
+      targetingAll: Boolean(body?.targeting_all ?? body?.targetingAll),
+      country: (body?.country as string | string[] | null) ?? null,
+      state: (body?.state as string | string[] | null) ?? null,
+      province: (body?.province ?? body?.location ?? null) as string | string[] | null,
+      gender: (body?.gender as string | string[] | null) ?? null,
+      ageRange: (body?.age_range ?? body?.ageRange ?? body?.age ?? null) as number[] | string[] | string | null,
+      employmentStatus: (body?.employment_status ?? body?.employmentStatus ?? body?.employment ?? null) as string | string[] | null,
+      industry: sanitizeCsvArray(body?.industry),
+      interest: sanitizeCsvArray(body?.interest),
+      lifestyle: sanitizeCsvArray(body?.lifestyle),
+      behavior: sanitizeCsvArray(body?.behavior),
+      personality: sanitizeCsvArray(body?.personality),
+      advertiserEmail: cleanEmail,
+    });
+    if (capacity.telemetryAvailable && !capacity.allowed) {
+      return errorResponse(capacity.message, 400, {
+        capacityCapped: true,
+        maxOrderableImpressions: capacity.maxOrderableImpressions,
+      });
+    }
+  }
+
+  const impressions = pricing.impressionsCount;
+  const cpi = pricing.effectiveRate;
+  const totalCost = pricing.computedTotalCost;
+  const isBidded = pricing.isBidded;
 
   const payload = {
     user_email: cleanEmail,
-    ad_type: adType,
+    ad_type: pricing.adCategory,
     ad_content: adContent.slice(0, 2000),
     ad_media_type: String(body?.ad_media_type ?? body?.adMediaType ?? "image"),
     ad_media: mediaCheck.sanitized,
@@ -135,9 +220,10 @@ export async function handleSubmitAd(
     employment_status: String(body?.employment_status ?? body?.employmentStatus ?? body?.employment ?? "all"),
     user_frequency_cap: Math.max(
       1,
-      Math.min(10, Math.floor(Number(body?.user_frequency_cap ?? body?.userFrequencyCap ?? body?.frequency_cap ?? 1))),
+      Math.min(100, Math.floor(Number(body?.user_frequency_cap ?? body?.userFrequencyCap ?? body?.frequency_cap ?? 1))),
     ),
     impressions,
+    campaign_days: campaignDays,
     cost_per_impression: cpi,
     bid_price: cpi,
     is_bidded: isBidded,
@@ -289,9 +375,10 @@ export async function handleBoostCampaignOrHighlight(
 
   const isAdmin = isAdminEmail(cleanEmail);
   let totalCost = 0;
-  let effectiveCostPerUnit = MIN_CPI;
+  let effectiveCostPerUnit = 0;
   let addImpNum = 0;
   let addDays = 0;
+  let normalizedBoostFreqCap: number | undefined = undefined;
   let updateFields: Record<string, unknown> = {};
 
   if (action === "boost_ad") {
@@ -300,19 +387,75 @@ export async function handleBoostCampaignOrHighlight(
       Math.floor(Number(body?.additionalImpressions ?? body?.addImpressions ?? body?.add_impressions ?? 0)),
     );
     addDays = Math.max(0, Math.floor(Number(body?.additionalDays ?? body?.addDays ?? body?.add_days ?? 0)));
-    const currentImp = Math.max(0, Number(item.impressions || 0));
+    const currentDays = Math.max(1, Number(item.campaign_days || 1));
+    if (addDays > 0 && currentDays + addDays > MAX_AD_DURATION_DAYS) {
+      return errorResponse(`Maximum campaign duration is ${MAX_AD_DURATION_DAYS} days.`, 400);
+    }
+    const currentImp = Math.max(0, Number(item.impressions || MIN_AD_ATTENTIONS));
     const deliveredImp = Math.max(0, Number(item.impression_count || 0));
     const remainingImp = Math.max(0, currentImp - deliveredImp);
 
-    const currentCpi = Math.max(15, Number(item.cost_per_impression || item.bid_price || 25));
+    const userCountry = await resolveUserPricingCountryEdge(supabase, cleanEmail);
+    const adCategory = String(item.ad_type || "individual").trim().toLowerCase();
+    const baseFloor = getLocalizedAdFloorRateEdge(adCategory, userCountry);
+    const subsidyQualified =
+      adCategory === "product_sales"
+        ? await isVerifiedSubscriberProductLinkEdge(supabase, item.product_cta_link)
+        : false;
+    const adFloorRate = subsidyQualified ? applyProductSalesSubsidyEdge(baseFloor) : baseFloor;
+
+    const currentCpi = isAdmin
+      ? 0
+      : Math.max(adFloorRate, Number(item.cost_per_impression || item.bid_price || adFloorRate));
     const requestedNewCpi = Number(
       body?.newCostPerImpression ?? body?.newBidPrice ?? body?.new_cpi ?? body?.bidPrice ?? currentCpi,
     );
-    if (!isAdmin && requestedNewCpi < currentCpi) {
-      return errorResponse("Cannot decrease cost per impression during boost.", 400);
+    const eps = getUserCurrencyEdge(userCountry) === "USD" ? 0.0005 : 0.001;
+    if (!isAdmin && (!Number.isFinite(requestedNewCpi) || requestedNewCpi < currentCpi - eps || requestedNewCpi < adFloorRate - eps)) {
+      return errorResponse(
+        `Boost rate cannot be below category floor (${adFloorRate}) or current CPI (${currentCpi}).`,
+        400,
+      );
     }
 
-    const effectiveCpi = isAdmin ? 0 : Math.round(Math.max(requestedNewCpi, currentCpi) * 100) / 100;
+    const effectiveCpi = isAdmin ? 0 : Math.round(Math.max(requestedNewCpi, currentCpi) * 10000) / 10000;
+    const rawFreqCap = body?.userFrequencyCap ?? body?.user_frequency_cap;
+    normalizedBoostFreqCap =
+      rawFreqCap !== undefined &&
+      rawFreqCap !== null &&
+      rawFreqCap !== "" &&
+      Number.isFinite(Number(rawFreqCap)) &&
+      Number(rawFreqCap) > 0
+        ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+        : undefined;
+
+    if (!isAdmin && addImpNum > 0) {
+      const nextRemainingTarget = remainingImp + addImpNum;
+      const capacity = await assessAdDeliveryCapacityEdge(supabase, {
+        requestedImpressions: nextRemainingTarget,
+        userFrequencyCap: normalizedBoostFreqCap ?? Number(item.user_frequency_cap ?? 1),
+        campaignDays: Number(item.campaign_days || 1) + addDays,
+        targetingAll: Boolean(item.targeting_all),
+        country: (body?.country !== undefined ? body.country : item.country) as string | string[] | null,
+        state: (body?.state !== undefined ? body.state : item.state) as string | string[] | null,
+        province: (body?.province !== undefined ? body.province : item.province) as string | string[] | null,
+        gender: (body?.gender !== undefined ? body.gender : item.gender) as string | string[] | null,
+        ageRange: (item.age_range ?? null) as number[] | string[] | string | null,
+        employmentStatus: (item.employment_status ?? null) as string | string[] | null,
+        industry: (body?.industry !== undefined ? body.industry : item.industry) as string[] | string | null,
+        interest: (body?.interest !== undefined ? body.interest : item.interest) as string[] | string | null,
+        lifestyle: (item.lifestyle ?? null) as string[] | string | null,
+        behavior: (item.behavior ?? null) as string[] | string | null,
+        personality: (item.personality ?? null) as string[] | string | null,
+        advertiserEmail: cleanEmail,
+      });
+      if (capacity.telemetryAvailable && !capacity.allowed) {
+        return errorResponse(capacity.message, 400, {
+          capacityCapped: true,
+          maxOrderableImpressions: capacity.maxOrderableImpressions,
+        });
+      }
+    }
     effectiveCostPerUnit = effectiveCpi;
     const upgradeCost = effectiveCpi > currentCpi ? (effectiveCpi - currentCpi) * remainingImp : 0;
     totalCost = isAdmin
@@ -325,9 +468,16 @@ export async function handleBoostCampaignOrHighlight(
     updateFields = {
       impressions: currentImp + addImpNum,
       ...(addDays > 0 ? { campaign_days: Number(item.campaign_days || 1) + addDays } : {}),
+      ...(normalizedBoostFreqCap !== undefined ? { user_frequency_cap: normalizedBoostFreqCap } : {}),
+      ...(body?.gender ? { gender: body.gender } : {}),
+      ...(body?.country !== undefined ? { country: body.country } : {}),
+      ...(body?.state !== undefined ? { state: body.state } : {}),
+      ...(body?.province !== undefined ? { province: body.province } : {}),
+      ...(body?.industry ? { industry: Array.isArray(body.industry) ? body.industry : [body.industry] } : {}),
+      ...(body?.interest ? { interest: Array.isArray(body.interest) ? body.interest : [body.interest] } : {}),
       cost_per_impression: effectiveCpi,
       bid_price: isAdmin ? 0 : Math.max(Number(item.bid_price || 0), effectiveCpi),
-      is_bidded: !isAdmin && Boolean(item.is_bidded || effectiveCpi > currentCpi),
+      is_bidded: !isAdmin && Boolean(item.is_bidded || effectiveCpi > adFloorRate + eps),
       total_cost: isAdmin ? 0 : Number(item.total_cost || 0) + totalCost,
       is_admin_post: isAdmin || Boolean(item.is_admin_post),
       completed_at: null,
@@ -387,6 +537,15 @@ export async function handleBoostCampaignOrHighlight(
       additional_impressions: addImpNum,
       additional_days: addDays,
       cost_per_impression: effectiveCostPerUnit,
+      ...(action === "boost_ad" && normalizedBoostFreqCap !== undefined
+        ? { user_frequency_cap: normalizedBoostFreqCap }
+        : {}),
+      ...(action === "boost_ad" && body?.gender ? { gender: body.gender } : {}),
+      ...(action === "boost_ad" && body?.country !== undefined ? { country: body.country } : {}),
+      ...(action === "boost_ad" && body?.state !== undefined ? { state: body.state } : {}),
+      ...(action === "boost_ad" && body?.province !== undefined ? { province: body.province } : {}),
+      ...(action === "boost_ad" && body?.industry ? { industry: body.industry } : {}),
+      ...(action === "boost_ad" && body?.interest ? { interest: body.interest } : {}),
       boost_reference: boostRef,
       payment_method: "card",
     };
@@ -456,7 +615,17 @@ export async function handleBoostCampaignOrHighlight(
 
   const applyError = await (async () => {
     if (table === "completed_ads") {
-      const reactivated = { ...item, ...updateFields, created_at: new Date().toISOString() };
+      const nowIso = new Date().toISOString();
+      const reactivated = {
+        ...item,
+        ...updateFields,
+        approved_at: nowIso,
+        created_at: nowIso,
+        is_rollover: false,
+        broadening_stage: 0,
+        rollover_started_at: null,
+        rollover_notified_at: null,
+      };
       const { error: upErr } = await supabase.from("addsactive").upsert([reactivated]);
       if (upErr) return upErr;
       await Promise.all([

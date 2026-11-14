@@ -47,7 +47,7 @@ describe("7-Item Cross-Platform Upgrade Verification", () => {
     expect(unavailable).toEqual({ available: false, reason: "invalid_id" });
   });
 
-  it("sends warm congratulatory notifications for 300-click monetization unlock and ATW upgrades, skipping opted-out/exempt users", async () => {
+  it("sends warm congratulatory notifications for 500-click monetization unlock and ATW upgrades, skipping opted-out/exempt users", async () => {
     const insertedRows: Array<Record<string, unknown>> = [];
     const redisSet = vi.fn(async () => "OK");
     const redisDel = vi.fn(async () => 1);
@@ -98,13 +98,13 @@ describe("7-Item Cross-Platform Upgrade Verification", () => {
     expect(parseNumericAtwLevel("Unlimited")).toBe(14);
     expect(parseNumericAtwLevel(null)).toBe(1);
 
-    // 1. User crosses 300 clicks & unlocks monetization (still ATW1) -> warm congratulatory message
+    // 1. User crosses 500 clicks & unlocks monetization (still ATW1) -> warm congratulatory message
     await checkAndNotifyClickAndAtwMilestones({
       email: "User@Paayh.com",
-      prevClicks: 299,
+      prevClicks: 499,
       prevMonetized: false,
       prevAtwTier: "ATW1",
-      nextClicks: 300,
+      nextClicks: 500,
       nextMonetized: true,
       nextAtwTier: "ATW1",
       attentionWorthScore: 0,
@@ -112,16 +112,16 @@ describe("7-Item Cross-Platform Upgrade Verification", () => {
 
     expect(insertedRows).toHaveLength(1);
     expect(String(insertedRows[0].title)).toContain("Monetization Unlocked");
-    expect(String(insertedRows[0].message)).toContain("300 clicks");
+    expect(String(insertedRows[0].message)).toContain("500 clicks");
     expect(String(insertedRows[0].message).toLowerCase()).toContain("withdraw");
 
-    // 2. User upgrades from ATW1 to ATW3 (600 clicks + 1.1 score => 900 effective clicks) -> notifies with tier code, balance cap & withdrawal reminder
+    // 2. User upgrades from ATW1 to ATW3 (1000 clicks + 1.1 score => 1500 effective clicks) -> notifies with tier code, balance cap & withdrawal reminder
     await checkAndNotifyClickAndAtwMilestones({
       email: "user@paayh.com",
-      prevClicks: 599,
+      prevClicks: 999,
       prevMonetized: true,
       prevAtwTier: "ATW1",
-      nextClicks: 600,
+      nextClicks: 1000,
       nextMonetized: true,
       nextAtwTier: "ATW3",
       attentionWorthScore: 1.1,
@@ -135,17 +135,17 @@ describe("7-Item Cross-Platform Upgrade Verification", () => {
     // 3. Opted-out / exempt users never receive milestone notifications
     await checkAndNotifyClickAndAtwMilestones({
       email: "optedout@paayh.com",
-      prevClicks: 299,
+      prevClicks: 499,
       prevMonetized: false,
-      nextClicks: 300,
+      nextClicks: 500,
       nextMonetized: true,
       hasCancelled: true,
     });
     await checkAndNotifyClickAndAtwMilestones({
       email: "admin@paayh.com",
-      prevClicks: 299,
+      prevClicks: 499,
       prevMonetized: false,
-      nextClicks: 300,
+      nextClicks: 500,
       nextMonetized: true,
       isExempt: true,
     });

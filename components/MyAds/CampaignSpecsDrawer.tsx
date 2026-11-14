@@ -93,7 +93,7 @@ export default function CampaignSpecsDrawer({
             <div className={styles.specItem}>
               <span className={styles.specLabel}>Total Campaign Budget</span>
               <span className={styles.specVal}>
-                {formatCurrency((ad.impressions || 1000) * (ad.cost_per_impression || 25), ad.country)}
+                {formatCurrency((ad.impressions || 500) * (ad.cost_per_impression || 25), ad.country)}
               </span>
             </div>
 
@@ -101,7 +101,7 @@ export default function CampaignSpecsDrawer({
               <span className={styles.specLabel}>Daily Budget Rate</span>
               <span className={styles.specVal}>
                 {formatCurrency(
-                  ((ad.impressions || 1000) * (ad.cost_per_impression || 25)) / (ad.campaign_days || 1),
+                  ((ad.impressions || 500) * (ad.cost_per_impression || 25)) / (ad.campaign_days || 1),
                   ad.country
                 )}{" "}
                 / day
@@ -111,7 +111,7 @@ export default function CampaignSpecsDrawer({
             <div className={styles.specItem}>
               <span className={styles.specLabel}>Frequency Cap (Per Viewer)</span>
               <span className={styles.specVal}>
-                Max {ad.user_frequency_cap || 1} view / viewer / day
+                Max {ad.user_frequency_cap || 1} attention / viewer / day
               </span>
             </div>
 

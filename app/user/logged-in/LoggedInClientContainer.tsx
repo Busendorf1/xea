@@ -9,6 +9,7 @@ import myAdsStyles from "../myads/page.module.css";
 import AppleSpinner from "@/components/ui/AppleSpinner";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
 import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
+import { encodeAdBlurbToken, extractSharedAdIdFromSearchParams } from "@/lib/utils/adShare";
 
 import {
   MonetizeSkeleton,
@@ -90,6 +91,10 @@ interface Props {
   initialAds?: any[];
   initialProfiles?: Record<string, any>;
   initialHighlights?: any[];
+  initialSharedAdId?: string | null;
+  initialSharedAdUnavailable?: boolean;
+  initialSharedAd?: any;
+  initialSharedAdProfiles?: Record<string, any>;
 }
 
 const VALID_TABS: TabKey[] = ["feed", "adPage", "monetize", "agent", "myads", "profile", "statement", "news", "deactivate"];
@@ -107,6 +112,10 @@ export default function LoggedInClientContainer({
   initialAds,
   initialProfiles,
   initialHighlights,
+  initialSharedAdId,
+  initialSharedAdUnavailable,
+  initialSharedAd,
+  initialSharedAdProfiles,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTab]));
@@ -220,7 +229,11 @@ export default function LoggedInClientContainer({
       }
     }
 
-    if (viewParam && (VALID_TABS.includes(viewParam) || (viewParam as string) === "mynews")) {
+    const sharedParamId = extractSharedAdIdFromSearchParams(urlParams) || initialSharedAdId || null;
+    const sharedUnavailable = urlParams.get("adStatus") === "unavailable" || Boolean(initialSharedAdUnavailable);
+    if (sharedParamId || sharedUnavailable) {
+      finalTab = "feed";
+    } else if (viewParam && (VALID_TABS.includes(viewParam) || (viewParam as string) === "mynews")) {
       finalTab = (viewParam as string) === "mynews" ? "myads" : viewParam;
     } else if (!boostRef && !(urlParams.get("reference") || urlParams.get("trxref"))) {
       // 2. Check for cookie set by server redirects
@@ -264,7 +277,11 @@ export default function LoggedInClientContainer({
     const isHighlights = (viewParam as string) === "mynews" || subParam === "highlights" || (typeof window !== "undefined" && sessionStorage.getItem("paayh_boost_type") === "highlight");
     const targetUrl =
       finalTab === "feed"
-        ? "/logged-in"
+        ? sharedParamId
+          ? `/logged-in?view=feed&sharedAdId=${encodeURIComponent(encodeAdBlurbToken(sharedParamId))}`
+          : sharedUnavailable
+          ? "/logged-in?view=feed&adStatus=unavailable"
+          : "/logged-in"
         : finalTab === "myads" && isHighlights
         ? "/logged-in?view=myads&tab=highlights"
         : `/logged-in?view=${finalTab}`;
@@ -348,7 +365,7 @@ export default function LoggedInClientContainer({
             email: resolvedEmail,
             isMonetized: initialMonetized,
             clicksCount: initialClicks || 0,
-            clicksRemaining: Math.max(0, 300 - (initialClicks || 0)),
+            clicksRemaining: Math.max(0, 500 - (initialClicks || 0)),
             atwTier: initialAtwTier || "ATW1",
             daysInactive: 0,
           });
@@ -421,6 +438,10 @@ export default function LoggedInClientContainer({
           initialAds={initialAds}
           initialProfiles={initialProfiles}
           initialHighlights={initialHighlights}
+          initialSharedAdId={initialSharedAdId}
+          initialSharedAdUnavailable={initialSharedAdUnavailable}
+          initialSharedAd={initialSharedAd}
+          initialSharedAdProfiles={initialSharedAdProfiles}
         />
       </>
     );

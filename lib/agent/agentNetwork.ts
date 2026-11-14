@@ -291,7 +291,7 @@ export async function fetchUserDisplayMap(emails: string[]): Promise<
         r.monetized === "true" ||
         r.monetized === "yes" ||
         r.monetized === "1" ||
-        Number(r.monetization_clicks || 0) >= 300;
+        Number(r.monetization_clicks || 0) >= 500;
 
       result[e] = {
         username: cleanHandle,
@@ -397,6 +397,15 @@ export async function getAgentNetworkData(
     checkIsUserAgent(cleanEmail),
   ]);
 
+  // Drain any overflowed 64-shard commissions before reading agent_total_earned
+  if (agentStatus.isAgent && typeof (supabaseAdmin as any).rpc === "function") {
+    try {
+      await (supabaseAdmin as any).rpc("flush_agent_commission_shards_atomic", {
+        p_target_email: cleanEmail,
+      });
+    } catch {}
+  }
+
   const downlineMap = new Map<string, StoredReferralEdge>();
   let uplineEdge: StoredReferralEdge | null = null;
 
@@ -424,6 +433,23 @@ export async function getAgentNetworkData(
       .ilike("email", cleanEmail)
       .maybeSingle(),
   ]);
+
+  if (
+    !agentStatus.isAgent &&
+    Number(userMutualRes.data?.agent_invites_count || 0) > 0 &&
+    typeof (supabaseAdmin as any).rpc === "function"
+  ) {
+    try {
+      const flushRes = await (supabaseAdmin as any).rpc("flush_agent_commission_shards_atomic", {
+        p_target_email: cleanEmail,
+      });
+      const flushedAmt = Number(flushRes?.data?.credited || 0);
+      if (flushedAmt > 0 && userMutualRes.data) {
+        userMutualRes.data.agent_total_earned =
+          Math.round((Number(userMutualRes.data.agent_total_earned || 0) + flushedAmt) * 100) / 100;
+      }
+    } catch {}
+  }
 
   const rawMutualEmails: string[] = Array.isArray(userMutualRes.data?.mutuals)
     ? Array.from(

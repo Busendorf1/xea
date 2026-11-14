@@ -201,7 +201,7 @@ export async function buildAgentNetworkResponse(
       const isMonetized =
         r.monetized === true ||
         ["true", "yes", "1", "t"].includes(String(r.monetized || "").toLowerCase()) ||
-        Number(r.monetization_clicks || 0) >= 300;
+        Number(r.monetization_clicks || 0) >= 500;
 
       profileMap[e] = {
         username: handle,

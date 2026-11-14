@@ -11,6 +11,7 @@ import {
 import { handleGetFeed, handleGetHighlights } from "./feed.ts";
 import {
   handleBoostCampaignOrHighlight,
+  handleCheckCapacity,
   handleListCampaigns,
   handleSubmitAd,
   handleSubmitHighlight,
@@ -62,6 +63,9 @@ serve(async (req: Request) => {
       return errorResponse("Authentication required.", 401);
     }
 
+    if (action === "check_capacity") {
+      return await handleCheckCapacity(supabase, cleanEmail, body);
+    }
     if (action === "submit_ad") {
       return await handleSubmitAd(supabase, cleanEmail, body);
     }

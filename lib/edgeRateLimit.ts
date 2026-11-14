@@ -5,6 +5,7 @@ export interface RateLimitConfig {
   limit: number;                 // Maximum allowed requests in window
   windowSeconds: number;         // Sliding window in seconds
   identifierPrefix: string;
+  identifier?: string;           // Optional explicit key (e.g. authenticated user email) instead of IP
   blockDurationSeconds?: number; // Optional penalty lockout duration (e.g. 6 hours = 21600s) on violation
 }
 
@@ -125,9 +126,9 @@ export async function checkRateLimit(
   request: NextRequest,
   config: RateLimitConfig = { limit: 60, windowSeconds: 60, identifierPrefix: "rl" }
 ): Promise<{ allowed: boolean; remaining: number; reset: number; response?: NextResponse }> {
-  const ip = getClientIp(request);
-  const key = `ratelimit:${config.identifierPrefix}:${ip}`;
-  const blockKey = `ratelimit:block:${config.identifierPrefix}:${ip}`;
+  const subject = config.identifier ? config.identifier.toLowerCase().trim() : getClientIp(request);
+  const key = `ratelimit:${config.identifierPrefix}:${subject}`;
+  const blockKey = `ratelimit:block:${config.identifierPrefix}:${subject}`;
 
   // Layer 1: In-Memory Fallback if Redis is disabled or offline before an attack begins
   if (!isRedisReady()) {

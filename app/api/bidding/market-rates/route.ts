@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
+import { NGN_AD_RATES } from "../../../../lib/utils/currency";
 
 // Standard Industry Floor Rates (in NGN)
 const INDUSTRY_FLOOR_RATES: Record<string, number> = {
-  politics: 1500,
-  business: 45,
-  government: 2000,
-  individual: 25,
-  religion: 1500,
-  product_sales: 55,
+  ...NGN_AD_RATES,
 };
 
 const CACHE_TTL_SECONDS = 10; // 10s Redis caching for high scalability
@@ -51,10 +47,13 @@ export async function GET(_req: NextRequest) {
     } else {
       dbRates.forEach((row: any) => {
         const indKey = (row.industry_name || "").toLowerCase();
+        const authoritativeFloor = INDUSTRY_FLOOR_RATES[indKey] ?? Number(row.floor_price || 45);
+        const totalBids = Number(row.total_active_bids || 0);
+        const rawHighest = Number(row.highest_bid || authoritativeFloor);
         result[indKey] = {
-          floorPrice: Number(row.floor_price || INDUSTRY_FLOOR_RATES[indKey] || 45),
-          highestBid: Number(row.highest_bid || row.floor_price || INDUSTRY_FLOOR_RATES[indKey] || 45),
-          totalBids: Number(row.total_active_bids || 0),
+          floorPrice: authoritativeFloor,
+          highestBid: totalBids > 0 ? Math.max(authoritativeFloor, rawHighest) : authoritativeFloor,
+          totalBids,
         };
       });
 

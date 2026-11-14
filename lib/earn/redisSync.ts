@@ -223,7 +223,7 @@ export async function syncPostEarnCaches(params: {
       if (effectiveScore !== undefined && effectiveScore !== null) {
         parsed.attention_worth_score = effectiveScore;
       }
-      if (liveClicks >= 300 || isExemptSync) parsed.monetized = "true";
+      if (liveClicks >= 500 || isExemptSync) parsed.monetized = "true";
       await redisConnection.set(profileKey, JSON.stringify(parsed), "EX", 60).catch(() => {});
     }
   } catch (rErr) {
@@ -290,7 +290,7 @@ export async function publishEarnSideEffects(params: {
       amount: earnedRateNumber,
       newBalance: updatedBalance,
       clicks: liveClicks,
-      monetized: liveClicks >= 300 || isExemptEarn,
+      monetized: liveClicks >= 500 || isExemptEarn,
       atwTier: atwTierCode,
       deviceId: deviceId || null,
     },

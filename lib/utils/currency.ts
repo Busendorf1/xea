@@ -124,32 +124,80 @@ export function toMinorUnit(amount: number): number {
   return Math.round(amount * 100);
 }
 
+export const MIN_AD_ATTENTIONS = 100;
+export const MAX_AD_DURATION_DAYS = 90;
+export const PRODUCT_SALES_SUBSIDY_MULTIPLIER = 0.7;
+
 // Floor rates in NGN
 export const NGN_AD_RATES: Record<string, number> = {
-  politics: 1500,
+  politics: 900,
   business: 45,
-  government: 2000,
+  government: 750,
   individual: 25,
-  religion: 1500,
+  religion: 900,
   product_sales: 55,
 };
 
 // Floor rates in USD with 4x value baseline (NGN / 1500 * 4)
 export const USD_AD_RATES: Record<string, number> = {
-  politics: 4.00,
+  politics: 2.40,
   business: 0.12,
-  government: 5.33,
+  government: 2.00,
   individual: 0.07,
-  religion: 4.00,
+  religion: 2.40,
   product_sales: 0.15,
 };
 
+export const AD_FLOOR_CATEGORIES = Object.keys(NGN_AD_RATES) as readonly string[];
+
+export function isValidAdCategory(category: string): boolean {
+  return Object.prototype.hasOwnProperty.call(NGN_AD_RATES, category.trim().toLowerCase());
+}
+
 /**
- * Returns localized floor cost per impression for an ad category
+ * Extracts a lowercase hostname (stripping leading `www.`) from an HTTP(S) URL.
+ * Returns null for malformed, relative, or non-HTTP(S) URLs to prevent spoofing.
+ */
+export function extractNormalizedHostname(rawUrl?: string | null): string | null {
+  if (!rawUrl || typeof rawUrl !== "string") return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    if (!hostname || !hostname.includes(".")) return null;
+    return hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds exact and parent domain candidates for `premium_subscribers.domain` matching
+ * (e.g. `shop.baggyt.com` -> `["shop.baggyt.com", "baggyt.com"]`).
+ */
+export function buildCandidateSubscriberDomains(hostname: string): string[] {
+  const parts = hostname.toLowerCase().split(".").filter(Boolean);
+  const candidates: string[] = [];
+  for (let i = 0; i <= parts.length - 2; i++) {
+    candidates.push(parts.slice(i).join("."));
+  }
+  return Array.from(new Set(candidates));
+}
+
+export function applyProductSalesSubsidy(baseFloorRate: number): number {
+  return Number((baseFloorRate * PRODUCT_SALES_SUBSIDY_MULTIPLIER).toFixed(4));
+}
+
+/**
+ * Returns localized floor cost per attention for an ad category
  */
 export function getLocalizedAdFloorRate(category: string, country?: string | null): number {
   const isUSD = getUserCurrency(country) === "USD";
-  const cat = category.toLowerCase();
+  const cat = category.trim().toLowerCase();
   if (isUSD) {
     return USD_AD_RATES[cat] ?? 0.07;
   }

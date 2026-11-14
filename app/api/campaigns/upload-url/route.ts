@@ -4,7 +4,8 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 
 const ALLOWED_BUCKETS = new Set(["ad-media", "news", "avatars"]);
-const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "mp4", "webm", "mov"]);
+const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "avi", "mkv", "m4v", "3gp"]);
 
 export async function POST(request: NextRequest) {
   const rateLimit = await checkRateLimit(request, {
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
 
     const sanitizedBase = rawFileName.replace(/[^\w.-]/g, "_");
     const ext = sanitizedBase.split(".").pop()?.toLowerCase() || "jpg";
+    if (VIDEO_EXTENSIONS.has(ext)) {
+      return NextResponse.json(
+        { error: "Video uploads must use /api/campaigns/upload-video (max 180 seconds)." },
+        { status: 400 }
+      );
+    }
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       return NextResponse.json({ error: "Unsupported media file extension." }, { status: 400 });
     }

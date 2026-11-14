@@ -24,11 +24,13 @@ export const DEFAULT_ATTENTION_WORTH_SCORE = 0.1;
 export const MAX_ATTENTION_SCORE = 1000000.0;
 export const MAX_ATW_LEVEL = 14;
 export const MAX_ATW_HOLDING_CAP = MAX_ATW_LEVEL * 30000; // ₦420,000
+export const CLICKS_PER_ATW_STEP = 500;
+export const MONETIZATION_REQUIRED_CLICKS = 500;
 
 /**
  * Converts a user's `attention_worth_score` (default 0.1000) into bonus click equivalents
  * matching the canonical SQL `compute_atw_level` contract:
- * `FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 300)`.
+ * `FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 500)`.
  */
 export function computeRatingBonusClicks(attentionWorthScore?: number | null): number {
   const numericScore = Number(attentionWorthScore);
@@ -38,7 +40,7 @@ export function computeRatingBonusClicks(attentionWorthScore?: number | null): n
     0,
     Math.round((safeScore - DEFAULT_ATTENTION_WORTH_SCORE) * 10000)
   );
-  return Math.floor((deltaTenThousandths * 300) / 10000);
+  return Math.floor((deltaTenThousandths * CLICKS_PER_ATW_STEP) / 10000);
 }
 
 export function resolveAtwTier(score: number): AtwTierDef {
@@ -72,9 +74,9 @@ export interface ComputedAtwTierDetails {
 /**
  * Computes ATW tier progression from live seen/click count + advertiser rating boost
  * matching the canonical SQL `compute_atw_level(p_clicks, p_score, p_current_tier)`:
- *   rating_bonus_clicks = FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 300)
+ *   rating_bonus_clicks = FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 500)
  *   effective_clicks = GREATEST(0, clicks) + rating_bonus_clicks
- *   level = LEAST(14, GREATEST(1, parsed_current_tier_num, effective_clicks >= 300 ? FLOOR(effective_clicks / 300) : 1))
+ *   level = LEAST(14, GREATEST(1, parsed_current_tier_num, effective_clicks >= 500 ? FLOOR(effective_clicks / 500) : 1))
  *   holding_cap = level * 30,000 (₦420,000 max, or Unlimited for Admin / Exempt accounts).
  */
 export function computeAtwTierDetails(
@@ -87,17 +89,25 @@ export function computeAtwTierDetails(
   const ratingBonusClicks = computeRatingBonusClicks(attentionWorthScore);
   const effectiveClicks = safeClicks + ratingBonusClicks;
 
-  // Lifetime 300-by-300 milestone progression (300, 600, 900, ..., 4200, 4500, 4800, 5100...)
+  // Lifetime 500-by-500 milestone progression (500, 1000, 1500, ..., 7000, 7500...)
   const currentMilestoneTarget =
-    effectiveClicks < 300 ? 300 : (Math.floor(effectiveClicks / 300) + 1) * 300;
+    effectiveClicks < CLICKS_PER_ATW_STEP
+      ? CLICKS_PER_ATW_STEP
+      : (Math.floor(effectiveClicks / CLICKS_PER_ATW_STEP) + 1) * CLICKS_PER_ATW_STEP;
   const clicksRemaining = Math.max(0, currentMilestoneTarget - effectiveClicks);
-  const stepBase = effectiveClicks < 300 ? 0 : Math.floor(effectiveClicks / 300) * 300;
+  const stepBase =
+    effectiveClicks < CLICKS_PER_ATW_STEP
+      ? 0
+      : Math.floor(effectiveClicks / CLICKS_PER_ATW_STEP) * CLICKS_PER_ATW_STEP;
   const clicksPercent = Math.min(
     100,
-    Math.max(0, Math.round(((effectiveClicks - stepBase) / 300) * 100))
+    Math.max(0, Math.round(((effectiveClicks - stepBase) / CLICKS_PER_ATW_STEP) * 100))
   );
 
-  const rawLevelFromClicks = effectiveClicks >= 300 ? Math.floor(effectiveClicks / 300) : 1;
+  const rawLevelFromClicks =
+    effectiveClicks >= CLICKS_PER_ATW_STEP
+      ? Math.floor(effectiveClicks / CLICKS_PER_ATW_STEP)
+      : 1;
   const parsedTierMatch = String(existingTier || "").match(/\d+/);
   const parsedTierLevel = parsedTierMatch ? parseInt(parsedTierMatch[0], 10) : 1;
 
@@ -111,7 +121,7 @@ export function computeAtwTierDetails(
   // When at or beyond ATW14, next tier remains ATW14 with holding cap at ₦420,000
   const nextAtwLevel = isMaxTier
     ? MAX_ATW_LEVEL
-    : effectiveClicks < 300
+    : effectiveClicks < CLICKS_PER_ATW_STEP
     ? 1
     : Math.min(MAX_ATW_LEVEL, level + 1);
   const nextHoldingCap = nextAtwLevel * 30000;
@@ -171,7 +181,8 @@ export function getAtwBalanceLimit(
   }
   const safeClicks = Math.max(0, Number(clicks) || 0);
   const effectiveClicks = safeClicks + computeRatingBonusClicks(attentionWorthScore);
-  const rawLevelFromClicks = effectiveClicks >= 300 ? Math.floor(effectiveClicks / 300) : 1;
+  const rawLevelFromClicks =
+    effectiveClicks >= CLICKS_PER_ATW_STEP ? Math.floor(effectiveClicks / CLICKS_PER_ATW_STEP) : 1;
   const match = String(atwTier || "").match(/\d+/);
   const levelNum = match ? parseInt(match[0], 10) : 1;
   const safeLevel = Math.min(MAX_ATW_LEVEL, Math.max(1, levelNum, rawLevelFromClicks));

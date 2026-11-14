@@ -7,6 +7,14 @@ import { spendWalletBalanceAtomic } from "@/lib/services/payoutSettlementService
 import { invalidateCachedProfile, invalidateCachedUserCampaigns } from "@/lib/utils/cache";
 import { verifyTransactionPin, resolveStoredWalletPinHash } from "@/lib/security/walletPinHelper";
 import { bridgeMobilePaymentCallbackUrl } from "../../../../lib/payment/paymentLookup";
+import {
+  applyProductSalesSubsidy,
+  getLocalizedAdFloorRate,
+  getUserCurrency,
+  MIN_AD_ATTENTIONS,
+} from "../../../../lib/utils/currency";
+import { isVerifiedSubscriberProductLink } from "../../../../lib/ads/pricingEnforcement";
+import { assessAdDeliveryCapacity } from "../../../../lib/ads/capacityEstimator";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +54,7 @@ export async function POST(req: NextRequest) {
     }
 
     const addImpressionsNum = Number(additionalImpressions || 0);
-    const addDaysNum = Number(additionalDays || 0);
+    const addDaysNum = Math.floor(Number(additionalDays || 0));
     if (!Number.isFinite(addImpressionsNum) || addImpressionsNum < 0 || !Number.isFinite(addDaysNum) || addDaysNum < 0) {
       return NextResponse.json({ error: "Additional impressions and days must be non-negative numbers" }, { status: 400 });
     }
@@ -167,19 +175,110 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    let adFloorRate = 25;
+    if (!isHighlight) {
+      let userCountry: string | null = null;
+      try {
+        const { data: userRow } = await supabaseAdmin
+          .from("users")
+          .select("country")
+          .ilike("email", emailLower)
+          .maybeSingle();
+        userCountry = userRow?.country || null;
+      } catch {
+        // Safe fallback to NGN if user profile mock does not expose country
+      }
+
+      const adCategory = String(
+        ad.ad_type ||
+          (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) ||
+          "individual"
+      )
+        .trim()
+        .toLowerCase();
+      const baseFloor = getLocalizedAdFloorRate(adCategory, userCountry);
+      const subsidyQualified =
+        adCategory === "product_sales"
+          ? await isVerifiedSubscriberProductLink(supabaseAdmin, ad.product_cta_link)
+          : false;
+      adFloorRate = subsidyQualified ? applyProductSalesSubsidy(baseFloor) : baseFloor;
+
+      const requestedRaw = newCostPerImpression ?? newBidPrice;
+      if (requestedRaw !== undefined && requestedRaw !== null && requestedRaw !== "") {
+        const parsedRequested = Number(requestedRaw);
+        const eps = getUserCurrency(userCountry) === "USD" ? 0.0005 : 0.001;
+        if (!Number.isFinite(parsedRequested) || parsedRequested < adFloorRate - eps) {
+          return NextResponse.json(
+            { error: `Boost rate cannot be below category floor of ${adFloorRate}.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const currentCost = isHighlight
       ? (ad.is_bidded && ad.bid_price ? Number(ad.bid_price) : 1000)
-      : Math.max(15, Number(ad.cost_per_impression || 25));
+      : Math.max(adFloorRate, Number(ad.cost_per_impression || adFloorRate));
 
     const requestedRate = newCostPerImpression ?? newBidPrice;
     const effectiveCost = requestedRate && Number(requestedRate) > currentCost
       ? Number(requestedRate)
       : currentCost;
 
+    if (addDaysNum > 0 && Number(ad.campaign_days || 1) + addDaysNum > 90) {
+      return NextResponse.json(
+        { error: "Maximum campaign duration is 90 days." },
+        { status: 400 }
+      );
+    }
+
     const remainingImpressions = Math.max(
       1,
-      Number(ad.impressions || 1000) - Number(ad.impression_count || 0)
+      Number(ad.impressions || MIN_AD_ATTENTIONS) - Number(ad.impression_count || 0)
     );
+
+    const normalizedUserFrequencyCap =
+      userFrequencyCap !== undefined &&
+      userFrequencyCap !== null &&
+      userFrequencyCap !== "" &&
+      Number.isFinite(Number(userFrequencyCap)) &&
+      Number(userFrequencyCap) > 0
+        ? Math.max(1, Math.min(100, Math.floor(Number(userFrequencyCap))))
+        : undefined;
+
+    if (!isHighlight && addImpressionsNum > 0) {
+      const nextRemainingTarget =
+        Math.max(0, Number(ad.impressions || 0) - Number(ad.impression_count || 0)) + addImpressionsNum;
+      const capacity = await assessAdDeliveryCapacity(supabaseAdmin, {
+        requestedImpressions: nextRemainingTarget,
+        userFrequencyCap: normalizedUserFrequencyCap ?? Number(ad.user_frequency_cap || 1),
+        campaignDays: Number(ad.campaign_days || 1) + addDaysNum,
+        targetingAll: Boolean(ad.targeting_all),
+        country: country !== undefined ? country : ad.country,
+        state: state !== undefined ? state : ad.state,
+        province: province !== undefined ? province : ad.province,
+        gender: gender !== undefined ? gender : ad.gender,
+        ageRange: ad.age_range ?? null,
+        employmentStatus: ad.employment_status ?? null,
+        industry: industry !== undefined ? industry : ad.industry,
+        interest: interest !== undefined ? interest : ad.interest,
+        lifestyle: ad.lifestyle ?? null,
+        behavior: ad.behavior ?? null,
+        personality: ad.personality ?? null,
+        advertiserEmail: emailLower,
+      });
+
+      if (capacity.telemetryAvailable && !capacity.allowed) {
+        return NextResponse.json(
+          {
+            error: capacity.message,
+            capacityCapped: true,
+            maxOrderableImpressions: capacity.maxOrderableImpressions,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Calculate total cost (unified across Web, Mobile, and Edge Function)
     const totalCost = isHighlight
@@ -215,13 +314,13 @@ export async function POST(req: NextRequest) {
       updatePayload.cost_per_impression = effectiveCost;
       updatePayload.completed_at = null; // Clear completed flag if topped up!
       if (addImpressionsNum > 0) {
-        updatePayload.impressions = Number(ad.impressions || 1000) + addImpressionsNum;
+        updatePayload.impressions = Number(ad.impressions || MIN_AD_ATTENTIONS) + addImpressionsNum;
       }
       if (addDaysNum > 0) {
         updatePayload.campaign_days = Number(ad.campaign_days || 1) + addDaysNum;
       }
-      if (userFrequencyCap !== undefined && Number(userFrequencyCap) > 0) {
-        updatePayload.user_frequency_cap = Number(userFrequencyCap);
+      if (normalizedUserFrequencyCap !== undefined) {
+        updatePayload.user_frequency_cap = normalizedUserFrequencyCap;
       }
       if (gender) updatePayload.gender = gender;
       if (country !== undefined) updatePayload.country = country;
@@ -245,6 +344,11 @@ export async function POST(req: NextRequest) {
           ...updatePayload,
           completed_at: null,
           is_paused: false,
+          is_rollover: false,
+          broadening_stage: 0,
+          rollover_started_at: null,
+          rollover_notified_at: null,
+          approved_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
         };
         await Promise.all([
@@ -259,8 +363,8 @@ export async function POST(req: NextRequest) {
         ]);
       }
 
-      // Update bidded_ads and Redis ranking whenever priority bid > 25
-      if (!isHighlight && effectiveCost > 25) {
+      // Update bidded_ads and Redis ranking whenever priority bid exceeds category floor
+      if (!isHighlight && effectiveCost > adFloorRate) {
         try {
           const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
           await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId);
@@ -452,7 +556,7 @@ export async function POST(req: NextRequest) {
         additional_impressions: addImpressionsNum,
         additional_days: addDaysNum,
         cost_per_impression: effectiveCost,
-        user_frequency_cap: userFrequencyCap,
+        user_frequency_cap: normalizedUserFrequencyCap,
         gender,
         country,
         state,

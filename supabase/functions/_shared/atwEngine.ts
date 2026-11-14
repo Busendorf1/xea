@@ -3,7 +3,7 @@ import { AFFILIATE_EMAILS } from "./cors.ts";
 export const MAX_ATW_LEVEL = 14;
 export const MAX_ATW_HOLDING_CAP = 420000;
 export const HOLDING_CAP_PER_TIER = 30000;
-export const CLICKS_PER_ATW_STEP = 300;
+export const CLICKS_PER_ATW_STEP = 500;
 export const DEFAULT_ATTENTION_WORTH_SCORE = 0.1;
 export const MAX_ATTENTION_WORTH_SCORE = 1000000;
 export const EARNER_AD_SHARE_RATE = 0.6;
@@ -45,9 +45,9 @@ function parseAtwTierNumber(tierStr: unknown): number {
 
 /**
  * Canonical ATW progression formula matching SQL `compute_atw_level`:
- * - rating_bonus_clicks = FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 300)
+ * - rating_bonus_clicks = FLOOR(GREATEST(0, COALESCE(score, 0.1) - 0.1) * 500)
  * - effective_clicks = GREATEST(0, clicks) + rating_bonus_clicks
- * - computed_level = effective_clicks >= 300 ? FLOOR(effective_clicks / 300) : 1
+ * - computed_level = effective_clicks >= 500 ? FLOOR(effective_clicks / 500) : 1
  * - level = LEAST(14, GREATEST(1, parsed_current_tier_num, computed_level))
  * - atw_tier = 'ATW' || level, holding_cap = level * 30000
  */
@@ -104,7 +104,7 @@ export function computeAtwTierDetails(params: {
   const holdingCap = Math.min(MAX_ATW_HOLDING_CAP, tierLevel * HOLDING_CAP_PER_TIER);
 
   const nextLevelThreshold =
-    tierLevel < MAX_ATW_LEVEL ? (tierLevel === 1 ? 600 : (tierLevel + 1) * CLICKS_PER_ATW_STEP) : null;
+    tierLevel < MAX_ATW_LEVEL ? (tierLevel + 1) * CLICKS_PER_ATW_STEP : null;
   const currentTierFloor = tierLevel <= 1 ? 0 : tierLevel * CLICKS_PER_ATW_STEP;
   const span = nextLevelThreshold !== null ? Math.max(1, nextLevelThreshold - currentTierFloor) : 1;
   const progressPercent =

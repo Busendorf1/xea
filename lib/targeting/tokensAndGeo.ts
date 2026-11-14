@@ -53,6 +53,49 @@ export function signAdImpressionToken(
 }
 
 /**
+ * Signs a per-card viewport entry token bound to both the batch servedAt timestamp
+ * and the exact timestamp the individual card entered the user's viewport.
+ */
+export function signAdViewStartToken(
+  adId: string,
+  viewerEmail: string,
+  viewStartedAt: number,
+  servedAt: number | string
+): string {
+  const secretKey = getEarnTokenSecret();
+  const payload = `view:${adId}:${viewerEmail.toLowerCase().trim()}:${viewStartedAt}:${servedAt}`;
+  return crypto.createHmac("sha256", secretKey).update(payload).digest("hex");
+}
+
+/**
+ * Constant-time verification of a hex HMAC-SHA256 signature against candidate keys and payloads.
+ */
+export function verifyHmacSignature(
+  payloads: string[],
+  token: string,
+  candidateKeys: string[]
+): boolean {
+  if (!token || typeof token !== "string") return false;
+  let providedBuf: Buffer;
+  try {
+    providedBuf = Buffer.from(token, "hex");
+  } catch {
+    return false;
+  }
+  if (providedBuf.length !== 32) return false;
+
+  return candidateKeys.some((k) =>
+    payloads.some((p) => {
+      const expectedBuf = crypto.createHmac("sha256", k).update(p).digest();
+      return (
+        expectedBuf.length === providedBuf.length &&
+        crypto.timingSafeEqual(expectedBuf, providedBuf)
+      );
+    })
+  );
+}
+
+/**
  * Parses a potentially JSON-encoded, comma-separated, or array field into normalized lowercase tokens.
  */
 export function normalizeStringArray(val: unknown): string[] {

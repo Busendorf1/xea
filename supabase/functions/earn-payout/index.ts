@@ -5,6 +5,24 @@ import { computeAtwTierDetails } from "../_shared/atwEngine.ts";
 import { AFFILIATE_EMAILS, corsHeaders, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { evaluateKinematics } from "../_shared/kinematics.ts";
 
+async function signHmacToken(
+  payload: string,
+  secret: string,
+): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 async function verifyHmacToken(
   token: string,
   payload: string,
@@ -170,10 +188,80 @@ serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
+    // 2b. Per-Card Viewport Start Action (mints viewToken bound to servedAt + viewStartedAt)
+    if (actionType === "view_start" || actionType === "view-start") {
+      const token = String(body?.token || "").trim();
+      const servedAtRaw = body?.servedAt ?? body?.served_at;
+      const secret =
+        Deno.env.get("EARN_TOKEN_SECRET") ||
+        Deno.env.get("NEXTAUTH_SECRET") ||
+        Deno.env.get("AUTH0_SECRET") ||
+        "";
+
+      const nowMs = Date.now();
+      const parsedServedAt = Number.parseInt(String(servedAtRaw ?? ""), 10);
+      if (
+        !token ||
+        !Number.isFinite(parsedServedAt) ||
+        parsedServedAt > nowMs + 60000 ||
+        nowMs - parsedServedAt > 1800000
+      ) {
+        return jsonResponse(
+          {
+            success: false,
+            code: "TOKEN_EXPIRED",
+            error: "Valid feed token and servedAt are required to start view timer.",
+          },
+          403,
+        );
+      }
+
+      if (secret) {
+        const payloads = [
+          `${adId}:${cleanEmail}:${servedAtRaw}`,
+          `${adId}:${requestedEmail}:${servedAtRaw}`,
+        ];
+        let valid = false;
+        for (const p of payloads) {
+          if (await verifyHmacToken(token, p, secret)) {
+            valid = true;
+            break;
+          }
+        }
+        if (!valid) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "INVALID_TOKEN",
+              error: "Cryptographic feed token verification failed.",
+            },
+            403,
+          );
+        }
+      }
+
+      const rawDebounce = Number(body?.debounceMs ?? body?.debounce_ms ?? 0);
+      const clampedDebounceMs = Number.isFinite(rawDebounce)
+        ? Math.min(2500, Math.max(0, Math.round(rawDebounce)))
+        : 0;
+      const viewStartedAt = Math.max(parsedServedAt, nowMs - clampedDebounceMs);
+      const viewToken = secret
+        ? await signHmacToken(`view:${adId}:${cleanEmail}:${viewStartedAt}:${servedAtRaw}`, secret)
+        : `dev-view-${adId}-${viewStartedAt}`;
+
+      return jsonResponse({
+        success: true,
+        viewStartedAt,
+        viewToken,
+        servedAt: parsedServedAt,
+      });
+    }
+
     // 3. Validate Kinematics PoH BEFORE token/lock verification & earn claim
     let viewDuration = 0;
     if (actionType === "earn") {
-      const rawVectors = body?.kinematicVectors ?? body?.vectors ?? body?.kinematics;
+      const rawVectors =
+        body?.telemetry ?? body?.kinematicVectors ?? body?.vectors ?? body?.kinematics;
       const poh = evaluateKinematics(rawVectors);
       if (!poh.isHuman) {
         return jsonResponse(
@@ -188,9 +276,11 @@ serve(async (req: Request) => {
         );
       }
 
-      // 4. Mandatory Cryptographic HMAC Token & Dwell Window Verification (12s..30m)
+      // 4. Mandatory Cryptographic Batch Token & Per-Card Viewport Dwell Verification (14s..30m)
       const token = String(body?.token || "").trim();
       const servedAtRaw = body?.servedAt;
+      const viewToken = String(body?.viewToken || "").trim();
+      const viewStartedAtRaw = body?.viewStartedAt;
       const secret =
         Deno.env.get("EARN_TOKEN_SECRET") ||
         Deno.env.get("NEXTAUTH_SECRET") ||
@@ -211,18 +301,8 @@ serve(async (req: Request) => {
 
         const parsedServedAt = Number.parseInt(String(servedAtRaw), 10);
         const nowMs = Date.now();
-        viewDuration = nowMs - parsedServedAt;
-        if (!Number.isFinite(parsedServedAt) || viewDuration < 12000) {
-          return jsonResponse(
-            {
-              success: false,
-              code: "DWELL_TOO_SHORT",
-              error: "Minimum attention duration not met (12s required). Please view ad completely.",
-            },
-            400,
-          );
-        }
-        if (viewDuration > 1800000) {
+        const batchAge = nowMs - parsedServedAt;
+        if (!Number.isFinite(parsedServedAt) || batchAge > 1800000) {
           return jsonResponse(
             {
               success: false,
@@ -254,9 +334,92 @@ serve(async (req: Request) => {
             403,
           );
         }
+
+        if (!viewToken || viewStartedAtRaw === undefined || viewStartedAtRaw === null) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "VIEW_START_REQUIRED",
+              error: "Per-card view verification required. Please view the ad completely before claiming.",
+            },
+            403,
+          );
+        }
+
+        const viewPayloads = [
+          `view:${adId}:${cleanEmail}:${viewStartedAtRaw}:${servedAtRaw}`,
+          `view:${adId}:${requestedEmail}:${viewStartedAtRaw}:${servedAtRaw}`,
+        ];
+        let viewTokenValid = false;
+        for (const vp of viewPayloads) {
+          if (await verifyHmacToken(viewToken, vp, secret)) {
+            viewTokenValid = true;
+            break;
+          }
+        }
+        if (!viewTokenValid) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "INVALID_VIEW_TOKEN",
+              error: "Per-card cryptographic view verification failed. Reward rejected.",
+            },
+            403,
+          );
+        }
+
+        const parsedViewStartedAt = Number.parseInt(String(viewStartedAtRaw), 10);
+        if (
+          !Number.isFinite(parsedViewStartedAt) ||
+          parsedViewStartedAt > nowMs + 15000 ||
+          parsedViewStartedAt < parsedServedAt - 15000
+        ) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "INVALID_DWELL",
+              error: "Invalid card view timestamp. Please refresh your feed.",
+            },
+            400,
+          );
+        }
+
+        viewDuration = nowMs - parsedViewStartedAt;
+        if (viewDuration < 14000) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "DWELL_TOO_SHORT",
+              error: "Minimum attention duration not met (16s required). Please view ad completely.",
+            },
+            400,
+          );
+        }
+        if (viewDuration > 1800000) {
+          return jsonResponse(
+            {
+              success: false,
+              code: "TOKEN_EXPIRED",
+              error: "Ad session expired (30-minute limit exceeded). Please refresh your feed.",
+            },
+            403,
+          );
+        }
       } else {
-        // When EARN_TOKEN_SECRET isn't configured in dev, still enforce 12s dwell if servedAt supplied
-        if (servedAtRaw) {
+        // Dev fallback when EARN_TOKEN_SECRET isn't configured: check viewStartedAt (14s) or servedAt (12s)
+        if (viewStartedAtRaw) {
+          viewDuration = Date.now() - Number.parseInt(String(viewStartedAtRaw), 10);
+          if (!Number.isFinite(viewDuration) || viewDuration < 14000 || viewDuration > 1800000) {
+            return jsonResponse(
+              {
+                success: false,
+                code: "INVALID_DWELL",
+                error: "Invalid ad viewing duration.",
+              },
+              400,
+            );
+          }
+        } else if (servedAtRaw) {
           viewDuration = Date.now() - Number.parseInt(String(servedAtRaw), 10);
           if (!Number.isFinite(viewDuration) || viewDuration < 12000 || viewDuration > 1800000) {
             return jsonResponse(
@@ -378,7 +541,35 @@ serve(async (req: Request) => {
         await archiveExhaustedAd(supabase, adRow, nextImpCount);
       }
 
-      const netCredited = Number(rpcResult.net_credited ?? rpcResult.amount ?? 0);
+      let netCredited = Number(rpcResult.net_credited ?? rpcResult.credited ?? rpcResult.amount ?? 0);
+      let finalBalance = Number(rpcResult.new_balance ?? rpcResult.balance ?? 0);
+
+      if (!rpcResult.affiliate_credited && netCredited > 0) {
+        try {
+          await supabase.rpc("credit_affiliate_platform_share_atomic", {
+            p_raw_cpi: rawCpi,
+            p_ad_id: adId,
+            p_earner_email: cleanEmail,
+          });
+        } catch {}
+      }
+
+      if (netCredited > 0) {
+        try {
+          const { data: commRes } = await supabase.rpc("apply_agent_commission_atomic", {
+            p_earner_email: cleanEmail,
+            p_gross_amount: netCredited,
+            p_ad_id: adId,
+          });
+          if (commRes?.applied) {
+            netCredited = Number(commRes.net_earner_amount ?? netCredited);
+            if (commRes.earner_new_balance !== undefined && commRes.earner_new_balance !== null) {
+              finalBalance = Number(commRes.earner_new_balance);
+            }
+          }
+        } catch {}
+      }
+
       return jsonResponse({
         success: true,
         code: String(rpcResult.code || "EARN_SUCCESS"),
@@ -386,7 +577,7 @@ serve(async (req: Request) => {
         net_credited: netCredited,
         raw_earn_rate: Number(rpcResult.raw_earn_rate ?? earnedRate),
         capped: Boolean(rpcResult.capped ?? rpcResult.is_capped),
-        balance: Number(rpcResult.new_balance ?? rpcResult.balance ?? 0),
+        balance: finalBalance,
         clicks: Number(rpcResult.new_clicks ?? rpcResult.clicks ?? 0),
         atw_tier: rpcResult.atw_tier,
         atw_level: rpcResult.atw_level,
@@ -531,7 +722,7 @@ serve(async (req: Request) => {
     const nextBalance = Math.round((currentBal + netCredited) * 100) / 100;
     const nextMonetized = hasCancelled
       ? "false"
-      : currentlyMonetized || nextClicks >= 300
+      : currentlyMonetized || nextClicks >= 500
       ? "true"
       : "false";
 

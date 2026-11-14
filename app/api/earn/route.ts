@@ -39,9 +39,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const session = await auth0.getSession();
     const body = await request.json();
-    const { adId, token, servedAt, type, deviceId, telemetry, bonusSeconds: bodyBonusSeconds } = body;
+    const {
+      adId,
+      token,
+      servedAt,
+      viewToken,
+      viewStartedAt,
+      type,
+      deviceId,
+      telemetry,
+      bonusSeconds: bodyBonusSeconds,
+    } = body;
 
     if (!adId || !type) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -62,7 +71,6 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    const userId = session?.user?.sub || email;
     const now = Date.now();
 
     // Validate HMAC, dwell time & PoH kinematics BEFORE burning earn_token / attention_pace
@@ -71,9 +79,18 @@ export async function POST(request: NextRequest) {
       type,
       emailKey,
       rawEmail: email,
-      userId,
+      resolveLegacyUserId: async () => {
+        try {
+          const session = await auth0.getSession();
+          return session?.user?.sub || null;
+        } catch {
+          return null;
+        }
+      },
       token,
       servedAt,
+      viewToken,
+      viewStartedAt,
       telemetry,
       bonusSecondsInput: bodyBonusSeconds,
       rapidClickLockKey,
@@ -117,6 +134,11 @@ export async function POST(request: NextRequest) {
       adIdToUnlock = claimResult.adIdToUnlock;
       if (claimResult.errorResponse) {
         return claimResult.errorResponse;
+      }
+      if (isRedisReady()) {
+        await redisConnection
+          .set(`user:last_earn_at:${emailKey}`, String(Date.now()), "EX", 1800)
+          .catch(() => {});
       }
       earnedRateNumber = claimResult.earnedRateNumber;
       updatedBalance = claimResult.updatedBalance;

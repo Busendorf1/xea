@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
           parsed.ratingBonusClicks = tierDetails.ratingBonusClicks;
           if (parsed.hasCancelled) {
             parsed.isMonetized = false;
-          } else if (effectiveClicks >= 300 || isExempt) {
+          } else if (effectiveClicks >= 500 || isExempt) {
             parsed.isMonetized = true;
           }
           return NextResponse.json(parsed, {
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
       const isExempt = isExemptFromBarriersAndInactivity(emailLower);
       const clicksCount = Math.max(rClicks, liveClicksDelta);
       const hasCancelled = Boolean(fbUser?.has_cancelled_monetization);
-      const isMonetized = !hasCancelled && Boolean(isExempt || clicksCount >= 300);
+      const isMonetized = !hasCancelled && Boolean(isExempt || clicksCount >= 500);
 
       const tierDetails = computeAtwTierDetails(
         clicksCount,
@@ -132,7 +132,7 @@ export async function GET(req: NextRequest) {
       const dbClicks = Number(uData.monetization_clicks || 0);
       const clicks = Math.max(dbClicks, liveClicksDelta);
       const hasCancelled = Boolean(uData.has_cancelled_monetization);
-      const isMonetized = !hasCancelled && Boolean(isExempt || clicks >= 300);
+      const isMonetized = !hasCancelled && Boolean(isExempt || clicks >= 500);
 
       let daysInactive = 0;
       if (!isExempt && uData.last_active_at) {
@@ -286,7 +286,7 @@ export async function POST(req: NextRequest) {
         clicksRemaining: tier.clicksRemaining,
         targetClicks: tier.currentMilestoneTarget,
         atwTier: tier.tierCode,
-        isMonetized: !hasCancelled && !!(uRow?.monetized === "true" || uRow?.monetized === true || currentClicks >= 300 || isExempt),
+        isMonetized: !hasCancelled && !!(uRow?.monetized === "true" || uRow?.monetized === true || currentClicks >= 500 || isExempt),
       });
     }
 

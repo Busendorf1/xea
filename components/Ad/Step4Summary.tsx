@@ -2,6 +2,8 @@
 
 import React from "react";
 import dynamic from "next/dynamic";
+import { AlertCircle, Info } from "lucide-react";
+import type { AdCapacityAssessment } from "@/lib/hooks/useAdCapacityCheck";
 import { AdFormSelections } from "./types";
 import styles from "./page.module.css";
 
@@ -10,6 +12,7 @@ const AttentionMarketTicker = dynamic(() => import("./AttentionMarketTicker"), {
 interface Step4SummaryProps {
   formSelections: AdFormSelections;
   adType: string;
+  country?: string | null;
   userProfile: {
     mutual_count: number;
     mutuals: string[];
@@ -23,11 +26,14 @@ interface Step4SummaryProps {
   setIsBiddingEnabled: (val: boolean) => void;
   bidPrice: number;
   setBidPrice: (val: number) => void;
+  capacity?: AdCapacityAssessment | null;
+  onApplyCapacityCap?: (maxCap: number) => void;
 }
 
 export default function Step4Summary({
   formSelections,
   adType,
+  country,
   userProfile,
   formatCurrency,
   calculateTotalCostPerImpression,
@@ -36,6 +42,8 @@ export default function Step4Summary({
   setIsBiddingEnabled,
   bidPrice,
   setBidPrice,
+  capacity,
+  onApplyCapacityCap,
 }: Step4SummaryProps) {
   return (
     <div className={styles.summaryContainer}>
@@ -122,7 +130,7 @@ export default function Step4Summary({
             <div className={styles.detailsRow}>
               <span className={styles.detailsKey}>Frequency cap</span>
               <span className={styles.detailsVal}>
-                {formSelections.userFrequencyCap} view{formSelections.userFrequencyCap > 1 ? "s" : ""} / user
+                {formSelections.userFrequencyCap} attention{formSelections.userFrequencyCap > 1 ? "s" : ""} / user
               </span>
             </div>
             <div className={styles.detailsRow}>
@@ -134,7 +142,7 @@ export default function Step4Summary({
                     ? formSelections.impressions + userProfile.mutual_count
                     : formSelections.impressions) / formSelections.campaignDays
                 ).toLocaleString()}{" "}
-                views/day
+                attentions/day
               </span>
             </div>
           </div>
@@ -189,7 +197,7 @@ export default function Step4Summary({
 
           <div className={styles.costRows}>
             <div className={styles.costRow}>
-              <span className={styles.costKey}>Paid views</span>
+              <span className={styles.costKey}>Paid attentions</span>
               <span className={styles.costVal}>
                 {formSelections.impressions.toLocaleString()}
               </span>
@@ -205,7 +213,7 @@ export default function Step4Summary({
             <div className={styles.divider}></div>
 
             <div className={styles.costRow}>
-              <span className={styles.costKey}>Total target views</span>
+              <span className={styles.costKey}>Total target attentions</span>
               <span className={`${styles.costVal} ${styles.costValBold}`}>
                 {(formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0
                   ? formSelections.impressions + userProfile.mutual_count
@@ -215,7 +223,7 @@ export default function Step4Summary({
             </div>
 
             <div className={styles.costRow}>
-              <span className={styles.costKey}>Rate / view</span>
+              <span className={styles.costKey}>Rate / attention</span>
               <span className={styles.costVal}>{formatCurrency(calculateTotalCostPerImpression())}</span>
             </div>
           </div>
@@ -224,12 +232,69 @@ export default function Step4Summary({
             <span className={styles.totalLabel}>Total cost</span>
             <span className={styles.totalAmount}>{formatCurrency(calculateTotalCost())}</span>
           </div>
+
+          {capacity && capacity.telemetryAvailable && capacity.status !== "optimal" && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "9px 11px",
+                borderRadius: 8,
+                border: `1px solid ${
+                  capacity.status === "capped"
+                    ? "rgba(239, 68, 68, 0.35)"
+                    : "rgba(245, 158, 11, 0.35)"
+                }`,
+                background:
+                  capacity.status === "capped"
+                    ? "rgba(239, 68, 68, 0.08)"
+                    : "rgba(245, 158, 11, 0.08)",
+                fontSize: "0.78rem",
+                display: "inline-flex",
+                width: "fit-content",
+                maxWidth: "100%",
+                alignSelf: "flex-start",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                {capacity.status === "capped" ? (
+                  <AlertCircle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: 1 }} />
+                ) : (
+                  <Info size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+                )}
+                <span>{capacity.message}</span>
+              </div>
+              {capacity.status === "capped" &&
+                capacity.maxOrderableImpressions >= 100 &&
+                onApplyCapacityCap && (
+                  <button
+                    type="button"
+                    onClick={() => onApplyCapacityCap(capacity.maxOrderableImpressions)}
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      border: "1px solid var(--card-border)",
+                      background: "var(--card-bg)",
+                      color: "var(--foreground)",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Use {capacity.maxOrderableImpressions.toLocaleString()}
+                  </button>
+                )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Attention Economy Bidding Market Ticker */}
       <AttentionMarketTicker
         selectedCategory={adType}
+        country={country}
         isBiddingEnabled={isBiddingEnabled}
         onToggleBidding={setIsBiddingEnabled}
         bidPrice={bidPrice}

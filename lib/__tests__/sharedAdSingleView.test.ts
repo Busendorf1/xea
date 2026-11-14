@@ -5,6 +5,9 @@ import {
   APP_CUSTOM_SCHEME,
   buildAdAppSchemeUrl,
   buildAdShareUrl,
+  decodeAdBlurbToken,
+  decodeSharedAdParam,
+  encodeAdBlurbToken,
   extractSharedAdIdFromSearchParams,
 } from "../utils/adShare";
 
@@ -238,5 +241,41 @@ describe("Shared Ad Single-Ad Rendering (Web)", () => {
     expect(feedSrc).toMatch(/!isSharedAdMode && locationSkipped && <FeedLocationSkippedState/);
     expect(feedSrc).toMatch(/if\s*\(loading \|\| loadingMore \|\| !hasMore \|\| isSharedAdMode\)\s*return/);
     expect(feedSrc).toMatch(/<FeedSharedAdUnavailableState/);
+
+    // LoggedInPage + Container preserve sharedAdId & pre-hydrate single shared ad cleanly across SSR -> Feed
+    expect(loggedInSrc).toMatch(/initialSharedAdId=\{resolvedSharedAdId\}/);
+    expect(loggedInSrc).toMatch(/initialSharedAd=\{resolvedSharedAd\}/);
+    const containerSrc = fs.readFileSync(
+      path.join(rootDir, "app/user/logged-in/LoggedInClientContainer.tsx"),
+      "utf8"
+    );
+    expect(containerSrc).toMatch(/sharedParamId[\s\S]*?\/logged-in\?view=feed&sharedAdId=/);
+  });
+
+  it("masks UUIDs behind readable blurb tokens while decoding cleanly back to canonical UUID", async () => {
+    const sampleUuid = "550e8400-e29b-41d4-a716-446655440000";
+    const token = encodeAdBlurbToken({
+      id: sampleUuid,
+      product_name: "Nike Air Max 90",
+    });
+    expect(token).toMatch(/^nike-air-max-90-b_[A-Za-z0-9_-]{24}$/);
+    expect(token).not.toContain(sampleUuid);
+    expect(decodeAdBlurbToken(token)).toBe(sampleUuid);
+    expect(decodeSharedAdParam(token)).toBe(sampleUuid);
+
+    const shareUrl = buildAdShareUrl({
+      id: sampleUuid,
+      product_name: "Nike Air Max 90",
+    });
+    expect(shareUrl).toBe(`https://paayh.com/ad/${token}`);
+    expect(shareUrl.toLowerCase()).not.toContain("550e8400");
+
+    const schemeUrl = buildAdAppSchemeUrl({ id: sampleUuid, product_name: "Nike Air Max 90" });
+    expect(schemeUrl).toBe(`xea-auth://ad/${token}`);
+    expect(extractSharedAdIdFromSearchParams(new URLSearchParams({ sharedAdId: token }))).toBe(sampleUuid);
+
+    // Corrupted blurb token fails checksum and never resolves to the UUID
+    const corrupted = token.slice(0, -1) + (token.endsWith("A") ? "B" : "A");
+    expect(decodeAdBlurbToken(corrupted)).toBeNull();
   });
 });

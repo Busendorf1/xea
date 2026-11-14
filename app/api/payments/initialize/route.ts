@@ -6,6 +6,8 @@ import { bridgeMobilePaymentCallbackUrl } from "../../../../lib/payment/paymentL
 // PaystackService is also accessible via PayoutProvider or directly from "@/lib/payment/paystack"
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
+import { validateAndComputeAdPricing } from "../../../../lib/ads/pricingEnforcement";
+import { assessAdDeliveryCapacity } from "../../../../lib/ads/capacityEstimator";
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,12 +46,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify advertiser account status before initializing external payment
+    let userCountry: string | null = null;
     if (!isAdmin) {
       const { data: userRecord } = await supabaseAdmin
         .from("users")
-        .select("ad_account_status, ad_ban_until, ad_ban_reason")
+        .select("ad_account_status, ad_ban_until, ad_ban_reason, country")
         .ilike("email", email)
         .maybeSingle();
+
+      userCountry = userRecord?.country || null;
 
       if (userRecord) {
         const isRestricted =
@@ -94,27 +99,72 @@ export async function POST(req: NextRequest) {
       if (!adData) {
         return NextResponse.json({ error: "Ad details missing from metadata" }, { status: 400 });
       }
-      const isBidded = !!adData.isBidded;
-      const bidPrice = adData.bidPrice ? parseFloat(adData.bidPrice) : null;
-      const rate = isBidded && bidPrice ? bidPrice : parseFloat(adData.costPerImpression || 15);
-      const impressions = parseInt(adData.impressions || 1000, 10);
-
-      if (!Number.isFinite(rate) || rate < 10 || !Number.isFinite(impressions) || impressions < 1000) {
-        return NextResponse.json({ error: "Invalid ad campaign rate or impressions" }, { status: 400 });
+      const clientAmount = parseFloat(amount);
+      if (!Number.isFinite(clientAmount) || clientAmount <= 0) {
+        return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
       }
 
-      const expectedCost = Number((rate * impressions).toFixed(2));
-      const clientAmount = parseFloat(amount);
+      const resolvedProductCtaLink =
+        typeof adData.productCtaType === "string" && adData.productCtaType.trim().toLowerCase() === "none"
+          ? null
+          : adData.productCtaLink || null;
 
-      if (!Number.isFinite(clientAmount) || Math.abs(clientAmount - expectedCost) > 1) {
+      const pricing = await validateAndComputeAdPricing(supabaseAdmin, {
+        adType: adData.adType,
+        impressions: adData.impressions,
+        costPerImpression: adData.costPerImpression,
+        isBidded: adData.isBidded,
+        bidPrice: adData.bidPrice,
+        clientTotalCost: clientAmount,
+        productCtaLink: resolvedProductCtaLink,
+        userCountry,
+        isAdmin: false,
+      });
+
+      if (!pricing.ok) {
+        return NextResponse.json({ error: pricing.error }, { status: pricing.status });
+      }
+
+      const rawDays = adData.campaignDays ?? adData.campaign_days ?? 1;
+      const parsedCampaignDays = Number(rawDays);
+      if (!Number.isFinite(parsedCampaignDays) || parsedCampaignDays < 1 || parsedCampaignDays > 90) {
+        return NextResponse.json({ error: "Campaign duration must be between 1 and 90 days." }, { status: 400 });
+      }
+      const normalizedCampaignDays = Math.floor(parsedCampaignDays);
+
+      const capacity = await assessAdDeliveryCapacity(supabaseAdmin, {
+        requestedImpressions: pricing.impressionsCount,
+        userFrequencyCap: adData.userFrequencyCap || 1,
+        campaignDays: normalizedCampaignDays,
+        targetingAll: Boolean(adData.targetingAll),
+        country: adData.country || null,
+        state: adData.state || null,
+        province: adData.province || null,
+        gender: adData.gender || null,
+        ageRange: adData.ageRange || null,
+        employmentStatus: adData.employmentStatus || null,
+        industry: adData.industry || [],
+        interest: adData.interest || [],
+        lifestyle: adData.lifestyle || [],
+        behavior: adData.behavior || [],
+        personality: adData.personality || [],
+        advertiserEmail: email.toLowerCase().trim(),
+      });
+      if (capacity.telemetryAvailable && !capacity.allowed) {
         return NextResponse.json(
-          { error: "Cost validation mismatch. Payment amount does not match campaign configuration." },
+          {
+            error: capacity.message,
+            capacityCapped: true,
+            maxOrderableImpressions: capacity.maxOrderableImpressions,
+          },
           { status: 400 }
         );
       }
 
-      verifiedAmount = expectedCost;
-      adData.costPerImpression = rate;
+      verifiedAmount = pricing.computedTotalCost;
+      adData.adType = pricing.adCategory;
+      adData.impressions = pricing.impressionsCount;
+      adData.costPerImpression = pricing.effectiveRate;
       adData.totalCost = verifiedAmount;
 
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers
@@ -140,7 +190,9 @@ export async function POST(req: NextRequest) {
       }
       const { data: adRow, error: adErr } = await supabaseAdmin
         .from("adds")
-        .select("total_cost, admin_statement, user_email")
+        .select(
+          "ad_type, impressions, cost_per_impression, total_cost, product_cta_link, product_cta_type, is_bidded, bid_price, is_admin_post, admin_statement, user_email, targeting_all, country, state, province, gender, age_range, employment_status, industry, interest, lifestyle, behavior, personality, campaign_days, user_frequency_cap"
+        )
         .eq("id", adId)
         .ilike("user_email", email.toLowerCase().trim())
         .maybeSingle();
@@ -159,12 +211,70 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "This approved campaign has expired (exceeded 3 days)." }, { status: 400 });
       }
 
-      const costVal = Number(adRow.total_cost || 0);
       const clientAmount = parseFloat(amount);
-      if (Math.abs(clientAmount - costVal) > 1) {
-        return NextResponse.json({ error: "Cost validation mismatch." }, { status: 400 });
+      if (!Number.isFinite(clientAmount)) {
+        return NextResponse.json({ error: "Invalid payment amount." }, { status: 400 });
       }
-      verifiedAmount = costVal;
+
+      if (!adRow.is_admin_post) {
+        const pricing = await validateAndComputeAdPricing(supabaseAdmin, {
+          adType: adRow.ad_type,
+          impressions: adRow.impressions,
+          costPerImpression: adRow.cost_per_impression,
+          isBidded: adRow.is_bidded,
+          bidPrice: adRow.bid_price,
+          clientTotalCost: clientAmount,
+          productCtaLink: adRow.product_cta_link,
+          userCountry,
+          isAdmin: false,
+        });
+        if (!pricing.ok) {
+          return NextResponse.json({ error: pricing.error }, { status: pricing.status });
+        }
+        const capacity = await assessAdDeliveryCapacity(supabaseAdmin, {
+          requestedImpressions: pricing.impressionsCount,
+          userFrequencyCap: adRow.user_frequency_cap ?? 1,
+          campaignDays: adRow.campaign_days ?? 1,
+          targetingAll: Boolean(adRow.targeting_all),
+          country: adRow.country ?? null,
+          state: adRow.state ?? null,
+          province: adRow.province ?? null,
+          gender: adRow.gender ?? null,
+          ageRange: adRow.age_range ?? null,
+          employmentStatus: adRow.employment_status ?? null,
+          industry: adRow.industry ?? null,
+          interest: adRow.interest ?? null,
+          lifestyle: adRow.lifestyle ?? null,
+          behavior: adRow.behavior ?? null,
+          personality: adRow.personality ?? null,
+          advertiserEmail: email.toLowerCase().trim(),
+        });
+        if (capacity.telemetryAvailable && !capacity.allowed) {
+          return NextResponse.json(
+            {
+              error: capacity.message,
+              capacityCapped: true,
+              maxOrderableImpressions: capacity.maxOrderableImpressions,
+            },
+            { status: 400 }
+          );
+        }
+        const storedCost = Number(adRow.total_cost || 0);
+        const tolerance = pricing.currency === "USD" ? 0.51 : 1;
+        if (storedCost <= 0 || Math.abs(storedCost - pricing.computedTotalCost) > tolerance) {
+          return NextResponse.json(
+            { error: "Stored campaign cost does not match current category floor pricing." },
+            { status: 400 }
+          );
+        }
+        verifiedAmount = pricing.computedTotalCost;
+      } else {
+        const costVal = Number(adRow.total_cost || 0);
+        if (Math.abs(clientAmount - costVal) > 1) {
+          return NextResponse.json({ error: "Cost validation mismatch." }, { status: 400 });
+        }
+        verifiedAmount = costVal;
+      }
     } else if (type === "publish_highlight") {
       const highlightId = metadata?.highlightId;
       if (!highlightId) {

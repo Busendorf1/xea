@@ -343,13 +343,13 @@ export async function processSuccessfulPayment(
         };
 
         if (Number(additional_impressions) > 0) {
-          updatePayload.impressions = Number(ad.impressions || 1000) + Number(additional_impressions);
+          updatePayload.impressions = Number(ad.impressions || 100) + Number(additional_impressions);
         }
         if (Number(additional_days) > 0) {
-          updatePayload.campaign_days = Number(ad.campaign_days || 1) + Number(additional_days);
+          updatePayload.campaign_days = Math.min(90, Number(ad.campaign_days || 1) + Number(additional_days));
         }
-        if (user_frequency_cap !== undefined && Number(user_frequency_cap) > 0) {
-          updatePayload.user_frequency_cap = Number(user_frequency_cap);
+        if (user_frequency_cap !== undefined && Number.isFinite(Number(user_frequency_cap)) && Number(user_frequency_cap) > 0) {
+          updatePayload.user_frequency_cap = Math.max(1, Math.min(100, Math.floor(Number(user_frequency_cap))));
         }
         if (gender) updatePayload.gender = gender;
         if (country !== undefined) updatePayload.country = country;

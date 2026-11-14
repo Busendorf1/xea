@@ -163,9 +163,9 @@ export default function DashboardProfileCard({
   const isExempt = isExemptFromBarriersAndInactivity(user.email, user);
   const isMonetized = Boolean(
     !user.has_cancelled_monetization &&
-      (isExempt || clicksCount >= 300)
+      (isExempt || clicksCount >= 500)
   );
-  const progressPct = Math.min(100, Math.round((clicksCount / 300) * 100));
+  const progressPct = Math.min(100, Math.round((clicksCount / 500) * 100));
 
   const ago = (() => {
     if (!user.lastUpdated) return "Recently";
@@ -181,7 +181,7 @@ export default function DashboardProfileCard({
     return new Date(user.lastUpdated).toLocaleDateString();
   })();
 
-  // ATW Tier & Balance Holding Cap calculations (driven by live 300-click steps & Unlimited for admins)
+  // ATW Tier & Balance Holding Cap calculations (driven by live 500-click steps & Unlimited for admins)
   const tierDetails = computeAtwTierDetails(clicksCount, user.atw_tier, isExempt);
   const balanceCap = tierDetails.holdingCap;
   const currentBal = Number(user.balance ?? 0);
@@ -422,13 +422,13 @@ export default function DashboardProfileCard({
           <div className={styles.renewalSection}>
             <div className={styles.monetizeProgressHeader}>
               <span>Monetization Progress</span>
-              <span className={styles.monetizeProgressValue}>{clicksCount} / 300 clicks</span>
+              <span className={styles.monetizeProgressValue}>{clicksCount} / 500 clicks</span>
             </div>
             <div className={styles.monetizeProgressTrack}>
               <div className={styles.monetizeProgressFill} style={{ width: `${progressPct}%` }} />
             </div>
             <p className={styles.monetizeProgressNote}>
-              {Math.max(0, 300 - clicksCount)} clicks remaining to unlock monetization.
+              {Math.max(0, 500 - clicksCount)} clicks remaining to unlock monetization.
             </p>
             <Link
               href="/logged-in"

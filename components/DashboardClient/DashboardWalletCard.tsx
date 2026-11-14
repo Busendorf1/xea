@@ -47,7 +47,7 @@ export default function DashboardWalletCard({
   const isExempt = isExemptFromBarriersAndInactivity(user.email, user as any);
   const isMonetized = Boolean(
     !user.has_cancelled_monetization &&
-      (isExempt || user.monetized || clicksCount >= 300)
+      (isExempt || user.monetized || clicksCount >= 500)
   );
 
   const [hasPin, setHasPin] = useState<boolean>(Boolean(user.has_wallet_pin));
@@ -515,7 +515,7 @@ export default function DashboardWalletCard({
           disabled={!isMonetized || (user.balance ?? 0) < 10000}
         >
           {!isMonetized
-            ? "Complete 300 clicks to withdraw earnings"
+            ? "Complete 500 clicks to withdraw earnings"
             : (user.balance ?? 0) < 10000
             ? `Min. ${formatCurrency(10000)} required to withdraw`
             : "Request Withdrawal"}

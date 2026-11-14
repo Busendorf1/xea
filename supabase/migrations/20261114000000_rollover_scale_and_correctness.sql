@@ -177,7 +177,7 @@ BEGIN
     END;
     v_is_future := (p_scheduled_start_at IS NOT NULL AND p_scheduled_start_at > p_now);
 
-    v_days := GREATEST(1, LEAST(365, COALESCE(p_campaign_days, 1)));
+    v_days := GREATEST(1, LEAST(90, COALESCE(p_campaign_days, 1)));
     v_end_at := CASE
         WHEN p_scheduled_end_at IS NOT NULL AND p_scheduled_end_at > v_start_at THEN p_scheduled_end_at
         ELSE v_start_at + make_interval(days => v_days)

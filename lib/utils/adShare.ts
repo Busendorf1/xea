@@ -15,6 +15,116 @@ export interface ShareableAdSummary {
   custom_sponsor_name?: string | null;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BLURB_TOKEN_REGEX = /^(?:[a-z0-9-]+-)?b_([A-Za-z0-9_-]{24})$/;
+const BLURB_MASK_KEY = [0x50, 0x61, 0x61, 0x79, 0x68, 0x41, 0x64, 0x42, 0x6c, 0x75, 0x72, 0x62, 0x32, 0x30, 0x32, 0x36];
+const B64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function uuidToBytes(uuid: string): number[] | null {
+  if (!UUID_REGEX.test(uuid)) return null;
+  const hex = uuid.replace(/-/g, "").toLowerCase();
+  const bytes: number[] = [];
+  for (let i = 0; i < 16; i++) {
+    const val = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    if (!Number.isFinite(val)) return null;
+    bytes.push(val);
+  }
+  return bytes;
+}
+
+function bytesToUuid(bytes: number[]): string {
+  const hex = bytes.map((b) => (b & 0xff).toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function computeBlurbTag16(bytes: number[]): [number, number] {
+  let h = 0x9e37;
+  for (let i = 0; i < bytes.length; i++) {
+    h = ((h * 33) ^ bytes[i] ^ ((i + 1) * 17)) & 0xffff;
+  }
+  return [h & 0xff, (h >>> 8) & 0xff];
+}
+
+function encodeBytes18ToBase64Url(bytes: number[]): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = bytes[i + 1];
+    const b2 = bytes[i + 2];
+    out += B64URL_ALPHABET[b0 >> 2];
+    out += B64URL_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)];
+    out += B64URL_ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)];
+    out += B64URL_ALPHABET[b2 & 0x3f];
+  }
+  return out;
+}
+
+function decodeBase64UrlToBytes18(token: string): number[] | null {
+  if (!/^[A-Za-z0-9_-]{24}$/.test(token)) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < 24; i += 4) {
+    const c0 = B64URL_ALPHABET.indexOf(token[i]);
+    const c1 = B64URL_ALPHABET.indexOf(token[i + 1]);
+    const c2 = B64URL_ALPHABET.indexOf(token[i + 2]);
+    const c3 = B64URL_ALPHABET.indexOf(token[i + 3]);
+    if (c0 < 0 || c1 < 0 || c2 < 0 || c3 < 0) return null;
+    bytes.push((c0 << 2) | (c1 >> 4));
+    bytes.push(((c1 & 0x0f) << 4) | (c2 >> 2));
+    bytes.push(((c2 & 0x03) << 6) | c3);
+  }
+  return bytes;
+}
+
+function buildBlurbSlug(ad?: ShareableAdSummary | null): string {
+  const raw = (ad?.product_name || ad?.custom_sponsor_name || ad?.ad_content || "")
+    .toLowerCase()
+    .replace(/['’`]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const clipped = raw.slice(0, 28).replace(/-+$/g, "");
+  return clipped || "featured-offer";
+}
+
+/**
+ * Masks an ad UUID into a URL-safe, stateless, deterministic blurb slug + token
+ * (e.g. "nike-air-max-b_kQ9x..."). Non-UUID legacy/test IDs pass through untouched.
+ */
+export function encodeAdBlurbToken(adOrId: string | ShareableAdSummary | null | undefined): string {
+  const isObj = Boolean(adOrId && typeof adOrId === "object");
+  const rawId = String(isObj ? (adOrId as ShareableAdSummary).id || "" : adOrId || "").trim();
+  if (!rawId) return "";
+  const canonicalId = decodeSharedAdParam(rawId) || rawId;
+  const rawBytes = uuidToBytes(canonicalId);
+  if (!rawBytes) return canonicalId;
+
+  const [tag0, tag1] = computeBlurbTag16(rawBytes);
+  const masked: number[] = [tag0, tag1];
+  for (let i = 0; i < 16; i++) {
+    const keyByte = BLURB_MASK_KEY[i] ^ (i % 2 === 0 ? tag0 : tag1) ^ ((i * 29 + 7) & 0xff);
+    masked.push(rawBytes[i] ^ keyByte);
+  }
+  const slug = buildBlurbSlug(isObj ? (adOrId as ShareableAdSummary) : null);
+  return `${slug}-b_${encodeBytes18ToBase64Url(masked)}`;
+}
+
+export function decodeAdBlurbToken(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const match = raw.trim().match(BLURB_TOKEN_REGEX);
+  if (!match?.[1]) return null;
+  const bytes18 = decodeBase64UrlToBytes18(match[1]);
+  if (!bytes18 || bytes18.length !== 18) return null;
+
+  const [tag0, tag1] = bytes18;
+  const raw16: number[] = [];
+  for (let i = 0; i < 16; i++) {
+    const keyByte = BLURB_MASK_KEY[i] ^ (i % 2 === 0 ? tag0 : tag1) ^ ((i * 29 + 7) & 0xff);
+    raw16.push(bytes18[i + 2] ^ keyByte);
+  }
+  const [exp0, exp1] = computeBlurbTag16(raw16);
+  if (exp0 !== tag0 || exp1 !== tag1) return null;
+  return bytesToUuid(raw16);
+}
+
 export function getPublicShareOrigin(): string {
   if (typeof window !== "undefined" && window.location?.origin) {
     const origin = window.location.origin;
@@ -26,29 +136,29 @@ export function getPublicShareOrigin(): string {
 }
 
 /**
- * Generates clean Universal Link / Android App Link compatible URL for an ad.
- * Example: https://paayh.com/ad/<id>
+ * Generates clean Universal Link / Android App Link compatible URL for an ad,
+ * masking UUIDs behind a readable blurb token (e.g. https://paayh.com/ad/featured-offer-b_...).
  */
-export function buildAdShareUrl(adId: string, origin?: string): string {
-  const cleanId = String(adId || "").trim();
+export function buildAdShareUrl(adOrId: string | ShareableAdSummary, origin?: string): string {
+  const token = encodeAdBlurbToken(adOrId);
   const baseOrigin = (origin || getPublicShareOrigin()).replace(/\/+$/, "");
-  if (!cleanId) return baseOrigin;
-  return `${baseOrigin}/ad/${encodeURIComponent(cleanId)}`;
+  if (!token) return baseOrigin;
+  return `${baseOrigin}/ad/${encodeURIComponent(token)}`;
 }
 
 /**
- * Generates custom mobile app scheme deep link (e.g. xea://ad/<id>)
+ * Generates custom mobile app scheme deep link (e.g. xea-auth://ad/<blurb-or-id>)
  */
-export function buildAdAppSchemeUrl(adId: string): string {
-  const cleanId = String(adId || "").trim();
-  return cleanId ? `${APP_CUSTOM_SCHEME}://ad/${encodeURIComponent(cleanId)}` : `${APP_CUSTOM_SCHEME}://feed`;
+export function buildAdAppSchemeUrl(adOrId: string | ShareableAdSummary): string {
+  const token = encodeAdBlurbToken(adOrId);
+  return token ? `${APP_CUSTOM_SCHEME}://ad/${encodeURIComponent(token)}` : `${APP_CUSTOM_SCHEME}://feed`;
 }
 
 /**
  * Builds rich, advertiser-aware inquiry message carrying the specific ad link & context.
  */
 export function buildAdInquiryMessage(ad?: ShareableAdSummary | null, origin?: string): string {
-  const shareUrl = ad?.id ? buildAdShareUrl(ad.id, origin) : getPublicShareOrigin();
+  const shareUrl = ad?.id ? buildAdShareUrl(ad, origin) : getPublicShareOrigin();
   const rawSnippet =
     (ad?.product_name && ad.product_name.trim()) ||
     (ad?.ad_content && ad.ad_content.trim()) ||
@@ -68,7 +178,7 @@ export function buildAdSharePayload(ad: ShareableAdSummary, origin?: string): {
   text: string;
   url: string;
 } {
-  const url = ad?.id ? buildAdShareUrl(ad.id, origin) : getPublicShareOrigin();
+  const url = ad?.id ? buildAdShareUrl(ad, origin) : getPublicShareOrigin();
   const sponsor = ad?.custom_sponsor_name?.trim();
   const rawSnippet = (ad?.product_name || ad?.ad_content || "").replace(/\s+/g, " ").trim();
   const snippet = rawSnippet.length > 90 ? `${rawSnippet.slice(0, 87).trim()}...` : rawSnippet;
@@ -190,12 +300,24 @@ export function buildAdActionHref(
  */
 export function decodeSharedAdParam(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== "string") return null;
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
   if (!trimmed) return null;
 
-  // UUID or simple ID directly
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
-    return trimmed;
+  if (trimmed.includes("%")) {
+    try {
+      trimmed = decodeURIComponent(trimmed).trim();
+    } catch {}
+  }
+
+  // Blurb-masked UUID token (e.g. featured-offer-b_<24-char-base64url>)
+  const unmaskedUuid = decodeAdBlurbToken(trimmed);
+  if (unmaskedUuid) {
+    return unmaskedUuid;
+  }
+
+  // UUID directly (normalized to lowercase so client/server comparisons always match)
+  if (UUID_REGEX.test(trimmed)) {
+    return trimmed.toLowerCase();
   }
 
   // Legacy base64 encoded ID — require canonical base64 round-trip so short raw IDs (e.g. "a9") are never corrupted
@@ -215,7 +337,7 @@ export function decodeSharedAdParam(raw: string | null | undefined): string | nu
         reencoded.replace(/=+$/, "") === trimmed.replace(/=+$/, "") &&
         /^[a-zA-Z0-9_-]{1,128}$/.test(cleanDecoded)
       ) {
-        return cleanDecoded;
+        return UUID_REGEX.test(cleanDecoded) ? cleanDecoded.toLowerCase() : cleanDecoded;
       }
     } catch {
       // Fall through if not valid base64

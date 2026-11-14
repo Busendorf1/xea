@@ -32,31 +32,16 @@ import {
 } from "@/lib/utils/adShare";
 import { toClientFriendlyError } from "@/lib/utils/clientError";
 
-function readInitialSharedAdTarget(): { sharedAdId: string | null; unavailable: boolean } {
-  if (typeof window === "undefined") return { sharedAdId: null, unavailable: false };
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("adStatus") === "unavailable") {
-      return { sharedAdId: null, unavailable: true };
-    }
-    const fromUrl = extractSharedAdIdFromSearchParams(urlParams);
-    if (fromUrl) {
-      return { sharedAdId: fromUrl, unavailable: false };
-    }
-    const fromStorage = decodeSharedAdParam(localStorage.getItem("sharedAdId"));
-    if (fromStorage) {
-      return { sharedAdId: fromStorage, unavailable: false };
-    }
-  } catch {}
-  return { sharedAdId: null, unavailable: false };
-}
-
 interface FeedProps {
   userEmail: string;
   initialProfile?: InitialProfileInput;
   initialAds?: Ad[];
   initialProfiles?: Record<string, any>;
   initialHighlights?: any[];
+  initialSharedAdId?: string | null;
+  initialSharedAdUnavailable?: boolean;
+  initialSharedAd?: Ad | null;
+  initialSharedAdProfiles?: Record<string, any>;
   onEarnSuccess?: (earnedAmount?: number, newBalance?: number, newClicks?: number) => void;
   onMutualSuccess?: () => void;
 }
@@ -81,29 +66,49 @@ function readFeedClientCache(email?: string): { ads: Ad[]; profiles: Record<stri
   return null;
 }
 
-const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialHighlights, onEarnSuccess, onMutualSuccess }: FeedProps) => {
-  const initialSharedTarget = useMemo(() => readInitialSharedAdTarget(), []);
-  const [activeSharedAdId, setActiveSharedAdId] = useState<string | null>(initialSharedTarget.sharedAdId);
-  const [sharedAdUnavailable, setSharedAdUnavailable] = useState<boolean>(initialSharedTarget.unavailable);
+const Feed = ({
+  userEmail,
+  initialProfile,
+  initialAds,
+  initialProfiles,
+  initialHighlights,
+  initialSharedAdId,
+  initialSharedAdUnavailable,
+  initialSharedAd,
+  initialSharedAdProfiles,
+  onEarnSuccess,
+  onMutualSuccess,
+}: FeedProps) => {
+  const ssrSharedAdId = decodeSharedAdParam(initialSharedAdId) || null;
+  const ssrSharedUnavailable = Boolean(initialSharedAdUnavailable);
+  const hasSsrSharedAd = Boolean(
+    ssrSharedAdId &&
+      initialSharedAd &&
+      String(initialSharedAd.id || "").toLowerCase() === ssrSharedAdId.toLowerCase()
+  );
+  const [activeSharedAdId, setActiveSharedAdId] = useState<string | null>(ssrSharedAdId);
+  const [sharedAdUnavailable, setSharedAdUnavailable] = useState<boolean>(ssrSharedUnavailable);
   const [isClientMounted, setIsClientMounted] = useState(false);
   const isSharedAdMode = Boolean(activeSharedAdId || sharedAdUnavailable);
   const activeSharedAdIdRef = useRef<string | null>(activeSharedAdId);
   activeSharedAdIdRef.current = activeSharedAdId;
 
   const [ads, setAds] = useState<Ad[]>(() => {
-    if (initialSharedTarget.sharedAdId || initialSharedTarget.unavailable) return [];
+    if (hasSsrSharedAd && initialSharedAd) return [initialSharedAd];
+    if (ssrSharedAdId || ssrSharedUnavailable) return [];
     if (initialAds && initialAds.length > 0) return initialAds;
     return [];
   });
   const [loading, setLoading] = useState<boolean>(() => {
-    if (initialSharedTarget.unavailable) return false;
-    if (initialSharedTarget.sharedAdId) return true;
+    if (ssrSharedUnavailable) return false;
+    if (hasSsrSharedAd) return false;
+    if (ssrSharedAdId) return true;
     if (initialAds && initialAds.length > 0) return false;
     return true;
   });
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(() => !(initialSharedTarget.sharedAdId || initialSharedTarget.unavailable));
+  const [hasMore, setHasMore] = useState(() => !(ssrSharedAdId || ssrSharedUnavailable));
   const [loadingMore, setLoadingMore] = useState(false);
   const [advertiserProfiles, setAdvertiserProfiles] = useState<
     Record<
@@ -123,6 +128,9 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       }
     >
   >(() => {
+    if (hasSsrSharedAd && initialSharedAdProfiles && Object.keys(initialSharedAdProfiles).length > 0) {
+      return initialSharedAdProfiles;
+    }
     if (initialProfiles && Object.keys(initialProfiles).length > 0) return initialProfiles;
     return {};
   });
@@ -173,23 +181,8 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       const url = new URL(window.location.href);
       const urlSharedId = extractSharedAdIdFromSearchParams(url.searchParams);
       const adStatus = url.searchParams.get("adStatus");
-      let urlChanged = false;
 
-      if (urlSharedId) {
-        activeSharedAdIdRef.current = urlSharedId;
-        setActiveSharedAdId(urlSharedId);
-        setSharedAdUnavailable(false);
-        setHasMore(false);
-        localStorage.setItem("sharedAdId", urlSharedId);
-        url.searchParams.delete("sharedAdId");
-        url.searchParams.delete("ad");
-        url.searchParams.delete("adId");
-        url.searchParams.delete("blurb");
-        url.searchParams.delete("Earn Ads by Paayh");
-        urlChanged = true;
-      }
-
-      if (adStatus === "unavailable") {
+      if (adStatus === "unavailable" || ssrSharedUnavailable) {
         activeSharedAdIdRef.current = null;
         setActiveSharedAdId(null);
         setSharedAdUnavailable(true);
@@ -197,16 +190,20 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         setLoading(false);
         setHasMore(false);
         localStorage.removeItem("sharedAdId");
-        url.searchParams.delete("adStatus");
-        urlChanged = true;
         showTimedToast(AD_UNAVAILABLE_MESSAGE, AD_UNAVAILABLE_DISMISS_MS);
+        return;
       }
 
-      if (urlChanged) {
-        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      const clientFallbackId =
+        urlSharedId || ssrSharedAdId || decodeSharedAdParam(localStorage.getItem("sharedAdId"));
+      if (clientFallbackId) {
+        activeSharedAdIdRef.current = clientFallbackId;
+        setActiveSharedAdId(clientFallbackId);
+        setSharedAdUnavailable(false);
+        setHasMore(false);
       }
     } catch {}
-  }, [showTimedToast]);
+  }, [showTimedToast, ssrSharedAdId, ssrSharedUnavailable]);
 
   useEffect(() => {
     try {
@@ -342,14 +339,12 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       setError(false);
 
       try {
+        const normalizedTarget = targetSharedId
+          ? decodeSharedAdParam(targetSharedId) || String(targetSharedId).trim()
+          : null;
         let sharedAdParam = "";
-        if (targetSharedId && !isLoadMore) {
-          sharedAdParam = `&sharedAdId=${encodeURIComponent(targetSharedId)}`;
-          if (typeof window !== "undefined") {
-            try {
-              localStorage.removeItem("sharedAdId");
-            } catch {}
-          }
+        if (normalizedTarget && !isLoadMore) {
+          sharedAdParam = `&sharedAdId=${encodeURIComponent(normalizedTarget)}`;
         }
 
         const LIMIT = 10;
@@ -384,17 +379,26 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
         const feedAds: Ad[] = data.ads || [];
         const profilesMap = data.profiles || {};
 
-        if (targetSharedId) {
-          const matched = feedAds.filter((a) => String(a?.id) === String(targetSharedId)).slice(0, 1);
+        if (normalizedTarget) {
+          const matched = feedAds
+            .filter((a) => String(a?.id || "").toLowerCase() === String(normalizedTarget).toLowerCase())
+            .slice(0, 1);
           if (Object.keys(profilesMap).length > 0) {
             setAdvertiserProfiles((prev) => ({ ...prev, ...profilesMap }));
           }
           setHasMore(false);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.removeItem("sharedAdId");
+            } catch {}
+          }
           if (data?.sharedAdUnavailable || matched.length === 0) {
             setSharedAdUnavailable(true);
             setAds([]);
             showTimedToast(AD_UNAVAILABLE_MESSAGE, AD_UNAVAILABLE_DISMISS_MS);
           } else {
+            activeSharedAdIdRef.current = String(matched[0].id);
+            setActiveSharedAdId(String(matched[0].id));
             setSharedAdUnavailable(false);
             setAds(matched);
           }
@@ -514,7 +518,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
           decodeSharedAdParam(localStorage.getItem("sharedAdId"));
       } catch {}
     }
-    const targetId = activeSharedAdIdRef.current || urlSharedId;
+    const targetId = activeSharedAdIdRef.current || ssrSharedAdId || urlSharedId;
 
     if (urlUnavailable || sharedAdUnavailable) {
       setLoading(false);
@@ -522,6 +526,19 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     }
 
     if (targetId) {
+      if (
+        hasSsrSharedAd &&
+        initialSharedAd &&
+        String(initialSharedAd.id || "").toLowerCase() === String(targetId).toLowerCase()
+      ) {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("sharedAdId");
+          } catch {}
+        }
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       fetchRelevantAds(0, false, false, targetId);
       return;
@@ -532,7 +549,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
       setLoading(true);
       fetchRelevantAds(0, false, false);
     }
-  }, [fetchRelevantAds, initialAds, sharedAdUnavailable, userEmail]);
+  }, [fetchRelevantAds, initialAds, sharedAdUnavailable, userEmail, ssrSharedAdId, hasSsrSharedAd, initialSharedAd]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore || isSharedAdMode) return;
@@ -585,7 +602,7 @@ const Feed = ({ userEmail, initialProfile, initialAds, initialProfiles, initialH
     if (sharedAdUnavailable) return [];
     if (activeSharedAdId) {
       return ads
-        .filter((item) => item?.id && String(item.id) === String(activeSharedAdId))
+        .filter((item) => item?.id && String(item.id).toLowerCase() === String(activeSharedAdId).toLowerCase())
         .slice(0, 1);
     }
     if (locationSkipped) return [];

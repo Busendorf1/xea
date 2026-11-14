@@ -85,7 +85,7 @@ export function AdminUserSuiteSecurityTab({
               Monetization Tier: {isMonetized ? "MONETIZED" : "NOT MONETIZED"}
             </h4>
             <p className={styles.adminCls_47}>
-              Ad Clicks Progress: <strong>{activeUser.monetization_clicks ?? 0} / 300</strong> clicks
+              Ad Clicks Progress: <strong>{activeUser.monetization_clicks ?? 0} / 500</strong> clicks
             </p>
           </div>
           <div className={styles.flexGapSm}>
@@ -99,7 +99,7 @@ export function AdminUserSuiteSecurityTab({
             <button
               disabled={userActionSubmitting}
               onClick={() => {
-                const target = prompt("Set monetization ad clicks count (e.g. 0 to reset, 300 to unlock):", "300");
+                const target = prompt("Set monetization ad clicks count (e.g. 0 to reset, 500 to unlock):", "500");
                 if (target !== null) {
                   const n = parseInt(target, 10);
                   if (!isNaN(n)) handleResetClicks && handleResetClicks(activeUser, n);

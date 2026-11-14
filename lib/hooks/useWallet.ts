@@ -32,7 +32,7 @@ export function useWallet({ initialUser, autoRefreshIntervalMs = 20000 }: UseWal
       if (pRes.ok) {
         const data = await pRes.json();
         const liveClicks = Number(data.monetization_clicks) || 0;
-        const isMonetized = data.monetized === true || data.monetized === "yes" || liveClicks >= 300;
+        const isMonetized = data.monetized === true || data.monetized === "yes" || liveClicks >= 500;
 
         if (data && !data.error && data.email) {
           setUser((prev) => ({
@@ -61,7 +61,7 @@ export function useWallet({ initialUser, autoRefreshIntervalMs = 20000 }: UseWal
         balance: newBalance,
         monetization_clicks:
           typeof newClicks === "number" ? Math.max(prev.monetization_clicks || 0, newClicks) : prev.monetization_clicks,
-        monetized: (typeof newClicks === "number" && newClicks >= 300) || prev.monetized,
+        monetized: (typeof newClicks === "number" && newClicks >= 500) || prev.monetized,
       }));
       return;
     }

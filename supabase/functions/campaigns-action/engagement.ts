@@ -153,26 +153,55 @@ export async function handleRecordSeen(
 
   if (seenFailed) {
     const [{ data: adRow }, { data: existingImp }] = await Promise.all([
-      supabase.from("addsactive").select("id, impression_count, impressions, user_frequency_cap").eq("id", adId).maybeSingle(),
-      supabase.from("ad_impressions").select("id, view_count").eq("ad_id", adId).ilike("user_email", cleanEmail).maybeSingle(),
+      supabase
+        .from("addsactive")
+        .select("id, impression_count, impressions, user_frequency_cap, daily_impression_count, last_reset_date")
+        .eq("id", adId)
+        .maybeSingle(),
+      supabase
+        .from("ad_impressions")
+        .select("id, view_count, today_view_count, last_viewed_at")
+        .eq("ad_id", adId)
+        .ilike("user_email", cleanEmail)
+        .maybeSingle(),
     ]);
 
+    const nowIso = new Date().toISOString();
+    const todayUtc = nowIso.slice(0, 10);
     const cap = Math.max(1, Number(adRow?.user_frequency_cap ?? adRow?.frequency_cap ?? 1));
     if (!existingImp || Number(existingImp.view_count || 0) < cap) {
       if (existingImp?.id) {
+        const lastDate = existingImp.last_viewed_at ? String(existingImp.last_viewed_at).slice(0, 10) : "";
+        const nextToday = lastDate === todayUtc ? Number(existingImp.today_view_count || 0) + 1 : 1;
         await supabase
           .from("ad_impressions")
-          .update({ view_count: Number(existingImp.view_count || 0) + 1, last_viewed_at: new Date().toISOString() })
+          .update({
+            view_count: Number(existingImp.view_count || 0) + 1,
+            today_view_count: nextToday,
+            last_viewed_at: nowIso,
+          })
           .eq("id", existingImp.id);
       } else {
         await supabase
           .from("ad_impressions")
-          .insert({ ad_id: adId, user_email: cleanEmail, view_count: 1, last_viewed_at: new Date().toISOString() });
+          .insert({
+            ad_id: adId,
+            user_email: cleanEmail,
+            view_count: 1,
+            today_view_count: 1,
+            last_viewed_at: nowIso,
+          });
       }
       if (adRow) {
+        const prevReset = adRow.last_reset_date ? String(adRow.last_reset_date).slice(0, 10) : "";
+        const nextDaily = prevReset === todayUtc ? Number(adRow.daily_impression_count || 0) + 1 : 1;
         await supabase
           .from("addsactive")
-          .update({ impression_count: Number(adRow.impression_count || 0) + 1 })
+          .update({
+            impression_count: Number(adRow.impression_count || 0) + 1,
+            daily_impression_count: nextDaily,
+            last_reset_date: todayUtc,
+          })
           .eq("id", adId);
       }
     }
@@ -192,7 +221,7 @@ export async function handleRecordSeen(
       !hasCancelled &&
       (isExempt ||
         ["true", "yes", "1", "t"].includes(String(user.monetized || "").toLowerCase()) ||
-        newCount >= 300);
+        newCount >= 500);
 
     const atw = computeAtwTierDetails({
       email: cleanEmail,

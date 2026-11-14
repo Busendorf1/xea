@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, X, Users, User, UserCheck, Wallet, CreditCard } from "lucide-react";
+import { TrendingUp, X, Users, User, UserCheck, Wallet, CreditCard, AlertCircle, Info } from "lucide-react";
 import { boostSchema } from "@/lib/validationSchemas";
 import { formatCurrency } from "@/lib/utils/currency";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
 import { isWalletPinErrorResponse, formatWalletPinErrorMessage } from "@/components/ui/WalletPinField";
+import { useAdCapacityCheck } from "@/lib/hooks/useAdCapacityCheck";
 import { Ad } from "./types";
 import styles from "./page.module.css";
 
@@ -62,6 +63,35 @@ export default function CampaignBoosterModal({
     }
   }, [boosterAd]);
 
+  const remainingBoostBase = boosterAd
+    ? Math.max(0, Number(boosterAd.impressions || 0) - Number(boosterAd.impression_count || 0))
+    : 0;
+  const currentCampaignDays = boosterAd
+    ? Math.max(1, Math.min(90, Math.floor(Number(boosterAd.campaign_days || 1))))
+    : 1;
+  const maxAdditionalBoostDays = Math.max(0, 90 - currentCampaignDays);
+
+  const { capacity: boostCapacity, checkingCapacity: checkingBoostCapacity } = useAdCapacityCheck({
+    enabled: Boolean(boosterAd && addImpressions > 0),
+    impressions: remainingBoostBase + addImpressions,
+    campaignDays: Number(boosterAd?.campaign_days || 1) + addDays,
+    userFrequencyCap: boosterFrequencyCap,
+    targetingAll: Boolean(boosterAd?.targeting_all),
+    country: boosterCountry || boosterAd?.country || null,
+    state: boosterState || boosterAd?.state || null,
+    province:
+      boosterProvince ||
+      (boosterMultiLocations.length > 0 ? boosterMultiLocations.join("; ") : boosterAd?.province || null),
+    gender: boosterGender !== "All" ? boosterGender : null,
+    ageRange: boosterAd?.age_range || null,
+    employmentStatus: boosterAd?.employment_status || null,
+    industry: boosterAd?.industry || null,
+    interest: boosterAd?.interest || null,
+    lifestyle: boosterAd?.lifestyle || null,
+    behavior: boosterAd?.behavior || null,
+    personality: boosterAd?.personality || null,
+  });
+
   if (!boosterAd) return null;
 
   const calculateBoosterCost = () => {
@@ -73,7 +103,7 @@ export default function CampaignBoosterModal({
     if (effectiveCost > currentCost) {
       const remainingImp = Math.max(
         1,
-        Number(boosterAd.impressions || 1000) - Number(boosterAd.impression_count || 0)
+        Number(boosterAd.impressions || 100) - Number(boosterAd.impression_count || 0)
       );
       return (effectiveCost - currentCost) * remainingImp;
     }
@@ -290,6 +320,10 @@ export default function CampaignBoosterModal({
                   onChange={(val) => setAddImpressions(Number(val))}
                   options={[
                     { value: "0", label: "+0 Attention", badge: "Current" },
+                    ...([0, 100, 500, 1000, 2500, 5000, 10000].includes(addImpressions) || addImpressions <= 0
+                      ? []
+                      : [{ value: String(addImpressions), label: `+${addImpressions.toLocaleString()} Attention`, badge: "Custom" }]),
+                    { value: "100", label: "+100 Attention", badge: "Mini" },
                     { value: "500", label: "+500 Attention", badge: "Starter" },
                     { value: "1000", label: "+1,000 Attention", badge: "Popular" },
                     { value: "2500", label: "+2,500 Attention", badge: "Growth" },
@@ -299,24 +333,41 @@ export default function CampaignBoosterModal({
                   placeholder="Select Extra Attention"
                   leadingIcon={<TrendingUp size={16} />}
                 />
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  aria-label="Custom extra attentions"
+                  placeholder="Or enter exact extra attentions (e.g. 501)"
+                  className={styles.boosterInput}
+                  style={{ marginTop: 8 }}
+                  value={addImpressions}
+                  onChange={(e) => {
+                    const parsed = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                    setAddImpressions(parsed);
+                  }}
+                />
               </div>
 
               <div className={styles.boosterGroup}>
                 <div className={styles.boosterLabelRow}>
                   <label className={styles.boosterLabel}>Extend Duration</label>
-                  <span className={styles.boosterDaysValue}>+{addDays} Days</span>
+                  <span className={styles.boosterDaysValue}>+{Math.min(addDays, maxAdditionalBoostDays)} Days</span>
                 </div>
                 <input
                   type="range"
                   min={0}
-                  max={30}
+                  max={Math.min(30, maxAdditionalBoostDays)}
                   step={1}
-                  value={addDays}
-                  onChange={(e) => setAddDays(Number(e.target.value))}
+                  disabled={maxAdditionalBoostDays <= 0}
+                  value={Math.min(addDays, maxAdditionalBoostDays)}
+                  onChange={(e) => setAddDays(Math.min(maxAdditionalBoostDays, Math.max(0, Number(e.target.value))))}
                   className={styles.boosterSliderBlue}
                 />
                 <span className={styles.boosterSliderHint}>
-                  Extend campaign schedule by up to 30 days. No extra fee charged for day extensions.
+                  {maxAdditionalBoostDays > 0
+                    ? `Extend up to +${Math.min(30, maxAdditionalBoostDays)} days (90 days total max). No extra fee for day extensions.`
+                    : "Maximum 90-day campaign duration reached."}
                 </span>
               </div>
 
@@ -339,19 +390,19 @@ export default function CampaignBoosterModal({
               <div className={styles.boosterGroup}>
                 <div className={styles.boosterLabelRow}>
                   <label className={styles.boosterLabel}>Frequency per user</label>
-                  <span className={styles.boosterFreqValue}>{boosterFrequencyCap} Views/User/Day</span>
+                  <span className={styles.boosterFreqValue}>{boosterFrequencyCap} Attentions/User/Day</span>
                 </div>
                 <input
                   type="range"
                   min={1}
-                  max={30}
+                  max={100}
                   step={1}
                   value={boosterFrequencyCap}
                   onChange={(e) => setBoosterFrequencyCap(Number(e.target.value))}
                   className={styles.boosterSliderPurple}
                 />
                 <span className={styles.boosterSliderHint}>
-                  Limit max impressions per individual user (1 to 30 views/day).
+                  Limit max attentions per individual user (1 to 100 attentions/day).
                 </span>
               </div>
 
@@ -422,11 +473,85 @@ export default function CampaignBoosterModal({
               </div>
             </div>
 
+            {addImpressions > 0 && checkingBoostCapacity && (
+              <div style={{ marginTop: 12, fontSize: "0.78rem", color: "var(--text-secondary, #94a3b8)" }}>
+                Checking delivery capacity...
+              </div>
+            )}
+
+            {!checkingBoostCapacity && boostCapacity && boostCapacity.telemetryAvailable && boostCapacity.status !== "optimal" && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${
+                    boostCapacity.status === "capped"
+                      ? "rgba(239, 68, 68, 0.35)"
+                      : "rgba(245, 158, 11, 0.35)"
+                  }`,
+                  background:
+                    boostCapacity.status === "capped"
+                      ? "rgba(239, 68, 68, 0.08)"
+                      : "rgba(245, 158, 11, 0.08)",
+                  fontSize: "0.78rem",
+                  display: "inline-flex",
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  alignSelf: "flex-start",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0 }}>
+                  {boostCapacity.status === "capped" ? (
+                    <AlertCircle size={14} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+                  ) : (
+                    <Info size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
+                  )}
+                  <span>{boostCapacity.message}</span>
+                </div>
+                {boostCapacity.status === "capped" &&
+                  boostCapacity.maxOrderableImpressions - remainingBoostBase > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAddImpressions(
+                          Math.max(0, boostCapacity.maxOrderableImpressions - remainingBoostBase)
+                        )
+                      }
+                      style={{
+                        fontSize: "0.72rem",
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: "1px solid var(--border-color, rgba(255,255,255,0.2))",
+                        background: "transparent",
+                        color: "inherit",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Use +
+                      {Math.max(
+                        0,
+                        boostCapacity.maxOrderableImpressions - remainingBoostBase
+                      ).toLocaleString()}
+                    </button>
+                  )}
+              </div>
+            )}
+
             <button
               type="button"
               className={`${styles.boostBtn} ${styles.boostLaunchBtn}`}
               onClick={handleInitiateBoost}
-              disabled={boosting}
+              disabled={
+                boosting ||
+                (addImpressions > 0 && checkingBoostCapacity) ||
+                Boolean(boostCapacity?.telemetryAvailable && !boostCapacity.allowed)
+              }
             >
               {boosting ? "Processing Booster..." : "Submit"}
             </button>
@@ -455,7 +580,7 @@ export default function CampaignBoosterModal({
         }}
         pinError={pinError}
         summaryItems={[
-          { label: "Target Attention Added", value: `+${addImpressions.toLocaleString()} views` },
+          { label: "Target Attention Added", value: `+${addImpressions.toLocaleString()} attentions` },
           { label: "Schedule Extension", value: `+${addDays} ${addDays === 1 ? "day" : "days"}` },
           {
             label: "Priority Bid Rate",
@@ -464,7 +589,7 @@ export default function CampaignBoosterModal({
                 ? newBidPrice
                 : Number(boosterAd.cost_per_impression || 25),
               boosterAd.country
-            )} / view`,
+            )} / attention`,
           },
         ]}
         isSubmitting={boosting}

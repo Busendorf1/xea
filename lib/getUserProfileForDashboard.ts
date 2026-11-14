@@ -263,7 +263,7 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     }
     if (user.has_cancelled_monetization) {
       user.monetized = false;
-    } else if ((user.monetization_clicks || 0) >= 300) {
+    } else if ((user.monetization_clicks || 0) >= 500) {
       user.monetized = true;
     }
     if (prefetchedCooldownStr) {
@@ -461,16 +461,52 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
       const adIds: string[] = isUserOnCooldown ? [] : JSON.parse(prefetchedAdIdsStr).slice(0, 10);
       if (adIds.length > 0) {
         const detailKeys = adIds.map((id) => `ad:detail:${id}`);
-        const [rawDetails, cachedHighlights, seenAdIds, deactUsersResult] = await Promise.all([
+        const [rawDetails, cachedHighlights, seenAdIds] = await Promise.all([
           redisConnection.mget(detailKeys).catch(() => []),
           highlightsPromise,
           redisConnection.smembers(`seen:ads:${email.toLowerCase().trim()}`).catch(() => []),
-          Promise.resolve(supabaseAdmin.from("deactivated_users").select("email").limit(5000)).catch(() => ({ data: [] })),
         ]);
-        const seenSet = new Set<string>(seenAdIds || []);
-        const deactSet = new Set<string>(
-          ((deactUsersResult as any)?.data || []).map((d: any) => (d.email || "").toLowerCase().trim())
+        const parsedRawAds = (rawDetails || [])
+          .map((raw: any) => {
+            if (!raw) return null;
+            try {
+              return JSON.parse(raw);
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean);
+        const ownerEmails = Array.from(
+          new Set(
+            parsedRawAds
+              .map((ad: any) => (ad?.user_email || ad?.email || "").toLowerCase().trim())
+              .filter(Boolean)
+          )
         );
+        const deactSet = new Set<string>();
+        if (ownerEmails.length > 0) {
+          try {
+            if (isRedisReady() && typeof (redisConnection as any).smismember === "function") {
+              const flags: number[] = await (redisConnection as any)
+                .smismember("deactivated:users", ...ownerEmails)
+                .catch(() => []);
+              if (Array.isArray(flags) && flags.length === ownerEmails.length) {
+                ownerEmails.forEach((em, idx) => {
+                  if (flags[idx] === 1) deactSet.add(em);
+                });
+              }
+            } else {
+              const { data: deactRows } = await supabaseAdmin
+                .from("deactivated_users")
+                .select("email")
+                .in("email", ownerEmails);
+              (deactRows || []).forEach((d: any) => {
+                if (d?.email) deactSet.add(String(d.email).toLowerCase().trim());
+              });
+            }
+          } catch {}
+        }
+        const seenSet = new Set<string>(seenAdIds || []);
         if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
           const hlNowMs = Date.now();
           initialHighlights = cachedHighlights
@@ -479,11 +515,9 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
         }
         const servedAt = Date.now();
 
-        initialAds = (rawDetails || [])
-          .map((raw: any) => {
-            if (!raw) return null;
+        initialAds = parsedRawAds
+          .map((ad: any) => {
             try {
-              const ad = JSON.parse(raw);
               if (!ad || !ad.id) return null;
               if (ad.completed_at || ad.is_paused === true) return null;
               const ownerEmail = (ad.user_email || ad.email || "").toLowerCase().trim();

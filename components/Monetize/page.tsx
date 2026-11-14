@@ -98,8 +98,8 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
     if (isExempt) return true;
     if (typeof initialMonetized === "boolean") return initialMonetized;
     if (typeof initialCache.isMonetized === "boolean") return initialCache.isMonetized;
-    if (typeof initialClicks === "number") return initialClicks >= 300;
-    if (typeof initialCache.clicksCount === "number") return initialCache.clicksCount >= 300;
+    if (typeof initialClicks === "number") return initialClicks >= 500;
+    if (typeof initialCache.clicksCount === "number") return initialCache.clicksCount >= 500;
     return false;
   });
 
@@ -210,14 +210,14 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
         setHasCancelled(false);
         setIsMonetized(Boolean(isExempt));
         setClicksCount(0);
-        setClicksRemaining(300);
+        setClicksRemaining(500);
         setAttentionScore(0.1);
         setAtwTier(isExempt ? "Unlimited" : "ATW1");
         persistCache({
           hasCancelled: false,
           isMonetized: Boolean(isExempt),
           clicksCount: 0,
-          clicksRemaining: 300,
+          clicksRemaining: 500,
           atwTier: isExempt ? "Unlimited" : "ATW1",
           attentionScore: 0.1,
           daysInactive: 0,
@@ -244,7 +244,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
       return computeAtwTierDetails(initialClicks, initialAtwTier, isExempt).clicksRemaining;
     }
     if (typeof initialCache.clicksRemaining === "number") return initialCache.clicksRemaining;
-    return 300;
+    return 500;
   });
 
   const [atwTier, setAtwTier] = useState(() => {
@@ -278,7 +278,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
             : typeof data.attention_worth_score === "number"
             ? data.attention_worth_score
             : attentionScore;
-        const ratingBonusClicks = Math.floor(Math.max(0, resolvedScore - 0.1) * 300);
+        const ratingBonusClicks = Math.floor(Math.max(0, resolvedScore - 0.1) * 500);
         const effectiveClicks = Math.max(0, resolvedClicks) + ratingBonusClicks;
         const details = computeAtwTierDetails(
           effectiveClicks,
@@ -293,7 +293,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
           : Boolean(
               isExempt ||
                 data.isUnlimited ||
-                (typeof data.isMonetized === "boolean" ? data.isMonetized : effectiveClicks >= 300)
+                (typeof data.isMonetized === "boolean" ? data.isMonetized : effectiveClicks >= 500)
             );
         hasCancelledRef.current = isCancelled;
         startTransition(() => {
@@ -336,7 +336,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
       if (typeof totalClicks === "number") {
         const currentCancelled = hasCancelledRef.current;
         const nextScore = typeof score === "number" ? score : attentionScore;
-        const ratingBonus = Math.floor(Math.max(0, nextScore - 0.1) * 300);
+        const ratingBonus = Math.floor(Math.max(0, nextScore - 0.1) * 500);
         const details = computeAtwTierDetails(totalClicks + ratingBonus, tier, isExempt);
         setClicksCount(totalClicks);
         setClicksRemaining(details.clicksRemaining);
@@ -347,7 +347,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
         });
         const finalMon = currentCancelled
           ? false
-          : Boolean(isExempt || (typeof isMon === "boolean" ? isMon : totalClicks + ratingBonus >= 300));
+          : Boolean(isExempt || (typeof isMon === "boolean" ? isMon : totalClicks + ratingBonus >= 500));
         if (finalMon) setIsMonetized(true);
 
         persistCache({
@@ -377,11 +377,11 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
         const currentCancelled = hasCancelledRef.current;
         setClicksCount((prev: number) => {
           const next = prev + delta;
-          const ratingBonus = Math.floor(Math.max(0, attentionScore - 0.1) * 300);
+          const ratingBonus = Math.floor(Math.max(0, attentionScore - 0.1) * 500);
           const details = computeAtwTierDetails(next + ratingBonus, undefined, isExempt);
           setClicksRemaining(details.clicksRemaining);
           setAtwTier((prevTier) => computeAtwTierDetails(next + ratingBonus, prevTier, isExempt).tierCode);
-          if (!currentCancelled && (next + ratingBonus >= 300 || isExempt)) setIsMonetized(true);
+          if (!currentCancelled && (next + ratingBonus >= 500 || isExempt)) setIsMonetized(true);
           return next;
         });
       }
@@ -417,7 +417,7 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
     };
   }, [email]);
 
-  const ratingBonusClicks = Math.floor(Math.max(0, attentionScore - 0.1) * 300);
+  const ratingBonusClicks = Math.floor(Math.max(0, attentionScore - 0.1) * 500);
   const effectiveClicksForTier = Math.max(0, clicksCount) + ratingBonusClicks;
   const tierDetails = computeAtwTierDetails(effectiveClicksForTier, atwTier, isExempt);
   const currentMilestoneTarget = tierDetails.currentMilestoneTarget;
@@ -476,9 +476,9 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
                       ? isUnlimited
                         ? "Your account is monetized at Unlimited Tier (Unlimited holding balance cap)."
                         : isMaxTier
-                        ? "Your account is monetized at ATW Tier ATW14 with platform peak holding cap (₦420,000). Lifetime milestone counting continues 300 by 300."
+                        ? "Your account is monetized at ATW Tier ATW14 with platform peak holding cap (₦420,000). Lifetime milestone counting continues 500 by 500."
                         : `Your account is monetized at ATW Tier ${displayAtwTier} (${tierDetails.holdingCapFormatted} holding cap).`
-                      : "Complete 300 ad clicks in the feed to unlock monetization."}
+                      : "Complete 500 ad clicks in the feed to unlock monetization."}
                   </p>
                 </div>
               </div>
@@ -545,8 +545,8 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
                   <span className={styles.cardSectionTitleText}>
                     {isUnlimited
                       ? `Next Milestone: ${currentMilestoneTarget} Ad Clicks (Unlimited Tier • Unlimited Cap)`
-                      : clicksCount < 300
-                      ? "Requirement: 300 Ad Clicks"
+                      : clicksCount < 500
+                      ? "Requirement: 500 Ad Clicks"
                       : isMaxTier
                       ? `Next Milestone: ${currentMilestoneTarget} Ad Clicks (ATW14 Peak Tier • ₦420,000 cap)`
                       : `Next Milestone: ${currentMilestoneTarget} Ad Clicks (ATW${nextAtwLevel} • ₦${nextHoldingCap.toLocaleString()} cap)`}
@@ -560,23 +560,23 @@ export default function Monetize({ session, initialMonetized, initialHasCancelle
               <p className={styles.cardInstructionText}>
                 {hasCancelled ? (
                   <>
-                    You are currently in <strong>browsing-only mode</strong>. Feed browsing and discovery are completely active and voluntary. Your seen count will continue advancing, but monetization remains off. To re-qualify for rewards, click <strong>Reapply for Monetization</strong> above and complete 300 verified seen interactions from the time of reapplication.
+                    You are currently in <strong>browsing-only mode</strong>. Feed browsing and discovery are completely active and voluntary. Your seen count will continue advancing, but monetization remains off. To re-qualify for rewards, click <strong>Reapply for Monetization</strong> above and complete 500 verified seen interactions from the time of reapplication.
                   </>
                 ) : isUnlimited ? (
                   <>
-                    Your account has <strong>Unlimited Tier</strong> and <strong>Unlimited holding balance cap</strong>. Every <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> click in the feed advances your live seen count across each 300-click milestone.
+                    Your account has <strong>Unlimited Tier</strong> and <strong>Unlimited holding balance cap</strong>. Every <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> click in the feed advances your live seen count across each 500-click milestone.
                   </>
-                ) : clicksCount < 300 ? (
+                ) : clicksCount < 500 ? (
                   <>
                     Click <strong>Seen</strong>, <strong>Earn+</strong>, or <strong>Mutual+</strong> on ads to unlock monetization and ATW1 (₦30,000 cap).
                   </>
                 ) : isMaxTier ? (
                   <>
-                    You unlocked <strong>Earn+</strong> and achieved the <strong>Peak ATW Tier (ATW14 • ₦420,000 holding cap)</strong>! Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach your next milestone target of <strong>{currentMilestoneTarget} clicks</strong>. Milestone cycles continue 300 by 300 for the lifetime of your account to maintain active monetization and reward engagement.
+                    You unlocked <strong>Earn+</strong> and achieved the <strong>Peak ATW Tier (ATW14 • ₦420,000 holding cap)</strong>! Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach your next milestone target of <strong>{currentMilestoneTarget} clicks</strong>. Milestone cycles continue 500 by 500 for the lifetime of your account to maintain active monetization and reward engagement.
                   </>
                 ) : (
                   <>
-                    You unlocked <strong>Earn+</strong>! Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach <strong>{currentMilestoneTarget} clicks</strong> and upgrade to <strong>ATW{nextAtwLevel} (₦{nextHoldingCap.toLocaleString()} cap)</strong>. Every 300 clicks increases your ATW tier and balance holding cap by ₦30,000.
+                    You unlocked <strong>Earn+</strong>! Continue clicking <strong>Earn+</strong>, <strong>Seen</strong>, or <strong>Mutual+</strong> to reach <strong>{currentMilestoneTarget} clicks</strong> and upgrade to <strong>ATW{nextAtwLevel} (₦{nextHoldingCap.toLocaleString()} cap)</strong>. Every 500 clicks increases your ATW tier and balance holding cap by ₦30,000.
                   </>
                 )}
               </p>

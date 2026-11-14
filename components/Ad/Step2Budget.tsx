@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { Info, AlertCircle } from "lucide-react";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
+import type { AdCapacityAssessment } from "@/lib/hooks/useAdCapacityCheck";
 import { AdFormSelections } from "./types";
 import styles from "./page.module.css";
 
@@ -16,6 +18,8 @@ interface Step2BudgetProps {
     balance: number;
   } | null;
   toggleEmploymentStatus: (val: string) => void;
+  capacity?: AdCapacityAssessment | null;
+  checkingCapacity?: boolean;
 }
 
 export default function Step2Budget({
@@ -23,6 +27,8 @@ export default function Step2Budget({
   setFormSelections,
   userProfile,
   toggleEmploymentStatus,
+  capacity,
+  checkingCapacity,
 }: Step2BudgetProps) {
   return (
     <>
@@ -149,26 +155,26 @@ export default function Step2Budget({
         <div className={styles.modernSectionHeader}>
           <span className={styles.modernSectionTitle}>Budget &amp; Delivery</span>
           <span className={styles.modernSectionBadge}>
-            {formSelections.impressions.toLocaleString()} views · {formSelections.campaignDays}d
+            {formSelections.impressions.toLocaleString()} attentions · {formSelections.campaignDays}d
           </span>
         </div>
         <div className={styles.modernSectionBody}>
           <div className={styles.formGroup}>
             <label htmlFor="impression-input" className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
-              Target Views
+              Target Attentions
             </label>
             <div className={styles.impressionStack}>
               <input
                 type="range"
                 id="impression"
-                min={1}
+                min={100}
                 max={10000}
                 step={1}
-                value={formSelections.impressions}
+                value={Math.max(100, Math.min(10000, formSelections.impressions || 100))}
                 onChange={(e) =>
                   setFormSelections((prev) => ({
                     ...prev,
-                    impressions: parseInt(e.target.value) || 1,
+                    impressions: parseInt(e.target.value, 10) || 100,
                   }))
                 }
                 className={styles.impressionSliderFull}
@@ -177,12 +183,17 @@ export default function Step2Budget({
                 <input
                   type="number"
                   id="impression-input"
-                  min={1}
+                  min={100}
                   max={5000000}
-                  value={formSelections.impressions}
+                  value={formSelections.impressions || ""}
                   onChange={(e) => {
-                    let val = parseInt(e.target.value);
-                    if (isNaN(val)) val = 1;
+                    const raw = e.target.value;
+                    if (raw === "") {
+                      setFormSelections((prev) => ({ ...prev, impressions: 0 }));
+                      return;
+                    }
+                    let val = parseInt(raw, 10);
+                    if (isNaN(val)) val = 0;
                     if (val > 5000000) val = 5000000;
                     setFormSelections((prev) => ({
                       ...prev,
@@ -192,6 +203,91 @@ export default function Step2Budget({
                   className={styles.impressionInput}
                 />
               </div>
+              <p className={styles.hintText}>
+                Minimum 100 attentions.
+              </p>
+              {checkingCapacity && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    display: "inline-flex",
+                    width: "fit-content",
+                    maxWidth: "100%",
+                    alignSelf: "flex-start",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: "0.78rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <Info size={14} />
+                  <span>Checking capacity...</span>
+                </div>
+              )}
+              {!checkingCapacity && capacity && capacity.telemetryAvailable && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${
+                      capacity.status === "capped"
+                        ? "rgba(239, 68, 68, 0.35)"
+                        : capacity.status === "broadened_needed"
+                        ? "rgba(245, 158, 11, 0.35)"
+                        : "rgba(16, 185, 129, 0.3)"
+                    }`,
+                    background:
+                      capacity.status === "capped"
+                        ? "rgba(239, 68, 68, 0.08)"
+                        : capacity.status === "broadened_needed"
+                        ? "rgba(245, 158, 11, 0.08)"
+                        : "rgba(16, 185, 129, 0.08)",
+                    display: "inline-flex",
+                    width: "fit-content",
+                    maxWidth: "100%",
+                    alignSelf: "flex-start",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    fontSize: "0.78rem",
+                    color: "var(--foreground)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 7, minWidth: 0 }}>
+                    {capacity.status === "capped" ? (
+                      <AlertCircle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+                    ) : capacity.status === "broadened_needed" ? (
+                      <Info size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
+                    ) : null}
+                    <span>{capacity.message}</span>
+                  </div>
+                  {capacity.status === "capped" && capacity.maxOrderableImpressions >= 100 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormSelections((prev) => ({
+                          ...prev,
+                          impressions: capacity.maxOrderableImpressions,
+                        }))
+                      }
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "1px solid var(--card-border)",
+                        background: "var(--card-bg)",
+                        color: "var(--foreground)",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Use {capacity.maxOrderableImpressions.toLocaleString()}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -202,11 +298,11 @@ export default function Step2Budget({
             <input
               type="number"
               min={1}
-              max={365}
+              max={90}
               value={formSelections.campaignDays}
               onChange={(e) => {
                 const val = parseInt(e.target.value);
-                const nextDays = isNaN(val) || val < 1 ? 1 : Math.min(365, val);
+                const nextDays = isNaN(val) || val < 1 ? 1 : Math.min(90, val);
                 setFormSelections((prev) => ({
                   ...prev,
                   campaignDays: nextDays,
@@ -216,7 +312,7 @@ export default function Step2Budget({
               placeholder="e.g. 5"
             />
             <p className={styles.hintText}>
-              Daily pace: ~{Math.ceil(formSelections.impressions / formSelections.campaignDays).toLocaleString()} views/day
+              Daily pace: ~{Math.ceil((formSelections.impressions || 0) / formSelections.campaignDays).toLocaleString()} attentions/day
             </p>
           </div>
 
@@ -335,7 +431,7 @@ export default function Step2Budget({
               placeholder="e.g. 3"
             />
             <p className={styles.hintText}>
-              Max views per user (strictly enforced &amp; evenly spaced across {formSelections.campaignDays}d; auto-broadens reach at 80% duration if needed).
+              Max attentions per user (strictly enforced &amp; evenly spaced across {formSelections.campaignDays}d; auto-broadens reach at 80% duration if needed).
             </p>
           </div>
         </div>
@@ -370,7 +466,7 @@ export default function Step2Budget({
               <span className={styles.mutualActivatedHint}>
                 Includes <strong>{userProfile.mutual_count.toLocaleString()} mutuals</strong> free. Total target:{" "}
                 <strong>
-                  {(formSelections.impressions + userProfile.mutual_count).toLocaleString()} views
+                  {(formSelections.impressions + userProfile.mutual_count).toLocaleString()} attentions
                 </strong>.
               </span>
             </div>

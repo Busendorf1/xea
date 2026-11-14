@@ -8,13 +8,12 @@ import { categoryTargetingMap, TARGETING_DIMENSIONS, type AdCategory } from "@/l
 import { adAudienceSchema, adCreativeSchema, adCreativeProductSchema } from "@/lib/validationSchemas";
 import { isAdminEmail } from "@/lib/adminHelper";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
-import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+import { formatCurrency as globalFormatCurrency, getLocalizedAdFloorRate } from "@/lib/utils/currency";
 import NoticeModal from "@/components/MyAds/NoticeModal";
 
 import {
   Session,
   MultiStepAdFormProps,
-  adRates,
   steps,
   Category,
 } from "./types";
@@ -28,6 +27,7 @@ import AdAccountSuspendedCard from "./AdAccountSuspendedCard";
 import AdPendingLimitBanner from "./AdPendingLimitBanner";
 import { useAdFormDraftAndEdit } from "./useAdFormDraftAndEdit";
 import { useAdSubmission } from "./useAdSubmission";
+import { useAdCapacityCheck } from "@/lib/hooks/useAdCapacityCheck";
 
 export type { Session, MultiStepAdFormProps };
 
@@ -78,9 +78,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     mutuals: string[];
     last_mutual_spent?: string;
     balance: number;
+    country?: string | null;
   } | null>(null);
 
-  const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, formSelections.country);
+  const advertiserCountry = userProfile?.country || null;
+  const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, advertiserCountry);
 
   const [adAccountRestriction, setAdAccountRestriction] = useState<{
     restricted: boolean;
@@ -101,6 +103,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               mutuals: data.mutuals ?? [],
               last_mutual_spent: data.last_mutual_spent,
               balance: data.balance ?? 0,
+              country: data.country ?? null,
             });
 
             const status = data.ad_account_status;
@@ -226,19 +229,20 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   const calculateTotalCostPerImpression = () => {
     if (isAdmin) return 0;
-    let baseRate = adRates[adType] || 55;
+    const floorRate = getLocalizedAdFloorRate(adType, advertiserCountry);
+    let baseRate = floorRate;
     if (isBiddingEnabled && bidPrice > 0) {
-      baseRate = bidPrice;
+      baseRate = Math.max(floorRate, bidPrice);
     }
     if (adType === "product_sales" && isSubsidizedLink(formSelections.productCtaLink)) {
-      return baseRate * 0.7; // 30% discount
+      return Number((baseRate * 0.7).toFixed(2)); // 30% discount
     }
     return baseRate;
   };
 
   const calculateTotalCost = () => {
     if (isAdmin) return 0;
-    return calculateTotalCostPerImpression() * formSelections.impressions;
+    return Number((calculateTotalCostPerImpression() * formSelections.impressions).toFixed(2));
   };
 
   const {
@@ -268,6 +272,28 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     calculateTotalCost,
     calculateTotalCostPerImpression,
     formatCurrency,
+  });
+
+  const { capacity, checkingCapacity } = useAdCapacityCheck({
+    enabled: !isAdmin && (step === 2 || step === 4 || step === 5),
+    impressions: formSelections.impressions,
+    campaignDays: formSelections.campaignDays,
+    userFrequencyCap: formSelections.userFrequencyCap,
+    targetingAll: formSelections.targetingAll,
+    country: formSelections.country,
+    state: formSelections.state,
+    province:
+      formSelections.targetLocations && formSelections.targetLocations.length > 0
+        ? formSelections.targetLocations.join("; ")
+        : formSelections.province,
+    gender: formSelections.gender,
+    ageRange: formSelections.ageRange,
+    employmentStatus: formSelections.employmentStatus,
+    industry: formSelections.industry,
+    interest: formSelections.interest,
+    lifestyle: formSelections.lifestyle,
+    behavior: formSelections.behavior,
+    personality: formSelections.personality,
   });
 
   useEffect(() => {
@@ -301,6 +327,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
   /** Step 2 — audience / budget validation */
   const validateStep2 = (): boolean => {
     setStepError("");
+    if (!Number.isFinite(formSelections.impressions) || formSelections.impressions < 100) {
+      setStepError("Minimum 100 attentions");
+      return false;
+    }
     const result = adAudienceSchema.safeParse({
       impressions: formSelections.impressions,
       campaignDays: formSelections.campaignDays,
@@ -310,6 +340,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     });
     if (!result.success) {
       setStepError(result.error.issues[0]?.message ?? "Please fix the audience details.");
+      return false;
+    }
+    if (!isAdmin && capacity?.telemetryAvailable && !capacity.allowed) {
+      setStepError(capacity.message);
       return false;
     }
     return true;
@@ -344,7 +378,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
         return false;
       }
       if (videosCount > 2) {
-        setStepError("You can upload at most 2 videos (up to 60 minutes each).");
+        setStepError("You can upload at most 2 videos (up to 3 minutes / 180 seconds each).");
         return false;
       }
       if (formSelections.adMediaType === "mixed" && (imagesCount === 0 || videosCount === 0)) {
@@ -434,7 +468,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
           
 
           {step === 0 && (
-            <Step0Category adType={adType} setAdType={setAdType} formatCurrency={formatCurrency} />
+            <Step0Category adType={adType} setAdType={setAdType} formatCurrency={formatCurrency} country={advertiserCountry} />
           )}
 
           {step === 1 && (
@@ -454,6 +488,8 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               setFormSelections={setFormSelections}
               userProfile={userProfile}
               toggleEmploymentStatus={toggleEmploymentStatus}
+              capacity={isAdmin ? null : capacity}
+              checkingCapacity={isAdmin ? false : checkingCapacity}
             />
           )}
 
@@ -470,6 +506,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             <Step4Summary
               formSelections={formSelections}
               adType={adType}
+              country={advertiserCountry}
               userProfile={userProfile}
               formatCurrency={formatCurrency}
               calculateTotalCostPerImpression={calculateTotalCostPerImpression}
@@ -478,6 +515,10 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               setIsBiddingEnabled={setIsBiddingEnabled}
               bidPrice={bidPrice}
               setBidPrice={setBidPrice}
+              capacity={isAdmin ? null : capacity}
+              onApplyCapacityCap={(maxCap) =>
+                setFormSelections((prev) => ({ ...prev, impressions: maxCap }))
+              }
             />
           )}
 

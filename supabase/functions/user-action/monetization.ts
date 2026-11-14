@@ -135,7 +135,7 @@ export async function handleGetMonetization(
     monetized: isMonetized,
     hasCancelledMonetization: Boolean(user.has_cancelled_monetization),
     clicks,
-    requiredClicks: 300,
+    requiredClicks: 500,
     daysInactive,
     wasReset,
     dormantForfeited,
@@ -180,7 +180,7 @@ export async function handleResumeMonetization(
   return jsonResponse({
     success: true,
     message:
-      "Monetization path resumed! Complete 300 clicks on feed ads to activate your account monetization.",
+      "Monetization path resumed! Complete 500 clicks on feed ads to activate your account monetization.",
   });
 }
 

@@ -51,6 +51,10 @@ export interface DashboardClientProps {
   initialAds?: Ad[];
   initialProfiles?: Record<string, AdvertiserProfile>;
   initialHighlights?: any[];
+  initialSharedAdId?: string | null;
+  initialSharedAdUnavailable?: boolean;
+  initialSharedAd?: Ad | null;
+  initialSharedAdProfiles?: Record<string, AdvertiserProfile>;
 }
 
 export const DEFAULT_NIGERIAN_BANKS = [

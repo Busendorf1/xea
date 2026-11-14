@@ -45,7 +45,7 @@ export function computeCampaignBroadeningPlan(
       : baseLaunchMs;
   const isScheduledFuture = !isNaN(scheduledStartMs) && scheduledStartMs > nowMs;
 
-  const campaignDays = Math.max(1, Math.min(365, Number(ad.campaign_days) || 1));
+  const campaignDays = Math.max(1, Math.min(90, Number(ad.campaign_days) || 1));
   const computedEndMs = startMs + campaignDays * 86_400_000;
   const endMs =
     !isNaN(scheduledEndMs) && scheduledEndMs > startMs ? scheduledEndMs : computedEndMs;

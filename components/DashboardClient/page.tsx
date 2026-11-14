@@ -50,6 +50,10 @@ export default function DashboardClient({
   initialAds,
   initialProfiles,
   initialHighlights,
+  initialSharedAdId,
+  initialSharedAdUnavailable,
+  initialSharedAd,
+  initialSharedAdProfiles,
 }: DashboardClientProps) {
   const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<UserProfile>(initialUser);
@@ -168,7 +172,7 @@ export default function DashboardClient({
           balance: newBalance,
           monetization_clicks: updatedClicks,
           atw_tier: tierDetails.tierCode,
-          monetized: isExempt || (typeof newClicks === "number" && newClicks >= 300) || prev.monetized,
+          monetized: isExempt || (typeof newClicks === "number" && newClicks >= 500) || prev.monetized,
         };
       });
       return;
@@ -245,7 +249,7 @@ export default function DashboardClient({
         const tierDetails = computeAtwTierDetails(clicks, user.atw_tier, isExempt);
         const isMon = Boolean(
           !user.has_cancelled_monetization &&
-            (isExempt || clicks >= 300)
+            (isExempt || clicks >= 500)
         );
         const cachePayload = JSON.stringify({
           email: user.email.toLowerCase(),
@@ -316,7 +320,7 @@ export default function DashboardClient({
                   newRow.monetized === "yes" ||
                   newRow.monetized === "true" ||
                   newRow.monetized === true ||
-                  updatedClicks >= 300,
+                  updatedClicks >= 500,
               };
             });
           }
@@ -345,7 +349,7 @@ export default function DashboardClient({
           typeof totalClicks === "number" ? Math.max(current, totalClicks) : current + delta;
         const isExempt = isExemptFromBarriersAndInactivity(prev.email, prev);
         const tierDetails = computeAtwTierDetails(nextClicks, prev.atw_tier, isExempt);
-        const nextMonetized = isExempt || nextClicks >= 300 ? true : prev.monetized;
+        const nextMonetized = isExempt || nextClicks >= 500 ? true : prev.monetized;
         return {
           ...prev,
           monetization_clicks: nextClicks,
@@ -374,7 +378,7 @@ export default function DashboardClient({
         const isExempt = isExemptFromBarriersAndInactivity(prev.email, prev);
         const tierDetails = computeAtwTierDetails(updatedClicks, prev.atw_tier, isExempt);
         const updatedMonetized =
-          isExempt || (typeof clicks === "number" && clicks >= 300) || prev.monetized;
+          isExempt || (typeof clicks === "number" && clicks >= 500) || prev.monetized;
         return {
           ...prev,
           balance: updatedBal,
@@ -682,6 +686,10 @@ export default function DashboardClient({
               initialAds={initialAds}
               initialProfiles={initialProfiles}
               initialHighlights={initialHighlights}
+              initialSharedAdId={initialSharedAdId}
+              initialSharedAdUnavailable={initialSharedAdUnavailable}
+              initialSharedAd={initialSharedAd}
+              initialSharedAdProfiles={initialSharedAdProfiles}
               onEarnSuccess={handleEarnSuccess}
               onMutualSuccess={handleMutualSuccess}
             />

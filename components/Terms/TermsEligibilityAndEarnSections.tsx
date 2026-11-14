@@ -154,7 +154,7 @@ export default function TermsEligibilityAndEarnSections() {
           completely optional and free of any subscription fees. Users who choose not to earn rewards can freely browse,
           view, and enjoy content across the feed for discovery without participating in monetization or claiming
           credits. To activate monetization, an account must voluntarily choose to participate and accumulate at least{" "}
-          <strong>300 verified interactions (&quot;Seen&quot; or &quot;Mutual&quot;)</strong> (or meet authorized
+          <strong>500 verified interactions (&quot;Seen&quot; or &quot;Mutual&quot;)</strong> (or meet authorized
           eligibility criteria). For clarity, a verified &quot;Seen&quot; interaction is registered whenever promotional
           content or an ad card is rendered within your active viewport or interacted with during regular human
           engagement.
@@ -185,16 +185,16 @@ export default function TermsEligibilityAndEarnSections() {
             discovery curation, feed refreshing, and history tracking.
           </li>
           <li className={styles.listItem}>
-            <strong>No Automatic Remonetization at 300 Seens:</strong> Accumulating three hundred (300) or more seen
+            <strong>No Automatic Remonetization at 500 Seens:</strong> Accumulating five hundred (500) or more seen
             interactions will <strong>NEVER</strong> automatically re-monetize an account that was manually opted out.
             Once cancelled, your account strictly remains unmonetized to honor and protect your choice.
           </li>
           <li className={styles.listItem}>
-            <strong>Explicit Reapplication &amp; Fresh 300 Seen Reset:</strong> If an opted-out user subsequently
+            <strong>Explicit Reapplication &amp; Fresh 500 Seen Reset:</strong> If an opted-out user subsequently
             decides to resume earning attention rewards, they must return to the Monetization settings dashboard and
             explicitly submit a reapplication. Upon reapplication, verified click progress resets to zero (`0`), ATW tier
             resets to `ATW1`, attention-worth score resets to baseline (`0.1000`), and the user must complete a fresh{" "}
-            <strong>three hundred (300) verified human interactions</strong> before monetization rewards reactivate.
+            <strong>five hundred (500) verified human interactions</strong> before monetization rewards reactivate.
           </li>
         </ul>
         <p>
@@ -274,13 +274,13 @@ export default function TermsEligibilityAndEarnSections() {
             <strong>₦420,000 [approx. $280 USD] at ATW14</strong> (unless your account holds verified affiliate,
             career, or administrative exemption). Your ATW level advances through both:
             <br />
-            (i) verified interaction milestones (each <strong>300 verified clicks</strong> raises effective tier level);
+            (i) verified interaction milestones (each <strong>500 verified clicks</strong> raises effective tier level);
             and
             <br />
             (ii) <strong>verified advertiser star ratings (1–5 stars)</strong> on campaign engagement, which increment your{" "}
             <code>attention_worth_score</code> (baseline <code>0.1000</code>, adding <code>+0.01</code> to{" "}
             <code>+0.05</code> per 1–5 star rating; every <code>+1.00</code> score above <code>0.1000</code> contributes{" "}
-            <code>300</code> bonus click-equivalents toward higher ATW levels).
+            <code>500</code> bonus click-equivalents toward higher ATW levels).
             <br />
             If an account reaches its active ATW holding cap and incentives are not withdrawn, any subsequent overflow
             amount above the ceiling is <strong>voluntarily surrendered and forfeited to platform liquidity</strong>{" "}
@@ -411,7 +411,7 @@ export default function TermsEligibilityAndEarnSections() {
               <strong>How You Earn When You Invite People (1% Follower / 2% Agent Direct-Only):</strong> Activating
               Agent status via <strong>Become an Agent</strong> (<code>/agent</code>) or <strong>Invites</strong>{" "}
               provides a unique invite link (<code>?ref=CODE</code>). Once an invited follower unlocks monetization
-              (300+ verified interactions) and receives positive net campaign earnings, you earn{" "}
+              (500+ verified interactions) and receives positive net campaign earnings, you earn{" "}
               <strong>one percent (1%)</strong> from their direct campaign earnings. If that follower also activates
               verified Agent status, your direct commission from their own direct promotional earnings upgrades to{" "}
               <strong>two percent (2%)</strong> (marked with an asterisk <code>*</code>). The 2% applies exclusively to

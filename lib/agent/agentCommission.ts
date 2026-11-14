@@ -95,7 +95,7 @@ export async function resolveLightweightUplineForEarner(earnerEmail: string): Pr
     earnerRow.monetized === "true" ||
     earnerRow.monetized === "yes" ||
     earnerRow.monetized === "1" ||
-    Number(earnerRow.monetization_clicks || 0) >= 300;
+    Number(earnerRow.monetization_clicks || 0) >= 500;
 
   if (!isEarnerMonetized) {
     return {

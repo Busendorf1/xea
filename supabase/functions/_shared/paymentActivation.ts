@@ -1,5 +1,14 @@
 import { computeAtwTierDetails } from "./atwEngine.ts";
+import { assessAdDeliveryCapacityEdge } from "./adCapacity.ts";
 import { isAdminEmail } from "./cors.ts";
+import {
+  applyProductSalesSubsidyEdge,
+  getLocalizedAdFloorRateEdge,
+  getUserCurrencyEdge,
+  isVerifiedSubscriberProductLinkEdge,
+  resolveUserPricingCountryEdge,
+  validateAndComputeAdPricingEdge,
+} from "./adPricing.ts";
 
 export interface ResourceValidationResult {
   valid: boolean;
@@ -7,6 +16,8 @@ export interface ResourceValidationResult {
   error?: string;
   serverCost: number;
   draftRow?: Record<string, unknown>;
+  capacityCapped?: boolean;
+  maxOrderableImpressions?: number;
 }
 
 const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
@@ -136,6 +147,67 @@ export async function validatePayableResource(
       }
     }
 
+    if (!isAdmin && !ad.is_admin_post) {
+      const userCountry = await resolveUserPricingCountryEdge(supabaseAdmin, cleanEmail);
+      const pricing = await validateAndComputeAdPricingEdge(supabaseAdmin, {
+        adType: ad.ad_type,
+        impressions: ad.impressions,
+        costPerImpression: ad.cost_per_impression,
+        isBidded: ad.is_bidded,
+        bidPrice: ad.bid_price,
+        productCtaLink: ad.product_cta_link,
+        userCountry,
+        isAdmin: false,
+      });
+      if (!pricing.ok) {
+        return {
+          valid: false,
+          statusCode: pricing.status,
+          error: pricing.error,
+          serverCost: 0,
+        };
+      }
+      const capacity = await assessAdDeliveryCapacityEdge(supabaseAdmin, {
+        requestedImpressions: pricing.impressionsCount,
+        userFrequencyCap: ad.user_frequency_cap ?? 1,
+        campaignDays: ad.campaign_days ?? 1,
+        targetingAll: Boolean(ad.targeting_all),
+        country: ad.country ?? null,
+        state: ad.state ?? null,
+        province: ad.province ?? null,
+        gender: ad.gender ?? null,
+        ageRange: ad.age_range ?? null,
+        employmentStatus: ad.employment_status ?? null,
+        industry: ad.industry ?? null,
+        interest: ad.interest ?? null,
+        lifestyle: ad.lifestyle ?? null,
+        behavior: ad.behavior ?? null,
+        personality: ad.personality ?? null,
+        advertiserEmail: cleanEmail,
+      });
+      if (capacity.telemetryAvailable && !capacity.allowed) {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: capacity.message,
+          serverCost: 0,
+          capacityCapped: true,
+          maxOrderableImpressions: capacity.maxOrderableImpressions,
+        };
+      }
+      const storedTotal = Number(ad.total_cost || 0);
+      const tol = pricing.currency === "USD" ? 0.51 : 1;
+      if (storedTotal > 0 && Math.abs(storedTotal - pricing.computedTotalCost) > tol) {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: "Stored campaign cost does not match current category floor pricing.",
+          serverCost: 0,
+        };
+      }
+      return { valid: true, statusCode: 200, serverCost: pricing.computedTotalCost, draftRow: ad };
+    }
+
     const impCount = Math.max(0, Number(ad.impressions || 0));
     const cpi = Number(ad.bid_price || ad.cost_per_impression || 0);
     const computedFromRate = Math.round(impCount * cpi * 100) / 100;
@@ -261,14 +333,89 @@ export async function validatePayableResource(
     if (String(activeAd.user_email || "").toLowerCase().trim() !== cleanEmail) {
       return { valid: false, statusCode: 403, error: "Unauthorized campaign boost.", serverCost: 0 };
     }
-    const addImp = Math.max(0, Number(meta.addImpressions || meta.add_impressions || 0));
+    const userCountry = await resolveUserPricingCountryEdge(supabaseAdmin, cleanEmail);
+    const adCategory = String(activeAd.ad_type || "individual").trim().toLowerCase();
+    const baseFloor = getLocalizedAdFloorRateEdge(adCategory, userCountry);
+    const subsidyQualified =
+      adCategory === "product_sales"
+        ? await isVerifiedSubscriberProductLinkEdge(supabaseAdmin, activeAd.product_cta_link)
+        : false;
+    const adFloorRate = subsidyQualified ? applyProductSalesSubsidyEdge(baseFloor) : baseFloor;
+
+    const addImp = Math.max(
+      0,
+      Math.floor(
+        Number(
+          meta.additional_impressions ??
+            meta.additionalImpressions ??
+            meta.addImpressions ??
+            meta.add_impressions ??
+            0,
+        ),
+      ),
+    );
     const currentImp = Math.max(0, Number(activeAd.impressions || 0));
     const delivered = Math.max(0, Number(activeAd.impression_count || 0));
     const remaining = Math.max(0, currentImp - delivered);
-    const currentCpi = Number(activeAd.bid_price || activeAd.cost_per_impression || 0);
+    const addDays = Math.max(0, Math.floor(Number(meta.addDays || meta.additionalDays || meta.additional_days || 0)));
+    const currentDays = Math.max(1, Number(activeAd.campaign_days || 1));
+    if (!isAdmin && addDays > 0 && currentDays + addDays > 90) {
+      return {
+        valid: false,
+        statusCode: 400,
+        error: "Maximum campaign duration is 90 days.",
+        serverCost: 0,
+      };
+    }
+    const currentCpi = Math.max(adFloorRate, Number(activeAd.bid_price || activeAd.cost_per_impression || adFloorRate));
     const newCpi = Number(meta.newCostPerImpression || meta.new_cpi || currentCpi);
-    if (newCpi < currentCpi) {
-      return { valid: false, statusCode: 400, error: "Bid CPI cannot be lowered below current CPI.", serverCost: 0 };
+    const eps = getUserCurrencyEdge(userCountry) === "USD" ? 0.0005 : 0.001;
+    if (!isAdmin && (!Number.isFinite(newCpi) || newCpi < currentCpi - eps || newCpi < adFloorRate - eps)) {
+      return {
+        valid: false,
+        statusCode: 400,
+        error: `Boost CPI cannot be lowered below category floor (${adFloorRate}) or current CPI (${currentCpi}).`,
+        serverCost: 0,
+      };
+    }
+    if (!isAdmin && addImp > 0) {
+      const rawFreqCap = meta.user_frequency_cap ?? meta.userFrequencyCap;
+      const normalizedFreqCap =
+        rawFreqCap !== undefined &&
+        rawFreqCap !== null &&
+        rawFreqCap !== "" &&
+        Number.isFinite(Number(rawFreqCap)) &&
+        Number(rawFreqCap) > 0
+          ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+          : Number(activeAd.user_frequency_cap ?? 1);
+      const capacity = await assessAdDeliveryCapacityEdge(supabaseAdmin, {
+        requestedImpressions: remaining + addImp,
+        userFrequencyCap: normalizedFreqCap,
+        campaignDays: Math.min(90, currentDays + addDays),
+        targetingAll: Boolean(activeAd.targeting_all),
+        country: meta.country !== undefined ? meta.country : activeAd.country ?? null,
+        state: meta.state !== undefined ? meta.state : activeAd.state ?? null,
+        province: meta.province !== undefined ? meta.province : activeAd.province ?? null,
+        gender: meta.gender !== undefined ? meta.gender : activeAd.gender ?? null,
+        ageRange: activeAd.age_range ?? null,
+        employmentStatus: activeAd.employment_status ?? null,
+        industry: meta.industry !== undefined ? meta.industry : activeAd.industry ?? null,
+        interest: meta.interest !== undefined ? meta.interest : activeAd.interest ?? null,
+        lifestyle: activeAd.lifestyle ?? null,
+        behavior: activeAd.behavior ?? null,
+        personality: activeAd.personality ?? null,
+        advertiserEmail: cleanEmail,
+      });
+      if (capacity.telemetryAvailable && !capacity.allowed) {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: capacity.message,
+          serverCost: 0,
+          capacityCapped: true,
+          maxOrderableImpressions: capacity.maxOrderableImpressions,
+        };
+      }
     }
     const upgradeCost = newCpi > currentCpi ? (newCpi - currentCpi) * remaining : 0;
     const serverCost = isAdmin ? 0 : Math.round((addImp * newCpi + upgradeCost) * 100) / 100;
@@ -626,7 +773,17 @@ export async function activatePaidResource(
 
   if (payType === "boost_campaign") {
     const adId = String(metadata.ad_id || metadata.adId || "").trim();
-    const addImps = Math.max(0, Number(metadata.addImpressions || metadata.add_impressions || 0));
+    const addImps = Math.max(0, Number(metadata.addImpressions || metadata.add_impressions || metadata.additional_impressions || 0));
+    const addDays = Math.max(0, Math.floor(Number(metadata.additional_days ?? metadata.addDays ?? metadata.additionalDays ?? 0)));
+    const rawFreqCap = metadata.user_frequency_cap ?? metadata.userFrequencyCap;
+    const normalizedFreqCap =
+      rawFreqCap !== undefined &&
+      rawFreqCap !== null &&
+      rawFreqCap !== "" &&
+      Number.isFinite(Number(rawFreqCap)) &&
+      Number(rawFreqCap) > 0
+        ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+        : undefined;
     const { data: ad } = await supabaseAdmin
       .from("addsactive")
       .select("*")
@@ -636,23 +793,36 @@ export async function activatePaidResource(
     const isAdAdminPost = isAdmin || Boolean(ad.is_admin_post);
     const newCpi = isAdAdminPost
       ? 0
-      : Number(metadata.newCostPerImpression || metadata.new_cpi || ad.cost_per_impression || 0);
+      : Number(metadata.newCostPerImpression || metadata.new_cpi || metadata.cost_per_impression || ad.cost_per_impression || 0);
     const nextImps = Number(ad.impressions || 0) + addImps;
     const nextTotal = isAdAdminPost ? 0 : Number(ad.total_cost || 0) + amountPaid;
     const isBidded = !isAdAdminPost && Boolean(ad.is_bidded || newCpi > Number(ad.cost_per_impression || 0));
 
+    const updatePayload: Record<string, unknown> = {
+      impressions: nextImps,
+      total_cost: nextTotal,
+      cost_per_impression: newCpi,
+      bid_price: isAdAdminPost ? 0 : Math.max(Number(ad.bid_price || 0), newCpi),
+      is_bidded: isBidded,
+      is_admin_post: isAdAdminPost,
+      completed_at: null,
+      is_paused: false,
+      ...(addDays > 0 ? { campaign_days: Math.min(90, Number(ad.campaign_days || 1) + addDays) } : {}),
+      ...(normalizedFreqCap !== undefined ? { user_frequency_cap: normalizedFreqCap } : {}),
+      ...(metadata.gender ? { gender: metadata.gender } : {}),
+      ...(metadata.country !== undefined ? { country: metadata.country } : {}),
+      ...(metadata.state !== undefined ? { state: metadata.state } : {}),
+      ...(metadata.province !== undefined ? { province: metadata.province } : {}),
+      ...(metadata.industry ? { industry: Array.isArray(metadata.industry) ? metadata.industry : [metadata.industry] } : {}),
+      ...(metadata.interest ? { interest: Array.isArray(metadata.interest) ? metadata.interest : [metadata.interest] } : {}),
+    };
+
     const { error: updErr } = await supabaseAdmin
       .from("addsactive")
-      .update({
-        impressions: nextImps,
-        total_cost: nextTotal,
-        cost_per_impression: newCpi,
-        bid_price: isAdAdminPost ? 0 : Math.max(Number(ad.bid_price || 0), newCpi),
-        is_bidded: isBidded,
-        is_admin_post: isAdAdminPost,
-      })
+      .update(updatePayload)
       .eq("id", adId);
     if (updErr) return { success: false, error: updErr.message };
+    await supabaseAdmin.from("adds").update(updatePayload).eq("id", adId);
     return { success: true, activatedId: adId, message: "Campaign boosted successfully." };
   }
 

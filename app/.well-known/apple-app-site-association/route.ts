@@ -14,11 +14,22 @@ export function buildAppleAppSiteAssociation() {
         {
           appID: appId,
           appIDs: [appId],
-          paths: ["NOT /api/*", "NOT /_next/*", "NOT /monitoring*", "/*", "/ad/*", "/share/*", "/logged-in*", "/"],
+          paths: [
+            "NOT /api/*",
+            "NOT /_next/*",
+            "NOT /monitoring*",
+            "NOT /auth/*",
+            "/ad/*",
+            "/share/*",
+            "/logged-in*",
+            "/",
+            "/*",
+          ],
           components: [
             { "/": "/api/*", exclude: true },
             { "/": "/_next/*", exclude: true },
             { "/": "/monitoring*", exclude: true },
+            { "/": "/auth/*", exclude: true },
             { "/": "/ad/*" },
             { "/": "/share/*" },
             { "/": "/logged-in*" },

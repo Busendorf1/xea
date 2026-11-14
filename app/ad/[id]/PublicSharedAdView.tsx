@@ -6,7 +6,7 @@ import AdCard, { type Ad as CardAd } from "@/components/ui/AdCard";
 import type { AdvertiserProfileData } from "@/components/ui/AdvertiserHoverCard";
 import type { AdReportType } from "@/components/ui/AdOptionsMenu";
 import type { Ad as DbAd, AdvertiserProfile } from "@/types/ads";
-import { buildAdAppSchemeUrl, buildAdShareUrl } from "@/lib/utils/adShare";
+import { buildAdAppSchemeUrl, buildAdShareUrl, encodeAdBlurbToken } from "@/lib/utils/adShare";
 import type { InteractionData } from "@/lib/hooks/useFeedActions";
 
 interface PublicSharedAdViewProps {
@@ -27,12 +27,13 @@ export default function PublicSharedAdView({
   const [notice, setNotice] = useState<string | null>(null);
 
   const loginReturnTo = useMemo(() => {
-    const targetId = ad?.id || adId;
-    if (unavailable || !targetId) {
+    const subject = ad ? { ...ad, id: ad.id || adId } : adId;
+    const maskedToken = subject ? encodeAdBlurbToken(subject) : "";
+    if (unavailable || !maskedToken) {
       return "/logged-in?view=feed";
     }
-    return `/logged-in?view=feed&sharedAdId=${encodeURIComponent(targetId)}`;
-  }, [ad?.id, adId, unavailable]);
+    return `/logged-in?view=feed&sharedAdId=${encodeURIComponent(maskedToken)}`;
+  }, [ad, adId, unavailable]);
 
   const signInHref = useMemo(
     () => `/auth/login?returnTo=${encodeURIComponent(loginReturnTo)}`,
@@ -95,7 +96,7 @@ export default function PublicSharedAdView({
   );
 
   const handleShare = useCallback(async (id: string) => {
-    const shareUrl = buildAdShareUrl(id);
+    const shareUrl = buildAdShareUrl(ad ? { ...ad, id: ad.id || id } : id);
     if (typeof navigator !== "undefined") {
       if (navigator.share) {
         try {
@@ -104,8 +105,8 @@ export default function PublicSharedAdView({
             url: shareUrl,
           });
           return;
-        } catch (err: any) {
-          if (err?.name === "AbortError") return;
+        } catch (err: unknown) {
+          if (err instanceof Error && err.name === "AbortError") return;
         }
       }
       if (navigator.clipboard?.writeText) {
@@ -117,12 +118,12 @@ export default function PublicSharedAdView({
       }
     }
     setNotice("Copy this link: " + shareUrl);
-  }, []);
+  }, [ad]);
 
   const appDeepLink = useMemo(() => {
-    const targetId = ad?.id || adId;
-    return targetId ? buildAdAppSchemeUrl(targetId) : "xea-auth://";
-  }, [ad?.id, adId]);
+    const subject = ad ? { ...ad, id: ad.id || adId } : adId;
+    return subject ? buildAdAppSchemeUrl(subject) : "xea-auth://";
+  }, [ad, adId]);
 
   return (
     <div
@@ -187,6 +188,14 @@ export default function PublicSharedAdView({
             )}
             <a
               href={signInHref}
+              onClick={() => {
+                try {
+                  const targetId = ad?.id || adId;
+                  if (targetId && typeof window !== "undefined") {
+                    localStorage.setItem("sharedAdId", String(targetId));
+                  }
+                } catch {}
+              }}
               style={{
                 padding: "7px 16px",
                 borderRadius: "9999px",
@@ -232,6 +241,14 @@ export default function PublicSharedAdView({
             <span>{notice}</span>
             <a
               href={signInHref}
+              onClick={() => {
+                try {
+                  const targetId = ad?.id || adId;
+                  if (targetId && typeof window !== "undefined") {
+                    localStorage.setItem("sharedAdId", String(targetId));
+                  }
+                } catch {}
+              }}
               style={{
                 fontWeight: 600,
                 color: "inherit",
