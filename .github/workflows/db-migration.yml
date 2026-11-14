@@ -25,9 +25,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: "3.1.0"
 
       - name: Check / Lint Migrations
         run: |
@@ -38,7 +38,7 @@ jobs:
         if: env.SUPABASE_DB_URL != ''
         run: |
           echo "Deploying pending migrations to production database..."
-          supabase db push --remote "$SUPABASE_DB_URL" --include-all --yes
+          supabase db push --remote="$SUPABASE_DB_URL" --include-all --yes
 
       - name: Migration Notice (If Secret Not Configured)
         if: env.SUPABASE_DB_URL == ''
