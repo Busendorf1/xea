@@ -1575,4 +1575,271 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
       else (globalThis as any).Deno = prevDeno;
     }
   }, 30_000);
+
+  it("treats mobile gender='both' as a wildcard rather than a literal filter", async () => {
+    let capturedGender: string | null | undefined = "unset";
+    const mockSb = {
+      async rpc(fnName: string, params: Record<string, any>) {
+        if (fnName === "get_ad_capacity_counts") {
+          capturedGender = params.p_gender;
+          return {
+            data: { available: true, global_users: 5_000, country_users: 2_000, strict_users: 2_000 },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+    };
+    const res = await assessAdDeliveryCapacity(mockSb, {
+      requestedImpressions: 500,
+      userFrequencyCap: 1,
+      campaignDays: 5,
+      country: "Nigeria",
+      gender: "both",
+      advertiserEmail: "brand@paayh.com",
+    });
+    expect(capturedGender).toBeNull();
+    expect(res.status).toBe("optimal");
+    expect(res.allowed).toBe(true);
+    expect(res.strictTierImpressions).toBeGreaterThanOrEqual(500);
+  });
+
+  it("enforces capacity on /api/campaigns/boost and web Edge boost when additionalImpressions=0 and freqCap or targeting narrows", async () => {
+    const { isConcreteTargetingValue } = await import("../ads/capacityEstimator");
+    expect(isConcreteTargetingValue("both")).toBe(false);
+    expect(isConcreteTargetingValue("everyone")).toBe(false);
+    expect(isConcreteTargetingValue("All Locations")).toBe(false);
+    expect(isConcreteTargetingValue("Nigeria")).toBe(true);
+    expect(isConcreteTargetingValue("Female")).toBe(true);
+
+    const prevDeno = (globalThis as any).Deno;
+    (globalThis as any).Deno = {
+      env: { get: () => "" },
+    };
+
+    try {
+      const mockDb = createCountMockSupabase(
+        { global: 20, country: 20, strict: 20 },
+        {
+          activeAdRow: {
+            id: "ad-boost-zero-add",
+            user_email: "amazon@paayh.com",
+            ad_type: "business",
+            impressions: 1000,
+            impression_count: 100,
+            cost_per_impression: 45,
+            campaign_days: 5,
+            user_frequency_cap: 10,
+            targeting_all: true,
+            admin_statement: `APPROVED:${new Date().toISOString()}`,
+            is_paused: false,
+          },
+        }
+      );
+
+      vi.resetModules();
+      vi.doMock("@/lib/authHelper", () => ({
+        getAuthenticatedEmail: vi.fn().mockResolvedValue("amazon@paayh.com"),
+        isAdminEmail: vi.fn().mockReturnValue(false),
+      }));
+      vi.doMock("@/lib/utils/dbAdmin", () => ({ default: mockDb }));
+      vi.doMock("@/lib/payment/payoutProvider", () => ({ PayoutProvider: {} }));
+      vi.doMock("@/lib/services/payoutSettlementService", () => ({
+        spendWalletBalanceAtomic: vi.fn().mockResolvedValue({ success: true, newBalance: 100_000 }),
+      }));
+      vi.doMock("@/lib/utils/cache", () => ({
+        invalidateCachedProfile: vi.fn(async () => {}),
+        invalidateCachedUserCampaigns: vi.fn(async () => {}),
+      }));
+      vi.doMock("@/lib/security/walletPinHelper", () => ({
+        verifyTransactionPin: vi.fn().mockResolvedValue({ valid: true }),
+        resolveStoredWalletPinHash: vi.fn().mockReturnValue("hashed"),
+      }));
+      vi.doMock("@/lib/redis", () => ({
+        default: { get: vi.fn(), set: vi.fn(), del: vi.fn() },
+        isRedisReady: () => false,
+      }));
+
+      const { POST: boostPost } = await import("../../app/api/campaigns/boost/route");
+      const zeroAddCappedRes = await boostPost(
+        new NextRequest("http://localhost/api/campaigns/boost", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            adId: "ad-boost-zero-add",
+            additionalImpressions: 0,
+            newCostPerImpression: 50,
+            userFrequencyCap: 1,
+            country: "Nigeria",
+            paymentMethod: "wallet",
+            pin: "1234",
+          }),
+        })
+      );
+      const zeroAddJson = await zeroAddCappedRes.json();
+      expect(zeroAddCappedRes.status).toBe(400);
+      expect(zeroAddJson.capacityCapped).toBe(true);
+      expect(zeroAddJson.maxOrderableImpressions).toBeLessThan(900);
+
+      // Web Edge Functions manage.ts & paymentActivation.ts also check capacity when addImp=0 & freqCap lowered
+      const fs = await import("fs");
+      const path = await import("path");
+      const root = path.resolve(process.cwd());
+      const ts = await import("typescript");
+      const loadTs = (filePath: string, mocks: Record<string, any>) => {
+        const src = fs.readFileSync(filePath, "utf8");
+        const js = ts.transpileModule(src, {
+          compilerOptions: {
+            module: ts.ModuleKind.CommonJS,
+            target: ts.ScriptTarget.ES2022,
+            esModuleInterop: true,
+          },
+        }).outputText;
+        const mod = { exports: {} as any };
+        const reqFn = (specifier: string) => {
+          if (specifier in mocks) return mocks[specifier];
+          throw new Error(`Unexpected import in test: ${specifier}`);
+        };
+        const fn = new Function("exports", "require", "module", js);
+        fn(mod.exports, reqFn, mod);
+        return mod.exports;
+      };
+
+      const adCapacityMod = loadTs(path.join(root, "supabase/functions/_shared/adCapacity.ts"), {});
+      const corsStub = {
+        isAdminEmail: () => false,
+        sanitizeCsvArray: (v: unknown) => v,
+        jsonResponse: (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }),
+        errorResponse: (message: string, status = 400, extra: Record<string, unknown> = {}) =>
+          new Response(JSON.stringify({ error: message, ...extra }), {
+            status,
+            headers: { "Content-Type": "application/json" },
+          }),
+      };
+      const adPricingStub = {
+        MAX_AD_DURATION_DAYS: 90,
+        MIN_AD_ATTENTIONS: 100,
+        applyProductSalesSubsidyEdge: (v: number) => v,
+        getLocalizedAdFloorRateEdge: () => 25,
+        getUserCurrencyEdge: () => "NGN",
+        isVerifiedSubscriberProductLinkEdge: async () => false,
+        resolveUserPricingCountryEdge: async () => "Nigeria",
+        validateAndComputeAdPricingEdge: async () => ({ ok: true }),
+      };
+
+      const adRow = {
+        id: "web-ad-zero-add",
+        user_email: "brand@paayh.com",
+        ad_type: "individual",
+        impressions: 1000,
+        impression_count: 100,
+        campaign_days: 5,
+        user_frequency_cap: 10,
+        cost_per_impression: 25,
+        bid_price: 25,
+        total_cost: 25000,
+        targeting_all: true,
+        is_paused: false,
+        is_bidded: false,
+      };
+      const edgeSupabase = {
+        supabaseUrl: "https://web-edge-zero-add.supabase.co",
+        async rpc(name: string) {
+          if (name === "get_ad_capacity_counts") {
+            return { data: { available: true, global_users: 20, country_users: 20, strict_users: 20 }, error: null };
+          }
+          return { data: null, error: null };
+        },
+        from(table: string) {
+          const builder: any = {
+            select() { return builder; },
+            eq() { return builder; },
+            ilike() { return builder; },
+            in() { return builder; },
+            async maybeSingle() {
+              if (table === "addsactive") return { data: { ...adRow }, error: null };
+              if (table === "users") return { data: { ad_account_status: "active", balance: 100000 }, error: null };
+              return { data: null, error: null };
+            },
+            update() { return builder; },
+            async insert(rows: any[]) { return { data: rows, error: null }; },
+            then(resolve: any) { return Promise.resolve({ count: 0, data: null, error: null }).then(resolve); },
+          };
+          return builder;
+        },
+      };
+
+      const paymentActivationMod = loadTs(
+        path.join(root, "supabase/functions/_shared/paymentActivation.ts"),
+        {
+          "./atwEngine.ts": { computeAtwTierDetails: () => ({}) },
+          "./adCapacity.ts": adCapacityMod,
+          "./cors.ts": corsStub,
+          "./adPricing.ts": adPricingStub,
+        }
+      );
+      const manageMod = loadTs(
+        path.join(root, "supabase/functions/campaigns-action/manage.ts"),
+        {
+          "../_shared/cors.ts": corsStub,
+          "../_shared/adCapacity.ts": adCapacityMod,
+          "../_shared/paymentActivation.ts": {
+            deductWalletAtomic: async () => ({ success: true, newBalance: 99000 }),
+            refundWalletAtomic: async () => ({ success: true }),
+          },
+          "../_shared/payoutProvider.ts": { initializePayment: async () => ({ success: false }) },
+          "../_shared/urlValidation.ts": { validateSafeMediaUrl: () => true, validateSafeUrl: () => true },
+          "../_shared/walletPin.ts": { verifyTransactionPinEdge: async () => ({ valid: true }) },
+          "./analytics.ts": { buildEdgeCampaignAnalyticsPayload: () => ({}), computeAdSpendMetricsEdge: () => ({}) },
+          "../_shared/adPricing.ts": adPricingStub,
+        }
+      );
+
+      const manageZeroRes: Response = await manageMod.handleBoostCampaignOrHighlight(
+        edgeSupabase,
+        "brand@paayh.com",
+        "boost_ad",
+        {
+          adId: "web-ad-zero-add",
+          additionalImpressions: 0,
+          newCostPerImpression: 30,
+          userFrequencyCap: 1,
+          country: "Nigeria",
+          paymentMethod: "wallet",
+          pin: "1234",
+        }
+      );
+      const manageZeroJson = await manageZeroRes.json();
+      expect(manageZeroRes.status).toBe(400);
+      expect(manageZeroJson.capacityCapped).toBe(true);
+
+      const payActZeroRes = await paymentActivationMod.validatePayableResource(edgeSupabase, {
+        userEmail: "brand@paayh.com",
+        payType: "boost_campaign",
+        metadata: {
+          ad_id: "web-ad-zero-add",
+          additional_impressions: 0,
+          newCostPerImpression: 30,
+          user_frequency_cap: 1,
+          country: "Nigeria",
+        },
+      });
+      expect(payActZeroRes.valid).toBe(false);
+      expect(payActZeroRes.capacityCapped).toBe(true);
+
+      // Web CampaignBoosterModal & useAdCapacityCheck support addImpressions=0 checks, optimal/unavailable UI, and Retry
+      const webBoosterSrc = fs.readFileSync(path.join(root, "components/MyAds/CampaignBoosterModal.tsx"), "utf8");
+      const webHookSrc = fs.readFileSync(path.join(root, "lib/hooks/useAdCapacityCheck.ts"), "utf8");
+      expect(webBoosterSrc).toContain("shouldCheckBoostCapacity");
+      expect(webBoosterSrc).toContain("retryBoostCapacityCheck");
+      expect(webBoosterSrc).toContain("boostCapacity.status === \"optimal\"");
+      expect(webBoosterSrc).toContain("boostCapacity.status === \"unavailable\"");
+      expect(webHookSrc).toContain("status: \"unavailable\"");
+      expect(webHookSrc).toContain("retryCapacityCheck");
+    } finally {
+      if (prevDeno === undefined) delete (globalThis as any).Deno;
+      else (globalThis as any).Deno = prevDeno;
+    }
+  });
 });

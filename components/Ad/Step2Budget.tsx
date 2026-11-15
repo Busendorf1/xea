@@ -224,21 +224,27 @@ export default function Step2Budget({
                   <span>Checking capacity...</span>
                 </div>
               )}
-              {!checkingCapacity && capacity && capacity.telemetryAvailable && (
+              {!checkingCapacity && capacity && (capacity.telemetryAvailable || capacity.status === "unavailable") && (() => {
+                const isUnavailable = !capacity.telemetryAvailable || capacity.status === "unavailable";
+                return (
                 <div
                   style={{
                     marginTop: 8,
                     padding: "8px 10px",
                     borderRadius: 8,
                     border: `1px solid ${
-                      capacity.status === "capped"
+                      isUnavailable
+                        ? "var(--card-border, rgba(148, 163, 184, 0.35))"
+                        : capacity.status === "capped"
                         ? "rgba(239, 68, 68, 0.35)"
                         : capacity.status === "broadened_needed"
                         ? "rgba(245, 158, 11, 0.35)"
                         : "rgba(16, 185, 129, 0.3)"
                     }`,
                     background:
-                      capacity.status === "capped"
+                      isUnavailable
+                        ? "rgba(148, 163, 184, 0.08)"
+                        : capacity.status === "capped"
                         ? "rgba(239, 68, 68, 0.08)"
                         : capacity.status === "broadened_needed"
                         ? "rgba(245, 158, 11, 0.08)"
@@ -251,11 +257,13 @@ export default function Step2Budget({
                     gap: 10,
                     flexWrap: "wrap",
                     fontSize: "0.78rem",
-                    color: "var(--foreground)",
+                    color: isUnavailable ? "var(--text-muted)" : "var(--foreground)",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 7, minWidth: 0 }}>
-                    {capacity.status === "capped" ? (
+                    {isUnavailable ? (
+                      <Info size={15} color="var(--text-muted, #94a3b8)" style={{ flexShrink: 0, marginTop: 2 }} />
+                    ) : capacity.status === "capped" ? (
                       <AlertCircle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
                     ) : capacity.status === "broadened_needed" ? (
                       <Info size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
@@ -287,7 +295,8 @@ export default function Step2Budget({
                     </button>
                   )}
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
 

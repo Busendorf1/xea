@@ -233,22 +233,29 @@ export default function Step4Summary({
             <span className={styles.totalAmount}>{formatCurrency(calculateTotalCost())}</span>
           </div>
 
-          {capacity && capacity.telemetryAvailable && capacity.status !== "optimal" && (
+          {capacity && ((capacity.telemetryAvailable && capacity.status !== "optimal") || capacity.status === "unavailable") && (() => {
+            const isUnavailable = !capacity.telemetryAvailable || capacity.status === "unavailable";
+            return (
             <div
               style={{
                 marginTop: 12,
                 padding: "9px 11px",
                 borderRadius: 8,
                 border: `1px solid ${
-                  capacity.status === "capped"
+                  isUnavailable
+                    ? "var(--card-border, rgba(148, 163, 184, 0.35))"
+                    : capacity.status === "capped"
                     ? "rgba(239, 68, 68, 0.35)"
                     : "rgba(245, 158, 11, 0.35)"
                 }`,
                 background:
-                  capacity.status === "capped"
+                  isUnavailable
+                    ? "rgba(148, 163, 184, 0.08)"
+                    : capacity.status === "capped"
                     ? "rgba(239, 68, 68, 0.08)"
                     : "rgba(245, 158, 11, 0.08)",
                 fontSize: "0.78rem",
+                color: isUnavailable ? "var(--text-muted)" : undefined,
                 display: "inline-flex",
                 width: "fit-content",
                 maxWidth: "100%",
@@ -258,7 +265,9 @@ export default function Step4Summary({
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
-                {capacity.status === "capped" ? (
+                {isUnavailable ? (
+                  <Info size={15} color="var(--text-muted, #94a3b8)" style={{ flexShrink: 0, marginTop: 1 }} />
+                ) : capacity.status === "capped" ? (
                   <AlertCircle size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: 1 }} />
                 ) : (
                   <Info size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
@@ -287,7 +296,8 @@ export default function Step4Summary({
                   </button>
                 )}
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 

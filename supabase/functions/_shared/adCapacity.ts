@@ -96,8 +96,13 @@ const CAPACITY_LADDER: readonly number[] = [
 const WILDCARDS = new Set([
   "",
   "all",
+  "both",
+  "everyone",
   "all countries",
+  "all gender",
   "all genders",
+  "all states",
+  "all locations",
   "all industries",
   "all interests",
   "any",
@@ -112,6 +117,18 @@ const MAX_TOKENS_PER_DIM = 10;
 
 function normalizeToken(val: unknown): string {
   return String(val ?? "").trim().toLowerCase().slice(0, MAX_TOKEN_LEN);
+}
+
+export function isConcreteTargetingValue(val: unknown): boolean {
+  if (Array.isArray(val)) {
+    return val.some((entry) => isConcreteTargetingValue(entry));
+  }
+  const raw = String(val ?? "").trim();
+  if (!raw) return false;
+  return raw
+    .split(/[;,]/)
+    .map((part) => normalizeToken(part))
+    .some((tok) => tok.length > 0 && !WILDCARDS.has(tok));
 }
 
 function escapeLikePattern(val: string): string {

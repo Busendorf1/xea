@@ -1,5 +1,5 @@
 import { computeAtwTierDetails } from "./atwEngine.ts";
-import { assessAdDeliveryCapacityEdge } from "./adCapacity.ts";
+import { assessAdDeliveryCapacityEdge, isConcreteTargetingValue } from "./adCapacity.ts";
 import { isAdminEmail } from "./cors.ts";
 import {
   applyProductSalesSubsidyEdge,
@@ -378,21 +378,45 @@ export async function validatePayableResource(
         serverCost: 0,
       };
     }
-    if (!isAdmin && addImp > 0) {
-      const rawFreqCap = meta.user_frequency_cap ?? meta.userFrequencyCap;
-      const normalizedFreqCap =
-        rawFreqCap !== undefined &&
-        rawFreqCap !== null &&
-        rawFreqCap !== "" &&
-        Number.isFinite(Number(rawFreqCap)) &&
-        Number(rawFreqCap) > 0
-          ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
-          : Number(activeAd.user_frequency_cap ?? 1);
+    const rawFreqCap = meta.user_frequency_cap ?? meta.userFrequencyCap;
+    const existingFreqCap = Math.max(1, Math.min(100, Math.floor(Number(activeAd.user_frequency_cap ?? 1))));
+    const normalizedFreqCap =
+      rawFreqCap !== undefined &&
+      rawFreqCap !== null &&
+      rawFreqCap !== "" &&
+      Number.isFinite(Number(rawFreqCap)) &&
+      Number(rawFreqCap) > 0
+        ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+        : existingFreqCap;
+    const freqCapLowered =
+      rawFreqCap !== undefined &&
+      rawFreqCap !== null &&
+      rawFreqCap !== "" &&
+      Number.isFinite(Number(rawFreqCap)) &&
+      Number(rawFreqCap) > 0 &&
+      normalizedFreqCap < existingFreqCap;
+    const hasTargetingSupplied =
+      meta.country !== undefined ||
+      meta.state !== undefined ||
+      meta.province !== undefined ||
+      meta.gender !== undefined ||
+      meta.industry !== undefined ||
+      meta.interest !== undefined;
+    const nextRemainingTarget = remaining + addImp;
+
+    if (!isAdmin && nextRemainingTarget > 0 && (addImp > 0 || freqCapLowered || hasTargetingSupplied)) {
       const capacity = await assessAdDeliveryCapacityEdge(supabaseAdmin, {
-        requestedImpressions: remaining + addImp,
+        requestedImpressions: nextRemainingTarget,
         userFrequencyCap: normalizedFreqCap,
-        campaignDays: Math.min(90, currentDays + addDays),
-        targetingAll: Boolean(activeAd.targeting_all),
+        campaignDays: Math.min(90, Math.max(1, currentDays) + addDays),
+        targetingAll:
+          Boolean(activeAd.targeting_all) &&
+          !(
+            isConcreteTargetingValue(meta.country) ||
+            isConcreteTargetingValue(meta.state) ||
+            isConcreteTargetingValue(meta.province) ||
+            isConcreteTargetingValue(meta.gender)
+          ),
         country: meta.country !== undefined ? meta.country : activeAd.country ?? null,
         state: meta.state !== undefined ? meta.state : activeAd.state ?? null,
         province: meta.province !== undefined ? meta.province : activeAd.province ?? null,

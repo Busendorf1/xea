@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, X, Users, User, UserCheck, Wallet, CreditCard, AlertCircle, Info } from "lucide-react";
+import { TrendingUp, X, Users, User, UserCheck, Wallet, CreditCard, AlertCircle, Info, CheckCircle2 } from "lucide-react";
 import { boostSchema } from "@/lib/validationSchemas";
 import { formatCurrency } from "@/lib/utils/currency";
 import LocationSelector from "../LocationSelector";
@@ -63,6 +63,32 @@ export default function CampaignBoosterModal({
     }
   }, [boosterAd]);
 
+  const isConcreteBoostVal = (val: unknown): boolean => {
+    if (Array.isArray(val)) return val.some((entry) => isConcreteBoostVal(entry));
+    const raw = String(val ?? "").trim().toLowerCase();
+    if (!raw) return false;
+    const wildcards = new Set([
+      "",
+      "all",
+      "both",
+      "everyone",
+      "all countries",
+      "all gender",
+      "all genders",
+      "all states",
+      "all locations",
+      "any",
+      "worldwide",
+      "global",
+      "none",
+      "placeholder",
+    ]);
+    return raw
+      .split(/[;,]/)
+      .map((p) => p.trim())
+      .some((tok) => tok.length > 0 && !wildcards.has(tok));
+  };
+
   const remainingBoostBase = boosterAd
     ? Math.max(0, Number(boosterAd.impressions || 0) - Number(boosterAd.impression_count || 0))
     : 0;
@@ -70,18 +96,54 @@ export default function CampaignBoosterModal({
     ? Math.max(1, Math.min(90, Math.floor(Number(boosterAd.campaign_days || 1))))
     : 1;
   const maxAdditionalBoostDays = Math.max(0, 90 - currentCampaignDays);
+  const origFreqCap = boosterAd
+    ? Math.max(1, Math.min(100, Math.floor(Number(boosterAd.user_frequency_cap || 1))))
+    : 1;
+  const normalizedBoostFreqCap = Math.max(
+    1,
+    Math.min(100, Math.floor(Number(boosterFrequencyCap) || origFreqCap))
+  );
+  const freqCapChanged = normalizedBoostFreqCap !== origFreqCap;
+  const origGenderNorm = String(boosterAd?.gender || "All").trim().toLowerCase();
+  const nextGenderNorm = String(boosterGender || "All").trim().toLowerCase();
+  const nextProvinceJoined =
+    boosterProvince || (boosterMultiLocations.length > 0 ? boosterMultiLocations.join("; ") : "");
+  const targetingChanged = Boolean(
+    boosterAd &&
+      (nextGenderNorm !== origGenderNorm ||
+        String(boosterCountry || "").trim() !== String(boosterAd.country || "").trim() ||
+        String(boosterState || "").trim() !== String(boosterAd.state || "").trim() ||
+        String(nextProvinceJoined || "").trim() !== String(boosterAd.province || "").trim())
+  );
+  const effectiveProvince = nextProvinceJoined || boosterAd?.province || null;
+  const effectiveTargetingAll =
+    Boolean(boosterAd?.targeting_all) &&
+    !(
+      isConcreteBoostVal(boosterCountry || boosterAd?.country) ||
+      isConcreteBoostVal(boosterState || boosterAd?.state) ||
+      isConcreteBoostVal(effectiveProvince) ||
+      (boosterGender !== "All" && isConcreteBoostVal(boosterGender))
+    );
+  const shouldCheckBoostCapacity = Boolean(
+    boosterAd &&
+      remainingBoostBase + addImpressions > 0 &&
+      (addImpressions > 0 || freqCapChanged || targetingChanged)
+  );
 
-  const { capacity: boostCapacity, checkingCapacity: checkingBoostCapacity } = useAdCapacityCheck({
-    enabled: Boolean(boosterAd && addImpressions > 0),
+  const {
+    capacity: boostCapacity,
+    checkingCapacity: checkingBoostCapacity,
+    retryCapacityCheck: retryBoostCapacityCheck,
+  } = useAdCapacityCheck({
+    enabled: shouldCheckBoostCapacity,
     impressions: remainingBoostBase + addImpressions,
-    campaignDays: Number(boosterAd?.campaign_days || 1) + addDays,
-    userFrequencyCap: boosterFrequencyCap,
-    targetingAll: Boolean(boosterAd?.targeting_all),
+    minImpressions: 1,
+    campaignDays: Math.min(90, currentCampaignDays + Math.max(0, addDays)),
+    userFrequencyCap: normalizedBoostFreqCap,
+    targetingAll: effectiveTargetingAll,
     country: boosterCountry || boosterAd?.country || null,
     state: boosterState || boosterAd?.state || null,
-    province:
-      boosterProvince ||
-      (boosterMultiLocations.length > 0 ? boosterMultiLocations.join("; ") : boosterAd?.province || null),
+    province: effectiveProvince,
     gender: boosterGender !== "All" ? boosterGender : null,
     ageRange: boosterAd?.age_range || null,
     employmentStatus: boosterAd?.employment_status || null,
@@ -473,28 +535,39 @@ export default function CampaignBoosterModal({
               </div>
             </div>
 
-            {addImpressions > 0 && checkingBoostCapacity && (
+            {shouldCheckBoostCapacity && checkingBoostCapacity && (
               <div style={{ marginTop: 12, fontSize: "0.78rem", color: "var(--text-secondary, #94a3b8)" }}>
                 Checking delivery capacity...
               </div>
             )}
 
-            {!checkingBoostCapacity && boostCapacity && boostCapacity.telemetryAvailable && boostCapacity.status !== "optimal" && (
+            {shouldCheckBoostCapacity && !checkingBoostCapacity && boostCapacity && (boostCapacity.telemetryAvailable || boostCapacity.status === "unavailable") && (() => {
+              const isUnavailable = !boostCapacity.telemetryAvailable || boostCapacity.status === "unavailable";
+              return (
               <div
                 style={{
                   marginTop: 12,
                   padding: "8px 10px",
                   borderRadius: 8,
                   border: `1px solid ${
-                    boostCapacity.status === "capped"
+                    isUnavailable
+                      ? "var(--border-color, rgba(148, 163, 184, 0.35))"
+                      : boostCapacity.status === "capped"
                       ? "rgba(239, 68, 68, 0.35)"
+                      : boostCapacity.status === "optimal"
+                      ? "rgba(16, 185, 129, 0.3)"
                       : "rgba(245, 158, 11, 0.35)"
                   }`,
                   background:
-                    boostCapacity.status === "capped"
+                    isUnavailable
+                      ? "rgba(148, 163, 184, 0.08)"
+                      : boostCapacity.status === "capped"
                       ? "rgba(239, 68, 68, 0.08)"
+                      : boostCapacity.status === "optimal"
+                      ? "rgba(16, 185, 129, 0.08)"
                       : "rgba(245, 158, 11, 0.08)",
                   fontSize: "0.78rem",
+                  color: isUnavailable ? "var(--text-secondary, #94a3b8)" : undefined,
                   display: "inline-flex",
                   width: "fit-content",
                   maxWidth: "100%",
@@ -505,13 +578,36 @@ export default function CampaignBoosterModal({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0 }}>
-                  {boostCapacity.status === "capped" ? (
+                  {isUnavailable ? (
+                    <Info size={14} color="var(--text-secondary, #94a3b8)" style={{ flexShrink: 0, marginTop: 2 }} />
+                  ) : boostCapacity.status === "capped" ? (
                     <AlertCircle size={14} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+                  ) : boostCapacity.status === "optimal" ? (
+                    <CheckCircle2 size={14} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} />
                   ) : (
                     <Info size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
                   )}
                   <span>{boostCapacity.message}</span>
                 </div>
+                {isUnavailable && (
+                  <button
+                    type="button"
+                    onClick={retryBoostCapacityCheck}
+                    style={{
+                      fontSize: "0.72rem",
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border-color, rgba(255,255,255,0.2))",
+                      background: "transparent",
+                      color: "inherit",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Retry
+                  </button>
+                )}
                 {boostCapacity.status === "capped" &&
                   boostCapacity.maxOrderableImpressions - remainingBoostBase > 0 && (
                     <button
@@ -541,7 +637,8 @@ export default function CampaignBoosterModal({
                     </button>
                   )}
               </div>
-            )}
+              );
+            })()}
 
             <button
               type="button"
@@ -549,8 +646,8 @@ export default function CampaignBoosterModal({
               onClick={handleInitiateBoost}
               disabled={
                 boosting ||
-                (addImpressions > 0 && checkingBoostCapacity) ||
-                Boolean(boostCapacity?.telemetryAvailable && !boostCapacity.allowed)
+                (shouldCheckBoostCapacity && checkingBoostCapacity) ||
+                Boolean(shouldCheckBoostCapacity && boostCapacity?.telemetryAvailable && !boostCapacity.allowed)
               }
             >
               {boosting ? "Processing Booster..." : "Submit"}

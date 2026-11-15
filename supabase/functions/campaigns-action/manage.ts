@@ -1,5 +1,5 @@
 import { errorResponse, isAdminEmail, jsonResponse, sanitizeCsvArray } from "../_shared/cors.ts";
-import { assessAdDeliveryCapacityEdge } from "../_shared/adCapacity.ts";
+import { assessAdDeliveryCapacityEdge, isConcreteTargetingValue } from "../_shared/adCapacity.ts";
 import { deductWalletAtomic, refundWalletAtomic } from "../_shared/paymentActivation.ts";
 import { initializePayment } from "../_shared/payoutProvider.ts";
 import { validateSafeMediaUrl, validateSafeUrl } from "../_shared/urlValidation.ts";
@@ -429,13 +429,31 @@ export async function handleBoostCampaignOrHighlight(
         ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
         : undefined;
 
-    if (!isAdmin && addImpNum > 0) {
-      const nextRemainingTarget = remainingImp + addImpNum;
+    const existingFreqCap = Math.max(1, Math.min(100, Math.floor(Number(item.user_frequency_cap ?? 1))));
+    const freqCapLowered =
+      normalizedBoostFreqCap !== undefined && normalizedBoostFreqCap < existingFreqCap;
+    const hasTargetingSupplied =
+      body?.country !== undefined ||
+      body?.state !== undefined ||
+      body?.province !== undefined ||
+      body?.gender !== undefined ||
+      body?.industry !== undefined ||
+      body?.interest !== undefined;
+    const nextRemainingTarget = remainingImp + addImpNum;
+
+    if (!isAdmin && nextRemainingTarget > 0 && (addImpNum > 0 || freqCapLowered || hasTargetingSupplied)) {
       const capacity = await assessAdDeliveryCapacityEdge(supabase, {
         requestedImpressions: nextRemainingTarget,
-        userFrequencyCap: normalizedBoostFreqCap ?? Number(item.user_frequency_cap ?? 1),
-        campaignDays: Number(item.campaign_days || 1) + addDays,
-        targetingAll: Boolean(item.targeting_all),
+        userFrequencyCap: normalizedBoostFreqCap ?? existingFreqCap,
+        campaignDays: Math.min(MAX_AD_DURATION_DAYS, Math.max(1, currentDays) + addDays),
+        targetingAll:
+          Boolean(item.targeting_all) &&
+          !(
+            isConcreteTargetingValue(body?.country) ||
+            isConcreteTargetingValue(body?.state) ||
+            isConcreteTargetingValue(body?.province) ||
+            isConcreteTargetingValue(body?.gender)
+          ),
         country: (body?.country !== undefined ? body.country : item.country) as string | string[] | null,
         state: (body?.state !== undefined ? body.state : item.state) as string | string[] | null,
         province: (body?.province !== undefined ? body.province : item.province) as string | string[] | null,

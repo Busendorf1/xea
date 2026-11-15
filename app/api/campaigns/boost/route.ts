@@ -14,7 +14,7 @@ import {
   MIN_AD_ATTENTIONS,
 } from "../../../../lib/utils/currency";
 import { isVerifiedSubscriberProductLink } from "../../../../lib/ads/pricingEnforcement";
-import { assessAdDeliveryCapacity } from "../../../../lib/ads/capacityEstimator";
+import { assessAdDeliveryCapacity, isConcreteTargetingValue } from "../../../../lib/ads/capacityEstimator";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -246,14 +246,32 @@ export async function POST(req: NextRequest) {
         ? Math.max(1, Math.min(100, Math.floor(Number(userFrequencyCap))))
         : undefined;
 
-    if (!isHighlight && addImpressionsNum > 0) {
-      const nextRemainingTarget =
-        Math.max(0, Number(ad.impressions || 0) - Number(ad.impression_count || 0)) + addImpressionsNum;
+    const existingFreqCap = Math.max(1, Math.min(100, Math.floor(Number(ad.user_frequency_cap || 1))));
+    const freqCapLowered =
+      normalizedUserFrequencyCap !== undefined && normalizedUserFrequencyCap < existingFreqCap;
+    const hasTargetingSupplied =
+      country !== undefined ||
+      state !== undefined ||
+      province !== undefined ||
+      gender !== undefined ||
+      industry !== undefined ||
+      interest !== undefined;
+    const nextRemainingTarget =
+      Math.max(0, Number(ad.impressions || 0) - Number(ad.impression_count || 0)) + addImpressionsNum;
+
+    if (!isHighlight && nextRemainingTarget > 0 && (addImpressionsNum > 0 || freqCapLowered || hasTargetingSupplied)) {
       const capacity = await assessAdDeliveryCapacity(supabaseAdmin, {
         requestedImpressions: nextRemainingTarget,
-        userFrequencyCap: normalizedUserFrequencyCap ?? Number(ad.user_frequency_cap || 1),
-        campaignDays: Number(ad.campaign_days || 1) + addDaysNum,
-        targetingAll: Boolean(ad.targeting_all),
+        userFrequencyCap: normalizedUserFrequencyCap ?? existingFreqCap,
+        campaignDays: Math.min(90, Math.max(1, Number(ad.campaign_days || 1)) + addDaysNum),
+        targetingAll:
+          Boolean(ad.targeting_all) &&
+          !(
+            isConcreteTargetingValue(country) ||
+            isConcreteTargetingValue(state) ||
+            isConcreteTargetingValue(province) ||
+            isConcreteTargetingValue(gender)
+          ),
         country: country !== undefined ? country : ad.country,
         state: state !== undefined ? state : ad.state,
         province: province !== undefined ? province : ad.province,
