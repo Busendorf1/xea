@@ -220,7 +220,7 @@ export async function handleSubmitAd(
     employment_status: String(body?.employment_status ?? body?.employmentStatus ?? body?.employment ?? "all"),
     user_frequency_cap: Math.max(
       1,
-      Math.min(100, Math.floor(Number(body?.user_frequency_cap ?? body?.userFrequencyCap ?? body?.frequency_cap ?? 1))),
+      Math.min(5_000_000, Math.floor(Number(body?.user_frequency_cap ?? body?.userFrequencyCap ?? body?.frequency_cap ?? 1))),
     ),
     impressions,
     campaign_days: campaignDays,
@@ -426,10 +426,10 @@ export async function handleBoostCampaignOrHighlight(
       rawFreqCap !== "" &&
       Number.isFinite(Number(rawFreqCap)) &&
       Number(rawFreqCap) > 0
-        ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+        ? Math.max(1, Math.min(5_000_000, Math.floor(Number(rawFreqCap))))
         : undefined;
 
-    const existingFreqCap = Math.max(1, Math.min(100, Math.floor(Number(item.user_frequency_cap ?? 1))));
+    const existingFreqCap = Math.max(1, Math.min(5_000_000, Math.floor(Number(item.user_frequency_cap ?? 1))));
     const freqCapLowered =
       normalizedBoostFreqCap !== undefined && normalizedBoostFreqCap < existingFreqCap;
     const hasTargetingSupplied =

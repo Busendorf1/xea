@@ -10,6 +10,17 @@ import CustomSelect from "@/components/ui/CustomSelect";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
 import { isWalletPinErrorResponse, formatWalletPinErrorMessage } from "@/components/ui/WalletPinField";
 import { useAdCapacityCheck } from "@/lib/hooks/useAdCapacityCheck";
+import {
+  FREQUENCY_CAP_PRESETS,
+  FREQUENCY_CAP_SLIDER_MAX_POS,
+  MAX_FREQUENCY_CAP,
+  MIN_FREQUENCY_CAP,
+  SLIDER_MAX_FREQUENCY_CAP,
+  clampFrequencyCap,
+  computeAudienceDailyViewSummary,
+  freqCapToSliderPos,
+  sliderPosToFreqCap,
+} from "@/lib/ads/frequencyCap";
 import { Ad } from "./types";
 import styles from "./page.module.css";
 
@@ -34,6 +45,7 @@ export default function CampaignBoosterModal({
   const [addDays, setAddDays] = useState(0);
   const [newBidPrice, setNewBidPrice] = useState(25);
   const [boosterFrequencyCap, setBoosterFrequencyCap] = useState(1);
+  const [boosterFreqInputText, setBoosterFreqInputText] = useState("1");
   const [boosterGender, setBoosterGender] = useState("All");
   const [boosterCountry, setBoosterCountry] = useState("");
   const [boosterState, setBoosterState] = useState("");
@@ -48,7 +60,9 @@ export default function CampaignBoosterModal({
   useEffect(() => {
     if (boosterAd) {
       setNewBidPrice(Number(boosterAd.cost_per_impression || 25));
-      setBoosterFrequencyCap(Number(boosterAd.user_frequency_cap || 1));
+      const initialCap = clampFrequencyCap(boosterAd.user_frequency_cap || 1, 1);
+      setBoosterFrequencyCap(initialCap);
+      setBoosterFreqInputText(String(initialCap));
       setBoosterGender(boosterAd.gender || "All");
       setBoosterCountry(boosterAd.country || "");
       setBoosterState(boosterAd.state || "");
@@ -97,12 +111,20 @@ export default function CampaignBoosterModal({
     : 1;
   const maxAdditionalBoostDays = Math.max(0, 90 - currentCampaignDays);
   const origFreqCap = boosterAd
-    ? Math.max(1, Math.min(100, Math.floor(Number(boosterAd.user_frequency_cap || 1))))
+    ? clampFrequencyCap(boosterAd.user_frequency_cap || 1, 1)
     : 1;
-  const normalizedBoostFreqCap = Math.max(
-    1,
-    Math.min(100, Math.floor(Number(boosterFrequencyCap) || origFreqCap))
+  const normalizedBoostFreqCap = clampFrequencyCap(boosterFrequencyCap, origFreqCap);
+  const effectiveBoostDays = Math.min(90, currentCampaignDays + Math.max(0, addDays));
+  const boostDailySummary = computeAudienceDailyViewSummary(
+    remainingBoostBase + addImpressions,
+    effectiveBoostDays,
+    normalizedBoostFreqCap
   );
+  const handleSetBoosterFreqCap = (nextCap: number) => {
+    const normalized = clampFrequencyCap(nextCap, 1);
+    setBoosterFrequencyCap(normalized);
+    setBoosterFreqInputText(String(normalized));
+  };
   const freqCapChanged = normalizedBoostFreqCap !== origFreqCap;
   const origGenderNorm = String(boosterAd?.gender || "All").trim().toLowerCase();
   const nextGenderNorm = String(boosterGender || "All").trim().toLowerCase();
@@ -452,19 +474,86 @@ export default function CampaignBoosterModal({
               <div className={styles.boosterGroup}>
                 <div className={styles.boosterLabelRow}>
                   <label className={styles.boosterLabel}>Frequency per user</label>
-                  <span className={styles.boosterFreqValue}>{boosterFrequencyCap} Attentions/User/Day</span>
+                  <span className={styles.boosterFreqValue}>
+                    {normalizedBoostFreqCap.toLocaleString()}x / user
+                  </span>
                 </div>
                 <input
                   type="range"
-                  min={1}
-                  max={100}
+                  min={0}
+                  max={FREQUENCY_CAP_SLIDER_MAX_POS}
                   step={1}
-                  value={boosterFrequencyCap}
-                  onChange={(e) => setBoosterFrequencyCap(Number(e.target.value))}
+                  value={freqCapToSliderPos(normalizedBoostFreqCap)}
+                  onChange={(e) => handleSetBoosterFreqCap(sliderPosToFreqCap(Number(e.target.value)))}
                   className={styles.boosterSliderPurple}
+                  aria-label="Boost frequency cap slider"
                 />
+                <div className={styles.boosterFreqPresets}>
+                  {FREQUENCY_CAP_PRESETS.map((preset) => {
+                    const active = normalizedBoostFreqCap === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleSetBoosterFreqCap(preset)}
+                        className={`${styles.boosterFreqPresetBtn} ${active ? styles.boosterFreqPresetBtnActive : ""}`}
+                      >
+                        {preset.toLocaleString()}x
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className={styles.boosterFreqInputRow}>
+                  <span className={styles.boosterFreqInputLabel}>
+                    Manual cap (up to {MAX_FREQUENCY_CAP.toLocaleString()}x)
+                  </span>
+                  <input
+                    type="number"
+                    min={MIN_FREQUENCY_CAP}
+                    max={MAX_FREQUENCY_CAP}
+                    value={boosterFreqInputText}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      setBoosterFreqInputText(raw);
+                      if (!raw) return;
+                      const parsed = parseInt(raw, 10);
+                      if (Number.isFinite(parsed) && parsed >= MIN_FREQUENCY_CAP) {
+                        setBoosterFrequencyCap(clampFrequencyCap(parsed, origFreqCap));
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseInt(boosterFreqInputText, 10);
+                      handleSetBoosterFreqCap(Number.isFinite(parsed) ? parsed : normalizedBoostFreqCap);
+                    }}
+                    className={styles.boosterFreqInput}
+                    placeholder="e.g. 25"
+                  />
+                </div>
+                <div className={styles.boosterDailyViewCard}>
+                  <div className={styles.boosterDailyViewTitle}>
+                    Approximate Daily View ({effectiveBoostDays}d · {boostDailySummary.targetAttentions.toLocaleString()} left)
+                  </div>
+                  <div className={styles.boosterDailyViewRow}>
+                    <span className={styles.boosterDailyViewKey}>Est. daily delivery</span>
+                    <span className={styles.boosterDailyViewVal}>
+                      ~{boostDailySummary.approxDailyAttentions.toLocaleString()} attentions/day
+                    </span>
+                  </div>
+                  <div className={styles.boosterDailyViewRow}>
+                    <span className={styles.boosterDailyViewKey}>Max per viewer / day</span>
+                    <span className={styles.boosterDailyViewVal}>
+                      ~{boostDailySummary.maxViewsPerViewerPerDay.toLocaleString()} views/day
+                    </span>
+                  </div>
+                  <div className={styles.boosterDailyViewRow}>
+                    <span className={styles.boosterDailyViewKey}>Min. unique audience</span>
+                    <span className={styles.boosterDailyViewVal}>
+                      ~{boostDailySummary.minUniqueAudience.toLocaleString()} viewers
+                    </span>
+                  </div>
+                </div>
                 <span className={styles.boosterSliderHint}>
-                  Limit max attentions per individual user (1 to 100 attentions/day).
+                  Slide 1x to {SLIDER_MAX_FREQUENCY_CAP.toLocaleString()}x or enter higher manually (up to {MAX_FREQUENCY_CAP.toLocaleString()}x).
                 </span>
               </div>
 

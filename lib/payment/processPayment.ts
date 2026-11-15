@@ -1,6 +1,7 @@
 // lib/payment/processPayment.ts
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
+import { clampFrequencyCap } from "../ads/frequencyCap";
 
 async function sendIdempotentNotification(userEmail: string, title: string, message: string) {
   try {
@@ -349,7 +350,7 @@ export async function processSuccessfulPayment(
           updatePayload.campaign_days = Math.min(90, Number(ad.campaign_days || 1) + Number(additional_days));
         }
         if (user_frequency_cap !== undefined && Number.isFinite(Number(user_frequency_cap)) && Number(user_frequency_cap) > 0) {
-          updatePayload.user_frequency_cap = Math.max(1, Math.min(100, Math.floor(Number(user_frequency_cap))));
+          updatePayload.user_frequency_cap = clampFrequencyCap(user_frequency_cap, 1);
         }
         if (gender) updatePayload.gender = gender;
         if (country !== undefined) updatePayload.country = country;

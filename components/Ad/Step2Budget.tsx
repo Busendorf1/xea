@@ -1,10 +1,21 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Info, AlertCircle } from "lucide-react";
 import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
 import type { AdCapacityAssessment } from "@/lib/hooks/useAdCapacityCheck";
+import {
+  FREQUENCY_CAP_PRESETS,
+  FREQUENCY_CAP_SLIDER_MAX_POS,
+  MAX_FREQUENCY_CAP,
+  MIN_FREQUENCY_CAP,
+  SLIDER_MAX_FREQUENCY_CAP,
+  clampFrequencyCap,
+  computeAudienceDailyViewSummary,
+  freqCapToSliderPos,
+  sliderPosToFreqCap,
+} from "@/lib/ads/frequencyCap";
 import { AdFormSelections } from "./types";
 import styles from "./page.module.css";
 
@@ -30,6 +41,33 @@ export default function Step2Budget({
   capacity,
   checkingCapacity,
 }: Step2BudgetProps) {
+  const [freqInputText, setFreqInputText] = useState<string>(
+    String(clampFrequencyCap(formSelections.userFrequencyCap, 1))
+  );
+
+  useEffect(() => {
+    const normalized = clampFrequencyCap(formSelections.userFrequencyCap, 1);
+    setFreqInputText((prev) => {
+      const parsed = parseInt(prev, 10);
+      return Number.isFinite(parsed) && parsed === normalized ? prev : String(normalized);
+    });
+  }, [formSelections.userFrequencyCap]);
+
+  const dailySummary = computeAudienceDailyViewSummary(
+    formSelections.impressions,
+    formSelections.campaignDays,
+    formSelections.userFrequencyCap
+  );
+
+  const handleSetFrequencyCap = (nextCap: number) => {
+    const normalized = clampFrequencyCap(nextCap, 1);
+    setFreqInputText(String(normalized));
+    setFormSelections((prev) => ({
+      ...prev,
+      userFrequencyCap: normalized,
+    }));
+  };
+
   return (
     <>
       {/* Audience Demographics */}
@@ -421,26 +459,105 @@ export default function Step2Budget({
           </div>
 
           <div className={styles.formGroup}>
-            <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`}>
-              Frequency Cap
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={formSelections.userFrequencyCap}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                setFormSelections((prev) => ({
-                  ...prev,
-                  userFrequencyCap: isNaN(val) || val < 1 ? 1 : val,
-                }));
-              }}
-              className={styles.inputBox}
-              placeholder="e.g. 3"
-            />
+            <div className={styles.freqHeaderRow}>
+              <label className={`${styles.labelBlock} ${styles.fieldLabelBold}`} style={{ marginBottom: 0 }}>
+                Frequency Cap
+              </label>
+              <span className={styles.freqValueBadge}>
+                {formSelections.userFrequencyCap.toLocaleString()}x / user
+              </span>
+            </div>
+
+            <div className={styles.impressionStack}>
+              <input
+                type="range"
+                min={0}
+                max={FREQUENCY_CAP_SLIDER_MAX_POS}
+                step={1}
+                value={freqCapToSliderPos(formSelections.userFrequencyCap)}
+                onChange={(e) => handleSetFrequencyCap(sliderPosToFreqCap(Number(e.target.value)))}
+                className={styles.impressionSliderFull}
+                aria-label="Frequency cap slider"
+              />
+
+              <div className={styles.freqPresetRow}>
+                {FREQUENCY_CAP_PRESETS.map((preset) => {
+                  const active = formSelections.userFrequencyCap === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handleSetFrequencyCap(preset)}
+                      className={`${styles.freqPresetBtn} ${active ? styles.freqPresetBtnActive : ""}`}
+                    >
+                      {preset.toLocaleString()}x
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className={styles.impressionInputRow}>
+                <span className={styles.impressionInputLabel}>
+                  Or enter manually (up to {MAX_FREQUENCY_CAP.toLocaleString()}x)
+                </span>
+                <input
+                  type="number"
+                  min={MIN_FREQUENCY_CAP}
+                  max={MAX_FREQUENCY_CAP}
+                  value={freqInputText}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    setFreqInputText(raw);
+                    if (!raw) return;
+                    const parsed = parseInt(raw, 10);
+                    if (Number.isFinite(parsed) && parsed >= MIN_FREQUENCY_CAP) {
+                      setFormSelections((prev) => ({
+                        ...prev,
+                        userFrequencyCap: clampFrequencyCap(parsed, 1),
+                      }));
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = parseInt(freqInputText, 10);
+                    handleSetFrequencyCap(Number.isFinite(parsed) ? parsed : formSelections.userFrequencyCap);
+                  }}
+                  className={styles.impressionInput}
+                  placeholder="e.g. 25"
+                />
+              </div>
+            </div>
+
+            <div className={styles.freqSummaryPanel}>
+              <div className={styles.freqSummaryHeader}>
+                <span className={styles.freqSummaryHeading}>Approximate Daily View</span>
+                <span className={styles.freqSummaryContext}>
+                  {dailySummary.targetAttentions.toLocaleString()} attentions · {dailySummary.campaignDays}d · {dailySummary.frequencyCap.toLocaleString()}x cap
+                </span>
+              </div>
+              <div className={styles.freqSummaryGrid}>
+                <div className={styles.freqSummaryItem}>
+                  <span className={styles.freqSummaryLabel}>Est. daily delivery</span>
+                  <span className={styles.freqSummaryValue}>
+                    ~{dailySummary.approxDailyAttentions.toLocaleString()}/day
+                  </span>
+                </div>
+                <div className={styles.freqSummaryItem}>
+                  <span className={styles.freqSummaryLabel}>Max per viewer</span>
+                  <span className={styles.freqSummaryValue}>
+                    ~{dailySummary.maxViewsPerViewerPerDay.toLocaleString()}/day
+                  </span>
+                </div>
+                <div className={styles.freqSummaryItem}>
+                  <span className={styles.freqSummaryLabel}>Min. unique audience</span>
+                  <span className={styles.freqSummaryValue}>
+                    ~{dailySummary.minUniqueAudience.toLocaleString()} viewers
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <p className={styles.hintText}>
-              Max attentions per user (strictly enforced &amp; evenly spaced across {formSelections.campaignDays}d; auto-broadens reach at 80% duration if needed).
+              Slide from 1x to {SLIDER_MAX_FREQUENCY_CAP.toLocaleString()}x or type higher manually; spaced across {formSelections.campaignDays}d (auto-broadens at 80% duration if needed).
             </p>
           </div>
         </div>

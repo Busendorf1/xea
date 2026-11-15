@@ -3362,3 +3362,100 @@
   background: #ffffff;
   border-top-color: #e6e5e1;
 }
+
+/* ── Booster Frequency Cap Presets, Manual Input & Daily View ── */
+.boosterFreqPresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+  margin-top: 0.2rem;
+}
+
+.boosterFreqPresetBtn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.boosterFreqPresetBtn:hover {
+  border-color: var(--card-border-hover, var(--primary));
+  color: var(--foreground);
+}
+
+.boosterFreqPresetBtnActive {
+  border-color: #818cf8;
+  color: var(--foreground);
+  background: rgba(129, 140, 248, 0.12);
+  font-weight: 600;
+}
+
+.boosterFreqInputRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.boosterFreqInputLabel {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.boosterFreqInput {
+  width: 132px;
+  text-align: right;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--input-bg, var(--card-bg));
+  color: var(--foreground);
+}
+
+.boosterDailyViewCard {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--sidebar-bg, var(--card-bg));
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.boosterDailyViewTitle {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.1rem;
+}
+
+.boosterDailyViewRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+}
+
+.boosterDailyViewKey {
+  color: var(--text-muted);
+}
+
+.boosterDailyViewVal {
+  color: var(--foreground);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

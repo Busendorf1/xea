@@ -63,10 +63,15 @@ const CAPACITY_LADDER: readonly number[] = [
   1_500,
   1_750,
   2_000,
+  2_250,
   2_500,
+  2_750,
   3_000,
+  3_250,
   3_500,
+  3_750,
   4_000,
+  4_500,
   5_000,
   6_000,
   7_500,
@@ -238,6 +243,7 @@ interface CachedEdgeCounts {
 }
 
 const EDGE_L1_TTL_MS = 60_000;
+const EDGE_L1_SMALL_POOL_TTL_MS = 15_000;
 const EDGE_L1_MAX_ENTRIES = 2_000;
 const edgeCountsCacheByClient = new WeakMap<
   object,
@@ -298,7 +304,8 @@ function setEdgeL1Counts(client: unknown, key: string, value: CachedEdgeCounts):
     const oldest = map.keys().next().value;
     if (oldest !== undefined) map.delete(oldest);
   }
-  map.set(key, { expiresAt: Date.now() + EDGE_L1_TTL_MS, value });
+  const ttlMs = value.globalCount < 1_000 ? EDGE_L1_SMALL_POOL_TTL_MS : EDGE_L1_TTL_MS;
+  map.set(key, { expiresAt: Date.now() + ttlMs, value });
 }
 
 export async function assessAdDeliveryCapacityEdge(
@@ -306,7 +313,7 @@ export async function assessAdDeliveryCapacityEdge(
   input: EdgeAdCapacityInput
 ): Promise<EdgeAdCapacityAssessment> {
   const requested = Math.max(0, Math.floor(Number(input.requestedImpressions) || 0));
-  const baseCap = Math.max(1, Math.min(100, Math.floor(Number(input.userFrequencyCap) || 1)));
+  const baseCap = Math.max(1, Math.min(5_000_000, Math.floor(Number(input.userFrequencyCap) || 1)));
   const days = Math.max(1, Math.min(90, Math.floor(Number(input.campaignDays) || 1)));
   const isTargetingAll = Boolean(input.targetingAll);
 
@@ -501,13 +508,19 @@ export async function assessAdDeliveryCapacityEdge(
     strictUsers = Math.floor(strictUsers * ageFactor * empFactor * multiLocFactor);
   }
 
-  const strictCapPerUser = Math.min(baseCap, days * 6);
-  const stage1CapPerUser = Math.min(Math.min(102, baseCap + 1), Math.max(days, 3) * 6);
-  const stage2CapPerUser = Math.min(Math.min(102, baseCap + 2), Math.max(days, 7) * 6);
+  const strictCapPerUser = baseCap <= 100 ? Math.min(baseCap, days * 6) : baseCap;
+  const stage1CapPerUser =
+    baseCap <= 100
+      ? Math.min(Math.min(102, baseCap + 1), Math.max(days, 3) * 6)
+      : Math.min(5_000_000, baseCap + 1);
+  const stage2CapPerUser =
+    baseCap <= 100
+      ? Math.min(Math.min(102, baseCap + 2), Math.max(days, 7) * 6)
+      : Math.min(5_000_000, baseCap + 2);
 
-  const strictRaw = Math.floor(strictUsers * strictCapPerUser * 0.95);
-  const stage1Raw = Math.floor(countryUsers * stage1CapPerUser * 0.95);
-  const stage2Raw = Math.floor(globalUsers * stage2CapPerUser * 0.95);
+  const strictRaw = Math.floor(strictUsers * strictCapPerUser);
+  const stage1Raw = Math.floor(countryUsers * stage1CapPerUser);
+  const stage2Raw = Math.floor(globalUsers * stage2CapPerUser);
 
   const reserveFactor = await getEdgeReserveFactor();
   const strictTier = quantizeDeliverableCapacity(strictRaw, reserveFactor);

@@ -97,7 +97,7 @@ export const adAudienceSchema = z.object({
   userFrequencyCap: z
     .number()
     .min(1, "Minimum 1 attention per user")
-    .max(100, "Maximum 100 attentions per user"),
+    .max(5_000_000, "Maximum 5,000,000 attentions per user"),
 
   minAge: z.number().min(18, "Minimum age is 18").max(100).optional(),
   maxAge: z.number().min(18).max(100, "Maximum age is 100").optional(),

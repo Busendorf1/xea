@@ -233,7 +233,7 @@ export function computeCampaignBroadeningPlanEdge(
   const isUnpaidAdmin = Boolean(ad.is_admin_post) && cpi <= 0;
   const baseUserCap = isUnpaidAdmin
     ? 10
-    : Math.max(1, Math.min(100, Number(ad.user_frequency_cap ?? ad.frequency_cap ?? 1)));
+    : Math.max(1, Math.min(5_000_000, Number(ad.user_frequency_cap ?? ad.frequency_cap ?? 1)));
 
   const isUnpaidPlatform = Boolean(
     isUnpaidAdmin ||
@@ -299,6 +299,8 @@ export function computeCampaignBroadeningPlanEdge(
   let minSpacingMs: number;
   if (effectiveUserCap <= 1) {
     minSpacingMs = durationMs * 2;
+  } else if (baseDailyCap > 12) {
+    minSpacingMs = 0;
   } else if (broadeningStage >= 2) {
     minSpacingMs = Math.max(90 * 60_000, Math.min(4 * 3_600_000, Math.floor(durationMs / (effectiveUserCap * 2))));
   } else if (broadeningStage === 1) {

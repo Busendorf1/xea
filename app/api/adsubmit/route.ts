@@ -124,6 +124,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const legacyFreqCap = Math.max(
+      1,
+      Math.min(5_000_000, Math.floor(Number(body?.userFrequencyCap ?? body?.user_frequency_cap ?? 1) || 1))
+    );
+    const legacyCampaignDays = Math.max(
+      1,
+      Math.min(90, Math.floor(Number(body?.campaignDays ?? body?.campaign_days ?? 1) || 1))
+    );
+    const legacyTargetingAll = Boolean(body?.targetingAll ?? body?.targeting_all);
+
     const { data, error } = await supabaseAdmin.from("adds").insert([
       {
         user_email: emailLower,
@@ -135,6 +145,9 @@ export async function POST(request: NextRequest) {
         personality,
         age_range: ageRange,
         impressions: pricing.impressionsCount,
+        user_frequency_cap: legacyFreqCap,
+        campaign_days: legacyCampaignDays,
+        targeting_all: legacyTargetingAll,
         country,
         state,
         province,

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import redisConnection, { isRedisReady } from "../redis";
+import { clampFrequencyCap, MAX_FREQUENCY_CAP } from "./frequencyCap";
 
 export interface AdCapacityInput {
   requestedImpressions: number;
@@ -65,10 +66,15 @@ export const CAPACITY_LADDER: readonly number[] = [
   1_500,
   1_750,
   2_000,
+  2_250,
   2_500,
+  2_750,
   3_000,
+  3_250,
   3_500,
+  3_750,
   4_000,
+  4_500,
   5_000,
   6_000,
   7_500,
@@ -327,7 +333,7 @@ export async function assessAdDeliveryCapacity(
   input: AdCapacityInput
 ): Promise<AdCapacityAssessment> {
   const requested = Math.max(0, Math.floor(Number(input.requestedImpressions) || 0));
-  const baseCap = Math.max(1, Math.min(100, Math.floor(Number(input.userFrequencyCap) || 1)));
+  const baseCap = clampFrequencyCap(input.userFrequencyCap, 1);
   const days = Math.max(1, Math.min(90, Math.floor(Number(input.campaignDays) || 1)));
   const isTargetingAll = Boolean(input.targetingAll);
 
@@ -472,7 +478,8 @@ export async function assessAdDeliveryCapacity(
         setL1CachedCounts(supabaseAdmin, filterCacheHash, counts);
         if (canUseRedis) {
           try {
-            await redisConnection.set(redisCacheKey, JSON.stringify(counts), "EX", L2_REDIS_TTL_SECONDS);
+            const ttl = counts.globalCount < 1000 ? 15 : L2_REDIS_TTL_SECONDS;
+            await redisConnection.set(redisCacheKey, JSON.stringify(counts), "EX", ttl);
           } catch {
             // Non-fatal
           }
@@ -556,7 +563,8 @@ export async function assessAdDeliveryCapacity(
     setL1CachedCounts(supabaseAdmin, filterCacheHash, counts);
     if (canUseRedis) {
       try {
-        await redisConnection.set(redisCacheKey, JSON.stringify(counts), "EX", L2_REDIS_TTL_SECONDS);
+        const ttl = counts.globalCount < 1000 ? 15 : L2_REDIS_TTL_SECONDS;
+        await redisConnection.set(redisCacheKey, JSON.stringify(counts), "EX", ttl);
       } catch {
         // Non-fatal
       }
@@ -578,15 +586,22 @@ export async function assessAdDeliveryCapacity(
   }
 
   // Compute stage deliverable volumes honoring pacing and Rollover cap expansion (+1 Stage 1, +2 Stage 2).
-  // Use a light 0.95 delivery headroom here so safety-buffering via reserveFactor ([0.80..0.90])
-  // does not double-penalize orders like 20,000 users × 5 freq cap = 100,000 attentions.
-  const strictCapPerUser = Math.min(baseCap, days * 6);
-  const stage1CapPerUser = Math.min(Math.min(102, baseCap + 1), Math.max(days, 3) * 6);
-  const stage2CapPerUser = Math.min(Math.min(102, baseCap + 2), Math.max(days, 7) * 6);
+  // Safety and privacy buffering is handled in one place via reserveFactor ([0.80..0.90]) inside
+  // quantizeDeliverableCapacity; avoid an extra 0.95 multiplier here so high-frequency orders on small
+  // active pools (e.g. 10 users × 550x for 3,750 attentions) are not double-discounted.
+  const strictCapPerUser = baseCap <= 100 ? Math.min(baseCap, days * 6) : baseCap;
+  const stage1CapPerUser =
+    baseCap <= 100
+      ? Math.min(Math.min(102, baseCap + 1), Math.max(days, 3) * 6)
+      : Math.min(MAX_FREQUENCY_CAP, baseCap + 1);
+  const stage2CapPerUser =
+    baseCap <= 100
+      ? Math.min(Math.min(102, baseCap + 2), Math.max(days, 7) * 6)
+      : Math.min(MAX_FREQUENCY_CAP, baseCap + 2);
 
-  const strictRaw = Math.floor(strictUsers * strictCapPerUser * 0.95);
-  const stage1Raw = Math.floor(countryUsers * stage1CapPerUser * 0.95);
-  const stage2Raw = Math.floor(globalUsers * stage2CapPerUser * 0.95);
+  const strictRaw = Math.floor(strictUsers * strictCapPerUser);
+  const stage1Raw = Math.floor(countryUsers * stage1CapPerUser);
+  const stage2Raw = Math.floor(globalUsers * stage2CapPerUser);
 
   const broadenedRaw = Math.max(strictRaw, stage1Raw, stage2Raw);
 

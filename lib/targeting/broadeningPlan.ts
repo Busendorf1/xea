@@ -73,7 +73,7 @@ export function computeCampaignBroadeningPlan(
   const isUnpaidAdmin = Boolean(ad.is_admin_post) && Number(ad.cost_per_impression || 0) <= 0;
   const baseUserCap = isUnpaidAdmin
     ? 10
-    : Math.max(1, Math.min(100, Number(ad.user_frequency_cap) || 1));
+    : Math.max(1, Math.min(5_000_000, Number(ad.user_frequency_cap) || 1));
 
   let broadeningStage: BroadeningStage = 0;
   let capExpansion = 0;
@@ -90,7 +90,7 @@ export function computeCampaignBroadeningPlan(
   const isExpiredPlatformPost = isPlatformPost && !isScheduledFuture && durationRatio >= 1.0;
   const isRollover = !isPlatformPost && !isScheduledFuture && broadeningStage === 2 && remainingRatio > 0;
   const effectiveUserCap = baseUserCap + capExpansion;
-  const maxPossibleUserCap = isPlatformPost ? baseUserCap : Math.min(102, baseUserCap + 2);
+  const maxPossibleUserCap = isPlatformPost ? baseUserCap : Math.min(5_000_000, baseUserCap + 2);
 
   const remainingDays = Math.max(
     1,
@@ -108,6 +108,8 @@ export function computeCampaignBroadeningPlan(
   let minSpacingMs: number;
   if (effectiveUserCap <= 1) {
     minSpacingMs = durationMs * 2;
+  } else if (baseDailyCap > 12) {
+    minSpacingMs = 0;
   } else if (broadeningStage === 2) {
     minSpacingMs = Math.max(
       90 * 60_000,

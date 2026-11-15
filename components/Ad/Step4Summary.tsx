@@ -4,6 +4,7 @@ import React from "react";
 import dynamic from "next/dynamic";
 import { AlertCircle, Info } from "lucide-react";
 import type { AdCapacityAssessment } from "@/lib/hooks/useAdCapacityCheck";
+import { computeAudienceDailyViewSummary } from "@/lib/ads/frequencyCap";
 import { AdFormSelections } from "./types";
 import styles from "./page.module.css";
 
@@ -45,6 +46,16 @@ export default function Step4Summary({
   capacity,
   onApplyCapacityCap,
 }: Step4SummaryProps) {
+  const effectiveTargetAttentions =
+    formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0
+      ? formSelections.impressions + userProfile.mutual_count
+      : formSelections.impressions;
+  const dailySummary = computeAudienceDailyViewSummary(
+    effectiveTargetAttentions,
+    formSelections.campaignDays,
+    formSelections.userFrequencyCap
+  );
+
   return (
     <div className={styles.summaryContainer}>
       <div className={styles.summaryHeader}>
@@ -130,19 +141,25 @@ export default function Step4Summary({
             <div className={styles.detailsRow}>
               <span className={styles.detailsKey}>Frequency cap</span>
               <span className={styles.detailsVal}>
-                {formSelections.userFrequencyCap} attention{formSelections.userFrequencyCap > 1 ? "s" : ""} / user
+                {dailySummary.frequencyCap.toLocaleString()}x / user
               </span>
             </div>
             <div className={styles.detailsRow}>
-              <span className={styles.detailsKey}>Daily pace</span>
+              <span className={styles.detailsKey}>Est. daily delivery</span>
               <span className={styles.detailsVal}>
-                ~
-                {Math.ceil(
-                  (formSelections.displayMutualButton && userProfile && userProfile.mutual_count > 0
-                    ? formSelections.impressions + userProfile.mutual_count
-                    : formSelections.impressions) / formSelections.campaignDays
-                ).toLocaleString()}{" "}
-                attentions/day
+                ~{dailySummary.approxDailyAttentions.toLocaleString()} attentions/day
+              </span>
+            </div>
+            <div className={styles.detailsRow}>
+              <span className={styles.detailsKey}>Max per viewer / day</span>
+              <span className={styles.detailsVal}>
+                ~{dailySummary.maxViewsPerViewerPerDay.toLocaleString()} views/day
+              </span>
+            </div>
+            <div className={styles.detailsRow}>
+              <span className={styles.detailsKey}>Min. unique audience</span>
+              <span className={styles.detailsVal}>
+                ~{dailySummary.minUniqueAudience.toLocaleString()} viewers
               </span>
             </div>
           </div>

@@ -11,6 +11,14 @@ import {
   quantizeDeliverableCapacity,
 } from "../ads/capacityEstimator";
 import {
+  MAX_FREQUENCY_CAP,
+  SLIDER_MAX_FREQUENCY_CAP,
+  clampFrequencyCap,
+  computeAudienceDailyViewSummary,
+  freqCapToSliderPos,
+  sliderPosToFreqCap,
+} from "../ads/frequencyCap";
+import {
   CLICKS_PER_ATW_STEP,
   MONETIZATION_REQUIRED_CLICKS,
   computeAtwTierDetails,
@@ -1243,7 +1251,7 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
     const activeUpdate = updatedPayloads.find((u) => u.table === "addsactive")?.payload;
     expect(activeUpdate).toBeDefined();
     expect(activeUpdate.impressions).toBe(501);
-    expect(activeUpdate.user_frequency_cap).toBe(100);
+    expect(activeUpdate.user_frequency_cap).toBe(250);
 
     // Still enforces cap when remaining + add exceeds maxOrderableImpressions
     const cappedRes = await boostPost(
@@ -1266,7 +1274,7 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
     expect(cappedJson.maxOrderableImpressions).toBeLessThan(1_000);
   });
 
-  it("keeps web/mobile edge CAPACITY_LADDER, frequency cap=100, Cap-to boost helpers, and 12-arg RPC overload drop in sync", async () => {
+  it("keeps web/mobile edge CAPACITY_LADDER, frequency cap 20,000x slider / 5,000,000 manual cap, Cap-to boost helpers, and 12-arg RPC overload drop in sync", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const root = process.cwd();
@@ -1309,13 +1317,14 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
     expect(webEdgeCapacity).toContain("510,");
     expect(webEdgeCapacity).toContain("525,");
     expect(webEdgeCapacity).toContain("575,");
-    expect(webManageEdge).toContain("Math.min(100,");
+    expect(webManageEdge).toContain("Math.min(5_000_000,");
     expect(webManageEdge).toContain("user_frequency_cap: normalizedBoostFreqCap");
     expect(webManageEdge).not.toContain("Math.min(10,");
     expect(webPaymentActivation).toContain("user_frequency_cap: normalizedFreqCap");
     expect(webProcessPayment).toContain("ad.impressions || 100");
     expect(webCapacityHook).toContain("setCapacity(null)");
-    expect(webBoosterModal).toContain("max={100}");
+    expect(webBoosterModal).toContain("FREQUENCY_CAP_SLIDER_MAX_POS");
+    expect(webBoosterModal).toContain("Approximate Daily View");
     expect(webBoosterModal).toContain("Use +");
     expect(webBoosterModal).toContain("Custom extra attentions");
     expect(webBoosterModal).toContain("checkingBoostCapacity");
@@ -1354,9 +1363,10 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
       expect(mobileEdgeCapacity).toContain("525,");
       expect(mobileEdgeCapacity).toContain("Math.min(90,");
       expect(mobileEdgeCapacity).not.toContain("Current setup can deliver");
-      expect(mobileFreqSlider).toContain("max = 100");
+      expect(mobileFreqSlider).toContain("max = SLIDER_MAX_FREQUENCY_CAP");
+      expect(mobileFreqSlider).toContain("APPROXIMATE DAILY VIEW");
       expect(mobileBoosterModal).toContain("Use +");
-      expect(mobileBoosterModal).toContain("Frequency Cap (Views/User/Day)");
+      expect(mobileBoosterModal).toContain("<FrequencySlider");
       expect(mobileBoosterModal).toContain("userFrequencyCap: parsedFreqCap");
       expect(mobileCampaignsEdge).toContain("Number(campaign.impressions || MIN_AD_ATTENTIONS)");
       expect(mobileCampaignsEdge).toContain("normalizedBoostFreqCap");
@@ -1841,5 +1851,182 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
       if (prevDeno === undefined) delete (globalThis as any).Deno;
       else (globalThis as any).Deno = prevDeno;
     }
+  });
+
+  it("supports 20,000x frequency cap slider scale, manual caps >20,000x (up to 5,000,000x), and accurate approximate daily view math", async () => {
+    // 1. Non-linear slider mapping covers 1..20,000x smoothly while keeping 1..25x responsive
+    expect(SLIDER_MAX_FREQUENCY_CAP).toBe(20_000);
+    expect(MAX_FREQUENCY_CAP).toBe(5_000_000);
+    expect(sliderPosToFreqCap(0)).toBe(1);
+    expect(sliderPosToFreqCap(250)).toBe(25);
+    expect(sliderPosToFreqCap(500)).toBe(250);
+    expect(sliderPosToFreqCap(750)).toBe(2_500);
+    expect(sliderPosToFreqCap(1_000)).toBe(20_000);
+    expect(freqCapToSliderPos(20_000)).toBe(1_000);
+    // Manual values above 20,000 pin cleanly at slider end without truncating stored value
+    expect(freqCapToSliderPos(50_000)).toBe(1_000);
+    expect(clampFrequencyCap(50_000)).toBe(50_000);
+    expect(clampFrequencyCap(10_000_000)).toBe(5_000_000);
+    expect(clampFrequencyCap(0)).toBe(1);
+
+    // 2. Approximate daily view pace math for advertiser decision-making
+    const s20k = computeAudienceDailyViewSummary(100_000, 10, 20_000);
+    expect(s20k.approxDailyAttentions).toBe(10_000);
+    expect(s20k.maxViewsPerViewerPerDay).toBe(2_000);
+    expect(s20k.minUniqueAudience).toBe(5);
+
+    const sManual50k = computeAudienceDailyViewSummary(200_000, 10, 50_000);
+    expect(sManual50k.frequencyCap).toBe(50_000);
+    expect(sManual50k.approxDailyAttentions).toBe(20_000);
+    expect(sManual50k.maxViewsPerViewerPerDay).toBe(5_000);
+    expect(sManual50k.minUniqueAudience).toBe(4);
+
+    // 3. Capacity estimator unlocks high-repeat capacity when userFrequencyCap > 100 (e.g. 20,000x / 50,000x)
+    const makeSmallPoolClient = (poolSize: number) =>
+      ({
+        supabaseUrl: `https://high-freq-pool-${poolSize}.supabase.co`,
+        async rpc() {
+          return {
+            data: { available: true, global_users: poolSize, country_users: poolSize, strict_users: poolSize },
+            error: null,
+          };
+        },
+        from() {
+          return {
+            select() {
+              return this;
+            },
+            gte() {
+              return this;
+            },
+            eq() {
+              return this;
+            },
+            then(resolve: (val: unknown) => unknown) {
+              return Promise.resolve(resolve({ count: poolSize, data: [], error: null }));
+            },
+          };
+        },
+      }) as any;
+
+    const pool10 = makeSmallPoolClient(10);
+    const res20k = await assessAdDeliveryCapacity(pool10, {
+      requestedImpressions: 150_000,
+      userFrequencyCap: 20_000,
+      campaignDays: 10,
+      targetingAll: true,
+    });
+    expect(res20k.allowed).toBe(true);
+    expect(res20k.maxOrderableImpressions).toBeGreaterThanOrEqual(150_000);
+
+    const res50k = await assessAdDeliveryCapacity(pool10, {
+      requestedImpressions: 350_000,
+      userFrequencyCap: 50_000,
+      campaignDays: 10,
+      targetingAll: true,
+    });
+    expect(res50k.allowed).toBe(true);
+    expect(res50k.maxOrderableImpressions).toBeGreaterThanOrEqual(350_000);
+
+    // 4. Zod validation schema allows up to 5,000,000x and rejects above 5,000,000
+    const { adAudienceSchema } = await import("../validationSchemas");
+    expect(adAudienceSchema.safeParse({ impressions: 100, campaignDays: 7, userFrequencyCap: 20_000 }).success).toBe(true);
+    expect(adAudienceSchema.safeParse({ impressions: 100, campaignDays: 7, userFrequencyCap: 50_000 }).success).toBe(true);
+    expect(adAudienceSchema.safeParse({ impressions: 100, campaignDays: 7, userFrequencyCap: 5_000_000 }).success).toBe(true);
+    expect(adAudienceSchema.safeParse({ impressions: 100, campaignDays: 7, userFrequencyCap: 5_000_001 }).success).toBe(false);
+  });
+
+  it("allows 3,750 attentions over 90 days at 550x frequency cap on a 10-user DB (min 7 unique viewers)", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    // 1. Approximate Daily View math matches UI expectation (ceil(3750 / 550) = 7 unique viewers)
+    const dailyView = computeAudienceDailyViewSummary(3_750, 90, 550);
+    expect(dailyView.minUniqueAudience).toBe(7);
+    expect(dailyView.frequencyCap).toBe(550);
+
+    // 2. Worst-case reserveFactor (0.80) on 9 non-owner users * (550 + 2) still clears 3,750 without double-discounting
+    expect(CAPACITY_LADDER).toContain(3_750);
+    expect(quantizeDeliverableCapacity(9 * 552, 0.8)).toBeGreaterThanOrEqual(3_750);
+    expect(quantizeDeliverableCapacity(9 * 552, 0.85)).toBeGreaterThanOrEqual(3_750);
+
+    // 3. RPC fast-path on 10 active users with advertiserEmail (9 non-owner) allows 3,750 attentions
+    const rpcPool10 = {
+      supabaseUrl: "https://repro-10users-550x-rpc.supabase.co",
+      rpc: vi.fn(async () => ({
+        data: { available: true, global_users: 10, country_users: 10, strict_users: 10 },
+        error: null,
+      })),
+    };
+    const resGlobal = await assessAdDeliveryCapacity(rpcPool10, {
+      requestedImpressions: 3_750,
+      userFrequencyCap: 550,
+      campaignDays: 90,
+      targetingAll: true,
+      advertiserEmail: "advertiser@paayh.com",
+    });
+    expect(resGlobal.telemetryAvailable).toBe(true);
+    expect(resGlobal.allowed).toBe(true);
+    expect(resGlobal.status).toBe("optimal");
+    expect(resGlobal.maxOrderableImpressions).toBeGreaterThanOrEqual(3_750);
+    expect(resGlobal.message).not.toMatch(/below 500|Under 100|Max 3,500/i);
+
+    // 4. Narrow targeting on 10-user DB (e.g. only 2 strict matches) unlocks 3,750 via Rollover broadening
+    const narrowedPool10 = {
+      supabaseUrl: "https://repro-10users-550x-narrow.supabase.co",
+      rpc: vi.fn(async () => ({
+        data: { available: true, global_users: 10, country_users: 4, strict_users: 2 },
+        error: null,
+      })),
+    };
+    const resNarrow = await assessAdDeliveryCapacity(narrowedPool10, {
+      requestedImpressions: 3_750,
+      userFrequencyCap: 550,
+      campaignDays: 90,
+      targetingAll: false,
+      country: "Nigeria",
+      interest: ["Tech"],
+      advertiserEmail: "advertiser@paayh.com",
+    });
+    expect(resNarrow.telemetryAvailable).toBe(true);
+    expect(resNarrow.allowed).toBe(true);
+    expect(resNarrow.status).toBe("broadened_needed");
+    expect(resNarrow.broadeningApplied).toBe(true);
+    expect(resNarrow.maxOrderableImpressions).toBeGreaterThanOrEqual(3_750);
+
+    // 5. Fallback head-count query path (no RPC) also allows 3,750 at 550x / 90d on 10 DB users
+    const fallbackPool10 = createCountMockSupabase({ global: 10, country: 10, strict: 10 });
+    const resFallback = await assessAdDeliveryCapacity(fallbackPool10, {
+      requestedImpressions: 3_750,
+      userFrequencyCap: 550,
+      campaignDays: 90,
+      targetingAll: true,
+      advertiserEmail: "advertiser@paayh.com",
+    });
+    expect(resFallback.allowed).toBe(true);
+    expect(resFallback.maxOrderableImpressions).toBeGreaterThanOrEqual(3_750);
+
+    // 6. Edge adCapacity.ts parity and small-pool SQL stats refresh migration exist
+    const root = process.cwd();
+    const edgeCapacitySrc = fs.readFileSync(
+      path.join(root, "supabase/functions/_shared/adCapacity.ts"),
+      "utf8"
+    );
+    expect(edgeCapacitySrc).toContain("3_750,");
+    expect(edgeCapacitySrc).not.toContain("* 0.95);");
+
+    const smallPoolSql = fs.readFileSync(
+      path.join(root, "supabase/migrations/20261115010000_fix_small_pool_capacity_refresh.sql"),
+      "utf8"
+    );
+    expect(smallPoolSql).toContain("COALESCE(v_global, 0) < 1000");
+    expect(smallPoolSql).toContain("INTERVAL '15 seconds'");
+
+    const processPaymentSrc = fs.readFileSync(
+      path.join(root, "lib/payment/processPayment.ts"),
+      "utf8"
+    );
+    expect(processPaymentSrc).toContain("clampFrequencyCap(user_frequency_cap, 1)");
+    expect(processPaymentSrc).not.toContain("Math.min(100, Math.floor(Number(user_frequency_cap)))");
   });
 });

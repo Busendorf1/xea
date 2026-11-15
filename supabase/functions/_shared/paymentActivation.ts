@@ -379,14 +379,14 @@ export async function validatePayableResource(
       };
     }
     const rawFreqCap = meta.user_frequency_cap ?? meta.userFrequencyCap;
-    const existingFreqCap = Math.max(1, Math.min(100, Math.floor(Number(activeAd.user_frequency_cap ?? 1))));
+    const existingFreqCap = Math.max(1, Math.min(5_000_000, Math.floor(Number(activeAd.user_frequency_cap ?? 1))));
     const normalizedFreqCap =
       rawFreqCap !== undefined &&
       rawFreqCap !== null &&
       rawFreqCap !== "" &&
       Number.isFinite(Number(rawFreqCap)) &&
       Number(rawFreqCap) > 0
-        ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+        ? Math.max(1, Math.min(5_000_000, Math.floor(Number(rawFreqCap))))
         : existingFreqCap;
     const freqCapLowered =
       rawFreqCap !== undefined &&
@@ -806,7 +806,7 @@ export async function activatePaidResource(
       rawFreqCap !== "" &&
       Number.isFinite(Number(rawFreqCap)) &&
       Number(rawFreqCap) > 0
-        ? Math.max(1, Math.min(100, Math.floor(Number(rawFreqCap))))
+        ? Math.max(1, Math.min(5_000_000, Math.floor(Number(rawFreqCap))))
         : undefined;
     const { data: ad } = await supabaseAdmin
       .from("addsactive")

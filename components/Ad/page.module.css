@@ -1928,3 +1928,115 @@
   text-decoration: none;
   white-space: nowrap;
 }
+
+/* ── Frequency Cap Slider + Audience Daily View ── */
+.freqHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.freqValueBadge {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.freqPresetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.freqPresetBtn {
+  padding: 0.24rem 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.freqPresetBtn:hover {
+  border-color: var(--card-border-hover);
+  color: var(--foreground);
+}
+
+.freqPresetBtnActive {
+  border-color: var(--primary);
+  color: var(--foreground);
+  background: var(--primary-glow);
+  font-weight: 600;
+}
+
+.freqSummaryPanel {
+  margin-top: 0.7rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.freqSummaryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.freqSummaryHeading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.freqSummaryContext {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.freqSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+@media (max-width: 600px) {
+  .freqSummaryGrid {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+}
+
+.freqSummaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.freqSummaryLabel {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.freqSummaryValue {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}

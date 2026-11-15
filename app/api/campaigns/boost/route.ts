@@ -243,10 +243,10 @@ export async function POST(req: NextRequest) {
       userFrequencyCap !== "" &&
       Number.isFinite(Number(userFrequencyCap)) &&
       Number(userFrequencyCap) > 0
-        ? Math.max(1, Math.min(100, Math.floor(Number(userFrequencyCap))))
+        ? Math.max(1, Math.min(5_000_000, Math.floor(Number(userFrequencyCap))))
         : undefined;
 
-    const existingFreqCap = Math.max(1, Math.min(100, Math.floor(Number(ad.user_frequency_cap || 1))));
+    const existingFreqCap = Math.max(1, Math.min(5_000_000, Math.floor(Number(ad.user_frequency_cap || 1))));
     const freqCapLowered =
       normalizedUserFrequencyCap !== undefined && normalizedUserFrequencyCap < existingFreqCap;
     const hasTargetingSupplied =
