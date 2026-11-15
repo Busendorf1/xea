@@ -20,6 +20,7 @@ interface FullscreenVideoPlayerProps {
   hlsSrc?: string | null;
   poster?: string;
   autoPlay?: boolean;
+  initialTime?: number;
 }
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -36,13 +37,16 @@ export default function FullscreenVideoPlayer({
   hlsSrc,
   poster,
   autoPlay = true,
+  initialTime = 0,
 }: FullscreenVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const progressBarRef = useRef<HTMLDivElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [hasFirstFrame, setHasFirstFrame] = useState<boolean>(() => Boolean(poster));
+  const [isBuffering, setIsBuffering] = useState<boolean>(() => !Boolean(poster));
+  const [currentTime, setCurrentTime] = useState<number>(initialTime > 0 ? initialTime : 0);
   const [duration, setDuration] = useState<number>(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState<boolean>(false);
@@ -52,6 +56,9 @@ export default function FullscreenVideoPlayer({
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
 
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initialSeekAppliedRef = useRef<boolean>(false);
+  const initialTimeRef = useRef<number>(initialTime);
+  initialTimeRef.current = initialTime;
 
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
@@ -72,35 +79,118 @@ export default function FullscreenVideoPlayer({
     };
   }, [resetHideTimer]);
 
-  // Ensure fullscreen player starts unmuted and shows controls on open
+  const applyInitialSeek = useCallback((vid: HTMLVideoElement | null) => {
+    if (!vid || initialSeekAppliedRef.current || initialTimeRef.current <= 0.15) return;
+    const dur = vid.duration || 0;
+    if (vid.readyState < 1 && !(Number.isFinite(dur) && dur > 0)) return;
+    initialSeekAppliedRef.current = true;
+    try {
+      const clamped =
+        Number.isFinite(dur) && dur > 0
+          ? Math.min(initialTimeRef.current, Math.max(0, dur - 0.25))
+          : initialTimeRef.current;
+      vid.currentTime = clamped;
+      setCurrentTime(clamped);
+    } catch {}
+  }, []);
+
+  // Reset source-scoped media readiness only when the underlying stream changes (NOT on autoPlay toggle)
   useEffect(() => {
     const vid = videoRef.current;
-    if (!vid) return;
+    initialSeekAppliedRef.current = false;
+    const readyNow = Boolean(poster || (vid && vid.readyState >= 2));
+    setHasFirstFrame(readyNow);
+    setIsBuffering(!readyNow);
     setShowControls(true);
+    if (!vid) return;
+
     vid.muted = false;
     vid.volume = 1;
     setIsMuted(false);
     setVolume(1);
-    if (autoPlay) {
-      vid
-        .play()
-        .then(() => {
-          setIsPlaying(true);
-        })
-        .catch(() => {
-          // Fallback if browser blocks unmuted autoplay without direct gesture
-          vid.muted = true;
-          setIsMuted(true);
-          vid
-            .play()
-            .then(() => setIsPlaying(true))
-            .catch(() => setIsPlaying(false));
-        });
-    } else {
+
+    if (vid.readyState >= 1) {
+      applyInitialSeek(vid);
+    }
+  }, [src, hlsSrc, poster, applyInitialSeek]);
+
+  // Coordinated play/pause lifecycle: preserves hasFirstFrame & mute state during lightbox close transitions
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    let cancelled = false;
+
+    const startPlayback = () => {
+      if (cancelled || !vid) return;
+      applyInitialSeek(vid);
+      const playPromise = vid.play();
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise
+          .then(() => {
+            if (!cancelled) {
+              setIsPlaying(true);
+              setIsBuffering(false);
+              setHasFirstFrame(true);
+            }
+          })
+          .catch((err) => {
+            if (cancelled || err?.name === "AbortError") return;
+            vid.muted = true;
+            setIsMuted(true);
+            vid
+              .play()
+              .then(() => {
+                if (!cancelled) {
+                  setIsPlaying(true);
+                  setIsBuffering(false);
+                  setHasFirstFrame(true);
+                }
+              })
+              .catch(() => {
+                if (!cancelled) {
+                  setIsPlaying(false);
+                  setIsBuffering(false);
+                }
+              });
+          });
+      }
+    };
+
+    if (!autoPlay) {
       vid.pause();
       setIsPlaying(false);
+      setIsBuffering(false);
+      return;
     }
-  }, [src, hlsSrc, autoPlay]);
+
+    if (vid.readyState >= 1) {
+      applyInitialSeek(vid);
+    }
+
+    if (vid.readyState >= 2) {
+      setHasFirstFrame(true);
+      startPlayback();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const onReady = () => {
+      vid.removeEventListener("canplay", onReady);
+      vid.removeEventListener("loadeddata", onReady);
+      setHasFirstFrame(true);
+      setIsBuffering(false);
+      startPlayback();
+    };
+    vid.addEventListener("canplay", onReady);
+    vid.addEventListener("loadeddata", onReady);
+    return () => {
+      cancelled = true;
+      vid.removeEventListener("canplay", onReady);
+      vid.removeEventListener("loadeddata", onReady);
+    };
+  }, [src, hlsSrc, autoPlay, applyInitialSeek]);
 
   // Video event handlers
   const handleTimeUpdate = () => {
@@ -110,26 +200,11 @@ export default function FullscreenVideoPlayer({
   };
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration || 0);
-      videoRef.current.muted = false;
-      setIsMuted(false);
-      if (autoPlay) {
-        videoRef.current
-          .play()
-          .then(() => setIsPlaying(true))
-          .catch(() => {
-            if (videoRef.current) {
-              videoRef.current.muted = true;
-              setIsMuted(true);
-              videoRef.current
-                .play()
-                .then(() => setIsPlaying(true))
-                .catch(() => setIsPlaying(false));
-            }
-          });
-      }
-    }
+    const vid = videoRef.current;
+    if (!vid) return;
+    const dur = vid.duration || 0;
+    setDuration(dur);
+    applyInitialSeek(vid);
   };
 
   const togglePlay = () => {
@@ -217,17 +292,45 @@ export default function FullscreenVideoPlayer({
         hlsSrc={hlsSrc ?? undefined}
         poster={poster}
         playsInline
+        preload="auto"
         muted={isMuted}
-        className={styles.videoElement}
+        className={`${styles.videoElement} ${hasFirstFrame ? styles.videoElementReady : ""}`}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onLoadedData={() => {
+          applyInitialSeek(videoRef.current);
+          setHasFirstFrame(true);
+          setIsBuffering(false);
+        }}
+        onCanPlay={() => {
+          applyInitialSeek(videoRef.current);
+          setHasFirstFrame(true);
+          setIsBuffering(false);
+        }}
+        onWaiting={() => setIsBuffering(true)}
+        onPlaying={() => {
+          setHasFirstFrame(true);
+          setIsBuffering(false);
+          setIsPlaying(true);
+        }}
+        onError={() => {
+          setHasFirstFrame(true);
+          setIsBuffering(false);
+        }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
       />
 
+      {/* Buffering / First-Frame Reveal Spinner */}
+      {(isBuffering || !hasFirstFrame) && (
+        <div className={styles.centerOverlay} aria-label="Loading video">
+          <div className={styles.bufferingSpinner} />
+        </div>
+      )}
+
       {/* Center Big Play/Pause indicator when paused */}
-      {!isPlaying && (
+      {hasFirstFrame && !isBuffering && !isPlaying && (
         <div className={styles.centerOverlay}>
           <div className={styles.centerPlayBtn}>
             <Play size={28} fill="#ffffff" style={{ marginLeft: "4px" }} />
@@ -239,6 +342,11 @@ export default function FullscreenVideoPlayer({
       <div
         className={`${styles.controlsOverlay} ${showControls ? styles.controlsVisible : styles.controlsHidden}`}
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
       >
         {/* Timeline Scrubber */}
         <div className={styles.timelineRow}>

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import styles from "../Newsdisplay/page.module.css";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
+import { isConfiguredNextImageSrc } from "@/lib/utils/nextImageSafety";
 import Skeleton from "../ui/Skeleton";
 import supabase from "@/lib/supabaseClient";
 import {
@@ -353,13 +354,21 @@ export default function AdDisplay({
                     preload="metadata"
                     className={`${styles.adImage} ${styles.adVideo}`}
                   />
-                ) : (
+                ) : isConfiguredNextImageSrc(ad.image_url) ? (
                   <Image
                     width={640}
                     height={400}
+                    src={ad.image_url.trim()}
+                    alt={ad.title || "Business Highlight"}
+                    className={styles.adImage}
+                  />
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
                     src={ad.image_url}
                     alt={ad.title || "Business Highlight"}
                     className={styles.adImage}
+                    loading="lazy"
                   />
                 )}
                 {isBidded && (

@@ -8,6 +8,8 @@ import LocationSelector from "../LocationSelector";
 import CustomSelect from "@/components/ui/CustomSelect";
 import RollingCounter from "@/components/ui/RollingCounter";
 import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/TermsAgreementCheckbox";
+import Avatar from "@/components/ui/Avatar";
+import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
 
 export interface NewsStepTargetingProps {
@@ -474,6 +476,17 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
   );
 });
 
+export interface NewsPreviewUserProfile {
+  profileImage?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+  business_name?: string | null;
+  monetized?: boolean | string;
+  gender?: string | null;
+  email?: string | null;
+}
+
 export interface NewsStepPreviewProps {
   mediaPreview: string | null;
   setMediaPreview: (v: string | null) => void;
@@ -486,6 +499,11 @@ export interface NewsStepPreviewProps {
   isBiddingEnabled: boolean;
   bidPrice: number;
   isAdmin: boolean;
+  customSponsorName?: string;
+  customSponsorHandle?: string;
+  userProfile?: NewsPreviewUserProfile | null;
+  userEmail?: string | null;
+  userName?: string | null;
   isAiContent: boolean;
   setIsAiContent: (v: boolean) => void;
   agreedToPolicy: boolean;
@@ -508,6 +526,11 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
   isBiddingEnabled,
   bidPrice,
   isAdmin,
+  customSponsorName,
+  customSponsorHandle,
+  userProfile,
+  userEmail,
+  userName,
   isAiContent,
   setIsAiContent,
   agreedToPolicy,
@@ -517,6 +540,23 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
   handleInitiateSubmit,
   capitalizeFirst,
 }: NewsStepPreviewProps) {
+  const fullName = `${userProfile?.firstName || ""} ${userProfile?.lastName || ""}`.trim();
+  const resolvedName =
+    customSponsorName?.trim() ||
+    userProfile?.business_name?.trim() ||
+    fullName ||
+    userProfile?.username?.trim() ||
+    userName?.trim() ||
+    "Paayh User";
+  const normalizedHandle = userProfile?.username
+    ? `@${userProfile.username.replace(/^@/, "")}`
+    : userProfile?.email || userEmail || "";
+  const resolvedHandle = customSponsorHandle?.trim() || normalizedHandle;
+  const resolvedEmail = userProfile?.email || userEmail || null;
+  const isVerified =
+    userProfile?.monetized === true ||
+    String(userProfile?.monetized ?? "").toLowerCase() === "true";
+
   return (
     <motion.div
       key="step-4"
@@ -527,6 +567,25 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
       className={styles.formGroup}
     >
       <div className={styles.previewCard}>
+        <div className={styles.previewAuthorHeader}>
+          <Avatar
+            src={userProfile?.profileImage}
+            name={resolvedName}
+            email={resolvedEmail}
+            size={36}
+            gender={userProfile?.gender}
+            alt={resolvedName}
+          />
+          <div className={styles.previewAuthorInfo}>
+            <div className={styles.previewAuthorNameRow}>
+              <span className={styles.previewAuthorName}>{resolvedName}</span>
+              {isVerified && <VerifiedBadge size={14} />}
+            </div>
+            {resolvedHandle && (
+              <span className={styles.previewAuthorHandle}>{resolvedHandle}</span>
+            )}
+          </div>
+        </div>
         {mediaPreview ? (
           <img
             src={mediaPreview}

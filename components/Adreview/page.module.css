@@ -318,3 +318,61 @@
 .productCtaButtonMargin {
   margin-right: 8px;
 }
+
+.previewSponsorHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+  text-align: left;
+}
+
+.previewSponsorAvatarRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.previewSponsorMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.previewSponsorNameRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.previewSponsorName {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewSponsorHandle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewSponsorBadge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 9999px;
+  padding: 0.2rem 0.55rem;
+}

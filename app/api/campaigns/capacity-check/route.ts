@@ -7,13 +7,14 @@ import { assessAdDeliveryCapacity } from "@/lib/ads/capacityEstimator";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const rateLimit = await checkRateLimit(req, {
-    limit: 15,
+  // High pre-auth IP DDoS guard so 500M+ carrier CGNAT users never lock each other out
+  const ipRateLimit = await checkRateLimit(req, {
+    limit: 300,
     windowSeconds: 60,
-    identifierPrefix: "ad_capacity_check",
+    identifierPrefix: "ad_capacity_ip",
   });
-  if (!rateLimit.allowed && rateLimit.response) {
-    return rateLimit.response;
+  if (!ipRateLimit.allowed && ipRateLimit.response) {
+    return ipRateLimit.response;
   }
 
   try {
@@ -24,6 +25,18 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const emailLower = email.toLowerCase().trim();
+
+    // Generous per-user slider rate limit so dynamic slider/input exploration stays responsive
+    const userRateLimit = await checkRateLimit(req, {
+      limit: 60,
+      windowSeconds: 60,
+      identifierPrefix: "ad_capacity_user",
+      identifier: emailLower,
+    });
+    if (!userRateLimit.allowed && userRateLimit.response) {
+      return userRateLimit.response;
+    }
+
     const isAdmin = isAdminEmail(emailLower);
 
     if (isAdmin && body?.bypassForAdmin === true) {

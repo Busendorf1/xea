@@ -49,6 +49,44 @@ export interface KoraBulkPayoutParams {
   payouts: KoraBulkPayoutItem[];
 }
 
+/**
+ * Probes Kora's checkout `/session/KPY-...` endpoint when `checkout_url` uses the
+ * KPY session token format. If Kora explicitly responds with an empty/invalid
+ * session (`{ success: true, data: null }` or `{ success: false }`), returns false
+ * so callers can cleanly fail over to Paystack instead of sending users to a broken
+ * "Something's wrong" checkout screen. Fails open on unknown/network/mocked responses.
+ */
+export async function verifyKoraCheckoutSessionUsable(checkoutUrl: string): Promise<boolean> {
+  if (!checkoutUrl) return false;
+  try {
+    const parsed = new URL(checkoutUrl);
+    if (!parsed.hostname.toLowerCase().endsWith("korapay.com")) return true;
+    const match = parsed.pathname.match(/^\/(KPY-[A-Za-z0-9_-]+)/i);
+    if (!match) return true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    try {
+      const res = await fetch(`${parsed.origin}/session/${match[1]}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!res || !res.ok || typeof res.json !== "function") return true;
+      const body = await res.json().catch(() => null);
+      if (!body || typeof body !== "object") return true;
+      if ((body.success === true && body.data === null) || body.success === false) {
+        return false;
+      }
+      return true;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return true;
+  }
+}
+
 export class KoraService {
   static hasLiveKey(): boolean {
     const key = (
@@ -544,6 +582,7 @@ export class KoraService {
       narration: (narration || "Paayh Payment").slice(0, 100),
       redirect_url: targetRedirectUrl,
       notification_url: `${publicBaseUrl}/api/payments/kora-webhook`,
+      merchant_bears_cost: true,
       ...(channels && channels.length > 0 ? { channels, default_channel: channels[0] } : {}),
       customer: {
         name: customerName.slice(0, 60),
@@ -586,8 +625,16 @@ export class KoraService {
       throw new Error(detailedErr);
     }
 
+    const checkoutUrl = result.data?.checkout_url;
+    const isSessionUsable = await verifyKoraCheckoutSessionUsable(String(checkoutUrl || ""));
+    if (!isSessionUsable) {
+      throw new Error(
+        "Korapay checkout session is currently unavailable (session verification returned empty)."
+      );
+    }
+
     return {
-      checkout_url: result.data?.checkout_url,
+      checkout_url: checkoutUrl,
       reference: result.data?.reference || reference,
     };
   }

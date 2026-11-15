@@ -86,7 +86,6 @@ export function useAdCapacityCheck(params: UseAdCapacityParams) {
 
     let cancelled = false;
     const controller = new AbortController();
-    setCapacity(null);
     setCheckingCapacity(true);
 
     const timer = setTimeout(async () => {

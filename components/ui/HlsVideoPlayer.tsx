@@ -3,6 +3,21 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from "react";
 import Hls from "hls.js";
 
+const appendFirstFrameHint = (url: string | undefined, poster?: string): string | undefined => {
+  if (!url || poster) return url;
+  const trimmed = url.trim();
+  if (
+    !trimmed ||
+    trimmed.includes("#") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("data:") ||
+    trimmed.includes(".m3u8")
+  ) {
+    return url;
+  }
+  return `${trimmed}#t=0.001`;
+};
+
 export interface HlsVideoPlayerProps
   extends React.VideoHTMLAttributes<HTMLVideoElement> {
   src: string;
@@ -24,7 +39,10 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   controls = false,
   className = "",
   poster,
-  ...restProps
+  preload: callerPreload,
+  onLoadedMetadata: callerOnLoadedMetadata,
+  onError: callerOnError,
+  ...passThroughProps
 }, ref) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -36,6 +54,14 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
   const fallbackSource = src && !src.includes(".m3u8") ? src : undefined;
   const autoPlayRef = useRef(autoPlay);
   const mutedRef = useRef(muted);
+  const preloadRef = useRef(callerPreload);
+  const posterRef = useRef(poster);
+  const hlsStartedLoadRef = useRef(false);
+  const callerOnLoadedMetadataRef = useRef(callerOnLoadedMetadata);
+  const callerOnErrorRef = useRef(callerOnError);
+
+  autoPlayRef.current = autoPlay;
+  posterRef.current = poster;
 
   useEffect(() => {
     autoPlayRef.current = autoPlay;
@@ -45,14 +71,33 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     mutedRef.current = muted;
   }, [muted]);
 
+  useEffect(() => {
+    preloadRef.current = callerPreload;
+  }, [callerPreload]);
+
+  useEffect(() => {
+    callerOnLoadedMetadataRef.current = callerOnLoadedMetadata;
+  }, [callerOnLoadedMetadata]);
+
+  useEffect(() => {
+    callerOnErrorRef.current = callerOnError;
+  }, [callerOnError]);
+
   // Safe play helper adhering to Google Web Video Autoplay Policy
   const safePlay = useCallback(() => {
     const video = internalVideoRef.current;
     if (!video) return;
 
+    if (hlsRef.current && !hlsStartedLoadRef.current) {
+      hlsStartedLoadRef.current = true;
+      hlsRef.current.startLoad();
+    }
+
     // Enforce muted property for autoplay compliance across iOS & Android
     video.muted = !!mutedRef.current;
     video.defaultMuted = !!mutedRef.current;
+
+    if (!video.paused) return;
 
     const playPromise = video.play();
     if (playPromise !== undefined) {
@@ -95,33 +140,10 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
     video.setAttribute("x5-playsinline", "true");
   }, [muted]);
 
-  // Handle play/pause state transitions strictly when autoPlay changes
+  const safePlayRef = useRef(safePlay);
   useEffect(() => {
-    const video = internalVideoRef.current;
-    if (!video) return;
-
-    if (autoPlay) {
-      if (video.readyState >= 2) {
-        safePlay();
-      } else {
-        const handleReady = () => {
-          video.removeEventListener("canplay", handleReady);
-          video.removeEventListener("loadeddata", handleReady);
-          safePlay();
-        };
-        video.addEventListener("canplay", handleReady);
-        video.addEventListener("loadeddata", handleReady);
-        return () => {
-          video.removeEventListener("canplay", handleReady);
-          video.removeEventListener("loadeddata", handleReady);
-        };
-      }
-    } else {
-      if (!video.paused) {
-        video.pause();
-      }
-    }
-  }, [autoPlay, safePlay]);
+    safePlayRef.current = safePlay;
+  }, [safePlay]);
 
   // Fallback to direct MP4 source if HLS fails
   const triggerFallback = useCallback(() => {
@@ -134,22 +156,33 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       hlsRef.current = null;
     }
 
-    if (fallbackSource && video.src !== fallbackSource) {
-      video.src = fallbackSource;
+    const hintedFallback = appendFirstFrameHint(fallbackSource, posterRef.current) || fallbackSource;
+    if (hintedFallback && video.src !== hintedFallback) {
+      video.src = hintedFallback;
       video.load();
       if (autoPlayRef.current) {
-        safePlay();
+        safePlayRef.current();
       }
     }
-  }, [fallbackSource, safePlay]);
+  }, [fallbackSource]);
+
+  const triggerFallbackRef = useRef(triggerFallback);
+  useEffect(() => {
+    triggerFallbackRef.current = triggerFallback;
+  }, [triggerFallback]);
 
   // Video error handler on the DOM element
-  const handleVideoError = useCallback(() => {
-    const video = internalVideoRef.current;
-    if (!video) return;
-    console.warn("⚠️ Native video error on source:", video.src, "- attempting fallback...");
-    triggerFallback();
-  }, [triggerFallback]);
+  const handleVideoError = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const video = internalVideoRef.current;
+      if (video) {
+        console.warn("⚠️ Native video error on source:", video.src, "- attempting fallback...");
+        triggerFallbackRef.current();
+      }
+      callerOnErrorRef.current?.(e);
+    },
+    []
+  );
 
   // HLS stream setup — runs ONLY when media targetSource/fallbackSource changes
   useEffect(() => {
@@ -167,9 +200,10 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = targetSource;
         if (autoPlayRef.current) {
-          safePlay();
+          safePlayRef.current();
         }
       } else if (Hls.isSupported()) {
+        const shouldStartImmediately = preloadRef.current !== "none" || Boolean(autoPlayRef.current);
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
@@ -179,44 +213,51 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
           maxBufferHole: 0.5,
           backBufferLength: 0,
           capLevelToPlayerSize: true,
-          autoStartLoad: true,
+          autoStartLoad: shouldStartImmediately,
         });
 
         hlsRef.current = hls;
+        hlsStartedLoadRef.current = shouldStartImmediately;
         hls.loadSource(targetSource);
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (autoPlayRef.current) {
-            safePlay();
+            safePlayRef.current();
           }
         });
 
         hls.on(Hls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; type?: string }) => {
           if (data.fatal) {
             console.warn("⚠️ HLS playback fatal error encountered, falling back to MP4:", data.type);
-            triggerFallback();
+            triggerFallbackRef.current();
           }
         });
       } else if (fallbackSource) {
-        video.src = fallbackSource;
+        const directFallback = appendFirstFrameHint(fallbackSource, posterRef.current) || fallbackSource;
+        video.src = directFallback;
         if (autoPlayRef.current) {
-          safePlay();
+          safePlayRef.current();
         }
       }
     } else if (fallbackSource || src) {
-      const directSrc = fallbackSource || src;
+      const baseDirectSrc = fallbackSource || src;
+      const directSrc = appendFirstFrameHint(baseDirectSrc, posterRef.current) || baseDirectSrc;
       const currentSrc = video.currentSrc || video.src || "";
+      const currentBase = currentSrc.split("#")[0];
+      const expectedBase = (baseDirectSrc || "").split("#")[0];
       const isSameSrc =
         currentSrc === directSrc ||
+        currentSrc === baseDirectSrc ||
         (directSrc && currentSrc.endsWith(directSrc)) ||
+        (expectedBase && currentBase === expectedBase) ||
         (directSrc && typeof window !== "undefined" && currentSrc === new URL(directSrc, window.location.href).href);
 
       if (!isSameSrc) {
         video.src = directSrc;
       }
       if (autoPlayRef.current) {
-        safePlay();
+        safePlayRef.current();
       }
     }
 
@@ -225,33 +266,63 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      hlsStartedLoadRef.current = false;
     };
-  }, [targetSource, fallbackSource, src, safePlay, triggerFallback]);
+  }, [targetSource, fallbackSource, src]);
 
-  // Prime frame 0 immediately upon metadata ready so GPU decodes the image without waiting for play
+  useEffect(() => {
+    if (hlsRef.current && !hlsStartedLoadRef.current && (callerPreload !== "none" || autoPlay)) {
+      hlsStartedLoadRef.current = true;
+      hlsRef.current.startLoad();
+    }
+
+    const video = internalVideoRef.current;
+    if (!video) return;
+
+    if (autoPlay) {
+      if (video.readyState >= 2 || (hlsStartedLoadRef.current && video.readyState >= 1) || (!targetSource && video.paused)) {
+        safePlayRef.current();
+      }
+      if (video.readyState < 2 && typeof video.addEventListener === "function") {
+        const handleReady = () => {
+          video.removeEventListener("canplay", handleReady);
+          video.removeEventListener("loadeddata", handleReady);
+          if (autoPlayRef.current && video.paused) {
+            safePlayRef.current();
+          }
+        };
+        video.addEventListener("canplay", handleReady);
+        video.addEventListener("loadeddata", handleReady);
+        return () => {
+          video.removeEventListener("canplay", handleReady);
+          video.removeEventListener("loadeddata", handleReady);
+        };
+      }
+    } else if (!video.paused) {
+      video.pause();
+    }
+  }, [callerPreload, autoPlay, targetSource]);
+
   const handleLoadedMetadata = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
-      const v = e.currentTarget;
-      if (v.paused && v.currentTime === 0 && !v.seeking) {
-        try {
-          v.currentTime = 0.001;
-        } catch {}
-      }
-      restProps.onLoadedMetadata?.(e);
+      callerOnLoadedMetadataRef.current?.(e);
     },
-    [restProps.onLoadedMetadata]
+    []
   );
+
+  const hintedDirectSrc = appendFirstFrameHint(fallbackSource || src, poster);
 
   return (
     <video
+      {...passThroughProps}
       ref={internalVideoRef}
-      src={targetSource ? undefined : (fallbackSource || src)}
+      src={targetSource ? undefined : hintedDirectSrc}
       autoPlay={autoPlay}
       loop={loop}
       muted={muted}
       controls={false}
       playsInline
-      preload={restProps.preload || "auto"}
+      preload={callerPreload || "metadata"}
       className={className}
       poster={poster}
       onError={handleVideoError}
@@ -264,8 +335,8 @@ export const HlsVideoPlayer = forwardRef<HTMLVideoElement, HlsVideoPlayerProps>(
         objectFit: "cover",
         display: "block",
         backgroundColor: "#000000",
+        ...passThroughProps.style,
       }}
-      {...restProps}
     />
   );
 });

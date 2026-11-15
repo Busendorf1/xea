@@ -20,6 +20,14 @@ interface Step5LaunchProps {
     mutuals: string[];
     last_mutual_spent?: string;
     balance: number;
+    profileImage?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    username?: string | null;
+    business_name?: string | null;
+    monetized?: boolean | string;
+    gender?: string | null;
+    email?: string | null;
   } | null;
   formatCurrency: (amount: number | string) => string;
   isAiContent: boolean;
@@ -53,6 +61,23 @@ export default function Step5Launch({
   submitAd,
   calculateTotalCost,
 }: Step5LaunchProps) {
+  const fullName = `${userProfile?.firstName || ""} ${userProfile?.lastName || ""}`.trim();
+  const sponsorLogo =
+    formSelections.customSponsorLogo?.trim() || userProfile?.profileImage || null;
+  const sponsorName =
+    formSelections.customSponsorName?.trim() ||
+    userProfile?.business_name?.trim() ||
+    fullName ||
+    userProfile?.username?.trim() ||
+    "Advertiser";
+  const normalizedHandle = userProfile?.username
+    ? `@${userProfile.username.replace(/^@/, "")}`
+    : userProfile?.email || "";
+  const sponsorHandle = formSelections.customSponsorHandle?.trim() || normalizedHandle;
+  const isVerified =
+    userProfile?.monetized === true ||
+    String(userProfile?.monetized ?? "").toLowerCase() === "true";
+
   return (
     <>
       <h2 className={styles.centeredHeading}>Ad Preview</h2>
@@ -70,6 +95,12 @@ export default function Step5Launch({
         productPrice={formSelections.productPrice}
         productCtaType={formSelections.productCtaType}
         productCtaLink={formSelections.productCtaLink}
+        sponsorLogo={sponsorLogo}
+        sponsorName={sponsorName}
+        sponsorHandle={sponsorHandle}
+        sponsorEmail={userProfile?.email || null}
+        sponsorGender={userProfile?.gender || null}
+        isVerified={isVerified}
       />
 
       {isAdmin ? (

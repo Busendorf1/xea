@@ -988,6 +988,44 @@
   color: var(--text-muted);
 }
 
+.previewAuthorHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 1.25rem 0.65rem;
+}
+
+.previewAuthorInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+
+.previewAuthorNameRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.previewAuthorName {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewAuthorHandle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .adminPrivilegeBox {
   margin-top: 1.5rem;
   padding: 1.25rem;

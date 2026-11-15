@@ -31,6 +31,7 @@ interface Step2BudgetProps {
   toggleEmploymentStatus: (val: string) => void;
   capacity?: AdCapacityAssessment | null;
   checkingCapacity?: boolean;
+  onRetryCapacity?: () => void;
 }
 
 export default function Step2Budget({
@@ -40,9 +41,13 @@ export default function Step2Budget({
   toggleEmploymentStatus,
   capacity,
   checkingCapacity,
+  onRetryCapacity,
 }: Step2BudgetProps) {
   const [freqInputText, setFreqInputText] = useState<string>(
     String(clampFrequencyCap(formSelections.userFrequencyCap, 1))
+  );
+  const [daysInputText, setDaysInputText] = useState<string>(
+    String(Math.min(90, Math.max(1, Number(formSelections.campaignDays) || 1)))
   );
 
   useEffect(() => {
@@ -52,6 +57,14 @@ export default function Step2Budget({
       return Number.isFinite(parsed) && parsed === normalized ? prev : String(normalized);
     });
   }, [formSelections.userFrequencyCap]);
+
+  useEffect(() => {
+    const normalized = Math.min(90, Math.max(1, Number(formSelections.campaignDays) || 1));
+    setDaysInputText((prev) => {
+      const parsed = parseInt(prev, 10);
+      return Number.isFinite(parsed) && parsed === normalized ? prev : String(normalized);
+    });
+  }, [formSelections.campaignDays]);
 
   const dailySummary = computeAudienceDailyViewSummary(
     formSelections.impressions,
@@ -244,7 +257,7 @@ export default function Step2Budget({
               <p className={styles.hintText}>
                 Minimum 100 attentions.
               </p>
-              {checkingCapacity && (
+              {checkingCapacity && !(capacity && capacity.telemetryAvailable) && (
                 <div
                   style={{
                     marginTop: 8,
@@ -262,7 +275,7 @@ export default function Step2Budget({
                   <span>Checking capacity...</span>
                 </div>
               )}
-              {!checkingCapacity && capacity && (capacity.telemetryAvailable || capacity.status === "unavailable") && (() => {
+              {capacity && (capacity.telemetryAvailable || (!checkingCapacity && capacity.status === "unavailable")) && (() => {
                 const isUnavailable = !capacity.telemetryAvailable || capacity.status === "unavailable";
                 return (
                 <div
@@ -308,6 +321,30 @@ export default function Step2Budget({
                     ) : null}
                     <span>{capacity.message}</span>
                   </div>
+                  {checkingCapacity && (
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 500 }}>
+                      Updating...
+                    </span>
+                  )}
+                  {isUnavailable && onRetryCapacity && !checkingCapacity && (
+                    <button
+                      type="button"
+                      onClick={onRetryCapacity}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "1px solid var(--card-border)",
+                        background: "var(--card-bg)",
+                        color: "var(--foreground)",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Retry
+                    </button>
+                  )}
                   {capacity.status === "capped" && capacity.maxOrderableImpressions >= 100 && (
                     <button
                       type="button"
@@ -346,13 +383,29 @@ export default function Step2Budget({
               type="number"
               min={1}
               max={90}
-              value={formSelections.campaignDays}
+              value={daysInputText}
               onChange={(e) => {
-                const val = parseInt(e.target.value);
-                const nextDays = isNaN(val) || val < 1 ? 1 : Math.min(90, val);
+                const raw = e.target.value;
+                setDaysInputText(raw);
+                if (raw.trim() === "") return;
+                const val = parseInt(raw, 10);
+                if (!Number.isFinite(val)) return;
+                const nextDays = Math.min(90, Math.max(1, val));
+                if (val > 90) {
+                  setDaysInputText(String(nextDays));
+                }
                 setFormSelections((prev) => ({
                   ...prev,
                   campaignDays: nextDays,
+                }));
+              }}
+              onBlur={() => {
+                const val = parseInt(daysInputText, 10);
+                const normalized = Number.isFinite(val) ? Math.min(90, Math.max(1, val)) : 1;
+                setDaysInputText(String(normalized));
+                setFormSelections((prev) => ({
+                  ...prev,
+                  campaignDays: normalized,
                 }));
               }}
               className={styles.inputBox}

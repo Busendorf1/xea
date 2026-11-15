@@ -2029,4 +2029,115 @@ describe("Monetization 500 threshold, 180s Video Enforcement, & Opaque Capacity 
     expect(processPaymentSrc).toContain("clampFrequencyCap(user_frequency_cap, 1)");
     expect(processPaymentSrc).not.toContain("Math.min(100, Math.floor(Number(user_frequency_cap)))");
   });
+
+  it("allows 100 attentions for 90d at 20,000x with 1 active user (while still blocking 1x cap / 0 users) and uses CGNAT-safe /api/campaigns/capacity-check rate limits", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const { adjustOwnerPoolCount } = await import("../ads/capacityEstimator");
+
+    expect(adjustOwnerPoolCount(0, 1)).toBe(0);
+    expect(adjustOwnerPoolCount(1, 1)).toBe(1);
+    expect(adjustOwnerPoolCount(2, 1)).toBe(1);
+    expect(adjustOwnerPoolCount(10, 1)).toBe(9);
+
+    const singleUserPool = {
+      supabaseUrl: "https://repro-1user-20000x-rpc.supabase.co",
+      rpc: vi.fn(async () => ({
+        data: { available: true, global_users: 1, country_users: 1, strict_users: 1 },
+        error: null,
+      })),
+    };
+
+    const res100Allowed = await assessAdDeliveryCapacity(singleUserPool, {
+      requestedImpressions: 100,
+      userFrequencyCap: 20_000,
+      campaignDays: 90,
+      targetingAll: true,
+      advertiserEmail: "founder@paayh.com",
+    });
+    expect(res100Allowed.telemetryAvailable).toBe(true);
+    expect(res100Allowed.allowed).toBe(true);
+    expect(res100Allowed.maxOrderableImpressions).toBeGreaterThanOrEqual(100);
+    expect(res100Allowed.message).not.toMatch(/below 500|500 attention/i);
+
+    const res1xBlocked = await assessAdDeliveryCapacity(singleUserPool, {
+      requestedImpressions: 100,
+      userFrequencyCap: 1,
+      campaignDays: 90,
+      targetingAll: true,
+      advertiserEmail: "founder@paayh.com",
+    });
+    expect(res1xBlocked.telemetryAvailable).toBe(true);
+    expect(res1xBlocked.allowed).toBe(false);
+    expect(res1xBlocked.status).toBe("capped");
+    expect(res1xBlocked.message).not.toMatch(/below 500|500 attention/i);
+
+    const emptyPool = {
+      supabaseUrl: "https://repro-0users-rpc.supabase.co",
+      rpc: vi.fn(async () => ({
+        data: { available: true, global_users: 0, country_users: 0, strict_users: 0 },
+        error: null,
+      })),
+    };
+    const res0Blocked = await assessAdDeliveryCapacity(emptyPool, {
+      requestedImpressions: 100,
+      userFrequencyCap: 20_000,
+      campaignDays: 90,
+      targetingAll: true,
+      advertiserEmail: "founder@paayh.com",
+    });
+    expect(res0Blocked.allowed).toBe(false);
+
+    vi.resetModules();
+    const rateLimitCalls: Array<{ limit: number; windowSeconds: number; identifierPrefix?: string; identifier?: string }> = [];
+    vi.doMock("@/lib/edgeRateLimit", () => ({
+      checkRateLimit: vi.fn(async (_req: unknown, opts: { limit: number; windowSeconds: number; identifierPrefix?: string; identifier?: string }) => {
+        rateLimitCalls.push(opts);
+        return { allowed: true };
+      }),
+    }));
+    vi.doMock("@/lib/authHelper", () => ({
+      getAuthenticatedEmail: vi.fn().mockResolvedValue("founder@paayh.com"),
+      isAdminEmail: vi.fn().mockReturnValue(false),
+    }));
+    vi.doMock("@/lib/ads/capacityEstimator", () => ({
+      assessAdDeliveryCapacity,
+    }));
+    vi.doMock("@/lib/utils/dbAdmin", () => ({
+      default: singleUserPool,
+    }));
+
+    const { POST: capacityCheckPost } = await import("../../app/api/campaigns/capacity-check/route");
+    const routeRes = await capacityCheckPost(
+      new NextRequest("http://localhost/api/campaigns/capacity-check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          impressions: 100,
+          campaignDays: 90,
+          userFrequencyCap: 20_000,
+          targetingAll: true,
+        }),
+      })
+    );
+    const routeJson = await routeRes.json();
+    expect(routeRes.status).toBe(200);
+    expect(routeJson.allowed).toBe(true);
+    expect(rateLimitCalls).toHaveLength(2);
+    expect(rateLimitCalls[0]).toMatchObject({ limit: 300, windowSeconds: 60, identifierPrefix: "ad_capacity_ip" });
+    expect(rateLimitCalls[1]).toMatchObject({
+      limit: 60,
+      windowSeconds: 60,
+      identifierPrefix: "ad_capacity_user",
+      identifier: "founder@paayh.com",
+    });
+
+    const root = process.cwd();
+    const estSrc = fs.readFileSync(path.join(root, "lib/ads/capacityEstimator.ts"), "utf8");
+    const step2Src = fs.readFileSync(path.join(root, "components/Ad/Step2Budget.tsx"), "utf8");
+    expect(estSrc).toContain("ad_cap_v3:");
+    expect(estSrc).toContain("L1_SMALL_POOL_TTL_MS");
+    expect(step2Src).toContain("Updating...");
+    expect(step2Src).toContain("daysInputText");
+  });
 });

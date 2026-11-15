@@ -10,6 +10,7 @@ import AppleSpinner from "@/components/ui/AppleSpinner";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
 import ProofOfLocationModal from "@/components/ui/ProofOfLocationModal";
 import { encodeAdBlurbToken, extractSharedAdIdFromSearchParams } from "@/lib/utils/adShare";
+import { parseNormalizedSearchParams } from "@/lib/utils/searchParams";
 
 import {
   MonetizeSkeleton,
@@ -144,7 +145,7 @@ export default function LoggedInClientContainer({
     let finalTab: TabKey = initialTab;
 
     // 1. Check query param first (e.g. ?view=monetize)
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = parseNormalizedSearchParams(window.location.search);
     const viewParam = urlParams.get("view") as TabKey;
     const editIdParam = urlParams.get("id");
 

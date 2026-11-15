@@ -257,8 +257,18 @@ interface CachedAudienceCounts {
 }
 
 const L1_CACHE_TTL_MS = 60_000;
+const L1_SMALL_POOL_TTL_MS = 15_000;
 const L1_MAX_ENTRIES = 2_000;
 const L2_REDIS_TTL_SECONDS = 120;
+
+export function adjustOwnerPoolCount(rawCount: number, ownerAdjustment: number): number {
+  const safeCount = Math.max(0, Math.floor(Number(rawCount) || 0));
+  if (safeCount <= 0) return 0;
+  // Preserve 1-user staging/single-viewer environments so high-frequency orders
+  // (e.g. 100 attentions over 90d at 20,000x) are not zeroed out to 0.
+  if (safeCount === 1) return 1;
+  return Math.max(1, safeCount - ownerAdjustment);
+}
 const audienceCountsCacheByClient = new WeakMap<
   object,
   Map<string, { expiresAt: number; value: CachedAudienceCounts }>
@@ -318,8 +328,9 @@ function setL1CachedCounts(client: unknown, cacheKey: string, value: CachedAudie
     const oldestKey = map.keys().next().value;
     if (oldestKey !== undefined) map.delete(oldestKey);
   }
+  const ttlMs = value.globalCount < 1000 ? L1_SMALL_POOL_TTL_MS : L1_CACHE_TTL_MS;
   map.set(cacheKey, {
-    expiresAt: Date.now() + L1_CACHE_TTL_MS,
+    expiresAt: Date.now() + ttlMs,
     value,
   });
 }
@@ -412,7 +423,7 @@ export async function assessAdDeliveryCapacity(
   let counts: CachedAudienceCounts | null = getL1CachedCounts(supabaseAdmin, filterCacheHash);
 
   // L2 Redis cache (shared across warm serverless instances, no PII in key)
-  const redisCacheKey = `ad_cap_v2:${filterCacheHash}`;
+  const redisCacheKey = `ad_cap_v3:${filterCacheHash}`;
   const canUseRedis =
     typeof supabaseAdmin?.rpc === "function" &&
     typeof isRedisReady === "function" &&
@@ -572,9 +583,9 @@ export async function assessAdDeliveryCapacity(
   }
 
   const ownerAdjustment = input.advertiserEmail ? 1 : 0;
-  const globalUsers = Math.max(0, counts.globalCount - ownerAdjustment);
-  const countryUsers = Math.max(0, counts.countryCount - ownerAdjustment);
-  let strictUsers = Math.max(0, counts.strictCount - ownerAdjustment);
+  const globalUsers = adjustOwnerPoolCount(counts.globalCount, ownerAdjustment);
+  const countryUsers = adjustOwnerPoolCount(counts.countryCount, ownerAdjustment);
+  let strictUsers = adjustOwnerPoolCount(counts.strictCount, ownerAdjustment);
 
   if (!isTargetingAll) {
     // Apply conservative demographic selectivity for encrypted DOB / multi-location / employment filters

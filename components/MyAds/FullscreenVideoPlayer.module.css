@@ -21,6 +21,27 @@
   object-fit: contain !important;
   object-position: center center !important;
   display: block;
+  opacity: 0;
+  transition: opacity 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.videoElementReady {
+  opacity: 1;
+}
+
+.bufferingSpinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.22);
+  border-top-color: #ffffff;
+  animation: fullscreenVideoSpin 0.75s linear infinite;
+}
+
+@keyframes fullscreenVideoSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Center Play/Pause Splash */

@@ -116,7 +116,7 @@ function MyAdCard({
     personalityList.length +
     employmentList.length;
 
-  const targetImpressions = ad.impressions ?? 500;
+  const targetImpressions = ad.impressions ?? 100;
   const remainingImpressions = Math.max(0, targetImpressions - seenCount);
   const deliveryPercent = Math.min(100, Math.round((seenCount / targetImpressions) * 100));
 

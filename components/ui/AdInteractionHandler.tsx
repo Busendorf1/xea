@@ -57,21 +57,23 @@ function ensureFastScrollMonitor() {
   scrollMonitorAttached = true;
   lastScrollYPos = window.scrollY;
   lastScrollTimeMs = Date.now();
-  window.addEventListener(
-    "scroll",
-    () => {
-      const now = Date.now();
-      const dt = Math.max(1, now - lastScrollTimeMs);
-      const dy = Math.abs(window.scrollY - lastScrollYPos);
-      // > 1.2 px/ms (~1200 px/sec) indicates active fast-scroll / fling
-      if (dt <= 120 && dy / dt > 1.2) {
-        lastFastScrollTimestamp = now;
-      }
-      lastScrollYPos = window.scrollY;
-      lastScrollTimeMs = now;
-    },
-    { passive: true }
-  );
+  const handleAnyScroll = (e?: Event) => {
+    const now = Date.now();
+    const dt = Math.max(1, now - lastScrollTimeMs);
+    const targetEl = e?.target as HTMLElement | Document | null;
+    const currentPos =
+      targetEl && "scrollTop" in targetEl && typeof targetEl.scrollTop === "number"
+        ? targetEl.scrollTop
+        : window.scrollY;
+    const dy = Math.abs(currentPos - lastScrollYPos);
+    // > 1.2 px/ms (~1200 px/sec) indicates active fast-scroll / fling
+    if (dt <= 120 && dy / dt > 1.2) {
+      lastFastScrollTimestamp = now;
+    }
+    lastScrollYPos = currentPos;
+    lastScrollTimeMs = now;
+  };
+  document.addEventListener("scroll", handleAnyScroll, { passive: true, capture: true });
 }
 
 function getSharedInteractionObserver(): IntersectionObserver | null {

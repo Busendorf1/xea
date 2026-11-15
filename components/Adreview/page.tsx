@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FaPhone, FaWhatsapp, FaGlobe, FaEnvelope, FaVideo, FaApple, FaAndroid } from "react-icons/fa";
 import { Eye, Coins, UserPlus } from "lucide-react";
+import Avatar from "@/components/ui/Avatar";
+import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import styles from "../Adreview/page.module.css"; // Your CSS module
 
 interface AdPreviewCardProps {
@@ -18,6 +20,12 @@ interface AdPreviewCardProps {
   productPrice?: string | number;
   productCtaType?: string;
   productCtaLink?: string;
+  sponsorLogo?: string | null;
+  sponsorName?: string;
+  sponsorHandle?: string;
+  sponsorEmail?: string | null;
+  sponsorGender?: string | null;
+  isVerified?: boolean;
 }
 
 const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
@@ -33,6 +41,12 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   productPrice = "",
   productCtaType = "Buy",
   productCtaLink = "",
+  sponsorLogo,
+  sponsorName,
+  sponsorHandle,
+  sponsorEmail,
+  sponsorGender,
+  isVerified = false,
 }) => {
   const [mediaURLs, setMediaURLs] = useState<string[]>([]);
   const [isTextExpanded, setIsTextExpanded] = useState(false);
@@ -105,8 +119,37 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   );
   const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => (isFirstVideo ? 16 / 9 : 1.0));
 
+  const hasSponsorHeader = Boolean(sponsorLogo || sponsorName || sponsorHandle);
+
   return (
     <div className={styles.card}>
+      {hasSponsorHeader && (
+        <div className={styles.previewSponsorHeader}>
+          <div className={styles.previewSponsorAvatarRow}>
+            <Avatar
+              src={sponsorLogo}
+              name={sponsorName}
+              email={sponsorEmail}
+              size={40}
+              gender={sponsorGender}
+              alt={sponsorName || "Sponsor logo"}
+            />
+            <div className={styles.previewSponsorMeta}>
+              <div className={styles.previewSponsorNameRow}>
+                <span className={styles.previewSponsorName}>
+                  {sponsorName || "Advertiser"}
+                </span>
+                {isVerified && <VerifiedBadge size={14} />}
+              </div>
+              {sponsorHandle && (
+                <span className={styles.previewSponsorHandle}>{sponsorHandle}</span>
+              )}
+            </div>
+          </div>
+          <span className={styles.previewSponsorBadge}>Sponsored</span>
+        </div>
+      )}
+
       {/* Product Name & Description (if product sales) */}
       {adType === "product_sales" && (
         <>

@@ -177,6 +177,37 @@ function sanitizeKoraMetadata(
   return clean;
 }
 
+export async function verifyKoraCheckoutSessionUsable(checkoutUrl: string): Promise<boolean> {
+  if (!checkoutUrl) return false;
+  try {
+    const parsed = new URL(checkoutUrl);
+    if (!parsed.hostname.toLowerCase().endsWith("korapay.com")) return true;
+    const match = parsed.pathname.match(/^\/(KPY-[A-Za-z0-9_-]+)/i);
+    if (!match) return true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    try {
+      const res = await fetch(`${parsed.origin}/session/${match[1]}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!res || !res.ok || typeof res.json !== "function") return true;
+      const body = await res.json().catch(() => null);
+      if (!body || typeof body !== "object") return true;
+      if ((body.success === true && body.data === null) || body.success === false) {
+        return false;
+      }
+      return true;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return true;
+  }
+}
+
 export async function initializePayment(
   params: InitializePaymentParams,
 ): Promise<InitializePaymentResult> {
@@ -203,6 +234,7 @@ export async function initializePayment(
             currency: "NGN",
             reference: params.reference,
             narration: String(params.metadata?.type || "XEA Wallet/Campaign Payment").slice(0, 100),
+            merchant_bears_cost: true,
             ...(params.channels && params.channels.length > 0
               ? { channels: params.channels, default_channel: params.channels[0] }
               : {}),
@@ -223,15 +255,20 @@ export async function initializePayment(
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data?.status && data?.data?.checkout_url) {
-          return {
-            success: true,
-            provider: "kora",
-            authorization_url: data.data.checkout_url,
-            checkout_url: data.data.checkout_url,
-            reference: data.data.reference || params.reference,
-          };
+          const usable = await verifyKoraCheckoutSessionUsable(data.data.checkout_url);
+          if (usable) {
+            return {
+              success: true,
+              provider: "kora",
+              authorization_url: data.data.checkout_url,
+              checkout_url: data.data.checkout_url,
+              reference: data.data.reference || params.reference,
+            };
+          }
+          lastError = "Korapay checkout session unavailable; falling back";
+        } else {
+          lastError = data?.message || "Kora initialization failed";
         }
-        lastError = data?.message || "Kora initialization failed";
       } catch (e: unknown) {
         lastError = e instanceof Error ? e.message : "Kora request failed";
       }

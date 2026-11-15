@@ -9,6 +9,7 @@ import {
   readUserCampaignsSyncCache,
 } from "@/lib/campaignsClient";
 import { NoticeModalData } from "../MyAds/NoticeModal";
+import { parseNormalizedSearchParams } from "@/lib/utils/searchParams";
 
 function mergeUniqueHighlights(existing: HighlightItem[], incoming: HighlightItem[]): HighlightItem[] {
   if (!incoming || incoming.length === 0) return existing;
@@ -227,7 +228,7 @@ export function useMyNewsDashboard(session: Session) {
     if (typeof window === "undefined") return;
 
     const checkPendingBoost = () => {
-      const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = parseNormalizedSearchParams(window.location.search);
       const boostRef = urlParams.get("boost_ref") || sessionStorage.getItem("paayh_boost_ref");
       const gatewayRef =
         urlParams.get("reference") || urlParams.get("trxref") || sessionStorage.getItem("paayh_boost_gateway_ref");
@@ -252,7 +253,7 @@ export function useMyNewsDashboard(session: Session) {
         e.detail?.isHighlight ||
         e.detail?.type === "highlight" ||
         sessionStorage.getItem("paayh_boost_type") === "highlight";
-      const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = parseNormalizedSearchParams(window.location.search);
       const gatewayRef = urlParams.get("reference") || urlParams.get("trxref") || e.detail?.gatewayReference;
 
       if (boostRef && boostRef.startsWith("BOOST-") && isHighlight) {

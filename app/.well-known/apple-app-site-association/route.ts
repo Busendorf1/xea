@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export function buildAppleAppSiteAssociation() {
+  const configuredAppId = (process.env.APPLE_APP_ID || "").trim();
   const teamId = (process.env.APPLE_TEAM_ID || "").trim();
   const bundleId = (process.env.IOS_BUNDLE_ID || "com.paayh.app").trim();
-  const appId = teamId ? `${teamId}.${bundleId}` : bundleId;
+  const appId = configuredAppId || (teamId ? `${teamId}.${bundleId}` : bundleId);
 
   return {
     applinks: {

@@ -72,6 +72,7 @@ export default function News({ session }: NewsProps) {
     statusNotice,
     pendingLimitReached,
     adAccountRestriction,
+    userProfile,
     handleMediaChange,
     handleInitiateSubmit,
     canNavigateToStep,
@@ -203,6 +204,11 @@ export default function News({ session }: NewsProps) {
               isBiddingEnabled={isBiddingEnabled}
               bidPrice={bidPrice}
               isAdmin={isAdmin}
+              customSponsorName={customSponsorName}
+              customSponsorHandle={customSponsorHandle}
+              userProfile={userProfile}
+              userEmail={session?.user?.email || null}
+              userName={session?.user?.name || null}
               isAiContent={isAiContent}
               setIsAiContent={setIsAiContent}
               agreedToPolicy={agreedToPolicy}

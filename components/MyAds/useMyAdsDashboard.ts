@@ -15,6 +15,7 @@ import {
 } from "@/lib/campaignsClient";
 import { NoticeModalData } from "./NoticeModal";
 import { shareAdToDeviceOrClipboard } from "@/lib/utils/adShare";
+import { parseNormalizedSearchParams } from "@/lib/utils/searchParams";
 
 export type FilterTab = "all" | "active" | "review" | "approved" | "paused" | "completed";
 export type SortOption = "newest" | "views" | "clicks" | "bid";
@@ -348,7 +349,7 @@ export function useMyAdsDashboard(session: Session) {
     if (typeof window === "undefined") return;
 
     const checkPendingBoost = () => {
-      const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = parseNormalizedSearchParams(window.location.search);
       const boostRef = urlParams.get("boost_ref") || sessionStorage.getItem("paayh_boost_ref");
       const gatewayRef =
         urlParams.get("reference") || urlParams.get("trxref") || sessionStorage.getItem("paayh_boost_gateway_ref");
@@ -376,7 +377,7 @@ export function useMyAdsDashboard(session: Session) {
       if (isHighlight) return;
 
       const boostRef = e.detail?.reference || sessionStorage.getItem("paayh_boost_ref");
-      const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = parseNormalizedSearchParams(window.location.search);
       const gatewayRef = urlParams.get("reference") || urlParams.get("trxref") || e.detail?.gatewayReference;
       if (boostRef && boostRef.startsWith("BOOST-")) {
         sessionStorage.removeItem("paayh_boost_ref");
@@ -557,7 +558,7 @@ export function useMyAdsDashboard(session: Session) {
     const filteredActiveList = activeAds
       .filter((ad) => {
         if (!matchesQuery(ad)) return false;
-        const isComp = !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 500);
+        const isComp = !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 100);
         if (activeTab === "paused") return !!ad.is_paused && !isComp;
         if (activeTab === "completed") return isComp;
         if (activeTab === "active") return !ad.is_paused && !isComp;
@@ -571,7 +572,7 @@ export function useMyAdsDashboard(session: Session) {
   const pausedCount = useMemo(
     () =>
       activeAds.filter(
-        (ad) => !!ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 500)
+        (ad) => !!ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 100)
       ).length,
     [activeAds]
   );
@@ -579,7 +580,7 @@ export function useMyAdsDashboard(session: Session) {
   const completedCount = useMemo(
     () =>
       activeAds.filter(
-        (ad) => !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 500)
+        (ad) => !!ad.completed_at || (ad.impression_count ?? 0) >= (ad.impressions ?? 100)
       ).length,
     [activeAds]
   );
@@ -587,7 +588,7 @@ export function useMyAdsDashboard(session: Session) {
   const deliveringCount = useMemo(
     () =>
       activeAds.filter(
-        (ad) => !ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 500)
+        (ad) => !ad.is_paused && !ad.completed_at && (ad.impression_count ?? 0) < (ad.impressions ?? 100)
       ).length,
     [activeAds]
   );

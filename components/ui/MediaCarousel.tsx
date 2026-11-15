@@ -16,7 +16,7 @@ interface MediaCarouselProps {
   isPreloadWarm?: boolean;
   isMuted: boolean;
   onToggleMute: () => void;
-  onMediaClick?: (index: number) => void;
+  onMediaClick?: (index: number, currentTime?: number) => void;
 }
 
 export const isVideoUrl = (url?: string | null): boolean => {
@@ -125,7 +125,9 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
 
   const toggleFullscreen = useCallback((index: number) => {
     if (onMediaClick) {
-      onMediaClick(index);
+      const activeVid = videoRefs.current[index];
+      const ct = activeVid && Number.isFinite(activeVid.currentTime) ? activeVid.currentTime : 0;
+      onMediaClick(index, ct);
       return;
     }
     const video = videoRefs.current[index];
@@ -202,7 +204,9 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   );
   const fallbackRatio = isFirstVideo ? 16 / 9 : 1.0;
 
-  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(fallbackRatio);
+  const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() =>
+    firstUrl && mediaAspectRatioCache.has(firstUrl) ? mediaAspectRatioCache.get(firstUrl)! : fallbackRatio
+  );
 
   useEffect(() => {
     if (!firstUrl) return;
@@ -236,19 +240,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     };
 
     if (firstImgRef.current && firstImgRef.current.complete) {
-      if (applyRatio(firstImgRef.current.naturalWidth, firstImgRef.current.naturalHeight)) {
-        return;
-      }
-    }
-
-    const probe = new Image();
-    probe.src = firstUrl;
-    if (probe.complete) {
-      applyRatio(probe.naturalWidth, probe.naturalHeight);
-    } else {
-      probe.onload = () => {
-        applyRatio(probe.naturalWidth, probe.naturalHeight);
-      };
+      applyRatio(firstImgRef.current.naturalWidth, firstImgRef.current.naturalHeight);
     }
   }, [firstUrl, isFirstVideo]);
 
@@ -258,20 +250,26 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
     const activeHasVideo = Boolean(videoRefs.current[activeIndex]);
     const firstVideoIdx = videoRefs.current.findIndex((v) => Boolean(v));
     const targetVideoIdx = activeHasVideo ? activeIndex : firstVideoIdx;
+    const cleanups: Array<() => void> = [];
 
     videoRefs.current.forEach((video, idx) => {
       if (!video) return;
       if (isCardVisible && idx === targetVideoIdx) {
         video.muted = isMuted;
         video.defaultMuted = isMuted;
-        // Only trigger manual play if video is ready and HlsVideoPlayer hasn't started it
-        if (video.paused && video.readyState >= 2) {
+
+        const attemptPlay = () => {
+          if (!video.paused) {
+            setPlayingStates((prev) => (prev[idx] ? prev : { ...prev, [idx]: true }));
+            return;
+          }
           const p = video.play();
           if (p !== undefined) {
             p.then(() => {
               setPlayingStates((prev) => ({ ...prev, [idx]: true }));
               if (isFullscreen) showControlsTemporarily(idx);
-            }).catch(() => {
+            }).catch((err: any) => {
+              if (err?.name === "AbortError") return;
               if (!video.muted) {
                 video.muted = true;
                 video.defaultMuted = true;
@@ -280,7 +278,31 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                 }).catch(() => {
                   setPlayingStates((prev) => ({ ...prev, [idx]: false }));
                 });
+              } else {
+                setPlayingStates((prev) => ({ ...prev, [idx]: false }));
               }
+            });
+          }
+        };
+
+        if (video.readyState >= 2) {
+          attemptPlay();
+        } else {
+          // Pre-warmed video (e.g. readyState === 1 from preload="metadata"): trigger buffered playback and listen for readiness
+          if (video.paused && video.readyState === 1) {
+            attemptPlay();
+          }
+          if (typeof video.addEventListener === "function") {
+            const handleReady = () => {
+              video.removeEventListener("canplay", handleReady);
+              video.removeEventListener("loadeddata", handleReady);
+              attemptPlay();
+            };
+            video.addEventListener("canplay", handleReady);
+            video.addEventListener("loadeddata", handleReady);
+            cleanups.push(() => {
+              video.removeEventListener("canplay", handleReady);
+              video.removeEventListener("loadeddata", handleReady);
             });
           }
         }
@@ -291,6 +313,10 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         setPlayingStates((prev) => (prev[idx] ? { ...prev, [idx]: false } : prev));
       }
     });
+
+    return () => {
+      cleanups.forEach((fn) => fn());
+    };
   }, [isCardVisible, activeIndex, isMuted, isFullscreen, showControlsTemporarily]);
 
   const togglePlayVideo = useCallback((idx: number) => {
@@ -417,7 +443,9 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
         e.stopPropagation();
       }
       if (onMediaClick) {
-        onMediaClick(index);
+        const activeVid = videoRefs.current[index];
+        const ct = activeVid && Number.isFinite(activeVid.currentTime) ? activeVid.currentTime : 0;
+        onMediaClick(index, ct);
       }
     },
     [onMediaClick]
@@ -426,6 +454,14 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
   if (mediaUrls.length === 0 || mediaError) return null;
 
   const isMulti = mediaUrls.length > 1;
+  const firstVideoMediaIdx = mediaUrls.findIndex(
+    (u, i) => isVideoUrl(u) || (i === 0 && Boolean(hlsUrl))
+  );
+  const activeIsVideo =
+    activeIndex >= 0 &&
+    activeIndex < mediaUrls.length &&
+    (isVideoUrl(mediaUrls[activeIndex]) || (activeIndex === 0 && Boolean(hlsUrl)));
+  const targetAutoPlayVideoIdx = activeIsVideo ? activeIndex : firstVideoMediaIdx;
 
   const renderMediaNode = (url: string, index: number) => {
     const isVideo = isVideoUrl(url) || (index === 0 && !!hlsUrl);
@@ -435,6 +471,13 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
       ? hlsUrl
       : undefined;
     const shouldEagerLoad = index < 2;
+    const videoPreload: "auto" | "metadata" | "none" = isCardVisible
+      ? index === targetAutoPlayVideoIdx || !isMulti
+        ? "auto"
+        : "metadata"
+      : isPreloadWarm && index === (firstVideoMediaIdx >= 0 ? firstVideoMediaIdx : 0)
+      ? "metadata"
+      : "none";
 
     if (isVideo) {
       return (
@@ -455,8 +498,8 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
             hlsSrc={itemHlsSrc}
             loop
             playsInline
-            autoPlay={isCardVisible && index === activeIndex}
-            preload="auto"
+            autoPlay={isCardVisible && index === targetAutoPlayVideoIdx}
+            preload={videoPreload}
             muted={isMuted}
             controls={false}
             className={styles.mediaVideo}
@@ -489,9 +532,7 @@ const MediaCarousel: React.FC<MediaCarouselProps> = ({
                 const clamped = Math.min(Math.max(rawRatio, 0.5625), 1.91);
                 saveRatioToCache(url, clamped);
                 if (index === 0) {
-                  setBaseAspectRatio((prev) =>
-                    mediaAspectRatioCache.has(firstUrl) ? prev : clamped
-                  );
+                  setBaseAspectRatio((prev) => (prev === clamped ? prev : clamped));
                 }
               }
             }}

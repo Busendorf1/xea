@@ -55,6 +55,17 @@ export function useNewsComposer(session: NewsSession) {
     until: null,
   });
 
+  const [userProfile, setUserProfile] = useState<{
+    profileImage?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    username?: string | null;
+    business_name?: string | null;
+    monetized?: boolean | string;
+    gender?: string | null;
+    email?: string | null;
+  } | null>(null);
+
   const isSubmittingRef = useRef(false);
 
   const scrollSmoothToTop = useCallback(() => {
@@ -179,6 +190,16 @@ export function useNewsComposer(session: NewsSession) {
         const res = await fetch("/api/profile");
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
+        setUserProfile({
+          profileImage: data.profileImage ?? null,
+          firstName: data.firstName ?? null,
+          lastName: data.lastName ?? null,
+          username: data.username ?? null,
+          business_name: data.business_name ?? null,
+          monetized: data.monetized ?? false,
+          gender: data.gender ?? null,
+          email: data.email ?? session?.user?.email ?? null,
+        });
         const status = data.ad_account_status;
         const until = data.ad_ban_until;
         const reason = data.ad_ban_reason || "";
@@ -641,6 +662,7 @@ export function useNewsComposer(session: NewsSession) {
     statusNotice,
     pendingLimitReached,
     adAccountRestriction,
+    userProfile,
     handleMediaChange,
     handleInitiateSubmit,
     canNavigateToStep,

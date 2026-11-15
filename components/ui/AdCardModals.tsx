@@ -3,7 +3,7 @@
 import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Share2 } from "lucide-react";
+import { ArrowLeft, Play, Share2 } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdOptionsMenu, { type AdReportType } from "./AdOptionsMenu";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -62,6 +62,7 @@ export interface AdMediaLightboxModalProps extends SharedModalProps {
   setShowLightboxMenu: (show: boolean) => void;
   lightboxSwipeOffsetY: number;
   setLightboxSwipeOffsetY: React.Dispatch<React.SetStateAction<number>>;
+  initialVideoTime?: number;
 }
 
 export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
@@ -103,6 +104,7 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
   setShowLightboxMenu,
   lightboxSwipeOffsetY,
   setLightboxSwipeOffsetY,
+  initialVideoTime = 0,
 }: AdMediaLightboxModalProps) {
   const lightboxTouchStartXRef = useRef<number | null>(null);
   const lightboxTouchStartYRef = useRef<number | null>(null);
@@ -386,12 +388,26 @@ export const AdMediaLightboxModal = React.memo(function AdMediaLightboxModal({
                       className={styles.lightboxVideoPlayerWrap}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <FullscreenVideoPlayer
-                        key={`lightbox-${idx}-${url}`}
-                        src={url}
-                        hlsSrc={itemHlsSrc}
-                        autoPlay={isSlideActive}
-                      />
+                      {isSlideActive ? (
+                        <FullscreenVideoPlayer
+                          key={`lightbox-${idx}-${url}`}
+                          src={url}
+                          hlsSrc={itemHlsSrc}
+                          autoPlay={!isLightboxClosing}
+                          initialTime={initialVideoTime}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.lightboxVideoPlaceholder}
+                          onClick={() => setLightboxIndex(idx)}
+                          aria-label={`Play video slide ${idx + 1}`}
+                        >
+                          <span className={styles.lightboxVideoPlaceholderBtn}>
+                            <Play size={26} fill="#ffffff" />
+                          </span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <img

@@ -360,14 +360,19 @@ const Feed = ({
         const fetchUrl = `/api/feed?offset=${offset}&limit=${LIMIT}${refreshParam}${sharedAdParam}`;
         let response = await fetch(fetchUrl, { headers, credentials: "same-origin" });
 
-        // Resilient progressive retry for initial feed load (e.g. serverless cold starts)
-        if (!response.ok && pageNum === 0 && !isLoadMore) {
-          console.warn("âš ï¸ Feed initial fetch non-OK status:", response.status, "- Retrying with warm cache...");
-          await new Promise((r) => setTimeout(r, 1000));
+        // Resilient progressive retry ONLY for transient 5xx / timeout responses (fail fast on 4xx auth/validation)
+        if (
+          !response.ok &&
+          pageNum === 0 &&
+          !isLoadMore &&
+          (response.status >= 500 || response.status === 408 || response.status === 429)
+        ) {
+          console.warn("⚠️  Feed initial fetch transient status:", response.status, "- Retrying...");
+          await new Promise((r) => setTimeout(r, 900));
           response = await fetch(fetchUrl, { headers, credentials: "same-origin" });
 
-          if (!response.ok) {
-            await new Promise((r) => setTimeout(r, 2000));
+          if (!response.ok && (response.status >= 500 || response.status === 408 || response.status === 429)) {
+            await new Promise((r) => setTimeout(r, 1600));
             response = await fetch(fetchUrl, { headers, credentials: "same-origin" });
           }
         }
@@ -423,12 +428,15 @@ const Feed = ({
             return merged;
           });
         } else if (!isLoadMore && typeof window !== "undefined" && userEmail && feedAds.length > 0) {
-          try {
-            sessionStorage.setItem(
-              `paayh_feed_cache_${userEmail.toLowerCase().trim()}`,
-              JSON.stringify({ ads: feedAds.slice(0, 15), profiles: {}, timestamp: Date.now() })
-            );
-          } catch {}
+          setAdvertiserProfiles((prev) => {
+            try {
+              sessionStorage.setItem(
+                `paayh_feed_cache_${userEmail.toLowerCase().trim()}`,
+                JSON.stringify({ ads: feedAds.slice(0, 15), profiles: prev, timestamp: Date.now() })
+              );
+            } catch {}
+            return prev;
+          });
         }
 
         setHasMore(feedAds.length >= LIMIT);
@@ -544,11 +552,32 @@ const Feed = ({
       return;
     }
 
+    // Warm up FullscreenVideoPlayer chunk during idle time so first video click opens cleanly
+    let preloadTimer: ReturnType<typeof setTimeout> | null = null;
+    preloadTimer = setTimeout(() => {
+      void import("@/components/MyAds/FullscreenVideoPlayer").catch(() => {});
+    }, 350);
+
     if (!initialAds || initialAds.length === 0) {
-      // Keep skeleton loading active while verifying fresh feed to prevent ghost ad flashes
-      setLoading(true);
-      fetchRelevantAds(0, false, false);
+      const cached = readFeedClientCache(userEmail);
+      if (cached && cached.ads.length > 0) {
+        if (Object.keys(cached.profiles).length > 0) {
+          setAdvertiserProfiles((prev) => ({ ...cached.profiles, ...prev }));
+        }
+        hasAdsRef.current = true;
+        setAds(cached.ads);
+        setLoading(false);
+        fetchRelevantAds(0, false, true);
+      } else {
+        // Keep skeleton loading active while verifying fresh feed to prevent ghost ad flashes
+        setLoading(true);
+        fetchRelevantAds(0, false, false);
+      }
     }
+
+    return () => {
+      if (preloadTimer) clearTimeout(preloadTimer);
+    };
   }, [fetchRelevantAds, initialAds, sharedAdUnavailable, userEmail, ssrSharedAdId, hasSsrSharedAd, initialSharedAd]);
 
   const loadMore = useCallback(() => {
@@ -620,7 +649,7 @@ const Feed = ({
     getScrollElement: () => parentRef.current?.parentElement || null,
     estimateSize: () => 500,
     getItemKey: useCallback((index: number) => displayFeed[index]?.id || `feed-item-${index}`, [displayFeed]),
-    overscan: 8,
+    overscan: 3,
   });
 
   // Compensate scroll offset only when an item strictly above the viewport resizes
@@ -675,70 +704,108 @@ const Feed = ({
   }, []);
 
   const virtualItems = virtualizer.getVirtualItems();
+  const visibleStartIndex = virtualItems[0]?.index ?? -1;
+  const visibleEndIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
 
-  // Dynamic Symmetrical Bidirectional Headroom Video Pre-warming:
-  // Pre-buffers initial chunks of upcoming feed videos in BOTH scroll directions:
-  // 1) Forward scroll (downward): 4 items ahead of the current viewport bottom
-  // 2) Opposite scroll (upward/back): 4 items ahead of the current viewport top
+  // Capped lightweight metadata pre-warmer: warms headers (moov atom / duration) for up to 2 nearby
+  // videos without competing with active playback bandwidth or leaking detached media decoders.
+  // Keyed on primitive visible index bounds so state updates do not tear down in-flight probes.
   useEffect(() => {
-    if (typeof window === "undefined" || displayFeed.length === 0 || virtualItems.length === 0) return;
+    if (
+      typeof window === "undefined" ||
+      displayFeed.length === 0 ||
+      visibleStartIndex < 0 ||
+      visibleEndIndex < 0
+    ) {
+      return;
+    }
 
-    const prewarmed = (window as any).__xea_prewarmed_videos || new Set<string>();
+    const prewarmed: Set<string> = (window as any).__xea_prewarmed_videos || new Set<string>();
     (window as any).__xea_prewarmed_videos = prewarmed;
 
-    const firstIndex = virtualItems[0].index;
-    const lastIndex = virtualItems[virtualItems.length - 1].index;
-
-    // Symmetrical bidirectional window: 4 items above (opposite scroll) and 4 items below (forward scroll)
-    const upwardStart = Math.max(0, firstIndex - 4);
-    const upwardEnd = firstIndex;
-    const downwardStart = lastIndex;
-    const downwardEnd = Math.min(displayFeed.length, lastIndex + 5);
+    const upwardStart = Math.max(0, visibleStartIndex - 1);
+    const upwardEnd = visibleStartIndex;
+    const downwardStart = visibleEndIndex + 1;
+    const downwardEnd = Math.min(displayFeed.length, visibleEndIndex + 4);
 
     const itemsToPrewarm = [
-      ...displayFeed.slice(upwardStart, upwardEnd),
       ...displayFeed.slice(downwardStart, downwardEnd),
+      ...displayFeed.slice(upwardStart, upwardEnd),
     ];
 
+    const activeProbes: HTMLVideoElement[] = [];
+    const probeTimers: ReturnType<typeof setTimeout>[] = [];
+    const MAX_CONCURRENT_VIDEO_PROBES = 2;
+
+    const releaseProbe = (probe: HTMLVideoElement) => {
+      try {
+        probe.onloadedmetadata = null;
+        probe.onerror = null;
+        probe.removeAttribute("src");
+        probe.load();
+      } catch {}
+    };
+
     const prewarmVideos = () => {
-      itemsToPrewarm.forEach((item) => {
-        const mediaStr = item.ad_media;
-        if (!mediaStr) return;
-        const urls = mediaStr.split(",").map((u: string) => u.trim());
-        urls.forEach((url: string) => {
-          if (!url || prewarmed.has(url)) return;
-          if (isVideoUrl(url) || (item.hls_url && url === urls[0])) {
-            prewarmed.add(url);
-            try {
-              const probe = document.createElement("video");
-              probe.preload = "auto";
-              probe.muted = true;
-              probe.playsInline = true;
-              probe.src = url;
-              probe.load();
-            } catch {}
+      const candidateUrls: string[] = [];
+      for (const item of itemsToPrewarm) {
+        if (!item?.ad_media) continue;
+        const urls = item.ad_media.split(",").map((u: string) => u.trim());
+        for (const url of urls) {
+          if (!url || prewarmed.has(url)) continue;
+          if (isVideoUrl(url) && !url.includes(".m3u8")) {
+            candidateUrls.push(url);
+            if (candidateUrls.length >= MAX_CONCURRENT_VIDEO_PROBES) break;
           }
-        });
+        }
+        if (candidateUrls.length >= MAX_CONCURRENT_VIDEO_PROBES) break;
+      }
+
+      candidateUrls.forEach((url) => {
+        try {
+          const probe = document.createElement("video");
+          probe.preload = "metadata";
+          probe.muted = true;
+          probe.playsInline = true;
+          activeProbes.push(probe);
+          const done = (markComplete: boolean) => {
+            if (markComplete) prewarmed.add(url);
+            releaseProbe(probe);
+          };
+          probe.onloadedmetadata = () => done(true);
+          probe.onerror = () => done(true);
+          probe.src = url;
+          probe.load();
+          probeTimers.push(setTimeout(() => done(false), 4000));
+        } catch {}
       });
     };
 
+    let idleHandle: any = null;
+    let startTimer: ReturnType<typeof setTimeout> | null = null;
     if ("requestIdleCallback" in window) {
-      const handle = (window as any).requestIdleCallback(prewarmVideos, { timeout: 600 });
-      return () => (window as any).cancelIdleCallback(handle);
+      idleHandle = (window as any).requestIdleCallback(prewarmVideos, { timeout: 600 });
     } else {
-      const timer = setTimeout(prewarmVideos, 200);
-      return () => clearTimeout(timer);
+      startTimer = setTimeout(prewarmVideos, 200);
     }
-  }, [virtualItems, displayFeed]);
+
+    return () => {
+      if (idleHandle !== null && "cancelIdleCallback" in window) {
+        (window as any).cancelIdleCallback(idleHandle);
+      }
+      if (startTimer) clearTimeout(startTimer);
+      probeTimers.forEach(clearTimeout);
+      activeProbes.forEach(releaseProbe);
+    };
+  }, [visibleStartIndex, visibleEndIndex, displayFeed]);
 
   useEffect(() => {
-    if (virtualItems.length > 0 && hasMore && !loadingMore && !loading) {
-      const lastItemIndex = virtualItems[virtualItems.length - 1].index;
-      if (lastItemIndex >= displayFeed.length - 2) {
+    if (visibleEndIndex >= 0 && hasMore && !loadingMore && !loading) {
+      if (visibleEndIndex >= displayFeed.length - 4) {
         loadMore();
       }
     }
-  }, [virtualItems, hasMore, loadingMore, loading, displayFeed.length, loadMore]);
+  }, [visibleEndIndex, hasMore, loadingMore, loading, displayFeed.length, loadMore]);
 
   const handlePillClick = useCallback(() => {
     const { ads: droppedAds, profiles: droppedProfiles } = consumePendingAds();

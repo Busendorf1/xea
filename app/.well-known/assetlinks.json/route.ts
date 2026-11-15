@@ -9,7 +9,11 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const packageName = (process.env.ANDROID_APP_PACKAGE || "com.paayh.app").trim();
-  const rawFingerprints = (process.env.ANDROID_SHA256_FINGERPRINTS || "")
+  const rawFingerprints = (
+    process.env.ANDROID_SHA256_FINGERPRINTS ||
+    process.env.ANDROID_SHA256_CERT_FINGERPRINTS ||
+    ""
+  )
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

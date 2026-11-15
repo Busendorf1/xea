@@ -229,3 +229,72 @@ describe("Task 4: Client-Friendly Error Sanitization (Network, Server, & Actiona
     ).toBe("Too many wrong PIN attempts. Try again in 45 mins.");
   });
 });
+
+describe("Mobile Web App Modal & Paayh Deep Links", () => {
+  it("shows AppDeepLinkBanner only on mobile web (never desktop/auth/api) and builds Android intent + iOS custom-scheme links", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const { shouldShowAppBanner, buildPaayhOpenAppUrl } = await import("../../components/AppDeepLinkBanner");
+
+    expect(
+      shouldShowAppBanner({
+        pathname: "/logged-in",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+        dismissed: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldShowAppBanner({
+        pathname: "/ad/featured-offer-b_abc",
+        userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)",
+        dismissed: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldShowAppBanner({
+        pathname: "/",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        dismissed: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldShowAppBanner({
+        pathname: "/auth/callback",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+        dismissed: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldShowAppBanner({
+        pathname: "/",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+        dismissed: true,
+      })
+    ).toBe(false);
+
+    const androidUrl = buildPaayhOpenAppUrl({
+      pathname: "/ad/test-ad-1",
+      search: "?ref=share",
+      origin: "https://paayh.com",
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)",
+    });
+    expect(androidUrl).toContain("intent://paayh.com/ad/test-ad-1?ref=share#Intent;");
+    expect(androidUrl).toContain("scheme=https;package=com.paayh.app;");
+    expect(androidUrl).toContain("S.browser_fallback_url=https%3A%2F%2Fpaayh.com%2Fad%2Ftest-ad-1%3Fref%3Dshare;end");
+
+    const iosUrl = buildPaayhOpenAppUrl({
+      pathname: "/logged-in",
+      search: "?view=monetize",
+      origin: "https://paayh.com",
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+    });
+    expect(iosUrl).toBe("xea-auth://logged-in?view=monetize");
+
+    const root = process.cwd();
+    const layoutSrc = fs.readFileSync(path.join(root, "app/layout.tsx"), "utf8");
+    const middlewareSrc = fs.readFileSync(path.join(root, "middleware.ts"), "utf8");
+    expect(layoutSrc).toContain("<AppDeepLinkBanner />");
+    expect(fs.existsSync(path.join(root, "app/share/[id]/page.tsx"))).toBe(true);
+    expect(middlewareSrc).toContain('pathname.startsWith("/share/")');
+  });
+});

@@ -52,11 +52,20 @@ export async function GET(
       originHeaders["Range"] = rangeHeader;
     }
 
-    const originRes = await fetch(originUrl, {
-      method: "GET",
-      headers: originHeaders,
-      next: { revalidate: 86400 },
-    });
+    const originRes = await fetch(
+      originUrl,
+      rangeHeader
+        ? {
+            method: "GET",
+            headers: originHeaders,
+            cache: "no-store",
+          }
+        : {
+            method: "GET",
+            headers: originHeaders,
+            next: { revalidate: 86400 },
+          }
+    );
 
     if (!originRes.ok && originRes.status !== 206) {
       return new NextResponse(originRes.statusText || "Media not found.", {
@@ -118,12 +127,21 @@ export async function HEAD(
     }
 
     const rawFilePath = pathSegments.slice(1).join("/");
+    if (!rawFilePath || rawFilePath.includes("..") || rawFilePath.includes("\\")) {
+      return new NextResponse(null, { status: 400 });
+    }
+
     const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+    if (!supabaseUrl) {
+      return new NextResponse(null, { status: 503 });
+    }
+
     const encodedPath = rawFilePath.split("/").map(encodeURIComponent).join("/");
     const originUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${encodedPath}`;
 
     const originRes = await fetch(originUrl, {
       method: "HEAD",
+      cache: "no-store",
       headers: req.headers.get("range") ? { Range: req.headers.get("range")! } : {},
     });
 
@@ -132,6 +150,12 @@ export async function HEAD(
     responseHeaders.set("Accept-Ranges", "bytes");
     if (originRes.headers.get("content-length")) {
       responseHeaders.set("Content-Length", originRes.headers.get("content-length")!);
+    }
+    if (originRes.headers.get("content-range")) {
+      responseHeaders.set("Content-Range", originRes.headers.get("content-range")!);
+    }
+    if (originRes.headers.get("etag")) {
+      responseHeaders.set("ETag", originRes.headers.get("etag")!);
     }
     responseHeaders.set(
       "Cache-Control",

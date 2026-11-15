@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css"; 
 import { ThemeProvider } from "@/components/ThemeProvider";
+import AppDeepLinkBanner from "@/components/AppDeepLinkBanner";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -94,6 +96,9 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} ${inter.variable}`}>
         <ThemeProvider>
           {children}
+          <Suspense fallback={null}>
+            <AppDeepLinkBanner />
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>

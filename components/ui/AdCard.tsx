@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
 import { Share2, ArrowLeft } from "lucide-react";
 import styles from "./AdCard.module.css";
 import AdInteractionHandler from "./AdInteractionHandler";
@@ -33,7 +32,14 @@ import { getAdActionIcon as getIcon, attachAdCardSlots } from "./adCardSlots";
 
 export type { BaseAd, VideoAd, CarouselAd, TextAd, AdUnion, Ad };
 
-const FullscreenVideoPlayer = dynamic(() => import("@/components/MyAds/FullscreenVideoPlayer"), { ssr: false });
+let fullscreenPlayerChunkPreloaded = false;
+function preloadFullscreenVideoPlayer() {
+  if (fullscreenPlayerChunkPreloaded || typeof window === "undefined") return;
+  fullscreenPlayerChunkPreloaded = true;
+  void import("@/components/MyAds/FullscreenVideoPlayer").catch(() => {
+    fullscreenPlayerChunkPreloaded = false;
+  });
+}
 
 interface AdCardProps {
   ad: Ad;
@@ -87,6 +93,19 @@ function AdCard({
   const [showReaderMenu, setShowReaderMenu] = useState(false);
 
   const [lightboxSwipeOffsetY, setLightboxSwipeOffsetY] = useState(0);
+  const [lightboxInitialVideoTime, setLightboxInitialVideoTime] = useState(0);
+
+  const hasVideoMedia = useMemo(() => {
+    if (ad.hls_url) return true;
+    if (!ad.ad_media) return false;
+    return ad.ad_media.split(",").some((u) => isVideoUrl(u.trim()));
+  }, [ad.ad_media, ad.hls_url]);
+
+  useEffect(() => {
+    if ((isPreloadWarm || isCardVisible) && hasVideoMedia) {
+      preloadFullscreenVideoPlayer();
+    }
+  }, [isPreloadWarm, isCardVisible, hasVideoMedia]);
 
   const closeLightbox = useCallback(() => {
     if (isLightboxClosing) return;
@@ -96,14 +115,25 @@ function AdCard({
       setIsLightboxClosing(false);
       setShowLightboxMenu(false);
       setLightboxSwipeOffsetY(0);
-    }, 220);
+      setLightboxInitialVideoTime(0);
+    }, 190);
   }, [isLightboxClosing]);
 
-  const openLightbox = useCallback((idx: number) => {
+  const openLightbox = useCallback((idx: number, currentTime = 0) => {
+    preloadFullscreenVideoPlayer();
     setIsLightboxClosing(false);
     setLightboxSwipeOffsetY(0);
+    setLightboxInitialVideoTime(currentTime > 0.15 ? currentTime : 0);
     setLightboxIndex(idx);
   }, []);
+
+  const handleSetLightboxIndex = useCallback(
+    (updater: React.SetStateAction<number | null>) => {
+      setLightboxInitialVideoTime(0);
+      setLightboxIndex(updater);
+    },
+    []
+  );
 
   const closeTextReader = useCallback(() => {
     if (isTextReaderClosing) return;
@@ -180,14 +210,14 @@ function AdCard({
         if (lightboxIndex !== null) closeLightbox();
         if (isTextReaderOpen) closeTextReader();
       } else if (lightboxIndex !== null && e.key === "ArrowLeft" && mediaUrls.length > 1) {
-        setLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+        handleSetLightboxIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
       } else if (lightboxIndex !== null && e.key === "ArrowRight" && mediaUrls.length > 1) {
-        setLightboxIndex((prev) => (prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null));
+        handleSetLightboxIndex((prev) => (prev !== null ? Math.min(mediaUrls.length - 1, prev + 1) : null));
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lightboxIndex, isTextReaderOpen, mediaUrls.length, closeLightbox, closeTextReader]);
+  }, [lightboxIndex, isTextReaderOpen, mediaUrls.length, closeLightbox, closeTextReader, handleSetLightboxIndex]);
 
   const handleDismiss = useCallback(
     (adId: string, advertiserEmail?: string, reportType?: AdReportType) => {
@@ -468,6 +498,8 @@ function AdCard({
       key={ad.id}
       className={`${styles.card} ${isDismissing ? styles.cardDismissing : ""} ${showThreeDotMenu ? styles.cardMenuOpen : ""}`}
       style={{ ...style, position: "relative", zIndex: showThreeDotMenu ? 99999 : 1, overflow: "visible" }}
+      onMouseEnter={hasVideoMedia ? preloadFullscreenVideoPlayer : undefined}
+      onTouchStart={hasVideoMedia ? preloadFullscreenVideoPlayer : undefined}
     >
       {/* Left Column: Avatar */}
       <div className={styles.avatarCol}>
@@ -598,7 +630,7 @@ function AdCard({
           isPreloadWarm={isPreloadWarm}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
-          onMediaClick={(idx) => openLightbox(idx)}
+          onMediaClick={openLightbox}
         />
 
         {/* Action bar */}
@@ -670,7 +702,7 @@ function AdCard({
           getHref={getHref}
           getIcon={getIcon}
           lightboxIndex={lightboxIndex}
-          setLightboxIndex={setLightboxIndex}
+          setLightboxIndex={handleSetLightboxIndex}
           mediaUrls={mediaUrls}
           isLightboxClosing={isLightboxClosing}
           closeLightbox={closeLightbox}
@@ -678,6 +710,7 @@ function AdCard({
           setShowLightboxMenu={setShowLightboxMenu}
           lightboxSwipeOffsetY={lightboxSwipeOffsetY}
           setLightboxSwipeOffsetY={setLightboxSwipeOffsetY}
+          initialVideoTime={lightboxInitialVideoTime}
         />
       )}
 

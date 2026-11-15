@@ -79,6 +79,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     last_mutual_spent?: string;
     balance: number;
     country?: string | null;
+    profileImage?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    username?: string | null;
+    business_name?: string | null;
+    monetized?: boolean | string;
+    gender?: string | null;
+    email?: string | null;
   } | null>(null);
 
   const advertiserCountry = userProfile?.country || null;
@@ -104,6 +112,14 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               last_mutual_spent: data.last_mutual_spent,
               balance: data.balance ?? 0,
               country: data.country ?? null,
+              profileImage: data.profileImage ?? null,
+              firstName: data.firstName ?? null,
+              lastName: data.lastName ?? null,
+              username: data.username ?? null,
+              business_name: data.business_name ?? null,
+              monetized: data.monetized ?? false,
+              gender: data.gender ?? null,
+              email: data.email ?? session?.user?.email ?? null,
             });
 
             const status = data.ad_account_status;
@@ -274,7 +290,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     formatCurrency,
   });
 
-  const { capacity, checkingCapacity } = useAdCapacityCheck({
+  const { capacity, checkingCapacity, retryCapacityCheck } = useAdCapacityCheck({
     enabled: !isAdmin && (step === 2 || step === 4 || step === 5),
     impressions: formSelections.impressions,
     campaignDays: formSelections.campaignDays,
@@ -490,6 +506,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               toggleEmploymentStatus={toggleEmploymentStatus}
               capacity={isAdmin ? null : capacity}
               checkingCapacity={isAdmin ? false : checkingCapacity}
+              onRetryCapacity={isAdmin ? undefined : retryCapacityCheck}
             />
           )}
 

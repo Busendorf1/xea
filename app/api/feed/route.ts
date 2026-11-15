@@ -66,14 +66,38 @@ export async function GET(req: NextRequest) {
     const sharedAdId = searchParams.get("sharedAdId");
 
     const emailKey = email.toLowerCase().trim();
+    const raceWithTimeout = <T>(
+      promise: PromiseLike<T>,
+      ms: number,
+      onTimeout: () => T
+    ): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([
+        Promise.resolve(promise),
+        new Promise<T>((resolve) => {
+          timer = setTimeout(() => resolve(onTimeout()), ms);
+        }),
+      ]).finally(() => {
+        if (timer !== undefined) clearTimeout(timer);
+      });
+    };
 
-    // Per-user sliding-window rate limit (no multi-hour IP lockout at 500M+ NAT scale)
-    const userRateLimit = await checkRateLimit(req, {
-      limit: refresh ? 25 : 90,
-      windowSeconds: 60,
-      identifier: emailKey,
-      identifierPrefix: refresh ? "feed_user_refresh" : "feed_user_paginate",
-    });
+    // Run per-user sliding-window rate limit and cached profile lookup concurrently
+    const [userRateLimit, prefetchedViewerProfile] = await Promise.all([
+      checkRateLimit(req, {
+        limit: refresh ? 25 : 90,
+        windowSeconds: 60,
+        identifier: emailKey,
+        identifierPrefix: refresh ? "feed_user_refresh" : "feed_user_paginate",
+      }),
+      sharedAdId
+        ? Promise.resolve<ViewerTargetingProfile | null>(null)
+        : raceWithTimeout(
+            getCachedProfile<ViewerTargetingProfile>(emailKey).catch(() => null),
+            1200,
+            () => null
+          ),
+    ]);
     if (!userRateLimit.allowed) {
       return (
         userRateLimit.response ||
@@ -150,7 +174,7 @@ export async function GET(req: NextRequest) {
     const pacingHashKey = `user:pacing:${emailKey}:${todayDate}`;
     const lastViewedHashKey = `user:last_viewed:${emailKey}`;
 
-    let viewerProfile: ViewerTargetingProfile | null = await getCachedProfile<ViewerTargetingProfile>(emailKey);
+    let viewerProfile: ViewerTargetingProfile | null = prefetchedViewerProfile;
     let cachedAdIdsStr: string | null = null;
     let cachedProfilesStr: string | null = null;
     let seenAdIdsList: string[] = [];
@@ -188,7 +212,11 @@ export async function GET(req: NextRequest) {
       }
       redisPipe.hgetall(lastViewedHashKey);
 
-      const redisResultsRaw = await redisPipe.exec().catch(() => []);
+      const redisResultsRaw = await raceWithTimeout(
+        redisPipe.exec().catch(() => []),
+        1200,
+        () => []
+      );
       if (Array.isArray(redisResultsRaw) && redisResultsRaw.length > 0) {
         let offsetIdx = 0;
         if (needRedisFeedCache) {
@@ -265,12 +293,16 @@ export async function GET(req: NextRequest) {
     let impressionsTruncated = false;
     if (userImpressionMap.size === 0 && !isInstantEmptyL1Hit && locationEnabled) {
       try {
-        const { data: dbImpressions } = await supabaseReadOnly
-          .from("ad_impressions")
-          .select("ad_id, view_count, today_view_count, last_viewed_at")
-          .eq("user_email", emailKey)
-          .order("last_viewed_at", { ascending: false })
-          .limit(1000);
+        const { data: dbImpressions } = await raceWithTimeout(
+          supabaseReadOnly
+            .from("ad_impressions")
+            .select("ad_id, view_count, today_view_count, last_viewed_at")
+            .eq("user_email", emailKey)
+            .order("last_viewed_at", { ascending: false })
+            .limit(1000),
+          2000,
+          () => ({ data: null as any[] | null })
+        );
 
         if (dbImpressions && dbImpressions.length >= 1000) {
           impressionsTruncated = true;
@@ -348,7 +380,11 @@ export async function GET(req: NextRequest) {
           const missingIds: string[] = [];
           if (redisLookupIds.length > 0 && isRedisReady()) {
             const detailKeys = redisLookupIds.map((id) => `ad:detail:${id}`);
-            const cachedDetailsRaw = await redisConnection.mget(detailKeys);
+            const cachedDetailsRaw = await raceWithTimeout(
+              redisConnection.mget(detailKeys).catch(() => []),
+              1200,
+              () => []
+            );
             if (Array.isArray(cachedDetailsRaw)) {
               cachedDetailsRaw.forEach((raw, idx) => {
                 const adId = redisLookupIds[idx];
@@ -518,11 +554,15 @@ export async function GET(req: NextRequest) {
     if (locationEnabled && !cacheHit) {
       let rawAds: any[] = [];
       if (Date.now() >= rpcGetFeedBrokenUntil) {
-        const rpcRes = await supabaseReadOnly.rpc("get_user_feed", {
-          p_user_email: email,
-          p_limit: 100,
-          p_offset: 0,
-        });
+        const rpcRes = await raceWithTimeout(
+          supabaseReadOnly.rpc("get_user_feed", {
+            p_user_email: email,
+            p_limit: 100,
+            p_offset: 0,
+          }),
+          2500,
+          () => ({ data: null, error: new Error("get_user_feed timeout") }) as any
+        );
         if (rpcRes.error) {
           rpcGetFeedBrokenUntil = Date.now() + 30 * 60 * 1000;
           console.warn("⚠️ RPC get_user_feed schema mismatch (circuit-breaker active for 30m); using indexed addsactive pool.");
@@ -608,7 +648,8 @@ export async function GET(req: NextRequest) {
             pipeline.set(`ad:detail:${ad.id}`, JSON.stringify(ad), "EX", AD_DETAIL_TTL_SECONDS);
           });
 
-          await pipeline.exec();
+          // Non-blocking Redis write-back after L1 warm + response payload already constructed
+          pipeline.exec().catch(() => {});
         } catch {}
       }
 

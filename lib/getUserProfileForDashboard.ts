@@ -427,13 +427,8 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     }
   }
 
-  try {
-    const actRes = await touchUserActivity(email, user);
-    if (actRes?.isDeMonetized) {
-      user.monetized = false;
-      user.monetization_clicks = 0;
-    }
-  } catch {}
+  // Kick off activity check/update concurrently with SSR Redis/highlights pre-loading (zero extra RTT)
+  const touchUserActivityPromise = touchUserActivity(email, user).catch(() => null);
 
   // 4. Server-Side Feed & Highlights Pre-load: Hydrate initialAds & initialHighlights from Redis in parallel
   let initialAds: any[] | undefined = undefined;
@@ -580,6 +575,15 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
   } catch {
     // Non-blocking prefetch failure fallback
   }
+
+  // Reconcile concurrent activity/monetization status check before returning client payload
+  try {
+    const actRes = await touchUserActivityPromise;
+    if (actRes?.isDeMonetized) {
+      user.monetized = false;
+      user.monetization_clicks = 0;
+    }
+  } catch {}
 
   // Strip sensitive credentials and decrypt PII from RSC client payload
   const decrypted = decryptProfilePII(user) || user;

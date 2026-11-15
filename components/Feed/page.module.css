@@ -576,16 +576,6 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   contain: layout style;
-  animation: feedRowEaseIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes feedRowEaseIn {
-  from {
-    opacity: 0.72;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 /* Scroll-to-Top Floating Arrow Button at Bottom Side of Feed */

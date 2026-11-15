@@ -7,14 +7,20 @@ try {
 } catch {}
 
 const nextConfig = {
+  poweredByHeader: false,
   serverExternalPackages: ["ioredis", "bullmq", "@clickhouse/client"],
   compress: true,
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
+      { protocol: "https", hostname: "paayh.com" },
+      { protocol: "https", hostname: "*.paayh.com" },
       { protocol: "https", hostname: "*.supabase.co" },
+      { protocol: "https", hostname: "*.supabase.in" },
       { protocol: "https", hostname: "*.googleusercontent.com" },
       { protocol: "https", hostname: "*.gravatar.com" },
+      { protocol: "http", hostname: "localhost" },
+      { protocol: "http", hostname: "127.0.0.1" },
     ],
   },
   typescript: {
@@ -40,7 +46,7 @@ const nextConfig = {
       media-src 'self' blob: data: https:;
       font-src 'self' data:;
       connect-src 'self' https: wss:;
-      frame-src 'self' https://challenges.cloudflare.com https://checkout.paystack.com;
+      frame-src 'self' https://challenges.cloudflare.com https://checkout.paystack.com https://checkout.korapay.com https://test-checkout.korapay.com;
       worker-src 'self' blob:;
       object-src 'none';
       base-uri 'self';

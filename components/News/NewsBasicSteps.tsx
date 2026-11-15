@@ -201,7 +201,7 @@ export function NewsStepTitle({
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="e.g. Grand Opening Sale 50% Off"
+        placeholder="Title"
         className={styles.inputBox}
         maxLength={80}
       />

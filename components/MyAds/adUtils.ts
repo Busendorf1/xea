@@ -259,7 +259,7 @@ export function buildFallbackAnalyticsSeries(ads: Ad[], nowMs: number = Date.now
 
 export function exportCampaignToCsv(ad: Ad, timeNow: number) {
   const seenCount = ad.impression_count ?? 0;
-  const targetImpressions = ad.impressions ?? 500;
+  const targetImpressions = ad.impressions ?? 100;
   const remaining = Math.max(0, targetImpressions - seenCount);
   const phoneClicks = ad.clicks_phone ?? 0;
   const whatsappClicks = ad.clicks_whatsapp ?? 0;

@@ -44,13 +44,21 @@ function clearSessionCookies(response: NextResponse, request?: NextRequest) {
   return response;
 }
 
+function hideServerFingerprintHeaders(response: NextResponse): NextResponse {
+  response.headers.delete("x-powered-by");
+  response.headers.delete("server");
+  response.headers.delete("x-nextjs-cache");
+  response.headers.delete("x-nextjs-prerender");
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname, search, hostname } = request.nextUrl;
 
   // Canonicalize www.paayh.com -> paayh.com so Auth0 __txn_ state cookies are never split across subdomains
   if (hostname === "www.paayh.com") {
     const canonicalUrl = new URL(`https://paayh.com${pathname}${search}`);
-    return NextResponse.redirect(canonicalUrl, 308);
+    return hideServerFingerprintHeaders(NextResponse.redirect(canonicalUrl, 308));
   }
 
   // For public static or informative pages, bypass Auth0 middleware to eliminate discovery timeouts
@@ -65,6 +73,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/.well-known/") ||
     pathname === "/apple-app-site-association" ||
     pathname.startsWith("/ad/") ||
+    pathname.startsWith("/share/") ||
     pathname === "/help" ||
     pathname === "/advert" ||
     pathname === "/advertiser-guidelines" ||
@@ -86,13 +95,13 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/cron");
 
   if (isPublicPage) {
-    return NextResponse.next();
+    return hideServerFingerprintHeaders(NextResponse.next());
   }
 
   // Bypass auth0.middleware on /auth/logout so app/auth/logout/route.ts runs directly
   // with a validated absolute returnTo URL (preventing post_logout_redirect_uri=%2F errors).
   if (pathname === "/auth/logout") {
-    return clearSessionCookies(NextResponse.next(), request);
+    return hideServerFingerprintHeaders(clearSessionCookies(NextResponse.next(), request));
   }
 
   try {
@@ -104,20 +113,22 @@ export async function middleware(request: NextRequest) {
       res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.headers.set("Pragma", "no-cache");
     }
-    return res;
+    return res instanceof NextResponse ? hideServerFingerprintHeaders(res) : res;
   } catch (error: any) {
     console.warn("Auth0 middleware discovery timeout bypassed:", error?.message || error);
 
     // For logout requests during Auth0 discovery outages, cleanly clear cookies and redirect home
     if (pathname.includes("/logout")) {
       const response = NextResponse.redirect(new URL("/", request.url));
-      return clearSessionCookies(response, request);
+      return hideServerFingerprintHeaders(clearSessionCookies(response, request));
     }
 
     if (pathname.startsWith("/auth/callback")) {
-      return new NextResponse(
-        `Authentication callback error: ${error?.message || error}. Please start a fresh login from /auth/login.`,
-        { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      return hideServerFingerprintHeaders(
+        new NextResponse(
+          `Authentication callback error: ${error?.message || error}. Please start a fresh login from /auth/login.`,
+          { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+        )
       );
     }
 
@@ -127,10 +138,10 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/user");
 
     if (isProtectedUiRoute) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return hideServerFingerprintHeaders(NextResponse.redirect(new URL("/", request.url)));
     }
 
-    return NextResponse.next();
+    return hideServerFingerprintHeaders(NextResponse.next());
   }
 }
 

@@ -191,6 +191,13 @@ function quantizeDeliverableCapacity(raw: number, reserveFactor: number): number
   return selected;
 }
 
+export function adjustOwnerPoolCount(rawCount: number, ownerAdjustment: number): number {
+  const safeCount = Math.max(0, Math.floor(Number(rawCount) || 0));
+  if (safeCount <= 0) return 0;
+  if (safeCount === 1) return 1;
+  return Math.max(1, safeCount - ownerAdjustment);
+}
+
 function parseAgeSpan(ageRange: EdgeAdCapacityInput["ageRange"]): number {
   if (Array.isArray(ageRange) && ageRange.length >= 2) {
     const min = Number(ageRange[0]);
@@ -496,9 +503,9 @@ export async function assessAdDeliveryCapacityEdge(
   }
 
   const ownerAdjustment = input.advertiserEmail ? 1 : 0;
-  const globalUsers = Math.max(0, counts.globalCount - ownerAdjustment);
-  const countryUsers = Math.max(0, counts.countryCount - ownerAdjustment);
-  let strictUsers = Math.max(0, counts.strictCount - ownerAdjustment);
+  const globalUsers = adjustOwnerPoolCount(counts.globalCount, ownerAdjustment);
+  const countryUsers = adjustOwnerPoolCount(counts.countryCount, ownerAdjustment);
+  let strictUsers = adjustOwnerPoolCount(counts.strictCount, ownerAdjustment);
 
   if (!isTargetingAll) {
     const ageSpan = parseAgeSpan(input.ageRange);
