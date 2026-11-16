@@ -38,6 +38,7 @@ interface FeedProps {
   initialAds?: Ad[];
   initialProfiles?: Record<string, any>;
   initialHighlights?: any[];
+  initialHighlightProfiles?: Record<string, any>;
   initialSharedAdId?: string | null;
   initialSharedAdUnavailable?: boolean;
   initialSharedAd?: Ad | null;
@@ -72,6 +73,7 @@ const Feed = ({
   initialAds,
   initialProfiles,
   initialHighlights,
+  initialHighlightProfiles,
   initialSharedAdId,
   initialSharedAdUnavailable,
   initialSharedAd,
@@ -125,13 +127,21 @@ const Feed = ({
         monetized?: boolean;
         created_at?: string;
         gender?: string;
+        is_career?: boolean;
+        is_affiliate?: boolean;
+        affiliate_role?: string | null;
+        isExemptFromBarriersAndInactivity?: boolean;
       }
     >
   >(() => {
     if (hasSsrSharedAd && initialSharedAdProfiles && Object.keys(initialSharedAdProfiles).length > 0) {
       return initialSharedAdProfiles;
     }
-    if (initialProfiles && Object.keys(initialProfiles).length > 0) return initialProfiles;
+    const mergedInitial = {
+      ...(initialHighlightProfiles || {}),
+      ...(initialProfiles || {}),
+    };
+    if (Object.keys(mergedInitial).length > 0) return mergedInitial;
     return {};
   });
   const [isMobile, setIsMobile] = useState(false);
@@ -236,10 +246,19 @@ const Feed = ({
   // 2. Hook: Boosted Highlights management & feed interleaving (pre-hydrated on SSR)
   const {
     highlights,
+    highlightProfiles,
     hasFetched: highlightsFetched,
     fetchHighlights,
     buildDisplayFeed,
-  } = useFeedHighlights(isMobile, initialHighlights);
+  } = useFeedHighlights(isMobile, initialHighlights, initialHighlightProfiles);
+
+  const mergedAdvertiserProfiles = useMemo(
+    () => ({
+      ...highlightProfiles,
+      ...advertiserProfiles,
+    }),
+    [highlightProfiles, advertiserProfiles]
+  );
 
   // 3. Hook: Feed Interaction Handlers (Earn, Mutual, Seen, Share)
   const {
@@ -890,7 +909,7 @@ const Feed = ({
                 <AdCard
                   ad={ad}
                   userEmail={userEmail}
-                  advertiserProfiles={advertiserProfiles}
+                  advertiserProfiles={mergedAdvertiserProfiles}
                   viewerProfile={viewerProfile}
                   seenAds={seenAds}
                   processingAds={processingAds}

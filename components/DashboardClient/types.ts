@@ -51,6 +51,7 @@ export interface DashboardClientProps {
   initialAds?: Ad[];
   initialProfiles?: Record<string, AdvertiserProfile>;
   initialHighlights?: any[];
+  initialHighlightProfiles?: Record<string, AdvertiserProfile>;
   initialSharedAdId?: string | null;
   initialSharedAdUnavailable?: boolean;
   initialSharedAd?: Ad | null;

@@ -6,6 +6,13 @@ import dynamic from "next/dynamic";
 import PaymentConfirmationModal from "@/components/ui/PaymentConfirmationModal";
 import { AdFormSelections } from "./types";
 import styles from "./page.module.css";
+import {
+  resolveUserLogoUrl,
+  isProfileMonetizedBadgeEligible,
+  resolvePublisherDisplayName,
+  resolvePublisherHandle,
+  type ProfileDisplayLike,
+} from "../../lib/utils/profileDisplay";
 
 const AdPreviewCard = dynamic(() => import("../Adreview/page"));
 
@@ -15,20 +22,13 @@ interface Step5LaunchProps {
   isAdmin: boolean;
   paymentMethod: "card" | "wallet";
   setPaymentMethod: (m: "card" | "wallet") => void;
-  userProfile: {
+  userProfile: (ProfileDisplayLike & {
     mutual_count: number;
     mutuals: string[];
     last_mutual_spent?: string;
     balance: number;
-    profileImage?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    username?: string | null;
-    business_name?: string | null;
-    monetized?: boolean | string;
-    gender?: string | null;
-    email?: string | null;
-  } | null;
+  }) | null;
+  sessionImage?: string | null;
   formatCurrency: (amount: number | string) => string;
   isAiContent: boolean;
   setIsAiContent: (val: boolean) => void;
@@ -49,6 +49,7 @@ export default function Step5Launch({
   paymentMethod,
   setPaymentMethod,
   userProfile,
+  sessionImage,
   formatCurrency,
   isAiContent,
   setIsAiContent,
@@ -61,22 +62,19 @@ export default function Step5Launch({
   submitAd,
   calculateTotalCost,
 }: Step5LaunchProps) {
-  const fullName = `${userProfile?.firstName || ""} ${userProfile?.lastName || ""}`.trim();
-  const sponsorLogo =
-    formSelections.customSponsorLogo?.trim() || userProfile?.profileImage || null;
-  const sponsorName =
-    formSelections.customSponsorName?.trim() ||
-    userProfile?.business_name?.trim() ||
-    fullName ||
-    userProfile?.username?.trim() ||
-    "Advertiser";
-  const normalizedHandle = userProfile?.username
-    ? `@${userProfile.username.replace(/^@/, "")}`
-    : userProfile?.email || "";
-  const sponsorHandle = formSelections.customSponsorHandle?.trim() || normalizedHandle;
-  const isVerified =
-    userProfile?.monetized === true ||
-    String(userProfile?.monetized ?? "").toLowerCase() === "true";
+  const sponsorLogo = resolveUserLogoUrl(formSelections.customSponsorLogo, userProfile, sessionImage);
+  const sponsorName = resolvePublisherDisplayName({
+    customName: formSelections.customSponsorName,
+    profile: userProfile,
+    email: userProfile?.email,
+    fallbackName: "Advertiser",
+  });
+  const sponsorHandle = resolvePublisherHandle(
+    formSelections.customSponsorHandle,
+    userProfile,
+    userProfile?.email
+  );
+  const isVerified = isProfileMonetizedBadgeEligible(userProfile);
 
   return (
     <>

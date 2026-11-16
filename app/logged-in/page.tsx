@@ -154,6 +154,7 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
       initialAds={isSharedAdMode ? undefined : profileResult.initialAds}
       initialProfiles={isSharedAdMode ? {} : profileResult.initialProfiles}
       initialHighlights={isSharedAdMode ? [] : profileResult.initialHighlights}
+      initialHighlightProfiles={isSharedAdMode ? {} : profileResult.initialHighlightProfiles}
       initialSharedAdId={resolvedSharedAdId}
       initialSharedAdUnavailable={resolvedSharedAdUnavailable}
       initialSharedAd={resolvedSharedAd}

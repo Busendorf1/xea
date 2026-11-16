@@ -2,16 +2,61 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./AdCard.module.css";
 import { Ad } from "./AdCard";
+import Avatar from "./Avatar";
+import AdvertiserHoverCard, { AdvertiserProfileData } from "./AdvertiserHoverCard";
+import VerifiedBadge from "./VerifiedBadge";
 import { mediaAspectRatioCache, saveRatioToCache } from "./MediaCarousel";
 import AiContentTag from "./AiContentTag";
+import {
+  resolveUserLogoUrl,
+  isProfileMonetizedBadgeEligible,
+  resolvePublisherDisplayName,
+  resolvePublisherHandle,
+} from "../../lib/utils/profileDisplay";
 
 interface HighlightCardProps {
   ad: Ad;
   style?: React.CSSProperties;
   formatTimestamp: (timestamp: string | null | undefined) => string;
+  advertiserProfile?: AdvertiserProfileData | null;
+  advertiserProfiles?: Record<string, AdvertiserProfileData>;
 }
 
-const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestamp: _formatTimestamp }) => {
+const HighlightCard: React.FC<HighlightCardProps> = ({
+  ad,
+  style,
+  formatTimestamp: _formatTimestamp,
+  advertiserProfile,
+  advertiserProfiles,
+}) => {
+  const normalizedEmail = typeof ad.user_email === "string" ? ad.user_email.toLowerCase().trim() : "";
+  const resolvedProfile =
+    advertiserProfile || (normalizedEmail ? advertiserProfiles?.[normalizedEmail] : null) || null;
+  const publisherLogo = resolveUserLogoUrl(ad.custom_sponsor_logo, resolvedProfile);
+  const publisherName = resolvePublisherDisplayName({
+    customName: ad.custom_sponsor_name,
+    profile: resolvedProfile,
+    email: ad.user_email,
+    fallbackName: ad.title || "Highlight",
+  });
+  const rawHandle = resolvePublisherHandle(ad.custom_sponsor_handle, resolvedProfile, ad.user_email);
+  const cleanHandle = rawHandle.replace(/^@+/, "").trim();
+  const displayHandle =
+    cleanHandle &&
+    cleanHandle.toLowerCase() !== publisherName.replace(/^@+/, "").trim().toLowerCase() &&
+    !cleanHandle.includes("@")
+      ? `@${cleanHandle}`
+      : rawHandle.startsWith("@") &&
+          cleanHandle.toLowerCase() !== publisherName.replace(/^@+/, "").trim().toLowerCase()
+        ? rawHandle
+        : "";
+  const isMonetized = isProfileMonetizedBadgeEligible(
+    resolvedProfile
+      ? { ...resolvedProfile, email: resolvedProfile.email || ad.user_email }
+      : ad.user_email
+        ? { email: ad.user_email }
+        : null
+  );
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isTextExpanded, setIsTextExpanded] = useState(false);
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
@@ -87,18 +132,47 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
 
   return (
     <div key={`hl-${ad.id}`} className={styles.card} style={style}>
-      {/* Left Column: Avatar Icon */}
+      {/* Left Column: Publisher Logo / Avatar */}
       <div className={styles.avatarCol}>
-        <div className={`${styles.avatar} ${styles.highlightAvatar}`}>
-          HL
-        </div>
+        <AdvertiserHoverCard
+          profile={resolvedProfile}
+          customName={ad.custom_sponsor_name}
+          customHandle={ad.custom_sponsor_handle}
+          customLogo={ad.custom_sponsor_logo}
+          userEmail={ad.user_email}
+        >
+          <div className={styles.avatar}>
+            <Avatar
+              src={publisherLogo}
+              name={publisherName}
+              email={ad.user_email}
+              size={40}
+              alt={publisherName}
+              gender={resolvedProfile?.gender || null}
+            />
+          </div>
+        </AdvertiserHoverCard>
       </div>
 
       {/* Right Column: Content */}
       <div className={styles.contentCol}>
         <div className={styles.tweetHeader}>
           <div className={styles.headerLeft}>
-            <span className={styles.sponsorName} title={ad.title || undefined}>{ad.title}</span>
+            <AdvertiserHoverCard
+              profile={resolvedProfile}
+              customName={ad.custom_sponsor_name}
+              customHandle={ad.custom_sponsor_handle}
+              customLogo={ad.custom_sponsor_logo}
+              userEmail={ad.user_email}
+            >
+              <div className={styles.sponsorNameWrapper}>
+                <span className={styles.sponsorName} title={publisherName}>
+                  {publisherName}
+                </span>
+                {isMonetized && <VerifiedBadge size={14} title="Verified Account" />}
+                {displayHandle && <span className={styles.sponsorHandle}>{displayHandle}</span>}
+              </div>
+            </AdvertiserHoverCard>
             {(ad.is_ai_content || (ad as any).is_ai || (ad as any).isAiContent) && (
               <AiContentTag />
             )}
@@ -107,6 +181,10 @@ const HighlightCard: React.FC<HighlightCardProps> = ({ ad, style, formatTimestam
             {(ad as any).is_highest_bidder ? "Top Highlight" : "Highlight"}
           </span>
         </div>
+
+        {ad.title && ad.title.trim() !== publisherName && (
+          <h4 className={styles.highlightTitle}>{ad.title}</h4>
+        )}
 
         {ad.ad_content && (
           <p className={styles.adText} style={{ overflowWrap: "anywhere" }}>

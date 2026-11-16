@@ -432,7 +432,7 @@ export async function getCachedHighlights<T = Record<string, unknown>>(
   state?: string | null
 ): Promise<T[] | null> {
   const sortedInterests = [...interests].map((s) => s.toLowerCase().trim()).sort();
-  const key = `highlights:v2:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
+  const key = `highlights:v3:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
 
   const l1 = l1HighlightsCache.get(key);
   if (l1) {
@@ -470,7 +470,7 @@ export async function setCachedHighlights<T = Record<string, unknown>>(
   state?: string | null
 ): Promise<void> {
   const sortedInterests = [...interests].map((s) => s.toLowerCase().trim()).sort();
-  const key = `highlights:v2:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
+  const key = `highlights:v3:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
 
   if (l1HighlightsCache.size >= MAX_L1_HIGHLIGHT_KEYS && !l1HighlightsCache.has(key)) {
     const firstKey = l1HighlightsCache.keys().next().value;

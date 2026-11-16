@@ -39,6 +39,24 @@
   z-index: 2;
 }
 
+.adAuthorRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.38rem;
+  min-width: 0;
+}
+
+.adAuthorName {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .adMediaFrame {
   position: relative;
   width: 100%;

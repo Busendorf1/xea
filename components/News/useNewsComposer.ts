@@ -10,11 +10,101 @@ import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 import { globalFormatCurrency } from "./newsCurrencyHelper";
 import { NoticeModalData } from "@/components/MyAds/NoticeModal";
 import { NewsSession, AdAccountRestriction, capitalizeFirst } from "./newsUtils";
+import type { ProfileDisplayLike } from "@/lib/utils/profileDisplay";
+import {
+  LEGACY_NEWS_DRAFT_KEY,
+  NEWS_DRAFT_STORAGE_PREFIX,
+  clearDraftMediaFiles,
+  getScopedDraftStorageKey,
+  getScopedMediaId,
+  loadDraftMediaFiles,
+  readScopedJsonDraft,
+  removeScopedJsonDraft,
+  saveDraftMediaFiles,
+  writeScopedJsonDraft,
+} from "../../lib/utils/composerDraftStorage";
 
-export function useNewsComposer(session: NewsSession) {
+interface StoredNewsDraft {
+  step?: number;
+  title?: string;
+  content?: string;
+  interest?: string;
+  country?: string;
+  state?: string;
+  province?: string;
+  campaignDays?: number;
+  scheduledStartAt?: string;
+  isBiddingEnabled?: boolean;
+  bidPrice?: number;
+  isAiContent?: boolean;
+  customSponsorName?: string;
+  customSponsorHandle?: string;
+  mediaPreview?: string | null;
+  updatedAt?: number;
+}
+
+function hasPendingNewsEditSession(editingId: string | null): boolean {
+  if (editingId) return true;
+  if (typeof window !== "undefined") {
+    try {
+      return !!sessionStorage.getItem("paayh_edit_news_id");
+    } catch {}
+  }
+  return false;
+}
+
+function createPreviewUrlFromFile(file: File): Promise<string | null> {
+  if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+    try {
+      return Promise.resolve(URL.createObjectURL(file));
+    } catch {}
+  }
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+  return Promise.resolve(null);
+}
+
+function normalizeInitialNewsProfile(
+  profile: ProfileDisplayLike | null | undefined,
+  fallbackEmail?: string | null
+): ProfileDisplayLike | null {
+  if (!profile) return null;
+  return {
+    profileImage: profile.profileImage ?? null,
+    logo: profile.logo ?? null,
+    avatar_url: profile.avatar_url ?? null,
+    firstName: profile.firstName ?? null,
+    lastName: profile.lastName ?? null,
+    username: profile.username ?? null,
+    business_name: profile.business_name ?? null,
+    monetized: profile.monetized ?? false,
+    monetization_clicks: profile.monetization_clicks,
+    has_cancelled_monetization: profile.has_cancelled_monetization,
+    is_career: profile.is_career,
+    is_affiliate: profile.is_affiliate,
+    affiliate_role: profile.affiliate_role,
+    isExemptFromBarriersAndInactivity: profile.isExemptFromBarriersAndInactivity,
+    gender: profile.gender ?? null,
+    email: profile.email ?? fallbackEmail ?? null,
+  };
+}
+
+export function useNewsComposer(session: NewsSession, initialProfile?: ProfileDisplayLike | null) {
+  const effectiveEmail = session?.user?.email || initialProfile?.email || null;
+
   const isAdmin = useMemo(() => {
-    return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(session?.user?.email));
-  }, [session?.user]);
+    return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(effectiveEmail));
+  }, [session?.user, effectiveEmail]);
 
   const [customSponsorName, setCustomSponsorName] = useState("");
   const [customSponsorHandle, setCustomSponsorHandle] = useState("");
@@ -55,18 +145,25 @@ export function useNewsComposer(session: NewsSession) {
     until: null,
   });
 
-  const [userProfile, setUserProfile] = useState<{
-    profileImage?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    username?: string | null;
-    business_name?: string | null;
-    monetized?: boolean | string;
-    gender?: string | null;
-    email?: string | null;
-  } | null>(null);
+  const [userProfile, setUserProfile] = useState<ProfileDisplayLike | null>(() =>
+    normalizeInitialNewsProfile(initialProfile, effectiveEmail)
+  );
 
   const isSubmittingRef = useRef(false);
+  const scopeKey = getScopedDraftStorageKey(NEWS_DRAFT_STORAGE_PREFIX, effectiveEmail);
+  const mediaScopeId = getScopedMediaId("news", effectiveEmail);
+
+  const hydratedScopeRef = useRef<string | null>(null);
+  const hasLoadedMediaRef = useRef<boolean>(false);
+  const submittedRef = useRef<boolean>(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevStepRef = useRef<number>(step);
+  const lastSavedMediaPresentRef = useRef<boolean>(false);
+  const preservedBidInterestRef = useRef<string | null>(null);
+  const draftEmailRef = useRef<string | null>(effectiveEmail);
+  const mediaScopeIdRef = useRef<string>(mediaScopeId);
+  draftEmailRef.current = effectiveEmail;
+  mediaScopeIdRef.current = mediaScopeId;
 
   const scrollSmoothToTop = useCallback(() => {
     if (typeof window !== "undefined") {
@@ -138,7 +235,14 @@ export function useNewsComposer(session: NewsSession) {
       setOriginalTotalCost(Number(data.originalTotalCost || 0));
       setTitle(hl.title || "");
       setContent(hl.content || "");
-      setInterest(hl.interest || "");
+      if (hl.interest) {
+        if (hl.is_bidded && hl.bid_price) {
+          preservedBidInterestRef.current = hl.interest;
+        }
+        setInterest(hl.interest);
+      } else {
+        setInterest("");
+      }
       if (hl.country) setCountry(hl.country);
       if (hl.state) setState(hl.state);
       if (hl.province) setProvince(hl.province);
@@ -185,21 +289,32 @@ export function useNewsComposer(session: NewsSession) {
 
   useEffect(() => {
     const fetchProfileStatus = async () => {
-      if (!session?.user?.email) return;
+      if (!effectiveEmail) return;
       try {
         const res = await fetch("/api/profile");
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
-        setUserProfile({
-          profileImage: data.profileImage ?? null,
-          firstName: data.firstName ?? null,
-          lastName: data.lastName ?? null,
-          username: data.username ?? null,
-          business_name: data.business_name ?? null,
-          monetized: data.monetized ?? false,
-          gender: data.gender ?? null,
-          email: data.email ?? session?.user?.email ?? null,
-        });
+        setUserProfile((prev) => ({
+          ...(prev || {}),
+          profileImage: data.profileImage ?? prev?.profileImage ?? null,
+          logo: data.logo ?? prev?.logo ?? null,
+          avatar_url: data.avatar_url ?? prev?.avatar_url ?? null,
+          firstName: data.firstName ?? prev?.firstName ?? null,
+          lastName: data.lastName ?? prev?.lastName ?? null,
+          username: data.username ?? prev?.username ?? null,
+          business_name: data.business_name ?? prev?.business_name ?? null,
+          monetized: data.monetized ?? prev?.monetized ?? false,
+          monetization_clicks: data.monetization_clicks ?? prev?.monetization_clicks,
+          has_cancelled_monetization:
+            data.has_cancelled_monetization ?? prev?.has_cancelled_monetization,
+          is_career: data.is_career ?? prev?.is_career,
+          is_affiliate: data.is_affiliate ?? prev?.is_affiliate,
+          affiliate_role: data.affiliate_role ?? prev?.affiliate_role,
+          isExemptFromBarriersAndInactivity:
+            data.isExemptFromBarriersAndInactivity ?? prev?.isExemptFromBarriersAndInactivity,
+          gender: data.gender ?? prev?.gender ?? null,
+          email: data.email ?? effectiveEmail ?? null,
+        }));
         const status = data.ad_account_status;
         const until = data.ad_ban_until;
         const reason = data.ad_ban_reason || "";
@@ -220,67 +335,221 @@ export function useNewsComposer(session: NewsSession) {
       }
     };
     fetchProfileStatus();
-  }, [session?.user?.email]);
+  }, [effectiveEmail]);
 
-  useEffect(() => {
-    if (editingId) return;
-    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_news_id")) return;
-    try {
-      const saved = localStorage.getItem("paayh_draft_news_v1");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.step === "number") setStepState(parsed.step);
-        if (parsed.title) setTitle(parsed.title);
-        if (parsed.content) setContent(parsed.content);
-        if (parsed.interest) setInterest(parsed.interest);
-        if (parsed.country) setCountry(parsed.country);
-        if (parsed.state) setState(parsed.state);
-        if (parsed.province) setProvince(parsed.province);
-        if (parsed.campaignDays) setCampaignDays(Math.max(1, Math.min(90, Number(parsed.campaignDays))));
-        if (typeof parsed.isBiddingEnabled === "boolean") setIsBiddingEnabled(parsed.isBiddingEnabled);
-        if (parsed.bidPrice) setBidPrice(parsed.bidPrice);
-        if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
-        if (parsed.customSponsorName) setCustomSponsorName(parsed.customSponsorName);
-        if (parsed.customSponsorHandle) setCustomSponsorHandle(parsed.customSponsorHandle);
-        if (parsed.mediaPreview && !parsed.mediaPreview.startsWith("blob:") && parsed.mediaPreview.startsWith("http")) {
-          setMediaPreview(parsed.mediaPreview);
+  const hydrateDraftForScope = useCallback(
+    (force = false) => {
+      if (!force && hasPendingNewsEditSession(editingId)) return;
+      if (!force && hydratedScopeRef.current === scopeKey) return;
+
+      hasLoadedMediaRef.current = false;
+      submittedRef.current = false;
+
+      const { draft } = readScopedJsonDraft<StoredNewsDraft>(
+        NEWS_DRAFT_STORAGE_PREFIX,
+        LEGACY_NEWS_DRAFT_KEY,
+        effectiveEmail
+      );
+
+      if (draft) {
+        if (typeof draft.step === "number") {
+          prevStepRef.current = draft.step;
+          setStepState(draft.step);
+        }
+        if (draft.title) setTitle(draft.title);
+        if (draft.content) setContent(draft.content);
+        if (draft.interest && (typeof draft.bidPrice === "number" || typeof draft.isBiddingEnabled === "boolean")) {
+          preservedBidInterestRef.current = draft.interest;
+        }
+        if (draft.interest) setInterest(draft.interest);
+        if (draft.country) setCountry(draft.country);
+        if (draft.state) setState(draft.state);
+        if (draft.province) setProvince(draft.province);
+        if (draft.campaignDays) {
+          setCampaignDays(Math.max(1, Math.min(90, Number(draft.campaignDays))));
+        }
+        if (typeof draft.scheduledStartAt === "string") {
+          setScheduledStartAt(draft.scheduledStartAt);
+        }
+        if (typeof draft.isBiddingEnabled === "boolean") {
+          setIsBiddingEnabled(draft.isBiddingEnabled);
+        }
+        if (typeof draft.bidPrice === "number" && Number.isFinite(draft.bidPrice)) {
+          setBidPrice(draft.bidPrice);
+        }
+        if (typeof draft.isAiContent === "boolean") {
+          setIsAiContent(draft.isAiContent);
+        }
+        if (draft.customSponsorName) setCustomSponsorName(draft.customSponsorName);
+        if (draft.customSponsorHandle) setCustomSponsorHandle(draft.customSponsorHandle);
+        if (
+          draft.mediaPreview &&
+          (draft.mediaPreview.startsWith("http") || draft.mediaPreview.startsWith("data:"))
+        ) {
+          setMediaPreview(draft.mediaPreview);
         } else {
           setMediaPreview(null);
         }
       }
-    } catch {}
-  }, [editingId]);
+
+      hydratedScopeRef.current = scopeKey;
+
+      let cancelled = false;
+      const targetMediaScope = mediaScopeId;
+      void loadDraftMediaFiles(targetMediaScope).then(async (restoredFiles) => {
+        if (cancelled) return;
+        if (mediaScopeIdRef.current !== targetMediaScope) return;
+        if (submittedRef.current) return;
+        if (hasPendingNewsEditSession(editingId)) return;
+
+        const restoredFile = restoredFiles[0] || null;
+        if (restoredFile) {
+          lastSavedMediaPresentRef.current = true;
+          setMediaFile(restoredFile);
+          const restoredUrl = await createPreviewUrlFromFile(restoredFile);
+          if (!cancelled && mediaScopeIdRef.current === targetMediaScope && restoredUrl) {
+            setMediaPreview(restoredUrl);
+          }
+        }
+        hasLoadedMediaRef.current = true;
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    },
+    [editingId, effectiveEmail, mediaScopeId, scopeKey]
+  );
 
   useEffect(() => {
-    if (editingId) return;
-    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_news_id")) return;
-    const timer = setTimeout(() => {
-      try {
-        const draft = {
-          step,
-          title,
-          content,
-          interest,
-          country,
-          state,
-          province,
-          campaignDays,
-          isBiddingEnabled,
-          bidPrice,
-          isAiContent,
-          customSponsorName,
-          customSponsorHandle,
-          mediaPreview:
-            mediaPreview && !mediaPreview.startsWith("blob:") && !mediaPreview.startsWith("data:")
-              ? mediaPreview
-              : null,
-        };
-        localStorage.setItem("paayh_draft_news_v1", JSON.stringify(draft));
-      } catch {}
-    }, 400);
-    return () => clearTimeout(timer);
+    if (hasPendingNewsEditSession(editingId)) return;
+    return hydrateDraftForScope(false);
+  }, [editingId, hydrateDraftForScope]);
+
+  const isDefaultState =
+    step === 0 &&
+    title === "" &&
+    content === "" &&
+    interest === "" &&
+    country === "Nigeria" &&
+    state === "" &&
+    province === "" &&
+    campaignDays === 1 &&
+    scheduledStartAt === "" &&
+    !isBiddingEnabled &&
+    bidPrice === 1500 &&
+    !isAiContent &&
+    customSponsorName === "" &&
+    customSponsorHandle === "" &&
+    !mediaFile &&
+    !mediaPreview;
+
+  const serializableMediaPreview =
+    mediaPreview && !mediaPreview.startsWith("blob:") ? mediaPreview : null;
+
+  const latestSnapshotRef = useRef({
+    editingId,
+    effectiveEmail,
+    scopeKey,
+    hydratedScope: hydratedScopeRef.current,
+    isDefaultState,
+    draft: {
+      step,
+      title,
+      content,
+      interest,
+      country,
+      state,
+      province,
+      campaignDays,
+      scheduledStartAt,
+      isBiddingEnabled,
+      bidPrice,
+      isAiContent,
+      customSponsorName,
+      customSponsorHandle,
+      mediaPreview: serializableMediaPreview,
+      updatedAt: Date.now(),
+    } as StoredNewsDraft,
+  });
+
+  latestSnapshotRef.current = {
+    editingId,
+    effectiveEmail,
+    scopeKey,
+    hydratedScope: hydratedScopeRef.current,
+    isDefaultState,
+    draft: {
+      step,
+      title,
+      content,
+      interest,
+      country,
+      state,
+      province,
+      campaignDays,
+      scheduledStartAt,
+      isBiddingEnabled,
+      bidPrice,
+      isAiContent,
+      customSponsorName,
+      customSponsorHandle,
+      mediaPreview: serializableMediaPreview,
+      updatedAt: Date.now(),
+    },
+  };
+
+  const flushJsonDraftNow = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const snap = latestSnapshotRef.current;
+    if (submittedRef.current) return;
+    if (hasPendingNewsEditSession(snap.editingId)) return;
+    if (snap.hydratedScope !== snap.scopeKey) return;
+    if (snap.isDefaultState) return;
+
+    writeScopedJsonDraft(NEWS_DRAFT_STORAGE_PREFIX, snap.effectiveEmail, snap.draft);
+  }, []);
+
+  useEffect(() => {
+    if (hasPendingNewsEditSession(editingId)) return;
+    if (hydratedScopeRef.current !== scopeKey) return;
+    if (submittedRef.current) return;
+
+    if (isDefaultState) {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (prevStepRef.current !== step) {
+      prevStepRef.current = step;
+      flushJsonDraftNow();
+      return;
+    }
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      flushJsonDraftNow();
+    }, 350);
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
   }, [
     editingId,
+    scopeKey,
+    isDefaultState,
     step,
     title,
     content,
@@ -289,28 +558,89 @@ export function useNewsComposer(session: NewsSession) {
     state,
     province,
     campaignDays,
+    scheduledStartAt,
     isBiddingEnabled,
     bidPrice,
     isAiContent,
     customSponsorName,
     customSponsorHandle,
+    mediaFile,
     mediaPreview,
+    flushJsonDraftNow,
   ]);
+
+  // Persist binary highlight cover file immediately (memory + IndexedDB)
+  useEffect(() => {
+    if (hasPendingNewsEditSession(editingId)) return;
+    if (!hasLoadedMediaRef.current || submittedRef.current) return;
+
+    if (mediaFile) {
+      lastSavedMediaPresentRef.current = true;
+      void saveDraftMediaFiles(mediaScopeId, [mediaFile]);
+    } else if (lastSavedMediaPresentRef.current) {
+      lastSavedMediaPresentRef.current = false;
+      void clearDraftMediaFiles(mediaScopeId);
+    }
+  }, [mediaFile, editingId, mediaScopeId]);
+
+  // Flush pending JSON draft on unmount, tab hide, pagehide, or beforeunload
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        flushJsonDraftNow();
+      }
+    };
+    const handlePageHide = () => {
+      flushJsonDraftNow();
+    };
+    const handleBeforeUnload = () => {
+      flushJsonDraftNow();
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("pagehide", handlePageHide);
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    }
+
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pagehide", handlePageHide);
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      }
+      flushJsonDraftNow();
+    };
+  }, [flushJsonDraftNow]);
 
   useEffect(() => {
     if (!interest) return;
+    const preserveBid = preservedBidInterestRef.current === interest;
+    if (!preserveBid) {
+      preservedBidInterestRef.current = null;
+    }
+    let cancelled = false;
     const fetchTopBid = async () => {
       try {
         const res = await fetch(`/api/highlights?highestBid=true&interest=${encodeURIComponent(interest)}`);
-        if (res.ok) {
+        if (res.ok && !cancelled) {
           const data = await res.json().catch(() => ({}));
           const top = Number(data.highestBid || 1000);
           setHighestBid(top);
-          setBidPrice((prev) => (top >= prev ? top + 200 : prev));
+          if (!preserveBid) {
+            setBidPrice((prev) => (top >= prev ? top + 200 : prev));
+          }
         }
       } catch {}
     };
     fetchTopBid();
+    return () => {
+      cancelled = true;
+    };
   }, [interest]);
 
   useEffect(() => {
@@ -487,9 +817,20 @@ export function useNewsComposer(session: NewsSession) {
       }
 
       clearUserCampaignsCache(session?.user?.email || "");
-      try {
-        localStorage.removeItem("paayh_draft_news_v1");
-      } catch {}
+      if (!editingId) {
+        if (saveTimerRef.current) {
+          clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+        }
+        submittedRef.current = true;
+        lastSavedMediaPresentRef.current = false;
+        removeScopedJsonDraft(NEWS_DRAFT_STORAGE_PREFIX, LEGACY_NEWS_DRAFT_KEY, draftEmailRef.current);
+        void clearDraftMediaFiles(mediaScopeIdRef.current);
+      } else if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("paayh_edit_news_id");
+        } catch {}
+      }
 
       sessionStorage.setItem("paayh_active_tab", "myads");
       sessionStorage.setItem("paayh_publications_subtab", "highlights");
@@ -613,6 +954,52 @@ export function useNewsComposer(session: NewsSession) {
     return true;
   };
 
+  const discardDraft = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    submittedRef.current = false;
+    lastSavedMediaPresentRef.current = false;
+    preservedBidInterestRef.current = null;
+    removeScopedJsonDraft(NEWS_DRAFT_STORAGE_PREFIX, LEGACY_NEWS_DRAFT_KEY, draftEmailRef.current);
+    void clearDraftMediaFiles(mediaScopeIdRef.current);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("paayh_edit_news_id");
+        sessionStorage.removeItem("paayh_edit_news");
+      } catch {}
+    }
+    setEditingId(null);
+    setIsDeliveringActive(false);
+    setOriginalTotalCost(0);
+    setExistingImageUrl(null);
+    setMediaFile(null);
+    setMediaPreview(null);
+    prevStepRef.current = 0;
+    setStepState(0);
+    setTitle("");
+    setContent("");
+    setInterest("");
+    setCountry("Nigeria");
+    setState("");
+    setProvince("");
+    setCampaignDays(1);
+    setScheduledStartAt("");
+    setIsBiddingEnabled(false);
+    setBidPrice(1500);
+    setIsAiContent(false);
+    setCustomSponsorName("");
+    setCustomSponsorHandle("");
+    setAgreedToPolicy(false);
+    setStepError(null);
+    setStatusNotice(null);
+    hydratedScopeRef.current = scopeKey;
+    hasLoadedMediaRef.current = true;
+  }, [scopeKey]);
+
+  const hasDraft = !editingId && !isDefaultState;
+
   return {
     isAdmin,
     customSponsorName,
@@ -666,5 +1053,8 @@ export function useNewsComposer(session: NewsSession) {
     handleMediaChange,
     handleInitiateSubmit,
     canNavigateToStep,
+    discardDraft,
+    flushDraft: flushJsonDraftNow,
+    hasDraft,
   };
 }

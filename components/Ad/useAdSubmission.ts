@@ -8,6 +8,13 @@ import { clearUserCampaignsCache } from "@/lib/campaignsClient";
 import { showAppleAlert } from "@/components/ui/AppleAlert";
 import { NoticeModalData } from "@/components/MyAds/NoticeModal";
 import { AdFormSelections, Session } from "./types";
+import {
+  AD_DRAFT_STORAGE_PREFIX,
+  LEGACY_AD_DRAFT_KEY,
+  clearDraftMediaFiles,
+  getScopedMediaId,
+  removeScopedJsonDraft,
+} from "../../lib/utils/composerDraftStorage";
 
 export interface UseAdSubmissionProps {
   session: Session | null;
@@ -30,6 +37,7 @@ export interface UseAdSubmissionProps {
   calculateTotalCost: () => number;
   calculateTotalCostPerImpression: () => number;
   formatCurrency: (amount: number | string) => string;
+  onDraftClear?: () => void;
 }
 
 export function useAdSubmission({
@@ -49,6 +57,7 @@ export function useAdSubmission({
   calculateTotalCost,
   calculateTotalCostPerImpression,
   formatCurrency,
+  onDraftClear,
 }: UseAdSubmissionProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stepError, setStepError] = useState("");
@@ -264,9 +273,18 @@ export function useAdSubmission({
       }
 
       clearUserCampaignsCache(session?.user?.email || "");
-      try {
-        localStorage.removeItem("paayh_draft_ad_v1");
-      } catch {}
+      if (!editingId) {
+        if (onDraftClear) {
+          onDraftClear();
+        } else {
+          removeScopedJsonDraft(AD_DRAFT_STORAGE_PREFIX, LEGACY_AD_DRAFT_KEY, session?.user?.email);
+          void clearDraftMediaFiles(getScopedMediaId("ad", session?.user?.email));
+        }
+      } else if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("paayh_edit_ad_id");
+        } catch {}
+      }
 
       sessionStorage.setItem("paayh_active_tab", "myads");
       sessionStorage.setItem("paayh_publications_subtab", "ads");

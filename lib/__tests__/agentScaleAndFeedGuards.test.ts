@@ -532,7 +532,9 @@ describe("Route Guards: /api/highlights & /api/feed 500 Prevention", () => {
     const listRes = await GET(listReq);
     const listJson = await listRes.json();
     expect(listRes.status).toBe(200);
-    expect(Array.isArray(listJson)).toBe(true);
+    expect(Array.isArray(listJson.highlights)).toBe(true);
+    expect(typeof listJson.profiles).toBe("object");
+    expect(listJson.profiles).not.toBeNull();
   });
 
   it("GET /api/feed handles DB failure safely with structured 500 rather than crashing", async () => {

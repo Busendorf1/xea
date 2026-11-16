@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import styles from "../Newsdisplay/page.module.css";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import { isConfiguredNextImageSrc } from "@/lib/utils/nextImageSafety";
 import Skeleton from "../ui/Skeleton";
+import Avatar from "../ui/Avatar";
+import VerifiedBadge from "../ui/VerifiedBadge";
 import supabase from "@/lib/supabaseClient";
+import type { AdvertiserProfile } from "@/types/ads";
+import { extractHighlightsPayload } from "../../lib/hooks/useFeedHighlights";
+import {
+  resolveUserLogoUrl,
+  isProfileMonetizedBadgeEligible,
+  resolvePublisherDisplayName,
+} from "../../lib/utils/profileDisplay";
 import {
   formatHighlightInterests,
   HighlightLike,
@@ -22,27 +31,36 @@ interface Ad extends HighlightLike {
   interest: string[] | string;
   user_email: string;
   created_at: string;
+  custom_sponsor_name?: string;
+  custom_sponsor_handle?: string;
+  custom_sponsor_logo?: string;
 }
 
 const HIGHLIGHTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-function readHighlightsCache(): Ad[] {
-  if (typeof window === "undefined") return [];
+function readHighlightsCache(): { items: Ad[]; profiles: Record<string, AdvertiserProfile> } {
+  if (typeof window === "undefined") return { items: [], profiles: {} };
   try {
     const raw = sessionStorage.getItem("paayh_highlights_cache");
-    if (!raw) return [];
+    if (!raw) return { items: [], profiles: {} };
     const parsed = JSON.parse(raw);
     if (!parsed?.timestamp || Date.now() - Number(parsed.timestamp) > HIGHLIGHTS_CACHE_TTL_MS) {
-      return [];
+      return { items: [], profiles: {} };
     }
     if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
       const nowMs = Date.now();
-      return (parsed.items as Ad[])
-        .filter((item) => isHighlightCurrentlyActive(item, nowMs))
-        .sort(sortHighlightsByBidAndRecency);
+      return {
+        items: (parsed.items as Ad[])
+          .filter((item) => isHighlightCurrentlyActive(item, nowMs))
+          .sort(sortHighlightsByBidAndRecency),
+        profiles:
+          parsed?.profiles && typeof parsed.profiles === "object"
+            ? (parsed.profiles as Record<string, AdvertiserProfile>)
+            : {},
+      };
     }
   } catch {}
-  return [];
+  return { items: [], profiles: {} };
 }
 
 function safeRelativeTime(dateInput?: string | null): string {
@@ -55,13 +73,31 @@ function safeRelativeTime(dateInput?: string | null): string {
 export default function AdDisplay({
   userInterest,
   initialHighlights,
+  initialHighlightProfiles,
 }: {
   userInterest: string[];
   initialHighlights?: Ad[];
+  initialHighlightProfiles?: Record<string, AdvertiserProfile>;
 }) {
-  const [cachedItems] = useState<Ad[]>(() =>
-    !initialHighlights || initialHighlights.length === 0 ? readHighlightsCache() : []
+  const [cachedData] = useState<{ items: Ad[]; profiles: Record<string, AdvertiserProfile> }>(() =>
+    !initialHighlights || initialHighlights.length === 0
+      ? readHighlightsCache()
+      : { items: [], profiles: {} }
   );
+  const cachedItems = cachedData.items;
+
+  const [profilesMap, setProfilesMap] = useState<Record<string, AdvertiserProfile>>(() => ({
+    ...(cachedData.profiles || {}),
+    ...(initialHighlightProfiles || {}),
+  }));
+  const profilesMapRef = useRef<Record<string, AdvertiserProfile>>(profilesMap);
+  profilesMapRef.current = profilesMap;
+
+  useEffect(() => {
+    if (initialHighlightProfiles && Object.keys(initialHighlightProfiles).length > 0) {
+      setProfilesMap((prev) => ({ ...prev, ...initialHighlightProfiles }));
+    }
+  }, [initialHighlightProfiles]);
 
   const [ads, setAds] = useState<Ad[]>(() => {
     const nowMs = Date.now();
@@ -113,9 +149,14 @@ export default function AdDisplay({
           throw new Error(`Failed to fetch highlights: ${response.status}`);
         }
 
-        const rawPageItems: Ad[] = await response.json();
+        const rawJson = await response.json();
+        const { items: extractedItems, profiles: incomingProfiles } = extractHighlightsPayload(rawJson);
+        const rawPageItems = extractedItems as unknown as Ad[];
+        if (Object.keys(incomingProfiles).length > 0) {
+          setProfilesMap((prev) => ({ ...prev, ...incomingProfiles }));
+        }
         const nowMs = Date.now();
-        const pageItems = (Array.isArray(rawPageItems) ? rawPageItems : [])
+        const pageItems = rawPageItems
           .filter((item) => isHighlightCurrentlyActive(item, nowMs))
           .sort(sortHighlightsByBidAndRecency);
 
@@ -125,7 +166,11 @@ export default function AdDisplay({
             try {
               sessionStorage.setItem(
                 "paayh_highlights_cache",
-                JSON.stringify({ items: pageItems, timestamp: Date.now() })
+                JSON.stringify({
+                  items: pageItems,
+                  profiles: { ...profilesMapRef.current, ...incomingProfiles },
+                  timestamp: Date.now(),
+                })
               );
             } catch {}
           }
@@ -166,11 +211,15 @@ export default function AdDisplay({
       try {
         sessionStorage.setItem(
           "paayh_highlights_cache",
-          JSON.stringify({ items: filtered, timestamp: Date.now() })
+          JSON.stringify({
+            items: filtered,
+            profiles: { ...profilesMapRef.current, ...(initialHighlightProfiles || {}) },
+            timestamp: Date.now(),
+          })
         );
       } catch {}
     }
-  }, [initialHighlights]);
+  }, [initialHighlights, initialHighlightProfiles]);
 
   useEffect(() => {
     if (!initialHighlights || initialHighlights.length === 0) {
@@ -338,9 +387,35 @@ export default function AdDisplay({
         const isLongContent = (ad.content || "").length > 90;
         const isBidded = Boolean(ad.is_bidded || Number(ad.bid_price || 0) > 0);
         const interestText = formatHighlightInterests(ad.interest);
+        const emailLower = typeof ad.user_email === "string" ? ad.user_email.toLowerCase().trim() : "";
+        const pubProfile = emailLower ? profilesMap[emailLower] : null;
+        const pubLogo = resolveUserLogoUrl(ad.custom_sponsor_logo, pubProfile);
+        const pubName = resolvePublisherDisplayName({
+          customName: ad.custom_sponsor_name,
+          profile: pubProfile,
+          email: ad.user_email,
+          fallbackName: ad.title || "Highlight",
+        });
+        const isVerified = isProfileMonetizedBadgeEligible(
+          pubProfile ? { ...pubProfile, email: pubProfile.email || ad.user_email } : ad.user_email ? { email: ad.user_email } : null
+        );
 
         return (
           <article key={ad.id} className={styles.adCard}>
+            <div className={styles.adAuthorRow}>
+              <Avatar
+                src={pubLogo}
+                name={pubName}
+                email={ad.user_email}
+                size={22}
+                gender={pubProfile?.gender || null}
+                alt={pubName}
+              />
+              <span className={styles.adAuthorName} title={pubName}>
+                {pubName}
+              </span>
+              {isVerified && <VerifiedBadge size={12} title="Verified Account" />}
+            </div>
             {hasMedia && (
               <div className={styles.adMediaFrame}>
                 {isVideo ? (

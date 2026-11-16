@@ -6,6 +6,7 @@ import FormStepProgress from "@/components/ui/FormStepProgress";
 import NoticeModal from "@/components/MyAds/NoticeModal";
 import { globalFormatCurrency } from "./newsCurrencyHelper";
 import { NEWS_STEPS, NewsSession, capitalizeFirst } from "./newsUtils";
+import type { ProfileDisplayLike } from "@/lib/utils/profileDisplay";
 import { useNewsComposer } from "./useNewsComposer";
 import {
   RestrictedAccountCard,
@@ -19,10 +20,11 @@ import styles from "./page.module.css";
 
 type NewsProps = {
   session: NewsSession;
+  initialProfile?: ProfileDisplayLike | null;
 };
 
-export default function News({ session }: NewsProps) {
-  const composer = useNewsComposer(session);
+export default function News({ session, initialProfile }: NewsProps) {
+  const composer = useNewsComposer(session, initialProfile);
   const {
     isAdmin,
     customSponsorName,
@@ -76,6 +78,8 @@ export default function News({ session }: NewsProps) {
     handleMediaChange,
     handleInitiateSubmit,
     canNavigateToStep,
+    discardDraft,
+    hasDraft,
   } = composer;
 
   if (adAccountRestriction.restricted) {
@@ -97,7 +101,7 @@ export default function News({ session }: NewsProps) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h1>{editingId ? "Edit Highlight" : "New Highlight"}</h1>
-        {editingId && (
+        {editingId ? (
           <button
             type="button"
             disabled={isSubmitting}
@@ -113,7 +117,17 @@ export default function News({ session }: NewsProps) {
           >
             Cancel Edit
           </button>
-        )}
+        ) : hasDraft ? (
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={discardDraft}
+            className={styles.secondaryNavBtn}
+            style={{ padding: "6px 14px", fontSize: "0.85rem" }}
+          >
+            Discard Draft
+          </button>
+        ) : null}
       </div>
 
       {pendingLimitReached && !editingId && <PendingLimitBanner />}
@@ -209,6 +223,7 @@ export default function News({ session }: NewsProps) {
               userProfile={userProfile}
               userEmail={session?.user?.email || null}
               userName={session?.user?.name || null}
+              userImage={session?.user?.image || null}
               isAiContent={isAiContent}
               setIsAiContent={setIsAiContent}
               agreedToPolicy={agreedToPolicy}

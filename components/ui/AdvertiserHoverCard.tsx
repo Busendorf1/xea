@@ -7,6 +7,7 @@ import Avatar from "./Avatar";
 import VerifiedBadge from "./VerifiedBadge";
 import RoleStarBadges from "./RoleStarBadges";
 import { Calendar, MapPin, Star } from "lucide-react";
+import { isProfileMonetizedBadgeEligible } from "../../lib/utils/profileDisplay";
 
 export interface AdvertiserProfileData {
   email?: string;
@@ -24,6 +25,7 @@ export interface AdvertiserProfileData {
   is_career?: boolean;
   is_affiliate?: boolean;
   affiliate_role?: string | null;
+  isExemptFromBarriersAndInactivity?: boolean;
 }
 
 interface AdvertiserHoverCardProps {
@@ -257,7 +259,11 @@ export default function AdvertiserHoverCard({
     [updatePosition]
   );
 
-  const isVerified = isPlatformPost || !!profile?.monetized;
+  const isVerified =
+    isPlatformPost ||
+    isProfileMonetizedBadgeEligible(
+      profile ? { ...profile, email: profile.email || userEmail } : userEmail ? { email: userEmail } : null
+    );
 
   const popoverNode =
     isOpen && typeof document !== "undefined"

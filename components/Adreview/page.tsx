@@ -5,6 +5,13 @@ import { FaPhone, FaWhatsapp, FaGlobe, FaEnvelope, FaVideo, FaApple, FaAndroid }
 import { Eye, Coins, UserPlus } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import {
+  resolveUserLogoUrl,
+  isProfileMonetizedBadgeEligible,
+  resolvePublisherDisplayName,
+  resolvePublisherHandle,
+  type ProfileDisplayLike,
+} from "../../lib/utils/profileDisplay";
 import styles from "../Adreview/page.module.css"; // Your CSS module
 
 interface AdPreviewCardProps {
@@ -26,6 +33,7 @@ interface AdPreviewCardProps {
   sponsorEmail?: string | null;
   sponsorGender?: string | null;
   isVerified?: boolean;
+  userProfile?: ProfileDisplayLike | null;
 }
 
 const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
@@ -47,6 +55,7 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   sponsorEmail,
   sponsorGender,
   isVerified = false,
+  userProfile = null,
 }) => {
   const [mediaURLs, setMediaURLs] = useState<string[]>([]);
   const [isTextExpanded, setIsTextExpanded] = useState(false);
@@ -119,7 +128,24 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
   );
   const [baseAspectRatio, setBaseAspectRatio] = useState<number>(() => (isFirstVideo ? 16 / 9 : 1.0));
 
-  const hasSponsorHeader = Boolean(sponsorLogo || sponsorName || sponsorHandle);
+  const effectiveLogo = resolveUserLogoUrl(sponsorLogo, userProfile);
+  const effectiveName = sponsorName || (userProfile ? resolvePublisherDisplayName({ profile: userProfile, email: sponsorEmail }) : undefined);
+  const effectiveHandle = sponsorHandle || (userProfile ? resolvePublisherHandle(undefined, userProfile, sponsorEmail) : undefined);
+  const effectiveEmail = sponsorEmail || userProfile?.email || null;
+  const effectiveGender = sponsorGender || userProfile?.gender || null;
+  const effectiveIsVerified = Boolean(
+    isVerified ||
+      isProfileMonetizedBadgeEligible(
+        userProfile
+          ? { ...userProfile, email: userProfile.email || effectiveEmail }
+          : effectiveEmail
+            ? { email: effectiveEmail }
+            : null
+      )
+  );
+  const hasSponsorHeader = Boolean(
+    effectiveLogo || effectiveName || effectiveHandle || effectiveEmail || effectiveIsVerified
+  );
 
   return (
     <div className={styles.card}>
@@ -127,22 +153,22 @@ const AdPreviewCard: React.FC<AdPreviewCardProps> = ({
         <div className={styles.previewSponsorHeader}>
           <div className={styles.previewSponsorAvatarRow}>
             <Avatar
-              src={sponsorLogo}
-              name={sponsorName}
-              email={sponsorEmail}
+              src={effectiveLogo}
+              name={effectiveName}
+              email={effectiveEmail}
               size={40}
-              gender={sponsorGender}
-              alt={sponsorName || "Sponsor logo"}
+              gender={effectiveGender}
+              alt={effectiveName || "Sponsor logo"}
             />
             <div className={styles.previewSponsorMeta}>
               <div className={styles.previewSponsorNameRow}>
                 <span className={styles.previewSponsorName}>
-                  {sponsorName || "Advertiser"}
+                  {effectiveName || "Advertiser"}
                 </span>
-                {isVerified && <VerifiedBadge size={14} />}
+                {effectiveIsVerified && <VerifiedBadge size={14} title="Verified Account" />}
               </div>
-              {sponsorHandle && (
-                <span className={styles.previewSponsorHandle}>{sponsorHandle}</span>
+              {effectiveHandle && (
+                <span className={styles.previewSponsorHandle}>{effectiveHandle}</span>
               )}
             </div>
           </div>

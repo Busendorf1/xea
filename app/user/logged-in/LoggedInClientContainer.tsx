@@ -92,6 +92,7 @@ interface Props {
   initialAds?: any[];
   initialProfiles?: Record<string, any>;
   initialHighlights?: any[];
+  initialHighlightProfiles?: Record<string, any>;
   initialSharedAdId?: string | null;
   initialSharedAdUnavailable?: boolean;
   initialSharedAd?: any;
@@ -113,6 +114,7 @@ export default function LoggedInClientContainer({
   initialAds,
   initialProfiles,
   initialHighlights,
+  initialHighlightProfiles,
   initialSharedAdId,
   initialSharedAdUnavailable,
   initialSharedAd,
@@ -439,6 +441,7 @@ export default function LoggedInClientContainer({
           initialAds={initialAds}
           initialProfiles={initialProfiles}
           initialHighlights={initialHighlights}
+          initialHighlightProfiles={initialHighlightProfiles}
           initialSharedAdId={initialSharedAdId}
           initialSharedAdUnavailable={initialSharedAdUnavailable}
           initialSharedAd={initialSharedAd}
@@ -460,7 +463,7 @@ export default function LoggedInClientContainer({
       <main className="flex-1">
         {visitedTabs.has("adPage") && (
           <div style={{ display: activeTab === "adPage" ? "block" : "none" }} className="py-4">
-            <MultiStepAdForm session={session} />
+            <MultiStepAdForm session={session} initialProfile={user} />
           </div>
         )}
 
@@ -534,7 +537,7 @@ export default function LoggedInClientContainer({
 
         {activeTab === "news" && (
           <div className="py-4">
-            <NewsComponent session={session} />
+            <NewsComponent session={session} initialProfile={user} />
           </div>
         )}
 

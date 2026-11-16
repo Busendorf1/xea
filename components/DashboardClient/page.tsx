@@ -50,6 +50,7 @@ export default function DashboardClient({
   initialAds,
   initialProfiles,
   initialHighlights,
+  initialHighlightProfiles,
   initialSharedAdId,
   initialSharedAdUnavailable,
   initialSharedAd,
@@ -667,7 +668,11 @@ export default function DashboardClient({
             <Collapsible isOpen={showAccountMenuLeft}>{renderAccountLinks()}</Collapsible>
             <div ref={highlightsRef} className={styles.highlightsWrap}>
               <p className={styles.offerArea}>Daily Business Highlights:</p>
-              <Newsdisplay userInterest={parsedInterest} initialHighlights={initialHighlights} />
+              <Newsdisplay
+                userInterest={parsedInterest}
+                initialHighlights={initialHighlights}
+                initialHighlightProfiles={initialHighlightProfiles}
+              />
             </div>
           </div>
         </aside>
@@ -686,6 +691,7 @@ export default function DashboardClient({
               initialAds={initialAds}
               initialProfiles={initialProfiles}
               initialHighlights={initialHighlights}
+              initialHighlightProfiles={initialHighlightProfiles}
               initialSharedAdId={initialSharedAdId}
               initialSharedAdUnavailable={initialSharedAdUnavailable}
               initialSharedAd={initialSharedAd}

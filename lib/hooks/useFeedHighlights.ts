@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { Ad } from "@/components/ui/AdCard";
+import type { AdvertiserProfile } from "@/types/ads";
 import {
   HighlightLike,
   isHighlightCurrentlyActive,
@@ -64,7 +65,66 @@ function mapRawHighlightsToAds(data: RawHighlightItem[] | undefined | null): Ad[
   });
 }
 
-export function useFeedHighlights(isMobile: boolean, initialHighlights?: any[]) {
+function normalizeProfilesMap(
+  rawProfiles: Record<string, AdvertiserProfile> | null | undefined
+): Record<string, AdvertiserProfile> {
+  if (!rawProfiles || typeof rawProfiles !== "object") return {};
+  const normalized: Record<string, AdvertiserProfile> = {};
+  for (const [key, val] of Object.entries(rawProfiles)) {
+    if (key && val) {
+      normalized[key.toLowerCase().trim()] = val;
+    }
+  }
+  return normalized;
+}
+
+export function extractHighlightsPayload(rawJson: unknown): {
+  items: RawHighlightItem[];
+  profiles: Record<string, AdvertiserProfile>;
+} {
+  if (Array.isArray(rawJson)) {
+    return { items: rawJson as RawHighlightItem[], profiles: {} };
+  }
+  if (rawJson && typeof rawJson === "object") {
+    const obj = rawJson as { highlights?: unknown; profiles?: Record<string, AdvertiserProfile> };
+    return {
+      items: Array.isArray(obj.highlights) ? (obj.highlights as RawHighlightItem[]) : [],
+      profiles: normalizeProfilesMap(obj.profiles),
+    };
+  }
+  return { items: [], profiles: {} };
+}
+
+export function useFeedHighlights(
+  isMobile: boolean,
+  initialHighlights?: any[],
+  initialHighlightProfiles?: Record<string, AdvertiserProfile>
+) {
+  const [highlightProfiles, setHighlightProfiles] = useState<Record<string, AdvertiserProfile>>(() => {
+    const ssrProfiles = normalizeProfilesMap(initialHighlightProfiles);
+    if (Object.keys(ssrProfiles).length > 0) return ssrProfiles;
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("paayh_highlights_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const isFresh = parsed?.timestamp && Date.now() - Number(parsed.timestamp) <= HIGHLIGHTS_CACHE_TTL_MS;
+          if (isFresh && parsed?.profiles && typeof parsed.profiles === "object") {
+            return normalizeProfilesMap(parsed.profiles);
+          }
+        }
+      } catch {}
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    const normalized = normalizeProfilesMap(initialHighlightProfiles);
+    if (Object.keys(normalized).length > 0) {
+      setHighlightProfiles((prev) => ({ ...prev, ...normalized }));
+    }
+  }, [initialHighlightProfiles]);
+
   const [highlights, setHighlights] = useState<Ad[]>(() => {
     if (Array.isArray(initialHighlights) && initialHighlights.length > 0) {
       return mapRawHighlightsToAds(initialHighlights as RawHighlightItem[]);
@@ -105,13 +165,17 @@ export function useFeedHighlights(isMobile: boolean, initialHighlights?: any[]) 
       const interestsQuery = userInterests.join(",");
       const response = await fetch(`/api/highlights?interests=${encodeURIComponent(interestsQuery)}`);
       if (response.ok) {
-        const data: RawHighlightItem[] = await response.json();
-        setHighlights(mapRawHighlightsToAds(data));
-        if (typeof window !== "undefined" && Array.isArray(data) && data.length > 0) {
+        const rawJson = await response.json();
+        const { items, profiles } = extractHighlightsPayload(rawJson);
+        setHighlights(mapRawHighlightsToAds(items));
+        if (Object.keys(profiles).length > 0) {
+          setHighlightProfiles((prev) => ({ ...prev, ...profiles }));
+        }
+        if (typeof window !== "undefined" && items.length > 0) {
           try {
             sessionStorage.setItem(
               "paayh_highlights_cache",
-              JSON.stringify({ items: data, timestamp: Date.now() })
+              JSON.stringify({ items, profiles, timestamp: Date.now() })
             );
           } catch {}
         }
@@ -148,6 +212,7 @@ export function useFeedHighlights(isMobile: boolean, initialHighlights?: any[]) 
 
   return {
     highlights,
+    highlightProfiles,
     hasFetched,
     fetchHighlights,
     buildDisplayFeed,

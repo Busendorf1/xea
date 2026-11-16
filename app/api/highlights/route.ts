@@ -5,8 +5,31 @@ import { getCachedProfile, getCachedHighlights, setCachedHighlights, registerL1H
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { safeParseArray } from "@/lib/utils/parsers";
 import { isHighlightCurrentlyActive, sortHighlightsByBidAndRecency } from "@/lib/highlights/highlightLifecycle";
+import { hydratePublisherProfiles } from "../../../lib/feed/publisherProfiles";
+import type { AdvertiserProfile } from "@/types/ads";
 
 export const dynamic = "force-dynamic";
+
+async function hydrateHighlightProfiles(
+  highlights: Array<{ user_email?: string | null }>
+): Promise<Record<string, AdvertiserProfile>> {
+  const publisherEmails = Array.from(
+    new Set(
+      (highlights || [])
+        .map((h) => (typeof h?.user_email === "string" ? h.user_email.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+  const profilesMap: Record<string, AdvertiserProfile> = {};
+  if (publisherEmails.length > 0 && typeof hydratePublisherProfiles === "function") {
+    try {
+      await hydratePublisherProfiles(publisherEmails, profilesMap);
+    } catch (profileErr) {
+      console.warn("⚠️ Highlight publisher profile hydration notice:", profileErr);
+    }
+  }
+  return profilesMap;
+}
 
 const SHARED_POOL_REDIS_KEY = "highlights:active_pool:v3";
 const SHARED_POOL_TTL_SECONDS = 45;
@@ -273,11 +296,15 @@ export async function GET(req: NextRequest) {
         user_render_count: userViewsMap[h.id] || 0,
       }));
       const sliced = limit !== null ? personalizedCached.slice(offset, offset + limit) : personalizedCached;
-      return NextResponse.json(sliced, {
-        headers: {
-          "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
-        },
-      });
+      const profiles = await hydrateHighlightProfiles(sliced);
+      return NextResponse.json(
+        { highlights: sliced, profiles },
+        {
+          headers: {
+            "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
+          },
+        }
+      );
     }
 
     // 2. Load from Single-Flight Shared Active Highlights Pool (1 DB query per 45s across all users)
@@ -457,12 +484,16 @@ export async function GET(req: NextRequest) {
     }));
 
     const pagedHighlights = limit !== null ? personalizedHighlights.slice(offset, offset + limit) : personalizedHighlights;
+    const profiles = await hydrateHighlightProfiles(pagedHighlights);
 
-    return NextResponse.json(pagedHighlights, {
-      headers: {
-        "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
-      },
-    });
+    return NextResponse.json(
+      { highlights: pagedHighlights, profiles },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
+        },
+      }
+    );
   } catch (err: any) {
     console.error("❌ Error in GET /api/highlights:", err);
     return NextResponse.json({ error: "Try again later" }, { status: 500 });

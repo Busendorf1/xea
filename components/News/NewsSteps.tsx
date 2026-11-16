@@ -11,6 +11,13 @@ import TermsAgreementCheckbox from "@/components/ui/TermsAgreementCheckbox/Terms
 import Avatar from "@/components/ui/Avatar";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import { ALL_INTERESTS as interests } from "@/lib/categoryTargetingMap";
+import {
+  resolveUserLogoUrl,
+  isProfileMonetizedBadgeEligible,
+  resolvePublisherDisplayName,
+  resolvePublisherHandle,
+  type ProfileDisplayLike,
+} from "../../lib/utils/profileDisplay";
 
 export interface NewsStepTargetingProps {
   isAdmin: boolean;
@@ -476,16 +483,7 @@ export const NewsStepTargeting = React.memo(function NewsStepTargeting({
   );
 });
 
-export interface NewsPreviewUserProfile {
-  profileImage?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  username?: string | null;
-  business_name?: string | null;
-  monetized?: boolean | string;
-  gender?: string | null;
-  email?: string | null;
-}
+export type NewsPreviewUserProfile = ProfileDisplayLike;
 
 export interface NewsStepPreviewProps {
   mediaPreview: string | null;
@@ -501,9 +499,11 @@ export interface NewsStepPreviewProps {
   isAdmin: boolean;
   customSponsorName?: string;
   customSponsorHandle?: string;
+  customSponsorLogo?: string;
   userProfile?: NewsPreviewUserProfile | null;
   userEmail?: string | null;
   userName?: string | null;
+  userImage?: string | null;
   isAiContent: boolean;
   setIsAiContent: (v: boolean) => void;
   agreedToPolicy: boolean;
@@ -528,9 +528,11 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
   isAdmin,
   customSponsorName,
   customSponsorHandle,
+  customSponsorLogo,
   userProfile,
   userEmail,
   userName,
+  userImage,
   isAiContent,
   setIsAiContent,
   agreedToPolicy,
@@ -540,22 +542,18 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
   handleInitiateSubmit,
   capitalizeFirst,
 }: NewsStepPreviewProps) {
-  const fullName = `${userProfile?.firstName || ""} ${userProfile?.lastName || ""}`.trim();
-  const resolvedName =
-    customSponsorName?.trim() ||
-    userProfile?.business_name?.trim() ||
-    fullName ||
-    userProfile?.username?.trim() ||
-    userName?.trim() ||
-    "Paayh User";
-  const normalizedHandle = userProfile?.username
-    ? `@${userProfile.username.replace(/^@/, "")}`
-    : userProfile?.email || userEmail || "";
-  const resolvedHandle = customSponsorHandle?.trim() || normalizedHandle;
   const resolvedEmail = userProfile?.email || userEmail || null;
-  const isVerified =
-    userProfile?.monetized === true ||
-    String(userProfile?.monetized ?? "").toLowerCase() === "true";
+  const resolvedLogo = resolveUserLogoUrl(customSponsorLogo, userProfile, userImage);
+  const resolvedName = resolvePublisherDisplayName({
+    customName: customSponsorName,
+    profile: userProfile,
+    email: resolvedEmail,
+    fallbackName: userName || "Paayh User",
+  });
+  const resolvedHandle = resolvePublisherHandle(customSponsorHandle, userProfile, resolvedEmail);
+  const isVerified = isProfileMonetizedBadgeEligible(
+    userProfile ? { ...userProfile, email: resolvedEmail } : resolvedEmail ? { email: resolvedEmail } : null
+  );
 
   return (
     <motion.div
@@ -569,7 +567,7 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
       <div className={styles.previewCard}>
         <div className={styles.previewAuthorHeader}>
           <Avatar
-            src={userProfile?.profileImage}
+            src={resolvedLogo}
             name={resolvedName}
             email={resolvedEmail}
             size={36}
@@ -579,7 +577,7 @@ export const NewsStepPreview = React.memo(function NewsStepPreview({
           <div className={styles.previewAuthorInfo}>
             <div className={styles.previewAuthorNameRow}>
               <span className={styles.previewAuthorName}>{resolvedName}</span>
-              {isVerified && <VerifiedBadge size={14} />}
+              {isVerified && <VerifiedBadge size={14} title="Verified Account" />}
             </div>
             {resolvedHandle && (
               <span className={styles.previewAuthorHandle}>{resolvedHandle}</span>

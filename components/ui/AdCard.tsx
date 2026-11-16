@@ -14,6 +14,7 @@ import RoleStarBadges from "./RoleStarBadges";
 import { AdMediaLightboxModal, AdTextReaderModal } from "./AdCardModals";
 import { AdCardActionBar } from "./AdCardActionBar";
 import AiContentTag from "./AiContentTag";
+import { isProfileMonetizedBadgeEligible } from "../../lib/utils/profileDisplay";
 import {
   preloadCallbacks,
   playCallbacks,
@@ -489,7 +490,15 @@ function AdCard({
   }, [viewerProfile?.suspended_until]);
 
   if (ad.is_highlight) {
-    return <HighlightCard ad={ad} style={style} formatTimestamp={formatTimestamp} />;
+    return (
+      <HighlightCard
+        ad={ad}
+        style={style}
+        formatTimestamp={formatTimestamp}
+        advertiserProfile={advertiserProfile}
+        advertiserProfiles={advertiserProfiles}
+      />
+    );
   }
 
   return (
@@ -539,7 +548,16 @@ function AdCard({
             >
               <div className={styles.sponsorNameWrapper}>
                 <span className={styles.sponsorName}>{getAdvertiserName(ad)}</span>
-                {Boolean(isPlatformPost || advertiserProfile?.monetized) && (
+                {Boolean(
+                  isPlatformPost ||
+                    isProfileMonetizedBadgeEligible(
+                      advertiserProfile
+                        ? { ...advertiserProfile, email: advertiserProfile.email || ad.user_email }
+                        : ad.user_email
+                          ? { email: ad.user_email }
+                          : null
+                    )
+                ) && (
                   <VerifiedBadge size={14} title="Verified Account" />
                 )}
                 {brandHandle && (

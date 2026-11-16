@@ -14,6 +14,7 @@ import NoticeModal from "@/components/MyAds/NoticeModal";
 import {
   Session,
   MultiStepAdFormProps,
+  AdComposerInitialProfile,
   steps,
   Category,
 } from "./types";
@@ -31,10 +32,49 @@ import { useAdCapacityCheck } from "@/lib/hooks/useAdCapacityCheck";
 
 export type { Session, MultiStepAdFormProps };
 
-export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
+type AdFormUserProfile = AdComposerInitialProfile & {
+  mutual_count: number;
+  mutuals: string[];
+  balance: number;
+};
+
+function normalizeAdInitialProfile(
+  profile: AdComposerInitialProfile | null | undefined,
+  fallbackEmail?: string | null
+): AdFormUserProfile | null {
+  if (!profile) return null;
+  return {
+    ...profile,
+    mutual_count: profile.mutual_count ?? 0,
+    mutuals: profile.mutuals ?? [],
+    last_mutual_spent: profile.last_mutual_spent,
+    balance: profile.balance ?? 0,
+    country: profile.country ?? null,
+    profileImage: profile.profileImage ?? null,
+    logo: profile.logo ?? null,
+    avatar_url: profile.avatar_url ?? null,
+    firstName: profile.firstName ?? null,
+    lastName: profile.lastName ?? null,
+    username: profile.username ?? null,
+    business_name: profile.business_name ?? null,
+    monetized: profile.monetized ?? false,
+    monetization_clicks: profile.monetization_clicks,
+    has_cancelled_monetization: profile.has_cancelled_monetization,
+    is_career: profile.is_career,
+    is_affiliate: profile.is_affiliate,
+    affiliate_role: profile.affiliate_role,
+    isExemptFromBarriersAndInactivity: profile.isExemptFromBarriersAndInactivity,
+    gender: profile.gender ?? null,
+    email: profile.email ?? fallbackEmail ?? null,
+  };
+}
+
+export default function MultiStepAdForm({ session, initialProfile }: MultiStepAdFormProps) {
+  const effectiveEmail = session?.user?.email || initialProfile?.email || null;
+
   const isAdmin = useMemo(() => {
-    return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(session?.user?.email));
-  }, [session?.user]);
+    return Boolean((session?.user as any)?.isAdmin ?? isAdminEmail(effectiveEmail));
+  }, [session?.user, effectiveEmail]);
 
   const {
     editingId,
@@ -55,8 +95,11 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     setIsAiContent,
     formSelections,
     setFormSelections,
-    resetForm,
-  } = useAdFormDraftAndEdit();
+    clearDraft,
+    discardDraft,
+    exitEditMode,
+    hasDraft,
+  } = useAdFormDraftAndEdit(effectiveEmail);
 
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
@@ -73,21 +116,9 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     [optionsMap]
   );
 
-  const [userProfile, setUserProfile] = useState<{
-    mutual_count: number;
-    mutuals: string[];
-    last_mutual_spent?: string;
-    balance: number;
-    country?: string | null;
-    profileImage?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    username?: string | null;
-    business_name?: string | null;
-    monetized?: boolean | string;
-    gender?: string | null;
-    email?: string | null;
-  } | null>(null);
+  const [userProfile, setUserProfile] = useState<AdFormUserProfile | null>(() =>
+    normalizeAdInitialProfile(initialProfile, effectiveEmail)
+  );
 
   const advertiserCountry = userProfile?.country || null;
   const formatCurrency = (amount: number | string) => globalFormatCurrency(amount, advertiserCountry);
@@ -101,26 +132,38 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
 
   useEffect(() => {
     const fetchUserProfile = async () => {
-      if (session?.user?.email) {
+      if (effectiveEmail) {
         try {
           const res = await fetch("/api/profile");
           if (res.ok) {
             const data = await res.json();
-            setUserProfile({
-              mutual_count: data.mutual_count ?? 0,
-              mutuals: data.mutuals ?? [],
-              last_mutual_spent: data.last_mutual_spent,
-              balance: data.balance ?? 0,
-              country: data.country ?? null,
-              profileImage: data.profileImage ?? null,
-              firstName: data.firstName ?? null,
-              lastName: data.lastName ?? null,
-              username: data.username ?? null,
-              business_name: data.business_name ?? null,
-              monetized: data.monetized ?? false,
-              gender: data.gender ?? null,
-              email: data.email ?? session?.user?.email ?? null,
-            });
+            setUserProfile((prev) => ({
+              ...(prev || {}),
+              mutual_count: data.mutual_count ?? prev?.mutual_count ?? 0,
+              mutuals: data.mutuals ?? prev?.mutuals ?? [],
+              last_mutual_spent: data.last_mutual_spent ?? prev?.last_mutual_spent,
+              balance: data.balance ?? prev?.balance ?? 0,
+              country: data.country ?? prev?.country ?? null,
+              profileImage: data.profileImage ?? prev?.profileImage ?? null,
+              logo: data.logo ?? prev?.logo ?? null,
+              avatar_url: data.avatar_url ?? prev?.avatar_url ?? null,
+              firstName: data.firstName ?? prev?.firstName ?? null,
+              lastName: data.lastName ?? prev?.lastName ?? null,
+              username: data.username ?? prev?.username ?? null,
+              business_name: data.business_name ?? prev?.business_name ?? null,
+              monetized: data.monetized ?? prev?.monetized ?? false,
+              monetization_clicks: data.monetization_clicks ?? prev?.monetization_clicks,
+              has_cancelled_monetization:
+                data.has_cancelled_monetization ?? prev?.has_cancelled_monetization,
+              is_career: data.is_career ?? prev?.is_career,
+              is_affiliate: data.is_affiliate ?? prev?.is_affiliate,
+              affiliate_role: data.affiliate_role ?? prev?.affiliate_role,
+              isExemptFromBarriersAndInactivity:
+                data.isExemptFromBarriersAndInactivity ??
+                prev?.isExemptFromBarriersAndInactivity,
+              gender: data.gender ?? prev?.gender ?? null,
+              email: data.email ?? effectiveEmail ?? null,
+            }));
 
             const status = data.ad_account_status;
             const until = data.ad_ban_until;
@@ -288,6 +331,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
     calculateTotalCost,
     calculateTotalCostPerImpression,
     formatCurrency,
+    onDraftClear: () => clearDraft(true),
   });
 
   const { capacity, checkingCapacity, retryCapacityCheck } = useAdCapacityCheck({
@@ -471,10 +515,22 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
             <div className={styles.editingSwitchWrapper}>
               <button
                 type="button"
-                onClick={resetForm}
+                onClick={exitEditMode}
                 className={styles.switchCampaignBtn}
               >
                 Switch to Create New Campaign
+              </button>
+            </div>
+          )}
+
+          {!editingId && hasDraft && (
+            <div className={styles.editingSwitchWrapper}>
+              <button
+                type="button"
+                onClick={discardDraft}
+                className={styles.switchCampaignBtn}
+              >
+                Discard Draft
               </button>
             </div>
           )}
@@ -547,6 +603,7 @@ export default function MultiStepAdForm({ session }: MultiStepAdFormProps) {
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
               userProfile={userProfile}
+              sessionImage={session?.user?.image || null}
               formatCurrency={formatCurrency}
               isAiContent={isAiContent}
               setIsAiContent={setIsAiContent}

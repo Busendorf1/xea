@@ -2287,6 +2287,15 @@ img.avatarImg {
   font-weight: 700 !important;
 }
 
+.highlightTitle {
+  margin: 0.15rem 0 0.35rem 0;
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
 /* ───── X / Bluesky Media Modal Pop-Up (Feed & Highlights) ───── */
 .lightboxOverlay {
   position: fixed;

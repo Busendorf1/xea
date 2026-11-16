@@ -87,6 +87,7 @@ export interface AdvertiserProfile {
   is_career?: boolean;
   is_affiliate?: boolean;
   affiliate_role?: string | null;
+  isExemptFromBarriersAndInactivity?: boolean;
 }
 
 export interface ViewerProfile {

@@ -11,6 +11,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+import type { ProfileDisplayLike } from "@/lib/utils/profileDisplay";
+
 export interface Session {
   user?: {
     email?: string | null;
@@ -19,8 +21,17 @@ export interface Session {
   };
 }
 
+export type AdComposerInitialProfile = ProfileDisplayLike & {
+  mutual_count?: number;
+  mutuals?: string[];
+  last_mutual_spent?: string;
+  balance?: number;
+  country?: string | null;
+};
+
 export type MultiStepAdFormProps = {
   session: Session;
+  initialProfile?: AdComposerInitialProfile | null;
 };
 
 export const adRates: Record<string, number> = {

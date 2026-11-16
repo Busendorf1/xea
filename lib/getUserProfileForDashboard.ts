@@ -12,6 +12,7 @@ import { invalidateCachedProfile, getCachedProfile, setCachedProfile, getCachedH
 import { isDefaultProviderAvatar } from "@/lib/utils/avatar";
 import { signAdImpressionToken, evaluateAdTargeting } from "@/lib/targetingEngine";
 import { isHighlightCurrentlyActive, sortHighlightsByBidAndRecency } from "@/lib/highlights/highlightLifecycle";
+import { hydratePublisherProfiles } from "./feed/publisherProfiles";
 import { decryptProfilePII, encryptSensitiveField } from "@/lib/security/piiCrypto";
 
 export interface DashboardProfileResult {
@@ -21,8 +22,19 @@ export interface DashboardProfileResult {
   initialAds?: Ad[];
   initialProfiles?: Record<string, AdvertiserProfile>;
   initialHighlights?: HighlightItem[];
+  initialHighlightProfiles?: Record<string, AdvertiserProfile>;
   redirectUrl?: string;
   error?: string;
+}
+
+function filterAndSortInitialHighlights(cachedHighlights: unknown): any[] | undefined {
+  if (!Array.isArray(cachedHighlights) || cachedHighlights.length === 0) {
+    return undefined;
+  }
+  const hlNowMs = Date.now();
+  return cachedHighlights
+    .filter((h: any) => isHighlightCurrentlyActive(h, hlNowMs))
+    .sort(sortHighlightsByBidAndRecency);
 }
 
 export interface SessionLike {
@@ -434,6 +446,7 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
   let initialAds: any[] | undefined = undefined;
   let initialProfiles: Record<string, any> | undefined = undefined;
   let initialHighlights: any[] | undefined = undefined;
+  let initialHighlightProfiles: Record<string, AdvertiserProfile> | undefined = undefined;
   try {
     const highlightsPromise = getCachedHighlights(
       parsedInterest,
@@ -502,12 +515,7 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
           } catch {}
         }
         const seenSet = new Set<string>(seenAdIds || []);
-        if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
-          const hlNowMs = Date.now();
-          initialHighlights = cachedHighlights
-            .filter((h: any) => isHighlightCurrentlyActive(h, hlNowMs))
-            .sort(sortHighlightsByBidAndRecency);
-        }
+        initialHighlights = filterAndSortInitialHighlights(cachedHighlights);
         const servedAt = Date.now();
 
         initialAds = parsedRawAds
@@ -556,20 +564,29 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
         }
       } else {
         const cachedHighlights = await highlightsPromise;
-        if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
-          const hlNowMs = Date.now();
-          initialHighlights = cachedHighlights
-            .filter((h: any) => isHighlightCurrentlyActive(h, hlNowMs))
-            .sort(sortHighlightsByBidAndRecency);
-        }
+        initialHighlights = filterAndSortInitialHighlights(cachedHighlights);
       }
     } else {
       const cachedHighlights = await highlightsPromise;
-      if (Array.isArray(cachedHighlights) && cachedHighlights.length > 0) {
-        const hlNowMs = Date.now();
-        initialHighlights = cachedHighlights
-          .filter((h: Record<string, unknown>) => isHighlightCurrentlyActive(h, hlNowMs))
-          .sort(sortHighlightsByBidAndRecency);
+      initialHighlights = filterAndSortInitialHighlights(cachedHighlights);
+    }
+
+    if (Array.isArray(initialHighlights) && initialHighlights.length > 0) {
+      const hlOwnerEmails = Array.from(
+        new Set(
+          initialHighlights
+            .map((h: any) => (typeof h?.user_email === "string" ? h.user_email.trim() : ""))
+            .filter(Boolean)
+        )
+      );
+      if (hlOwnerEmails.length > 0 && typeof hydratePublisherProfiles === "function") {
+        const hlProfilesMap: Record<string, AdvertiserProfile> = {};
+        try {
+          await hydratePublisherProfiles(hlOwnerEmails, hlProfilesMap);
+          if (Object.keys(hlProfilesMap).length > 0) {
+            initialHighlightProfiles = hlProfilesMap;
+          }
+        } catch {}
       }
     }
   } catch {
@@ -603,5 +620,6 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
     initialAds,
     initialProfiles,
     initialHighlights,
+    initialHighlightProfiles,
   };
 }

@@ -1,6 +1,9 @@
 import { Ad, AdvertiserProfile } from "@/types/ads";
 import { registerL1FeedEvictionHandler } from "@/lib/utils/cache";
 import { ViewerTargetingProfile } from "@/lib/targetingEngine";
+import { l1PublisherProfilesCache } from "./publisherProfiles";
+
+export { l1PublisherProfilesCache };
 
 export const USER_FEED_IDS_TTL_SECONDS = 600;
 export const AD_DETAIL_TTL_SECONDS = 1800;
@@ -27,7 +30,6 @@ export interface L1UserFeedEntry {
 export const l1SharedCampaignsPool = new Map<string, { ads: any[]; expiresAt: number }>();
 export const inFlightCampaignPoolPromises = new Map<string, Promise<any[]>>();
 export const l1AdDetailsCache = new Map<string, { ad: Ad; expiresAt: number }>();
-export const l1PublisherProfilesCache = new Map<string, { profile: AdvertiserProfile; expiresAt: number }>();
 export const l1UserFeedCache = new Map<string, L1UserFeedEntry>();
 
 export function evictAdFromL1FeedCachesInternal(adId?: string) {

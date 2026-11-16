@@ -1,8 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { AdFormSelections } from "./types";
+import {
+  AD_DRAFT_STORAGE_PREFIX,
+  LEGACY_AD_DRAFT_KEY,
+  clearDraftMediaFiles,
+  getScopedDraftStorageKey,
+  getScopedMediaId,
+  loadDraftMediaFiles,
+  readScopedJsonDraft,
+  removeScopedJsonDraft,
+  saveDraftMediaFiles,
+  writeScopedJsonDraft,
+} from "../../lib/utils/composerDraftStorage";
 
 export const initialFormSelections: AdFormSelections = {
   industry: [],
@@ -46,7 +58,51 @@ export const initialFormSelections: AdFormSelections = {
   customSponsorLogo: "",
 };
 
-export function useAdFormDraftAndEdit() {
+interface StoredAdDraft {
+  step?: number;
+  adType?: string;
+  isBiddingEnabled?: boolean;
+  bidPrice?: number;
+  isAiContent?: boolean;
+  formSelections?: Partial<Omit<AdFormSelections, "adMediaFiles">>;
+  updatedAt?: number;
+}
+
+function createInitialFormSelections(): AdFormSelections {
+  return {
+    ...initialFormSelections,
+    ageRange: [...initialFormSelections.ageRange] as [number, number],
+    actionDetails: { ...initialFormSelections.actionDetails },
+    industry: [],
+    interest: [],
+    lifestyle: [],
+    behavior: [],
+    personality: [],
+    targetLocations: [],
+    employmentStatus: [],
+    adMediaFiles: [],
+    adActionButtons: [],
+  };
+}
+
+function isDefaultAdFormSelections(selections: AdFormSelections): boolean {
+  if (selections.adMediaFiles.length > 0) return false;
+  const { adMediaFiles: _files, ...rest } = selections;
+  const { adMediaFiles: _initFiles, ...initRest } = initialFormSelections;
+  return JSON.stringify(rest) === JSON.stringify(initRest);
+}
+
+function hasPendingEditSession(editingId: string | null, editAdId: string | null): boolean {
+  if (editingId || editAdId) return true;
+  if (typeof window !== "undefined") {
+    try {
+      return !!sessionStorage.getItem("paayh_edit_ad_id");
+    } catch {}
+  }
+  return false;
+}
+
+export function useAdFormDraftAndEdit(draftEmail?: string | null) {
   const searchParams = useSearchParams();
   const editAdId = searchParams ? searchParams.get("id") : null;
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,59 +114,268 @@ export function useAdFormDraftAndEdit() {
   const [adType, setAdType] = useState("politics");
   const [isBiddingEnabled, setIsBiddingEnabled] = useState(false);
   const [bidPrice, setBidPrice] = useState(0);
-  const [formSelections, setFormSelections] = useState<AdFormSelections>(initialFormSelections);
+  const [formSelections, setFormSelections] = useState<AdFormSelections>(createInitialFormSelections);
 
-  // Restore saved draft state on mount
-  useEffect(() => {
-    if (editingId || editAdId) return;
-    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_ad_id")) return;
-    try {
-      const saved = localStorage.getItem("paayh_draft_ad_v1");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.step === "number") setStep(parsed.step);
-        if (parsed.adType) {
-          prevAdTypeRef.current = parsed.adType;
-          setAdType(parsed.adType);
+  const scopeKey = getScopedDraftStorageKey(AD_DRAFT_STORAGE_PREFIX, draftEmail);
+  const mediaScopeId = getScopedMediaId("ad", draftEmail);
+
+  const prevAdTypeRef = useRef<string>(adType);
+  const hydratedScopeRef = useRef<string | null>(null);
+  const hasLoadedMediaRef = useRef<boolean>(false);
+  const submittedRef = useRef<boolean>(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevStepRef = useRef<number>(step);
+  const lastSavedMediaCountRef = useRef<number>(0);
+  const draftEmailRef = useRef<string | null | undefined>(draftEmail);
+  const mediaScopeIdRef = useRef<string>(mediaScopeId);
+  const editingIdRef = useRef<string | null>(editingId);
+  const editAdIdRef = useRef<string | null>(editAdId);
+  draftEmailRef.current = draftEmail;
+  mediaScopeIdRef.current = mediaScopeId;
+  editingIdRef.current = editingId;
+  editAdIdRef.current = editAdId;
+
+  const hydrateDraftForScope = useCallback(
+    (force = false) => {
+      if (!force && hasPendingEditSession(editingIdRef.current, editAdIdRef.current)) return;
+      if (!force && hydratedScopeRef.current === scopeKey) return;
+
+      hasLoadedMediaRef.current = false;
+      submittedRef.current = false;
+
+      const { draft } = readScopedJsonDraft<StoredAdDraft>(
+        AD_DRAFT_STORAGE_PREFIX,
+        LEGACY_AD_DRAFT_KEY,
+        draftEmail
+      );
+
+      if (draft) {
+        if (typeof draft.step === "number") {
+          prevStepRef.current = draft.step;
+          setStep(draft.step);
         }
-        if (typeof parsed.isBiddingEnabled === "boolean") setIsBiddingEnabled(parsed.isBiddingEnabled);
-        if (parsed.bidPrice) setBidPrice(parsed.bidPrice);
-        if (typeof parsed.isAiContent === "boolean") setIsAiContent(parsed.isAiContent);
-        if (parsed.formSelections) {
+        if (draft.adType) {
+          prevAdTypeRef.current = draft.adType;
+          setAdType(draft.adType);
+        }
+        if (typeof draft.isBiddingEnabled === "boolean") {
+          setIsBiddingEnabled(draft.isBiddingEnabled);
+        }
+        if (typeof draft.bidPrice === "number") {
+          setBidPrice(draft.bidPrice);
+        }
+        if (typeof draft.isAiContent === "boolean") {
+          setIsAiContent(draft.isAiContent);
+        }
+        if (draft.formSelections) {
+          const restoredSelections = draft.formSelections;
           setFormSelections((prev) => ({
             ...prev,
-            ...parsed.formSelections,
-            adMediaFiles: [],
+            ...restoredSelections,
+            actionDetails: {
+              ...initialFormSelections.actionDetails,
+              ...(restoredSelections.actionDetails || {}),
+            },
+            adMediaFiles: prev.adMediaFiles,
           }));
         }
       }
-    } catch {}
-  }, [editingId, editAdId]);
 
-  // Autosave draft state on changes (debounced 400ms)
+      hydratedScopeRef.current = scopeKey;
+
+      let cancelled = false;
+      const targetMediaScope = mediaScopeId;
+      void loadDraftMediaFiles(targetMediaScope).then((restoredFiles) => {
+        if (cancelled) return;
+        if (mediaScopeIdRef.current !== targetMediaScope) return;
+        if (submittedRef.current) return;
+        if (hasPendingEditSession(editingIdRef.current, editAdIdRef.current)) return;
+
+        if (restoredFiles.length > 0) {
+          lastSavedMediaCountRef.current = restoredFiles.length;
+          setFormSelections((prev) => ({
+            ...prev,
+            adMediaFiles: restoredFiles,
+          }));
+        }
+        hasLoadedMediaRef.current = true;
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    },
+    [draftEmail, mediaScopeId, scopeKey]
+  );
+
+  // Restore saved draft state on mount and when user scope settles
   useEffect(() => {
-    if (editingId || editAdId) return;
-    if (typeof window !== "undefined" && sessionStorage.getItem("paayh_edit_ad_id")) return;
-    const timer = setTimeout(() => {
-      try {
-        const { adMediaFiles, ...restSelections } = formSelections;
-        const draft = {
-          step,
-          adType,
-          isBiddingEnabled,
-          bidPrice,
-          isAiContent,
-          formSelections: restSelections,
-        };
-        localStorage.setItem("paayh_draft_ad_v1", JSON.stringify(draft));
-      } catch {}
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [step, adType, isBiddingEnabled, bidPrice, isAiContent, formSelections, editingId, editAdId]);
+    if (hasPendingEditSession(editingIdRef.current, editAdIdRef.current)) return;
+    return hydrateDraftForScope(false);
+  }, [editingId, editAdId, hydrateDraftForScope]);
+
+  const isDefaultState =
+    step === 0 &&
+    adType === "politics" &&
+    !isBiddingEnabled &&
+    bidPrice === 0 &&
+    !isAiContent &&
+    isDefaultAdFormSelections(formSelections);
+
+  const { adMediaFiles, ...serializableSelections } = formSelections;
+
+  const latestSnapshotRef = useRef({
+    editingId,
+    editAdId,
+    draftEmail,
+    scopeKey,
+    hydratedScope: hydratedScopeRef.current,
+    isDefaultState,
+    draft: {
+      step,
+      adType,
+      isBiddingEnabled,
+      bidPrice,
+      isAiContent,
+      formSelections: serializableSelections,
+      updatedAt: Date.now(),
+    } as StoredAdDraft,
+  });
+
+  latestSnapshotRef.current = {
+    editingId,
+    editAdId,
+    draftEmail,
+    scopeKey,
+    hydratedScope: hydratedScopeRef.current,
+    isDefaultState,
+    draft: {
+      step,
+      adType,
+      isBiddingEnabled,
+      bidPrice,
+      isAiContent,
+      formSelections: serializableSelections,
+      updatedAt: Date.now(),
+    },
+  };
+
+  const flushJsonDraftNow = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const snap = latestSnapshotRef.current;
+    if (submittedRef.current) return;
+    if (hasPendingEditSession(snap.editingId, snap.editAdId)) return;
+    if (snap.hydratedScope !== snap.scopeKey) return;
+
+    if (snap.isDefaultState) {
+      return;
+    }
+    writeScopedJsonDraft(AD_DRAFT_STORAGE_PREFIX, snap.draftEmail, snap.draft);
+  }, []);
+
+  // Autosave JSON draft on changes (immediate on step changes, debounced 350ms for typing)
+  useEffect(() => {
+    if (hasPendingEditSession(editingId, editAdId)) return;
+    if (hydratedScopeRef.current !== scopeKey) return;
+    if (submittedRef.current) return;
+
+    if (isDefaultState) {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (prevStepRef.current !== step) {
+      prevStepRef.current = step;
+      flushJsonDraftNow();
+      return;
+    }
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      flushJsonDraftNow();
+    }, 350);
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [
+    step,
+    adType,
+    isBiddingEnabled,
+    bidPrice,
+    isAiContent,
+    formSelections,
+    editingId,
+    editAdId,
+    scopeKey,
+    isDefaultState,
+    flushJsonDraftNow,
+  ]);
+
+  // Persist binary File objects immediately (memory + IndexedDB) without clearing pre-restore files
+  useEffect(() => {
+    if (hasPendingEditSession(editingId, editAdId)) return;
+    if (!hasLoadedMediaRef.current || submittedRef.current) return;
+
+    if (adMediaFiles.length > 0) {
+      lastSavedMediaCountRef.current = adMediaFiles.length;
+      void saveDraftMediaFiles(mediaScopeId, adMediaFiles);
+    } else if (lastSavedMediaCountRef.current > 0) {
+      lastSavedMediaCountRef.current = 0;
+      void clearDraftMediaFiles(mediaScopeId);
+    }
+  }, [adMediaFiles, editingId, editAdId, mediaScopeId]);
+
+  // Flush pending JSON draft on unmount, tab hide, pagehide, or beforeunload
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        flushJsonDraftNow();
+      }
+    };
+    const handlePageHide = () => {
+      flushJsonDraftNow();
+    };
+    const handleBeforeUnload = () => {
+      flushJsonDraftNow();
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("pagehide", handlePageHide);
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    }
+
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pagehide", handlePageHide);
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      }
+      flushJsonDraftNow();
+    };
+  }, [flushJsonDraftNow]);
 
   const loadAdForEdit = async (targetId: string) => {
     if (!targetId) return;
     try {
+      editingIdRef.current = targetId;
       setEditingId(targetId);
       setStep(0);
       const res = await fetch(`/api/campaigns/details?id=${targetId}`);
@@ -166,6 +431,7 @@ export function useAdFormDraftAndEdit() {
           productCtaLink: ad.product_cta_link || "",
           customSponsorName: ad.custom_sponsor_name || "",
           customSponsorHandle: ad.custom_sponsor_handle || "",
+          customSponsorLogo: ad.custom_sponsor_logo || "",
         }));
       }
       if (typeof window !== "undefined") {
@@ -198,7 +464,6 @@ export function useAdFormDraftAndEdit() {
   }, [editAdId]);
 
   // Clear targeting selections ONLY whenever user switches ad type
-  const prevAdTypeRef = useRef<string>(adType);
   useEffect(() => {
     if (prevAdTypeRef.current !== adType) {
       prevAdTypeRef.current = adType;
@@ -213,13 +478,67 @@ export function useAdFormDraftAndEdit() {
     }
   }, [adType]);
 
-  const resetForm = () => {
+  const clearDraft = useCallback((markSubmitted = true) => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (markSubmitted) {
+      submittedRef.current = true;
+    }
+    lastSavedMediaCountRef.current = 0;
+    removeScopedJsonDraft(AD_DRAFT_STORAGE_PREFIX, LEGACY_AD_DRAFT_KEY, draftEmailRef.current);
+    void clearDraftMediaFiles(mediaScopeIdRef.current);
+  }, []);
+
+  const resetForm = useCallback(() => {
+    clearDraft(false);
+    submittedRef.current = false;
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("paayh_edit_ad_id");
+      } catch {}
+    }
+    editingIdRef.current = null;
     setEditingId(null);
     setIsDeliveringActive(false);
     setOriginalTotalCost(0);
+    prevStepRef.current = 0;
     setStep(0);
-    setFormSelections(initialFormSelections);
-  };
+    prevAdTypeRef.current = "politics";
+    setAdType("politics");
+    setIsBiddingEnabled(false);
+    setBidPrice(0);
+    setIsAiContent(false);
+    setFormSelections(createInitialFormSelections());
+    hydratedScopeRef.current = scopeKey;
+    hasLoadedMediaRef.current = true;
+  }, [clearDraft, scopeKey]);
+
+  const exitEditMode = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("paayh_edit_ad_id");
+      } catch {}
+    }
+    editingIdRef.current = null;
+    lastSavedMediaCountRef.current = 0;
+    setEditingId(null);
+    setIsDeliveringActive(false);
+    setOriginalTotalCost(0);
+    prevStepRef.current = 0;
+    setStep(0);
+    prevAdTypeRef.current = "politics";
+    setAdType("politics");
+    setIsBiddingEnabled(false);
+    setBidPrice(0);
+    setIsAiContent(false);
+    setFormSelections(createInitialFormSelections());
+    hydratedScopeRef.current = null;
+    hydrateDraftForScope(true);
+  }, [hydrateDraftForScope]);
+
+  const hasDraft = !editingId && !isDefaultState;
 
   return {
     editingId,
@@ -240,7 +559,12 @@ export function useAdFormDraftAndEdit() {
     setIsAiContent,
     formSelections,
     setFormSelections,
+    clearDraft,
+    flushDraft: flushJsonDraftNow,
     resetForm,
+    discardDraft: resetForm,
+    exitEditMode,
+    hasDraft,
   };
 }
 
