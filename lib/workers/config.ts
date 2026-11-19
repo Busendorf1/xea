@@ -4,7 +4,10 @@ export const connectionOptions = {
   host: env.REDIS_HOST,
   port: env.REDIS_PORT,
   password: env.REDIS_PASSWORD || undefined,
-  tls: env.REDIS_TLS === "true" ? { rejectUnauthorized: false } : undefined,
+  tls:
+    env.REDIS_TLS === "true"
+      ? { rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED === "false" ? false : true }
+      : undefined,
   maxRetriesPerRequest: null,
 };
 

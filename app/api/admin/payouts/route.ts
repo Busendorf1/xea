@@ -4,11 +4,34 @@ import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { PayoutProvider, PayoutGateway } from "@/lib/payment/payoutProvider";
 import { KoraService } from "@/lib/payment/kora";
-import redisConnection from "@/lib/redis";
+import redisConnection, { isRedisReady } from "@/lib/redis";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
 import { settleWithdrawalByReference } from "@/lib/services/payoutSettlementService";
+import { recordAdminAuditTrail } from "@/lib/security/adminGuard";
 
 export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+async function acquirePayoutLock(lockKey: string, ttlSeconds = 120): Promise<boolean> {
+  if (!isRedisReady()) return true;
+  try {
+    const res = await redisConnection.set(lockKey, "1", "EX", ttlSeconds, "NX");
+    return res === "OK";
+  } catch {
+    return true;
+  }
+}
+
+async function releasePayoutLock(lockKey: string): Promise<void> {
+  if (!isRedisReady()) return;
+  try {
+    await redisConnection.del(lockKey);
+  } catch {}
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,8 +41,8 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || "20", 10)), 100);
+    const page = Math.max(1, parseSafeInt(searchParams.get("page"), 1));
+    const limit = Math.min(Math.max(1, parseSafeInt(searchParams.get("limit"), 20)), 100);
     const status = (searchParams.get("status") || "all").toLowerCase();
     const search = searchParams.get("search")?.trim() || "";
 
@@ -77,30 +100,43 @@ export async function GET(req: NextRequest) {
     }
 
     if (!countMetrics) {
-      const [queuedRes, failedRes, pendingRes, processingRes] = await Promise.all([
-        supabaseAdmin.from("payments").select("amount", { count: "exact" }).eq("type", "withdrawal").eq("status", "queued").limit(500),
-        supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "failed"),
-        supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "pending"),
-        supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "processing"),
-      ]);
+      const { data: rpcSummary, error: rpcSumErr } = await supabaseAdmin.rpc("get_admin_payouts_summary");
+      if (!rpcSumErr && rpcSummary) {
+        countMetrics = {
+          queuedCount: Number(rpcSummary.queuedCount || 0),
+          failedCount: Number(rpcSummary.failedCount || 0),
+          pendingCount: Number(rpcSummary.pendingCount || 0),
+          processingCount: Number(rpcSummary.processingCount || 0),
+          totalQueuedAmount: Number(rpcSummary.totalQueuedAmount || 0),
+        };
+      } else {
+        const [queuedRes, failedRes, pendingRes, processingRes] = await Promise.all([
+          supabaseAdmin.from("payments").select("amount", { count: "exact" }).eq("type", "withdrawal").eq("status", "queued").limit(500),
+          supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "failed"),
+          supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "pending"),
+          supabaseAdmin.from("payments").select("id", { count: "exact", head: true }).eq("type", "withdrawal").eq("status", "processing"),
+        ]);
 
-      const queuedCount = queuedRes.count || 0;
-      const failedCount = failedRes.count || 0;
-      const pendingCount = pendingRes.count || 0;
-      const processingCount = processingRes.count || 0;
-      const totalQueuedAmount = (queuedRes.data || []).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const queuedCount = queuedRes.count || 0;
+        const failedCount = failedRes.count || 0;
+        const pendingCount = pendingRes.count || 0;
+        const processingCount = processingRes.count || 0;
+        const totalQueuedAmount = (queuedRes.data || []).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
-      countMetrics = {
-        queuedCount,
-        failedCount,
-        pendingCount,
-        processingCount,
-        totalQueuedAmount,
-      };
+        countMetrics = {
+          queuedCount,
+          failedCount,
+          pendingCount,
+          processingCount,
+          totalQueuedAmount,
+        };
+      }
 
-      try {
-        await redisConnection.set(countsCacheKey, JSON.stringify(countMetrics), "EX", 15);
-      } catch {}
+      if (isRedisReady()) {
+        try {
+          await redisConnection.set(countsCacheKey, JSON.stringify(countMetrics), "EX", 15);
+        } catch {}
+      }
     }
 
     const { queuedCount, failedCount, pendingCount, processingCount, totalQueuedAmount } = countMetrics;
@@ -160,146 +196,201 @@ export async function POST(req: NextRequest) {
     // ACTION 1: MANUAL BATCH DISPATCH (Process all queued & pending payouts)
     // -------------------------------------------------------------------------
     if (action === "process_all_queued") {
-      const activeGateway = PayoutProvider.getActiveGateway();
-      let floatBalance = Infinity;
+      const batchLockKey = "lock:admin_payout_batch";
+      const batchLocked = await acquirePayoutLock(batchLockKey, 180);
+      if (!batchLocked) {
+        return NextResponse.json(
+          { error: "Another payout batch is already executing. Please wait a moment and refresh." },
+          { status: 409 }
+        );
+      }
 
-      if (activeGateway === "kora" && !isTestMode) {
-        try {
-          floatBalance = await KoraService.getNairaBalance();
-          if (floatBalance <= 0) {
+      try {
+        const activeGateway = PayoutProvider.getActiveGateway();
+        let floatBalance = Infinity;
+
+        if (activeGateway === "kora" && !isTestMode) {
+          try {
+            floatBalance = await KoraService.getNairaBalance();
+            if (floatBalance <= 0) {
+              return NextResponse.json({
+                error: "Cannot process payouts: Kora float balance is ₦0.00. Please top up your Kora balance first.",
+                floatBalance: 0,
+                canSimulate: process.env.NODE_ENV !== "production",
+              }, { status: 400 });
+            }
+          } catch (balErr: any) {
             return NextResponse.json({
-              error: "Cannot process payouts: Kora float balance is ₦0.00. Please top up your Kora balance first.",
-              floatBalance: 0,
-              canSimulate: process.env.NODE_ENV !== "production",
-            }, { status: 400 });
+              error: `Could not verify Kora balance: ${balErr?.message}`,
+              canSimulate: process.env.NODE_ENV !== "production"
+            }, { status: 500 });
           }
-        } catch (balErr: any) {
-          return NextResponse.json({ 
-            error: `Could not verify Kora balance: ${balErr?.message}`,
-            canSimulate: process.env.NODE_ENV !== "production" 
-          }, { status: 500 });
-        }
-      }
-
-      // Fetch queued and pending items
-      const { data: queuedPayments, error: fetchErr } = await supabaseAdmin
-        .from("payments")
-        .select("*")
-        .eq("type", "withdrawal")
-        .in("status", ["queued", "pending"])
-        .order("created_at", { ascending: true })
-        .limit(100);
-
-      if (fetchErr || !queuedPayments || queuedPayments.length === 0) {
-        return NextResponse.json({ success: true, message: "No queued or pending payouts found to process." });
-      }
-
-      let processedCount = 0;
-      let heldCount = 0;
-      let runningTotal = 0;
-
-      for (const payment of queuedPayments) {
-        const rawAmount = parseFloat(payment.amount);
-        const paymentGateway = (payment.metadata?.gateway || payment.metadata?.provider) as PayoutGateway | undefined;
-        const resolvedFee =
-          payment.metadata?.transfer_fee ??
-          payment.metadata?.fee ??
-          PayoutProvider.calculateTransferFee(rawAmount, paymentGateway);
-        const netDisburseAmount =
-          payment.metadata?.net_amount ?? Math.max(0, Number((rawAmount - Number(resolvedFee)).toFixed(2)));
-        const { bankCode, accountNumber, accountName } = payment.metadata || {};
-
-        if (!bankCode || !accountNumber) {
-          continue;
         }
 
-        // Check if float allows this disbursement
-        if (runningTotal + netDisburseAmount > floatBalance) {
-          heldCount++;
-          continue;
+        // Fetch queued and pending items
+        const { data: queuedPayments, error: fetchErr } = await supabaseAdmin
+          .from("payments")
+          .select("*")
+          .eq("type", "withdrawal")
+          .in("status", ["queued", "pending"])
+          .order("created_at", { ascending: true })
+          .limit(100);
+
+        if (fetchErr || !queuedPayments || queuedPayments.length === 0) {
+          return NextResponse.json({ success: true, message: "No queued or pending payouts found to process." });
         }
 
-        try {
-          console.log(`🏦 Admin Manual Payout (${isTestMode ? "TEST MODE" : "LIVE"}): Disbursing ref=${payment.reference} netAmount=₦${netDisburseAmount}`);
-          let pStatus = "processing";
-          let gatewayRef = "";
+        let processedCount = 0;
+        let heldCount = 0;
+        let skippedCount = 0;
+        let runningTotal = 0;
 
-          if (isTestMode) {
-            pStatus = "success";
-            gatewayRef = `test_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-          } else {
-            const payoutRes = await PayoutProvider.initiatePayout({
-              reference: payment.reference,
-              amount: netDisburseAmount,
-              bankCode,
-              accountNumber,
-              accountName: accountName || "Paayh User",
-              customerEmail: payment.user_email,
-              narration: `Paayh Withdrawal to ${accountName || "User"}`,
-            });
-            pStatus = payoutRes.status === "success" ? "success" : "processing";
-            gatewayRef = payoutRes.reference || payment.reference;
+        for (const payment of queuedPayments) {
+          const rawAmount = parseFloat(payment.amount);
+          const paymentGateway = (payment.metadata?.gateway || payment.metadata?.provider) as PayoutGateway | undefined;
+          const resolvedFee =
+            payment.metadata?.transfer_fee ??
+            payment.metadata?.fee ??
+            PayoutProvider.calculateTransferFee(rawAmount, paymentGateway);
+          const netDisburseAmount =
+            payment.metadata?.net_amount ?? Math.max(0, Number((rawAmount - Number(resolvedFee)).toFixed(2)));
+          const { bankCode, accountNumber, accountName } = payment.metadata || {};
+
+          if (!bankCode || !accountNumber) {
+            continue;
           }
 
-          const dispatchMeta = {
-            gateway_status: pStatus,
-            gateway_reference: gatewayRef,
-            manual_admin_dispatched_at: new Date().toISOString(),
-            dispatched_by: admin.email,
-            simulated_test: isTestMode,
-          };
+          // Check if float allows this disbursement
+          if (runningTotal + netDisburseAmount > floatBalance) {
+            heldCount++;
+            continue;
+          }
 
-          if (pStatus === "success") {
-            await settleWithdrawalByReference(
-              payment.reference,
-              "success",
-              "admin_manual_batch_dispatched",
-              dispatchMeta
-            );
-          } else {
+          const refLockKey = `lock:admin_payout:${payment.reference}`;
+          const refLocked = await acquirePayoutLock(refLockKey, 120);
+          if (!refLocked) {
+            skippedCount++;
+            continue;
+          }
+
+          try {
+            // Atomic row claim: transition queued/pending -> processing BEFORE initiating external disbursement
+            const { data: claimedRow } = await supabaseAdmin
+              .from("payments")
+              .update({
+                status: "processing",
+                metadata: {
+                  ...(payment.metadata || {}),
+                  batch_claimed_at: new Date().toISOString(),
+                  batch_claimed_by: admin.email,
+                },
+              })
+              .eq("id", payment.id)
+              .in("status", ["queued", "pending"])
+              .select("id")
+              .maybeSingle();
+
+            if (!claimedRow) {
+              // Already claimed or settled by another worker/admin
+              skippedCount++;
+              continue;
+            }
+
+            console.log(`🏦 Admin Manual Payout (${isTestMode ? "TEST MODE" : "LIVE"}): Disbursing ref=${payment.reference} netAmount=₦${netDisburseAmount}`);
+            let pStatus = "processing";
+            let gatewayRef = "";
+
+            if (isTestMode) {
+              pStatus = "success";
+              gatewayRef = `test_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            } else {
+              const payoutRes = await PayoutProvider.initiatePayout({
+                reference: payment.reference,
+                amount: netDisburseAmount,
+                bankCode,
+                accountNumber,
+                accountName: accountName || "Paayh User",
+                customerEmail: payment.user_email,
+                narration: `Paayh Withdrawal to ${accountName || "User"}`,
+              });
+              pStatus = payoutRes.status === "success" ? "success" : "processing";
+              gatewayRef = payoutRes.reference || payment.reference;
+            }
+
+            const dispatchMeta = {
+              gateway_status: pStatus,
+              gateway_reference: gatewayRef,
+              manual_admin_dispatched_at: new Date().toISOString(),
+              dispatched_by: admin.email,
+              simulated_test: isTestMode,
+            };
+
+            if (pStatus === "success") {
+              await settleWithdrawalByReference(
+                payment.reference,
+                "success",
+                "admin_manual_batch_dispatched",
+                dispatchMeta
+              );
+            } else {
+              await supabaseAdmin
+                .from("payments")
+                .update({
+                  status: pStatus,
+                  metadata: {
+                    ...payment.metadata,
+                    ...dispatchMeta,
+                  },
+                })
+                .eq("id", payment.id);
+            }
+
+            runningTotal += netDisburseAmount;
+            processedCount++;
+          } catch (payoutErr: any) {
+            console.warn(`⚠️ Failed to disburse payout ${payment.reference}:`, payoutErr?.message);
+            // Revert claimed row back to queued safely for retry
             await supabaseAdmin
               .from("payments")
               .update({
-                status: pStatus,
+                status: "queued",
                 metadata: {
                   ...payment.metadata,
-                  ...dispatchMeta,
+                  queued_reason: payoutErr?.message || "Gateway temporarily throttled",
+                  last_retry_at: new Date().toISOString(),
                 },
               })
-              .eq("id", payment.id);
+              .eq("id", payment.id)
+              .eq("status", "processing");
+          } finally {
+            await releasePayoutLock(refLockKey);
           }
-
-          runningTotal += netDisburseAmount;
-          processedCount++;
-        } catch (payoutErr: any) {
-          console.warn(`⚠️ Failed to disburse payout ${payment.reference}:`, payoutErr?.message);
-          // Keep safely queued for retry
-          await supabaseAdmin
-            .from("payments")
-            .update({
-              status: "queued",
-              metadata: {
-                ...payment.metadata,
-                queued_reason: payoutErr?.message || "Gateway temporarily throttled",
-                last_retry_at: new Date().toISOString(),
-              },
-            })
-            .eq("id", payment.id);
         }
+
+        await invalidatePayoutCaches();
+        await recordAdminAuditTrail({
+          adminEmail: admin.email,
+          action: "admin_payout_batch",
+          targetType: "payout_batch",
+          reason: isTestMode ? "Manual test-mode payout batch" : "Manual live payout batch",
+          newState: { processedCount, heldCount, skippedCount, runningTotal, isTestMode },
+          req,
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: isTestMode
+            ? `Manual test payout batch completed! Settled: ${processedCount} withdrawals in Test Simulation Mode.`
+            : `Manual payout batch finished. Dispatched: ${processedCount}, Held due to float/limits: ${heldCount}.`,
+          processedCount,
+          heldCount,
+          skippedCount,
+          floatBalance,
+          isTestMode,
+        });
+      } finally {
+        await releasePayoutLock(batchLockKey);
       }
-
-      await invalidatePayoutCaches();
-
-      return NextResponse.json({
-        success: true,
-        message: isTestMode
-          ? `Manual test payout batch completed! Settled: ${processedCount} withdrawals in Test Simulation Mode.`
-          : `Manual payout batch finished. Dispatched: ${processedCount}, Held due to float/limits: ${heldCount}.`,
-        processedCount,
-        heldCount,
-        floatBalance,
-        isTestMode,
-      });
     }
 
     // -------------------------------------------------------------------------
@@ -310,166 +401,233 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Transaction reference is required." }, { status: 400 });
       }
 
-      const { data: payment, error: fetchErr } = await supabaseAdmin
-        .from("payments")
-        .select("*")
-        .eq("reference", reference)
-        .eq("type", "withdrawal")
-        .maybeSingle();
-
-      if (fetchErr || !payment) {
-        return NextResponse.json({ error: `Withdrawal with reference "${reference}" not found.` }, { status: 404 });
+      const refLockKey = `lock:admin_payout:${reference}`;
+      const locked = await acquirePayoutLock(refLockKey, 120);
+      if (!locked) {
+        return NextResponse.json(
+          { error: `Payout "${reference}" is currently being processed by another request.` },
+          { status: 409 }
+        );
       }
 
-      const withdrawAmount = parseFloat(payment.amount);
-      const userEmail = payment.user_email.toLowerCase().trim();
-      const { bankCode, accountNumber, accountName } = payment.metadata || {};
-
-      if (!bankCode || !accountNumber) {
-        return NextResponse.json({ error: "Missing destination bank details in payment record." }, { status: 400 });
-      }
-
-      // If the payment was previously marked failed, atomically re-deduct the refunded balance via RPC
-      let retryDeductRef: string | null = null;
-      if (payment.status === "failed") {
-        retryDeductRef = `payout_retry_${reference}_${Date.now()}`;
-        const { data: deductRes, error: deductErr } = await supabaseAdmin.rpc("deduct_wallet_atomic", {
-          p_user_email: userEmail,
-          p_amount: withdrawAmount,
-          p_reason: `admin_payout_retry:${reference}`,
-          p_reference: retryDeductRef,
-        });
-
-        if (deductErr || !deductRes?.success) {
-          const errMsg = deductRes?.error || deductErr?.message || "Insufficient balance or concurrent update.";
-          return NextResponse.json({ error: errMsg }, { status: 400 });
-        }
-
-        const { data: transitioned, error: transErr } = await supabaseAdmin
+      try {
+        const { data: payment, error: fetchErr } = await supabaseAdmin
           .from("payments")
-          .update({
-            status: "queued",
-            metadata: {
-              ...(payment.metadata || {}),
-              retry_deduct_reference: retryDeductRef,
-              retried_from_failed_at: new Date().toISOString(),
-            },
-          })
-          .eq("id", payment.id)
-          .eq("status", "failed")
-          .select("id")
+          .select("*")
+          .eq("reference", reference)
+          .eq("type", "withdrawal")
           .maybeSingle();
 
-        if (transErr || !transitioned) {
-          // Another process already retried or modified this payment; atomically refund our deduction
-          await supabaseAdmin.rpc("refund_wallet_atomic", {
-            p_user_email: userEmail,
-            p_amount: withdrawAmount,
-            p_reason: `admin_payout_retry_conflict_rollback:${reference}`,
-            p_reference: retryDeductRef,
-          });
+        if (fetchErr || !payment) {
+          return NextResponse.json({ error: `Withdrawal with reference "${reference}" not found.` }, { status: 404 });
+        }
+
+        const currentStatus = String(payment.status || "").toLowerCase();
+        if (currentStatus === "success") {
           return NextResponse.json(
-            { error: "Payout status changed concurrently. Deducted amount was safely refunded." },
+            { error: `Withdrawal "${reference}" is already settled (success) and cannot be retried.` },
+            { status: 409 }
+          );
+        }
+        if (currentStatus === "processing") {
+          return NextResponse.json(
+            { error: `Withdrawal "${reference}" is currently processing at the gateway. Wait for webhook settlement before retrying.` },
+            { status: 409 }
+          );
+        }
+        if (!["queued", "pending", "failed"].includes(currentStatus)) {
+          return NextResponse.json(
+            { error: `Withdrawal "${reference}" has non-retryable status "${payment.status}".` },
             { status: 409 }
           );
         }
 
-        await invalidateCachedProfile(userEmail);
-      }
+        const withdrawAmount = parseFloat(payment.amount);
+        const userEmail = payment.user_email.toLowerCase().trim();
+        const { bankCode, accountNumber, accountName } = payment.metadata || {};
 
-      // Attempt disbursement using dynamic gateway-aware Paystack/Kora fee calculation
-      const paymentGateway = (payment.metadata?.gateway || payment.metadata?.provider) as PayoutGateway | undefined;
-      const resolvedFee =
-        payment.metadata?.transfer_fee ??
-        payment.metadata?.fee ??
-        PayoutProvider.calculateTransferFee(withdrawAmount, paymentGateway);
-      const netDisburseAmount =
-        payment.metadata?.net_amount ?? Math.max(0, Number((withdrawAmount - Number(resolvedFee)).toFixed(2)));
-      try {
-        console.log(`🏦 Admin Retrying Payout (${isTestMode ? "TEST MODE" : "LIVE"}): ref=${reference} to ${accountNumber} (${bankCode}) netAmount=₦${netDisburseAmount}`);
-        let newStatus = "processing";
-        let gatewayRef = "";
-
-        if (isTestMode) {
-          newStatus = "success";
-          gatewayRef = `test_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        } else {
-          const payoutRes = await PayoutProvider.initiatePayout({
-            reference,
-            amount: netDisburseAmount,
-            bankCode,
-            accountNumber,
-            accountName: accountName || "Paayh User",
-            customerEmail: userEmail,
-            narration: `Paayh Withdrawal to ${accountName || "User"}`,
-          });
-          newStatus = payoutRes.status === "success" ? "success" : "processing";
-          gatewayRef = payoutRes.reference || reference;
+        if (!bankCode || !accountNumber) {
+          return NextResponse.json({ error: "Missing destination bank details in payment record." }, { status: 400 });
         }
 
-        const retryMeta = {
-          gateway_status: newStatus,
-          gateway_reference: gatewayRef,
-          admin_retried_at: new Date().toISOString(),
-          retried_by: admin.email,
-          simulated_test: isTestMode,
-        };
+        // If previously marked failed (already refunded to wallet), atomically re-deduct before claiming
+        let retryDeductRef: string | null = null;
+        if (currentStatus === "failed") {
+          retryDeductRef = `payout_retry_${reference}_${Date.now()}`;
+          const { data: deductRes, error: deductErr } = await supabaseAdmin.rpc("deduct_wallet_atomic", {
+            p_user_email: userEmail,
+            p_amount: withdrawAmount,
+            p_reason: `admin_payout_retry:${reference}`,
+            p_reference: retryDeductRef,
+          });
 
-        if (newStatus === "success") {
-          await settleWithdrawalByReference(
-            reference,
-            "success",
-            "admin_single_retry_dispatched",
-            retryMeta
-          );
+          if (deductErr || !deductRes?.success) {
+            const errMsg = deductRes?.error || deductErr?.message || "Insufficient balance or concurrent update.";
+            return NextResponse.json({ error: errMsg }, { status: 400 });
+          }
+
+          const { data: transitioned, error: transErr } = await supabaseAdmin
+            .from("payments")
+            .update({
+              status: "processing",
+              metadata: {
+                ...(payment.metadata || {}),
+                retry_deduct_reference: retryDeductRef,
+                retried_from_failed_at: new Date().toISOString(),
+                claimed_by: admin.email,
+              },
+            })
+            .eq("id", payment.id)
+            .eq("status", "failed")
+            .select("id")
+            .maybeSingle();
+
+          if (transErr || !transitioned) {
+            await supabaseAdmin.rpc("refund_wallet_atomic", {
+              p_user_email: userEmail,
+              p_amount: withdrawAmount,
+              p_reason: `admin_payout_retry_conflict_rollback:${reference}`,
+              p_reference: retryDeductRef,
+            });
+            return NextResponse.json(
+              { error: "Payout status changed concurrently. Deducted amount was safely refunded." },
+              { status: 409 }
+            );
+          }
+
+          await invalidateCachedProfile(userEmail);
         } else {
+          // Atomic row claim for queued/pending BEFORE calling external gateway
+          const { data: claimedRow } = await supabaseAdmin
+            .from("payments")
+            .update({
+              status: "processing",
+              metadata: {
+                ...(payment.metadata || {}),
+                claimed_at: new Date().toISOString(),
+                claimed_by: admin.email,
+              },
+            })
+            .eq("id", payment.id)
+            .in("status", ["queued", "pending"])
+            .select("id")
+            .maybeSingle();
+
+          if (!claimedRow) {
+            return NextResponse.json(
+              { error: `Payout "${reference}" status changed concurrently and can no longer be retried.` },
+              { status: 409 }
+            );
+          }
+        }
+
+        // Attempt disbursement using dynamic gateway-aware Paystack/Kora fee calculation
+        const paymentGateway = (payment.metadata?.gateway || payment.metadata?.provider) as PayoutGateway | undefined;
+        const resolvedFee =
+          payment.metadata?.transfer_fee ??
+          payment.metadata?.fee ??
+          PayoutProvider.calculateTransferFee(withdrawAmount, paymentGateway);
+        const netDisburseAmount =
+          payment.metadata?.net_amount ?? Math.max(0, Number((withdrawAmount - Number(resolvedFee)).toFixed(2)));
+        try {
+          console.log(`🏦 Admin Retrying Payout (${isTestMode ? "TEST MODE" : "LIVE"}): ref=${reference} to ${accountNumber} (${bankCode}) netAmount=₦${netDisburseAmount}`);
+          let newStatus = "processing";
+          let gatewayRef = "";
+
+          if (isTestMode) {
+            newStatus = "success";
+            gatewayRef = `test_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          } else {
+            const payoutRes = await PayoutProvider.initiatePayout({
+              reference,
+              amount: netDisburseAmount,
+              bankCode,
+              accountNumber,
+              accountName: accountName || "Paayh User",
+              customerEmail: userEmail,
+              narration: `Paayh Withdrawal to ${accountName || "User"}`,
+            });
+            newStatus = payoutRes.status === "success" ? "success" : "processing";
+            gatewayRef = payoutRes.reference || reference;
+          }
+
+          const retryMeta = {
+            gateway_status: newStatus,
+            gateway_reference: gatewayRef,
+            admin_retried_at: new Date().toISOString(),
+            retried_by: admin.email,
+            simulated_test: isTestMode,
+          };
+
+          if (newStatus === "success") {
+            await settleWithdrawalByReference(
+              reference,
+              "success",
+              "admin_single_retry_dispatched",
+              retryMeta
+            );
+          } else {
+            await supabaseAdmin
+              .from("payments")
+              .update({
+                status: newStatus,
+                metadata: {
+                  ...payment.metadata,
+                  ...retryMeta,
+                },
+              })
+              .eq("reference", reference);
+          }
+
+          await invalidatePayoutCaches();
+          await recordAdminAuditTrail({
+            adminEmail: admin.email,
+            action: "admin_payout_retry_single",
+            targetId: reference,
+            targetType: "withdrawal",
+            reason: `Admin single payout retry (${currentStatus} -> ${newStatus})`,
+            previousState: { status: currentStatus, amount: withdrawAmount },
+            newState: { status: newStatus, netDisburseAmount, isTestMode },
+            req,
+          });
+
+          return NextResponse.json({
+            success: true,
+            message: isTestMode
+              ? `Payout [${reference}] settled successfully in Test Simulation Mode!`
+              : `Payout successfully dispatched to bank! Current status: ${newStatus}.`,
+            status: newStatus,
+            reference,
+            isTestMode,
+          });
+        } catch (payoutErr: any) {
+          console.warn(`⚠️ Gateway retry failed for ${reference}:`, payoutErr?.message);
+          // Revert claimed row back to queued rather than failing completely
           await supabaseAdmin
             .from("payments")
             .update({
-              status: newStatus,
+              status: "queued",
               metadata: {
                 ...payment.metadata,
-                ...retryMeta,
+                queued_reason: payoutErr?.message || "Retry queued for next window",
+                last_retry_at: new Date().toISOString(),
               },
             })
-            .eq("reference", reference);
-        }
+            .eq("reference", reference)
+            .eq("status", "processing");
 
-        await invalidatePayoutCaches();
+          await invalidatePayoutCaches();
 
-        return NextResponse.json({
-          success: true,
-          message: isTestMode
-            ? `Payout [${reference}] settled successfully in Test Simulation Mode!`
-            : `Payout successfully dispatched to bank! Current status: ${newStatus}.`,
-          status: newStatus,
-          reference,
-          isTestMode,
-        });
-      } catch (payoutErr: any) {
-        console.warn(`⚠️ Gateway retry failed for ${reference}:`, payoutErr?.message);
-        // Put in queued status rather than failing completely
-        await supabaseAdmin
-          .from("payments")
-          .update({
+          return NextResponse.json({
+            success: true,
+            queued: true,
             status: "queued",
-            metadata: {
-              ...payment.metadata,
-              queued_reason: payoutErr?.message || "Retry queued for next window",
-              last_retry_at: new Date().toISOString(),
-            },
-          })
-          .eq("reference", reference);
-
-        await invalidatePayoutCaches();
-
-        return NextResponse.json({
-          success: true,
-          queued: true,
-          status: "queued",
-          message: `Disbursement was placed in queue due to gateway status: ${payoutErr?.message || "Throttled"}.`,
-          reference,
-        });
+            message: `Disbursement was placed in queue due to gateway status: ${payoutErr?.message || "Throttled"}.`,
+            reference,
+          });
+        }
+      } finally {
+        await releasePayoutLock(refLockKey);
       }
     }
 
@@ -482,27 +640,32 @@ export async function POST(req: NextRequest) {
       let query = supabaseAdmin
         .from("payments")
         .select("*")
-        .eq("type", "withdrawal");
+        .eq("type", "withdrawal")
+        .in("status", ["queued", "pending"]);
 
       if (targetRefs.length > 0) {
         query = query.in("reference", targetRefs);
-      } else {
-        query = query.in("status", ["queued"]);
       }
 
       const { data: targets, error: targetErr } = await query.limit(50);
       if (targetErr || !targets || targets.length === 0) {
-        return NextResponse.json({ success: true, message: "No eligible payouts to retry." });
+        return NextResponse.json({
+          success: true,
+          message: "No eligible queued or pending payouts to retry (completed, processing, and refunded failed payouts are excluded).",
+        });
       }
 
       let successCount = 0;
       let queuedCount = 0;
+      let skippedCount = 0;
 
       for (const t of targets) {
-        if (t.status === "failed") {
-          // Skip previously refunded failed records in bulk retry unless re-escrowed via retry_single
+        // Defense in depth: strictly allow only queued/pending in bulk retry
+        if (!["queued", "pending"].includes(String(t.status || "").toLowerCase())) {
+          skippedCount++;
           continue;
         }
+
         const withdrawAmount = parseFloat(t.amount);
         const tGateway = (t.metadata?.gateway || t.metadata?.provider) as PayoutGateway | undefined;
         const tFee =
@@ -514,7 +677,35 @@ export async function POST(req: NextRequest) {
         const { bankCode, accountNumber, accountName } = t.metadata || {};
         if (!bankCode || !accountNumber) continue;
 
+        const refLockKey = `lock:admin_payout:${t.reference}`;
+        const refLocked = await acquirePayoutLock(refLockKey, 120);
+        if (!refLocked) {
+          skippedCount++;
+          continue;
+        }
+
         try {
+          // Atomic claim BEFORE external disbursement
+          const { data: claimedRow } = await supabaseAdmin
+            .from("payments")
+            .update({
+              status: "processing",
+              metadata: {
+                ...(t.metadata || {}),
+                bulk_claimed_at: new Date().toISOString(),
+                bulk_claimed_by: admin.email,
+              },
+            })
+            .eq("id", t.id)
+            .in("status", ["queued", "pending"])
+            .select("id")
+            .maybeSingle();
+
+          if (!claimedRow) {
+            skippedCount++;
+            continue;
+          }
+
           let pStatus = "processing";
           let gRef = "";
 
@@ -539,6 +730,7 @@ export async function POST(req: NextRequest) {
             gateway_status: pStatus,
             gateway_reference: gRef,
             admin_bulk_retried_at: new Date().toISOString(),
+            retried_by: admin.email,
             simulated_test: isTestMode,
           };
 
@@ -574,13 +766,24 @@ export async function POST(req: NextRequest) {
                 last_retry_at: new Date().toISOString(),
               },
             })
-            .eq("id", t.id);
+            .eq("id", t.id)
+            .eq("status", "processing");
 
           queuedCount++;
+        } finally {
+          await releasePayoutLock(refLockKey);
         }
       }
 
       await invalidatePayoutCaches();
+      await recordAdminAuditTrail({
+        adminEmail: admin.email,
+        action: "admin_payout_retry_bulk",
+        targetType: "payout_batch",
+        reason: `Admin bulk payout retry (${targetRefs.length || targets.length} requested)`,
+        newState: { successCount, queuedCount, skippedCount, isTestMode },
+        req,
+      });
 
       return NextResponse.json({
         success: true,
@@ -589,6 +792,7 @@ export async function POST(req: NextRequest) {
           : `Bulk retry complete. Dispatched: ${successCount}, Queued: ${queuedCount}.`,
         successCount,
         queuedCount,
+        skippedCount,
         isTestMode,
       });
     }

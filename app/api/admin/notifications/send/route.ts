@@ -4,6 +4,12 @@ import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { adminNotificationSchema } from "@/lib/validationSchemas";
 import redisConnection from "@/lib/redis";
+import {
+  invalidateGlobalAnnouncementsCaches,
+  invalidateUserNotificationCaches,
+} from "@/lib/notifications/notificationCache";
+import { dispatchNotificationWebhook } from "@/lib/webhookDispatcher";
+import { recordAdminAuditTrail } from "@/lib/security/adminGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -69,16 +75,29 @@ export async function POST(req: NextRequest) {
       }
 
       // Insert private notification
-      const { error: insertErr } = await supabaseAdmin.from("notifications").insert({
+      const notifRow = {
         user_email: emailLower,
         title,
         message,
-      });
+      };
+      const { error: insertErr } = await supabaseAdmin.from("notifications").insert(notifRow);
 
       if (insertErr) {
         console.error("❌ Error inserting private notification:", insertErr);
         return NextResponse.json({ error: "Failed to send private notification" }, { status: 500 });
       }
+
+      await invalidateUserNotificationCaches(emailLower);
+      dispatchNotificationWebhook(notifRow).catch(() => {});
+      await recordAdminAuditTrail({
+        adminEmail: admin.email,
+        action: "send_private_notification",
+        targetId: emailLower,
+        targetType: "notification",
+        reason: title,
+        newState: { target: "user", title },
+        req,
+      });
     } else {
       // Broadcast announcement (single row insertion)
       const { error: insertErr } = await supabaseAdmin.from("global_announcements").insert({
@@ -91,6 +110,17 @@ export async function POST(req: NextRequest) {
         console.error("❌ Error inserting global announcement:", insertErr);
         return NextResponse.json({ error: "Failed to broadcast announcement" }, { status: 500 });
       }
+
+      await invalidateGlobalAnnouncementsCaches();
+      await recordAdminAuditTrail({
+        adminEmail: admin.email,
+        action: "send_global_announcement",
+        targetId: target,
+        targetType: "global_announcement",
+        reason: title,
+        newState: { target, title },
+        req,
+      });
     }
 
     return NextResponse.json({ success: true, message: "Announcement processed successfully." });

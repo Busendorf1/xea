@@ -4,6 +4,7 @@ import { getVerifiedUserEmail } from "../_shared/auth.ts";
 import { computeAtwTierDetails } from "../_shared/atwEngine.ts";
 import { AFFILIATE_EMAILS, corsHeaders, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { evaluateKinematics } from "../_shared/kinematics.ts";
+import { checkAndInsertEdgeMilestoneNotifications } from "../_shared/milestoneNotifications.ts";
 
 async function signHmacToken(
   payload: string,
@@ -167,25 +168,243 @@ serve(async (req: Request) => {
       );
     }
 
-    // 1. Mutual Click Action
+    // Shared HMAC token verification helper for ALL engagement actions (earn, mutual, seen) — C-16
+    const verifyFeedTokenMandatory = async (minDwellMs: number): Promise<Response | null> => {
+      const secret =
+        Deno.env.get("EARN_TOKEN_SECRET") ||
+        Deno.env.get("NEXTAUTH_SECRET") ||
+        Deno.env.get("AUTH0_SECRET") ||
+        "";
+      if (!secret) {
+        return jsonResponse(
+          { success: false, code: "SERVER_MISCONFIGURED", error: "Verification secret is not configured." },
+          500,
+        );
+      }
+      const tok = String(body?.token || "").trim();
+      const sAt = body?.servedAt ?? body?.served_at;
+      if (!tok || sAt === undefined || sAt === null) {
+        return jsonResponse(
+          { success: false, code: "TOKEN_REQUIRED", error: "Verification token and timestamp are required." },
+          403,
+        );
+      }
+      const parsedSAt = Number.parseInt(String(sAt), 10);
+      const nowMs = Date.now();
+      const age = nowMs - parsedSAt;
+      if (!Number.isFinite(parsedSAt) || parsedSAt > nowMs + 60_000 || age > 1_800_000) {
+        return jsonResponse(
+          { success: false, code: "TOKEN_EXPIRED", error: "Ad session expired (30-minute limit exceeded)." },
+          403,
+        );
+      }
+      if (minDwellMs > 0 && age < minDwellMs) {
+        return jsonResponse(
+          { success: false, code: "DWELL_TOO_SHORT", error: "Minimum attention duration not met." },
+          400,
+        );
+      }
+      const payloads = [`${adId}:${cleanEmail}:${sAt}`, `${adId}:${requestedEmail}:${sAt}`];
+      let valid = false;
+      for (const p of payloads) {
+        if (await verifyHmacToken(tok, p, secret)) {
+          valid = true;
+          break;
+        }
+      }
+      if (!valid) {
+        return jsonResponse(
+          { success: false, code: "INVALID_TOKEN", error: "Cryptographic token verification failed." },
+          403,
+        );
+      }
+      return null;
+    };
+
+    // 1. Mutual Click Action (C-16: requires HMAC token + 14s dwell + active non-owner campaign + 50-mutual cap)
     if (actionType === "mutual") {
+      const tokErr = await verifyFeedTokenMandatory(14_000);
+      if (tokErr) return tokErr;
+
+      const [{ data: activeAd }, { data: userBefore }] = await Promise.all([
+        supabase
+          .from("addsactive")
+          .select("id, user_email, is_paused, completed_at")
+          .eq("id", adId)
+          .maybeSingle(),
+        supabase
+          .from("users")
+          .select("id, monetization_clicks, monetized, has_cancelled_monetization, attention_worth_score, atw_tier, is_affiliate, is_career, mutual_count")
+          .eq("email", cleanEmail)
+          .maybeSingle(),
+      ]);
+
+      if (!activeAd || activeAd.is_paused || activeAd.completed_at) {
+        return errorResponse("Active campaign not found.", 404);
+      }
+      if (activeAd.user_email && String(activeAd.user_email).toLowerCase().trim() === cleanEmail) {
+        return errorResponse("You cannot add mutual from your own campaign.", 400);
+      }
+      if (Number(userBefore?.mutual_count || 0) >= 50) {
+        return errorResponse("Mutual limit reached (50 max).", 400);
+      }
+
       const { data: rpcRes, error: rpcErr } = await supabase.rpc(
         "handle_mutual_click",
         { p_ad_id: adId, p_user_email: cleanEmail },
       );
-      if (!rpcErr && rpcRes) {
-        return jsonResponse({ success: true, ...rpcRes });
+
+      let milestoneNotified = false;
+      if (userBefore) {
+        const prevClicks = Number(userBefore.monetization_clicks || 0);
+        const hasCancelled = Boolean(userBefore.has_cancelled_monetization);
+        const isExempt = Boolean(
+          userBefore.is_affiliate || userBefore.is_career || AFFILIATE_EMAILS.has(cleanEmail),
+        );
+        const prevMonetized =
+          !hasCancelled &&
+          (isExempt || ["true", "yes", "1", "t"].includes(String(userBefore.monetized || "").toLowerCase()));
+
+        const { data: clickProg } = await supabase.rpc("increment_user_click_progress", {
+          p_email: cleanEmail,
+          p_count: 1,
+        });
+        const nextClicks = Number(clickProg?.[0]?.new_click_count ?? prevClicks + 1);
+        const nextMonetized =
+          !hasCancelled && (isExempt || Boolean(clickProg?.[0]?.is_now_monetized) || prevMonetized || nextClicks >= 500);
+        const atw = computeAtwTierDetails({
+          email: cleanEmail,
+          clicks: nextClicks,
+          attentionWorthScore: userBefore.attention_worth_score,
+          currentTier: userBefore.atw_tier,
+          isAffiliate: userBefore.is_affiliate,
+          isCareer: userBefore.is_career,
+        });
+        if (atw.tier !== userBefore.atw_tier || (nextMonetized && !prevMonetized)) {
+          await supabase
+            .from("users")
+            .update({
+              atw_tier: atw.tier,
+              monetized: nextMonetized ? "true" : "false",
+              ...(nextMonetized && !prevMonetized ? { monetized_at: new Date().toISOString() } : {}),
+            })
+            .eq("id", userBefore.id);
+        }
+        const mRes = await checkAndInsertEdgeMilestoneNotifications(supabase, {
+          email: cleanEmail,
+          prevClicks,
+          prevMonetized,
+          prevAtwTier: userBefore.atw_tier,
+          nextClicks,
+          nextMonetized,
+          nextAtwTier: atw.tier,
+          attentionWorthScore: userBefore.attention_worth_score,
+          isExempt,
+          hasCancelled,
+        });
+        milestoneNotified = mRes.monetizationNotified || mRes.atwNotified;
       }
-      return jsonResponse({ success: true });
+
+      if (!rpcErr && rpcRes && typeof rpcRes === "object") {
+        return jsonResponse({ success: true, ...rpcRes, milestoneNotified });
+      }
+      return jsonResponse({ success: true, milestoneNotified });
     }
 
-    // 2. Seen / Dismiss Action
+    // 2. Seen / Dismiss Action (C-16: requires HMAC token + active non-owner campaign + frequency cap)
     if (actionType === "seen") {
-      await supabase.rpc("record_ad_seen", {
-        p_ad_id: adId,
-        p_user_email: cleanEmail,
-      });
-      return jsonResponse({ success: true });
+      const tokErr = await verifyFeedTokenMandatory(0);
+      if (tokErr) return tokErr;
+
+      const [{ data: activeAd }, { data: userBefore }, { data: impBefore }] = await Promise.all([
+        supabase
+          .from("addsactive")
+          .select("id, user_email, is_paused, completed_at, user_frequency_cap")
+          .eq("id", adId)
+          .maybeSingle(),
+        supabase
+          .from("users")
+          .select("id, monetization_clicks, monetized, has_cancelled_monetization, attention_worth_score, atw_tier, is_affiliate, is_career")
+          .eq("email", cleanEmail)
+          .maybeSingle(),
+        supabase
+          .from("ad_impressions")
+          .select("view_count")
+          .eq("ad_id", adId)
+          .eq("user_email", cleanEmail)
+          .maybeSingle(),
+      ]);
+
+      if (!activeAd || activeAd.is_paused || activeAd.completed_at) {
+        return errorResponse("Active campaign not found.", 404);
+      }
+      if (activeAd.user_email && String(activeAd.user_email).toLowerCase().trim() === cleanEmail) {
+        return jsonResponse({ success: true, isOwner: true });
+      }
+      const capBefore = Math.max(1, Number(activeAd.user_frequency_cap || 1));
+      if (Number(impBefore?.view_count || 0) >= capBefore) {
+        return jsonResponse({ success: true, duplicate: true, frequencyCapped: true });
+      }
+
+      const [, { data: clickProg }] = await Promise.all([
+        supabase.rpc("record_ad_seen", {
+          p_ad_id: adId,
+          p_user_email: cleanEmail,
+        }),
+        supabase.rpc("increment_user_click_progress", {
+          p_email: cleanEmail,
+          p_count: 1,
+        }),
+      ]);
+
+      let milestoneNotified = false;
+      let nextClicks = Number(clickProg?.[0]?.new_click_count ?? 0);
+      if (userBefore) {
+        const prevClicks = Number(userBefore.monetization_clicks || 0);
+        if (!nextClicks) nextClicks = prevClicks + 1;
+        const hasCancelled = Boolean(userBefore.has_cancelled_monetization);
+        const isExempt = Boolean(
+          userBefore.is_affiliate || userBefore.is_career || AFFILIATE_EMAILS.has(cleanEmail),
+        );
+        const prevMonetized =
+          !hasCancelled &&
+          (isExempt || ["true", "yes", "1", "t"].includes(String(userBefore.monetized || "").toLowerCase()));
+        const nextMonetized =
+          !hasCancelled && (isExempt || Boolean(clickProg?.[0]?.is_now_monetized) || prevMonetized || nextClicks >= 500);
+        const atw = computeAtwTierDetails({
+          email: cleanEmail,
+          clicks: nextClicks,
+          attentionWorthScore: userBefore.attention_worth_score,
+          currentTier: userBefore.atw_tier,
+          isAffiliate: userBefore.is_affiliate,
+          isCareer: userBefore.is_career,
+        });
+        if (atw.tier !== userBefore.atw_tier || (nextMonetized && !prevMonetized)) {
+          await supabase
+            .from("users")
+            .update({
+              atw_tier: atw.tier,
+              monetized: nextMonetized ? "true" : "false",
+              ...(nextMonetized && !prevMonetized ? { monetized_at: new Date().toISOString() } : {}),
+            })
+            .eq("id", userBefore.id);
+        }
+        const mRes = await checkAndInsertEdgeMilestoneNotifications(supabase, {
+          email: cleanEmail,
+          prevClicks,
+          prevMonetized,
+          prevAtwTier: userBefore.atw_tier,
+          nextClicks,
+          nextMonetized,
+          nextAtwTier: atw.tier,
+          attentionWorthScore: userBefore.attention_worth_score,
+          isExempt,
+          hasCancelled,
+        });
+        milestoneNotified = mRes.monetizationNotified || mRes.atwNotified;
+      }
+
+      return jsonResponse({ success: true, clicksCount: nextClicks || undefined, milestoneNotified });
     }
 
     // 2b. Per-Card Viewport Start Action (mints viewToken bound to servedAt + viewStartedAt)
@@ -216,7 +435,19 @@ serve(async (req: Request) => {
         );
       }
 
-      if (secret) {
+      if (!secret) {
+        // Security (C-16): Fail closed when EARN_TOKEN_SECRET is unset (never accept unsigned earn claims)
+        return jsonResponse(
+          {
+            success: false,
+            code: "SERVER_MISCONFIGURED",
+            error: "Earn verification secret is not configured.",
+          },
+          500,
+        );
+      }
+
+      {
         const payloads = [
           `${adId}:${cleanEmail}:${servedAtRaw}`,
           `${adId}:${requestedEmail}:${servedAtRaw}`,
@@ -287,7 +518,19 @@ serve(async (req: Request) => {
         Deno.env.get("AUTH0_SECRET") ||
         "";
 
-      if (secret) {
+      if (!secret) {
+        // Security (C-16): Fail closed when EARN_TOKEN_SECRET is unset (never accept unsigned earn claims)
+        return jsonResponse(
+          {
+            success: false,
+            code: "SERVER_MISCONFIGURED",
+            error: "Earn verification secret is not configured.",
+          },
+          500,
+        );
+      }
+
+      {
         if (!token || !servedAtRaw) {
           return jsonResponse(
             {
@@ -404,35 +647,6 @@ serve(async (req: Request) => {
             },
             403,
           );
-        }
-      } else {
-        // Dev fallback when EARN_TOKEN_SECRET isn't configured: check viewStartedAt (14s) or servedAt (12s)
-        if (viewStartedAtRaw) {
-          viewDuration = Date.now() - Number.parseInt(String(viewStartedAtRaw), 10);
-          if (!Number.isFinite(viewDuration) || viewDuration < 14000 || viewDuration > 1800000) {
-            return jsonResponse(
-              {
-                success: false,
-                code: "INVALID_DWELL",
-                error: "Invalid ad viewing duration.",
-              },
-              400,
-            );
-          }
-        } else if (servedAtRaw) {
-          viewDuration = Date.now() - Number.parseInt(String(servedAtRaw), 10);
-          if (!Number.isFinite(viewDuration) || viewDuration < 12000 || viewDuration > 1800000) {
-            return jsonResponse(
-              {
-                success: false,
-                code: "INVALID_DWELL",
-                error: "Invalid ad viewing duration.",
-              },
-              400,
-            );
-          }
-        } else {
-          viewDuration = 16000;
         }
       }
     }
@@ -570,6 +784,33 @@ serve(async (req: Request) => {
         } catch {}
       }
 
+      const resultClicks = Number(rpcResult.new_clicks ?? rpcResult.clicks ?? 0);
+      const resultHasCancelled = Boolean(rpcResult.has_cancelled_monetization);
+      const resultMonetized =
+        !resultHasCancelled &&
+        Boolean(rpcResult.monetized ?? rpcResult.is_monetized ?? resultClicks >= 500);
+      const isExemptRpc = AFFILIATE_EMAILS.has(cleanEmail);
+      const prevClicksRpc = Math.max(0, resultClicks - 1);
+      const prevMonetizedRpc =
+        typeof rpcResult.prev_monetized === "boolean"
+          ? rpcResult.prev_monetized
+          : prevClicksRpc >= 500;
+      const rpcMilestoneRes = await checkAndInsertEdgeMilestoneNotifications(supabase, {
+        email: cleanEmail,
+        prevClicks: prevClicksRpc,
+        prevMonetized: prevMonetizedRpc,
+        prevAtwTier: typeof rpcResult.prev_atw_tier === "string" ? rpcResult.prev_atw_tier : undefined,
+        nextClicks: resultClicks,
+        nextMonetized: resultMonetized,
+        nextAtwTier: typeof rpcResult.atw_tier === "string" ? rpcResult.atw_tier : undefined,
+        attentionWorthScore:
+          typeof rpcResult.attention_worth_score === "number"
+            ? rpcResult.attention_worth_score
+            : undefined,
+        isExempt: isExemptRpc,
+        hasCancelled: resultHasCancelled,
+      });
+
       return jsonResponse({
         success: true,
         code: String(rpcResult.code || "EARN_SUCCESS"),
@@ -578,12 +819,16 @@ serve(async (req: Request) => {
         raw_earn_rate: Number(rpcResult.raw_earn_rate ?? earnedRate),
         capped: Boolean(rpcResult.capped ?? rpcResult.is_capped),
         balance: finalBalance,
-        clicks: Number(rpcResult.new_clicks ?? rpcResult.clicks ?? 0),
+        clicks: resultClicks,
         atw_tier: rpcResult.atw_tier,
         atw_level: rpcResult.atw_level,
         holding_cap: rpcResult.holding_cap,
         attention_worth_score: rpcResult.attention_worth_score,
-        monetized: Boolean(rpcResult.monetized ?? rpcResult.is_monetized),
+        monetized: resultMonetized,
+        milestoneNotified:
+          Boolean(rpcResult.monetization_notified || rpcResult.atw_notified) ||
+          rpcMilestoneRes.monetizationNotified ||
+          rpcMilestoneRes.atwNotified,
       });
     }
 
@@ -733,9 +978,23 @@ serve(async (req: Request) => {
         monetization_clicks: nextClicks,
         atw_tier: atwAfter.tier,
         monetized: nextMonetized,
+        ...(nextMonetized === "true" && !currentlyMonetized ? { monetized_at: new Date().toISOString() } : {}),
         last_active_at: new Date().toISOString(),
       })
       .eq("id", user.id);
+
+    const fbMilestoneRes = await checkAndInsertEdgeMilestoneNotifications(supabase, {
+      email: cleanEmail,
+      prevClicks: Number(user.monetization_clicks || 0),
+      prevMonetized: currentlyMonetized,
+      prevAtwTier: user.atw_tier,
+      nextClicks,
+      nextMonetized: nextMonetized === "true",
+      nextAtwTier: atwAfter.tier,
+      attentionWorthScore: user.attention_worth_score,
+      isExempt,
+      hasCancelled,
+    });
 
     // Direct 1%/2% commission only when monetized and netCredited > 0
     if (currentlyMonetized && netCredited > 0) {
@@ -766,6 +1025,7 @@ serve(async (req: Request) => {
       holding_cap: atwAfter.isUnlimited ? null : atwAfter.holdingCap,
       attention_worth_score: atwAfter.score,
       monetized: nextMonetized === "true",
+      milestoneNotified: fbMilestoneRes.monetizationNotified || fbMilestoneRes.atwNotified,
     });
   } catch (err: unknown) {
     console.error("earn-payout error:", err);

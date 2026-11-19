@@ -10,7 +10,7 @@ import {
   invalidateCachedUserCampaigns,
 } from "@/lib/utils/cache";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
-import { computeCampaignBroadeningPlan, getEarnTokenSecret } from "@/lib/targetingEngine";
+import { computeCampaignBroadeningPlan, getEarnTokenSecret, verifyHmacSignature } from "@/lib/targetingEngine";
 import { env } from "@/lib/env";
 import { recordCoalescedAdSeen } from "@/lib/impressionBuffer";
 import { dispatchImpressionWebhook } from "@/lib/webhookDispatcher";
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
 
-    // 2. Cryptographic HMAC Token Verification
+    // 2. Cryptographic HMAC Token Verification (timing-safe + 30m expiry — M-09)
     if (token || servedAt || process.env.NODE_ENV === "production") {
       if (!token || !servedAt) {
         return NextResponse.json(
@@ -68,13 +68,18 @@ export async function POST(request: NextRequest) {
         `${adId}:${emailKey}:${servedAt}`,
         `${adId}:${rawEmail}:${servedAt}`,
       ];
-      const isValidToken = candidateKeys.some((k) =>
-        payloads.some((p) => crypto.createHmac("sha256", k).update(p).digest("hex") === token)
-      );
+      const isValidToken = verifyHmacSignature(payloads, String(token), candidateKeys);
       if (!isValidToken) {
         console.warn("🚨 Potential fraud: Invalid verification token on ad seen:", adId, "user:", emailKey);
         return NextResponse.json(
           { error: "Cryptographic token verification failed. Seen rejected." },
+          { status: 403 }
+        );
+      }
+      const parsedServedAt = Number.parseInt(String(servedAt), 10);
+      if (!Number.isFinite(parsedServedAt) || parsedServedAt > now + 60_000 || now - parsedServedAt > 1_800_000) {
+        return NextResponse.json(
+          { error: "Feed token expired. Please refresh feed." },
           { status: 403 }
         );
       }
@@ -164,7 +169,9 @@ export async function POST(request: NextRequest) {
         }
 
         if (token) {
-          const tokenBurnKey = `used:seen_token:${crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32)}`;
+          const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32);
+          // Burn unified progress token shared across /earn, /seen, /monetize, /click (C-16)
+          const tokenBurnKey = `used:feed_progress:${tokenHash}`;
           const tokenFresh = await redisConnection.set(tokenBurnKey, "1", "EX", 1800, "NX");
           if (!tokenFresh) {
             return NextResponse.json({ success: true, duplicate: true });
@@ -317,6 +324,10 @@ export async function POST(request: NextRequest) {
     let impressionCount: number | undefined;
     let resolvedAtwTier: string | null | undefined;
     let resolvedAtwScore: number | null | undefined;
+    let resolvedIsExempt = isExemptFromBarriersAndInactivity(emailKey);
+    let milestoneNotified = false;
+    let monetizationUnlocked = false;
+    let atwUpgraded = false;
 
     await Promise.all([
       (async () => {
@@ -356,18 +367,22 @@ export async function POST(request: NextRequest) {
       (async () => {
         const { data: prevUserRow } = await supabaseAdmin
           .from("users")
-          .select("id, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score")
-          .eq("email", emailKey)
+          .select("id, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career")
+          .ilike("email", emailKey)
           .maybeSingle();
 
         const prevClicks = Number(prevUserRow?.monetization_clicks || 0);
         const prevMonetized =
           prevUserRow?.monetized === true ||
           prevUserRow?.monetized === "true" ||
-          prevUserRow?.monetized === "yes";
+          prevUserRow?.monetized === "yes" ||
+          prevUserRow?.monetized === "1" ||
+          prevUserRow?.monetized === "t";
         const hasCancelled = Boolean(prevUserRow?.has_cancelled_monetization);
         const existingAtwTier: string | null | undefined = prevUserRow?.atw_tier;
         const existingAtwScore: number | null | undefined = prevUserRow?.attention_worth_score;
+        const isExempt = isExemptFromBarriersAndInactivity(emailKey, prevUserRow as any);
+        resolvedIsExempt = isExempt;
 
         const [rpcRes, liveVal] = await Promise.all([
           supabaseAdmin.rpc("increment_user_click_progress", {
@@ -387,12 +402,14 @@ export async function POST(request: NextRequest) {
 
         if (rpcCount !== null && rpcCount > 0) {
           clicksCount = Math.max(rpcCount, liveVal || 0);
-          isMonetized = hasCancelled ? false : Boolean(rpcRes.data[0]?.is_now_monetized);
+          isMonetized = hasCancelled
+            ? false
+            : Boolean(isExempt || rpcRes.data[0]?.is_now_monetized || prevMonetized || clicksCount >= 500);
         } else {
           const nextDbClicks = Math.max(prevClicks + 1, liveVal || 0);
           const nextMon = hasCancelled
             ? false
-            : (prevMonetized || nextDbClicks >= 500);
+            : (isExempt || prevMonetized || nextDbClicks >= 500);
 
           if (prevUserRow?.id) {
             await supabaseAdmin
@@ -400,6 +417,7 @@ export async function POST(request: NextRequest) {
               .update({
                 monetization_clicks: nextDbClicks,
                 monetized: nextMon ? "true" : "false",
+                ...(nextMon && !prevMonetized ? { monetized_at: nowIso } : {}),
               })
               .eq("id", prevUserRow.id);
           }
@@ -407,21 +425,32 @@ export async function POST(request: NextRequest) {
           isMonetized = nextMon;
         }
 
-        const isExempt = isExemptFromBarriersAndInactivity(emailKey);
         const tierDetails = computeAtwTierDetails(clicksCount || 0, existingAtwTier, isExempt, existingAtwScore);
         const nextAtwTier = tierDetails.tierCode;
 
-        if (nextAtwTier) {
-          supabaseAdmin
-            .from("users")
-            .update({
-              atw_tier: nextAtwTier,
-            })
-            .eq("email", emailKey)
-            .then(() => {});
+        const needsUserSync =
+          (nextAtwTier && nextAtwTier !== existingAtwTier) ||
+          (Boolean(isMonetized || isExempt) && !hasCancelled && !prevMonetized) ||
+          (rpcCount !== null && clicksCount !== undefined && clicksCount > rpcCount);
+
+        if (needsUserSync) {
+          const syncPayload: Record<string, unknown> = {
+            atw_tier: nextAtwTier,
+          };
+          if (rpcCount !== null && clicksCount !== undefined && clicksCount > rpcCount) {
+            syncPayload.monetization_clicks = clicksCount;
+          }
+          if (!hasCancelled && (isMonetized || isExempt) && !prevMonetized) {
+            syncPayload.monetized = "true";
+            syncPayload.monetized_at = nowIso;
+          }
+          const updateQuery = prevUserRow?.id
+            ? supabaseAdmin.from("users").update(syncPayload).eq("id", prevUserRow.id)
+            : supabaseAdmin.from("users").update(syncPayload).ilike("email", emailKey);
+          await Promise.resolve(updateQuery).catch(() => {});
         }
 
-        checkAndNotifyClickAndAtwMilestones({
+        const milestoneRes = await checkAndNotifyClickAndAtwMilestones({
           email: emailKey,
           prevClicks,
           prevMonetized,
@@ -432,7 +461,13 @@ export async function POST(request: NextRequest) {
           attentionWorthScore: existingAtwScore,
           isExempt,
           hasCancelled,
-        }).catch(() => {});
+        }).catch(() => null);
+
+        if (milestoneRes) {
+          monetizationUnlocked = Boolean(milestoneRes.monetizationNotified);
+          atwUpgraded = Boolean(milestoneRes.atwNotified);
+          milestoneNotified = monetizationUnlocked || atwUpgraded;
+        }
 
         if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
           redisConnection.set(`user:live_clicks:v2:${emailKey}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});
@@ -441,13 +476,12 @@ export async function POST(request: NextRequest) {
         }
 
         invalidateCachedProfile(emailKey).catch(() => {});
-        resolvedAtwTier = existingAtwTier;
+        resolvedAtwTier = nextAtwTier || existingAtwTier;
         resolvedAtwScore = existingAtwScore;
       })(),
     ]);
 
-    const isExempt = isExemptFromBarriersAndInactivity(emailKey);
-    const tierDetails = computeAtwTierDetails(clicksCount || 0, resolvedAtwTier, isExempt, resolvedAtwScore);
+    const tierDetails = computeAtwTierDetails(clicksCount || 0, resolvedAtwTier, resolvedIsExempt, resolvedAtwScore);
     if (typeof clicksCount === "number") {
       dispatchImpressionWebhook({
         event: "ad.seen",
@@ -456,7 +490,7 @@ export async function POST(request: NextRequest) {
           userEmail: emailKey,
           adId,
           clicksCount,
-          isMonetized: Boolean(isMonetized || isExempt),
+          isMonetized: Boolean(isMonetized || resolvedIsExempt),
           impressionCount,
           atwTier: tierDetails.tierCode,
         },
@@ -467,10 +501,13 @@ export async function POST(request: NextRequest) {
       success: true,
       queued: false,
       clicksCount,
-      isMonetized: Boolean(isMonetized || isExempt),
+      isMonetized: Boolean(isMonetized || resolvedIsExempt),
       atwTier: tierDetails.tierCode,
       holdingCap: tierDetails.isUnlimited ? null : tierDetails.holdingCap,
       impressionCount,
+      milestoneNotified,
+      monetizationUnlocked,
+      atwUpgraded,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/seen:", err);

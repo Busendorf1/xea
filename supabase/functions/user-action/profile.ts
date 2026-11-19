@@ -103,9 +103,7 @@ export async function handleCheckUsername(
 
   const verifiedCaller = await getVerifiedUserEmail(req);
   const callerEmail = (
-    verifiedCaller && verifiedCaller !== "service_role"
-      ? verifiedCaller
-      : req.headers.get("x-user-email") || String(body?.email || "")
+    verifiedCaller && verifiedCaller !== "service_role" ? verifiedCaller : ""
   )
     .toLowerCase()
     .trim();

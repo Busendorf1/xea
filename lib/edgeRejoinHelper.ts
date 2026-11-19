@@ -102,7 +102,7 @@ export async function clearSelfDeactivationForRejoinEdge(
     // Non-blocking cleanup
   }
 
-  await upstashDel([`deactivated:${cleanEmail}`, `user_profile:${cleanEmail}`]);
+  await upstashDel([`deactivated:${cleanEmail}`, `user_profile:${cleanEmail}`, `auth:status:${cleanEmail}`]);
 
   return { allowed: true, permanentlyBanned: false };
 }

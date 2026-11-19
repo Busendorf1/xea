@@ -148,7 +148,7 @@ export default function TermsSafetyAndLegalSections() {
 
       {/* SECTION 7 */}
       <section>
-        <h2 className={styles.heading}>7. Permanent Account Deletion, Data Purge &amp; No Silent Reactivation</h2>
+        <h2 className={styles.heading}>7. Account Deletion, Data Purge, Fresh Sign-Up &amp; Administrative Access Blocks</h2>
         <p>
           You may permanently delete your account at any time through your in-app account settings (using the 2-second
           hold-to-confirm deletion flow, accessible to all members including Sign in with Apple Private Relay users) or
@@ -161,15 +161,24 @@ export default function TermsSafetyAndLegalSections() {
         </p>
         <ul className={styles.list}>
           <li className={styles.listItem}>
-            <strong>Irreversible Deletion &amp; No Silent Reactivation:</strong> Account deletion is{" "}
-            <strong>permanent and irreversible</strong>. Upon deletion, an atomic deactivation lock scrubs your personal
-            profile fields, media objects, follower/following/mutual links, active ad/highlight listings, and
-            authentication provider records, and writes an irreversible deactivation tombstone so that deleted accounts can{" "}
-            <strong>never be silently reactivated</strong> by signing back in with OAuth.
+            <strong>Irreversible Data Purge &amp; Fresh Blank Re-Registration:</strong> Voluntary account deletion
+            permanently and irreversibly scrubs your personal profile fields, uploaded media, follower/following/mutual
+            links, active ad/highlight listings, and authentication sessions with zero silent restoration of prior
+            history, progress, or balances. If you voluntarily deleted your own account (and are not subject to an
+            administrative block), you may subsequently sign in with a fresh OAuth session to create a brand-new,
+            blank account starting from scratch through onboarding profile setup.
           </li>
           <li className={styles.listItem}>
-            <strong>Balance Withdrawal Prerequisite:</strong> Deleting your account forfeits and wipes any remaining
-            unredeemed promotional incentive balance; you must withdraw all eligible funds prior to confirming deletion.
+            <strong>Temporary &amp; Permanent Administrative Access Blocks:</strong> To protect community safety,
+            regulatory compliance, and anti-fraud integrity, Paayh administrators may place an account under a{" "}
+            <strong>temporary block</strong> (for a defined period) or a <strong>permanent block</strong>. Blocked
+            accounts are restricted from accessing the platform across web and mobile until a temporary block expires
+            or is lifted by an administrator; permanently blocked identities cannot re-register or access Paayh.
+          </li>
+          <li className={styles.listItem}>
+            <strong>Balance Withdrawal Prerequisite:</strong> Deleting your account requires settling any pending
+            withdrawals first and forfeits any remaining unredeemed promotional incentive balance below the withdrawal
+            threshold; you must withdraw all eligible funds prior to confirming deletion.
           </li>
           <li className={styles.listItem}>
             <strong>5-Year Statutory AML Audit Pseudonymisation:</strong> In compliance with Nigerian Anti-Money

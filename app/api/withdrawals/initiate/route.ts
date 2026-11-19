@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
 import { KoraService } from "@/lib/payment/kora";
 import redisConnection, { isRedisReady } from "@/lib/redis";
@@ -30,6 +31,18 @@ function isTerminalBankAccountError(msg: string): boolean {
   );
 }
 
+function isAmbiguousGatewayTimeout(msg: string): boolean {
+  const m = (msg || "").toLowerCase();
+  return (
+    m.includes("timeout") ||
+    m.includes("timed out") ||
+    m.includes("etimedout") ||
+    m.includes("econnreset") ||
+    m.includes("socket hang up") ||
+    m.includes("aborted")
+  );
+}
+
 export async function POST(req: NextRequest) {
   let email: string | null = null;
   let emailLower = "";
@@ -44,8 +57,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 0. Atomic In-Flight Mutex (Prevents concurrent double-click race conditions, resilient to Redis quota cooldown)
+    // 0. Per-user sliding-window rate limit + emergency circuit breaker check
     const emailClean = email.toLowerCase().trim();
+    const rl = await checkRateLimit(req, {
+      limit: 8,
+      windowSeconds: 60,
+      identifier: emailClean,
+      identifierPrefix: "withdrawals_initiate",
+    });
+    if (!rl.allowed && rl.response) {
+      return rl.response;
+    }
+
+    try {
+      if (isRedisReady()) {
+        const pausedFlag = await redisConnection.get("system:transfers_paused").catch(() => null);
+        if (pausedFlag === "true" || pausedFlag === "1") {
+          return NextResponse.json(
+            { error: "Withdrawals are temporarily paused for security reconciliation." },
+            { status: 503 }
+          );
+        }
+      }
+      const auditorMod = await import("@/lib/security/discrepancyAuditor").catch(() => null);
+      if (auditorMod && typeof auditorMod.isUserAccountFrozen === "function") {
+        const frozen = await auditorMod.isUserAccountFrozen(emailClean);
+        if (frozen?.frozen) {
+          return NextResponse.json(
+            { error: frozen.reason || "Your account is temporarily restricted from withdrawals." },
+            { status: 403 }
+          );
+        }
+      }
+    } catch {}
+
+    // 0b. Atomic In-Flight Mutex (Prevents concurrent double-click race conditions, resilient to Redis quota cooldown)
     const nowMs = Date.now();
     const existingL1Lock = l1WithdrawalMutex.get(emailClean);
     if (existingL1Lock && existingL1Lock > nowMs) {
@@ -95,13 +141,28 @@ export async function POST(req: NextRequest) {
 
     const { data: user, error: userFetchErr } = await supabaseAdmin
       .from("users")
-      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career, wallet_pin_hash, passphrase")
+      .select("balance, withdrawal, phone, monetized, monetization_clicks, atw_tier, is_affiliate, is_career, wallet_pin_hash, passphrase, ad_account_status, suspended_until")
       .ilike("email", emailLower)
       .maybeSingle();
 
     if (userFetchErr || !user) {
       console.error("❌ Error fetching user for withdrawal:", userFetchErr);
       return NextResponse.json({ error: "Failed to verify account balance" }, { status: 500 });
+    }
+
+    const acctStatus = String((user as any).ad_account_status || "").toLowerCase().trim();
+    const suspendedMs = (user as any).suspended_until ? Date.parse(String((user as any).suspended_until)) : NaN;
+    if (
+      acctStatus === "banned" ||
+      acctStatus === "perm_banned" ||
+      acctStatus === "temp_blocked" ||
+      acctStatus === "deactivated" ||
+      (Number.isFinite(suspendedMs) && suspendedMs > Date.now())
+    ) {
+      return NextResponse.json(
+        { error: "Your account is currently restricted from initiating withdrawals." },
+        { status: 403 }
+      );
     }
 
     // 2. Enforce 4-Digit Wallet PIN (fail closed when unset)
@@ -213,6 +274,19 @@ export async function POST(req: NextRequest) {
       queueReason = "High-volume payout queue (bank verification deferred to batch dispatch)";
     }
 
+    // Dynamic Gateway Payout Fee Breakdown BEFORE debit so ₦0 net withdrawals are rejected upfront
+    const activeGateway = PayoutProvider.getActiveGateway();
+    const WITHDRAWAL_TRANSFER_FEE = PayoutProvider.calculateTransferFee(withdrawAmount, activeGateway);
+    const netDisbursementAmount = Number(Math.max(0, withdrawAmount - WITHDRAWAL_TRANSFER_FEE).toFixed(2));
+    if (netDisbursementAmount <= 0) {
+      return NextResponse.json(
+        {
+          error: `Withdrawal amount must exceed the ₦${WITHDRAWAL_TRANSFER_FEE} network transfer fee.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Generate unique transaction reference BEFORE atomic wallet debit for idempotent ledger tracking
     reference = `trsf_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").substring(0, 12)}`;
 
@@ -267,13 +341,14 @@ export async function POST(req: NextRequest) {
     rollbackAtomicDebit = async (reason: string) => {
       if (!walletDeducted) return;
       walletDeducted = false;
-      const { error: refundErr } = await supabaseAdmin.rpc("refund_wallet_atomic", {
-        p_user_email: emailLower,
-        p_amount: withdrawAmount,
-        p_reason: reason,
-        p_reference: reference,
-      });
-      if (refundErr) {
+      const refundRes =
+        (await supabaseAdmin.rpc("refund_wallet_atomic", {
+          p_user_email: emailLower,
+          p_amount: withdrawAmount,
+          p_reason: reason,
+          p_reference: reference,
+        })) || {};
+      if ((refundRes as any).error) {
         await supabaseAdmin.rpc("refund_wallet_deduction_atomic", {
           p_user_email: emailLower,
           p_amount: withdrawAmount,
@@ -286,11 +361,6 @@ export async function POST(req: NextRequest) {
         redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
       ]);
     };
-
-    // Dynamic Gateway Payout Fee Breakdown: User is responsible for active gateway (Paystack/Kora) interbank charges
-    const activeGateway = PayoutProvider.getActiveGateway();
-    const WITHDRAWAL_TRANSFER_FEE = PayoutProvider.calculateTransferFee(withdrawAmount, activeGateway);
-    const netDisbursementAmount = Number(Math.max(0, withdrawAmount - WITHDRAWAL_TRANSFER_FEE).toFixed(2));
 
     // Record processing withdrawal in payments ledger
     const paymentMetadata = {
@@ -432,8 +502,42 @@ export async function POST(req: NextRequest) {
       console.error("❌ Payout Gateway disbursement error:", payoutErr);
       const errMsg = payoutErr?.message || "Gateway disbursement error";
 
+      // On ambiguous network timeout AFTER calling initiatePayout, NEVER blindly re-queue
+      // (could double-disburse if gateway actually accepted the transfer). Mark processing for webhook/reconciliation!
+      if (isAmbiguousGatewayTimeout(errMsg)) {
+        await supabaseAdmin
+          .from("payments")
+          .update({
+            status: "processing",
+            metadata: {
+              ...paymentMetadata,
+              needs_reconciliation: true,
+              timeout_reason: errMsg,
+              timeout_at: new Date().toISOString(),
+            },
+          })
+          .eq("reference", reference);
+
+        await Promise.all([
+          invalidateCachedProfile(emailLower).catch(() => {}),
+          redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
+          redisConnection.del(`statement:withdrawals:${emailLower}`, `statement:all:${emailLower}`).catch(() => {}),
+        ]);
+
+        walletDeducted = false;
+        return NextResponse.json({
+          success: true,
+          status: "processing",
+          message: "Your withdrawal was submitted and is being verified with our payment partner. We will update your balance automatically if it does not settle.",
+          reference,
+          newBalance,
+          fee: WITHDRAWAL_TRANSFER_FEE,
+          netAmount: netDisbursementAmount,
+        });
+      }
+
       // Only fail & refund immediately if the bank explicitly rejected the beneficiary account.
-      // For ANY high-volume spike, rate limit, timeout, float depletion, or 5xx error, QUEUE IT!
+      // For non-timeout rate limits / float depletion / 5xx before dispatch, QUEUE IT!
       if (!isTerminalBankAccountError(errMsg)) {
         console.log(`⏳ Holding withdrawal [${reference}] in high-volume queue due to transient gateway status: ${errMsg}`);
 

@@ -1,6 +1,7 @@
 // app/api/withdrawals/resolve/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 
@@ -22,6 +23,16 @@ export async function POST(req: NextRequest) {
     const email = await getAuthenticatedEmail(req);
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const rl = await checkRateLimit(req, {
+      limit: 20,
+      windowSeconds: 60,
+      identifier: email.toLowerCase().trim(),
+      identifierPrefix: "withdrawals_resolve",
+    });
+    if (!rl.allowed && rl.response) {
+      return rl.response;
     }
 
     const body = await req.json();

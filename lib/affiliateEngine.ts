@@ -4,6 +4,111 @@ import { PRECONFIGURED_SPECIAL_ROLES } from "./adminHelper";
 
 const AFFILIATE_BUFFER_KEY = "xea:affiliate:yield:buffer:v1";
 const AFFILIATE_FLUSH_LOCK_KEY = "xea:affiliate:yield:flush_lock:v1";
+const AFFILIATE_ROSTER_REDIS_KEY = "paayh:affiliates:roster:v1";
+const AFFILIATE_TOTAL_POOL_SHARE = 0.20; // 20% of raw CPI shared evenly across ALL active affiliates (company keeps 30% untouched)
+
+let l1AffiliateRoster: { emails: string[]; expiresAt: number } | null = null;
+
+// Atomic Redis Lua script: snapshot all pending affiliate balances and clear the hash in one atomic step
+// so concurrent flushes never double-credit or drop in-flight yields.
+const ATOMIC_DRAIN_AFFILIATE_BUFFER_LUA = `
+local vals = redis.call("HGETALL", KEYS[1])
+if #vals > 0 then
+  redis.call("DEL", KEYS[1])
+end
+return vals
+`;
+
+/**
+ * Computes each active affiliate's equal share from the fixed 20% affiliate pool.
+ * Examples: 2 affiliates -> 10% each; 3 affiliates -> 6.67% each; 4 affiliates -> 5% each.
+ * Company's 30% platform share always remains untouched (50% earner + 20% affiliates + 30% company = 100%).
+ */
+export function calculateSharedAffiliateCut(rawCpi: number, affiliateCount: number): number {
+  const safeCpi = Number(rawCpi);
+  const safeCount = Math.floor(Number(affiliateCount));
+  if (!Number.isFinite(safeCpi) || safeCpi <= 0 || !Number.isFinite(safeCount) || safeCount <= 0) {
+    return 0;
+  }
+  return Math.round(((safeCpi * AFFILIATE_TOTAL_POOL_SHARE) / safeCount) * 100) / 100;
+}
+
+export function invalidateAffiliateRosterCache(): void {
+  l1AffiliateRoster = null;
+  if (isRedisReady()) {
+    redisConnection.del(AFFILIATE_ROSTER_REDIS_KEY).catch(() => {});
+  }
+}
+
+async function resolveActiveAffiliateEmails(): Promise<string[]> {
+  const now = Date.now();
+  if (l1AffiliateRoster && now < l1AffiliateRoster.expiresAt) {
+    return l1AffiliateRoster.emails;
+  }
+
+  if (isRedisReady()) {
+    try {
+      const cached = await redisConnection.get(AFFILIATE_ROSTER_REDIS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          l1AffiliateRoster = { emails: parsed, expiresAt: now + 60_000 };
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  const affiliateEmails = new Set<string>(
+    Object.entries(PRECONFIGURED_SPECIAL_ROLES)
+      .filter(([, cfg]) => cfg.isAffiliate)
+      .map(([email]) => email.toLowerCase().trim())
+  );
+
+  let loadedFromRosterTable = false;
+  try {
+    // O(1) tiny roster table (never scans 500M rows in public.users)
+    const { data: rosterRows, error: rosterErr } = await supabaseAdmin
+      .from("platform_affiliates")
+      .select("email")
+      .eq("is_active", true)
+      .limit(100);
+
+    if (!rosterErr && Array.isArray(rosterRows)) {
+      loadedFromRosterTable = true;
+      for (const r of rosterRows) {
+        if (r?.email) affiliateEmails.add(String(r.email).trim().toLowerCase());
+      }
+    }
+  } catch {}
+
+  if (!loadedFromRosterTable) {
+    try {
+      const { data: dbAffiliates } = await supabaseAdmin
+        .from("users")
+        .select("email")
+        .eq("is_affiliate", true)
+        .limit(100);
+
+      if (Array.isArray(dbAffiliates)) {
+        for (const r of dbAffiliates) {
+          if (r?.email) affiliateEmails.add(String(r.email).trim().toLowerCase());
+        }
+      }
+    } catch {
+      // Preconfigured emails are still guaranteed
+    }
+  }
+
+  const list = Array.from(affiliateEmails);
+  l1AffiliateRoster = { emails: list, expiresAt: now + 60_000 };
+  if (isRedisReady() && list.length > 0) {
+    redisConnection
+      .set(AFFILIATE_ROSTER_REDIS_KEY, JSON.stringify(list), "EX", 300)
+      .catch(() => {});
+  }
+  return list;
+}
 
 /**
  * Ensures the preconfigured Career + Affiliate accounts (nonsom019@gmail.com, nonsom2023@gmail.com)
@@ -13,19 +118,37 @@ export async function flushPendingAffiliateYield(targetEmail?: string | null): P
   if (!supabaseAdmin) return;
 
   try {
-    // 1. Drain any Redis-buffered affiliate yields into Postgres
+    // 1. Atomically drain Redis-buffered affiliate yields into Postgres (zero double-credit race)
     if (isRedisReady()) {
       try {
-        const buffered = await redisConnection.hgetall(AFFILIATE_BUFFER_KEY);
-        if (buffered && Object.keys(buffered).length > 0) {
-          for (const [emailKey, rawVal] of Object.entries(buffered)) {
-            const cleanEmail = emailKey.trim().toLowerCase();
-            const delta = Math.round((Number(rawVal) || 0) * 100) / 100;
-            if (delta > 0) {
-              await redisConnection.hdel(AFFILIATE_BUFFER_KEY, emailKey);
-              await creditSingleAffiliateDirect(cleanEmail, delta);
+        let entries: Array<[string, number]> = [];
+        if (typeof (redisConnection as any).eval === "function") {
+          const rawPairs = (await (redisConnection as any).eval(
+            ATOMIC_DRAIN_AFFILIATE_BUFFER_LUA,
+            1,
+            AFFILIATE_BUFFER_KEY
+          )) as string[] | null;
+          if (Array.isArray(rawPairs)) {
+            for (let i = 0; i < rawPairs.length; i += 2) {
+              const em = String(rawPairs[i] || "").trim().toLowerCase();
+              const delta = Math.round((Number(rawPairs[i + 1]) || 0) * 100) / 100;
+              if (em && delta > 0) entries.push([em, delta]);
             }
           }
+        } else {
+          const buffered = await redisConnection.hgetall(AFFILIATE_BUFFER_KEY);
+          if (buffered && Object.keys(buffered).length > 0) {
+            await redisConnection.del(AFFILIATE_BUFFER_KEY);
+            for (const [emailKey, rawVal] of Object.entries(buffered)) {
+              const cleanEmail = emailKey.trim().toLowerCase();
+              const delta = Math.round((Number(rawVal) || 0) * 100) / 100;
+              if (cleanEmail && delta > 0) entries.push([cleanEmail, delta]);
+            }
+          }
+        }
+
+        for (const [cleanEmail, delta] of entries) {
+          await creditSingleAffiliateDirect(cleanEmail, delta);
         }
       } catch {
         // Non-fatal if Redis is unavailable
@@ -106,18 +229,19 @@ async function creditSingleAffiliateDirect(email: string, amount: number): Promi
 }
 
 /**
- * Credits 10% of rawCpi (i.e. 20% of the platform's 50% share) to each active Affiliate account.
- * Designed for 100M+ user scale:
- *  - First attempts the lock-free SQL RPC `credit_affiliate_platform_share_atomic` (uses pg_try_advisory_xact_lock + 64-shard overflow).
- *  - Falls back to Redis HINCRBYFLOAT coalesced write-behind buffer or direct non-blocking update if RPC is not yet installed.
+ * Credits a fixed 20% total pool of `rawCpi` shared evenly across ALL active Affiliate accounts
+ * (`20% / N`: e.g., 2 affiliates = 10% each, 3 = 6.67% each, 4 = 5% each), keeping the company's
+ * 30% platform share completely untouched (50% earner + 20% affiliates + 30% company = 100%).
+ * Designed for 500M+ scale:
+ *  - Primary: Lock-free SQL RPC `credit_affiliate_platform_share_atomic` reading tiny `platform_affiliates` table.
+ *  - Fallback: Cached roster + Redis HINCRBYFLOAT coalesced write-behind buffer with atomic Lua drain.
  */
 export async function creditAffiliatePlatformShare(rawCpi: number, adId?: string | null, earnerEmail?: string | null): Promise<void> {
   if (!supabaseAdmin) return;
   const safeCpi = Number(rawCpi) > 0 ? Number(rawCpi) : 25.0;
-  const perAffiliateCut = Math.round(safeCpi * 0.10 * 100) / 100;
-  if (perAffiliateCut <= 0) return;
+  if (safeCpi <= 0) return;
 
-  // 1. Primary: Atomic Lock-Free PostgreSQL RPC (pg_try_advisory_xact_lock + 64-shard overflow)
+  // 1. Primary: Atomic Lock-Free PostgreSQL RPC (reads tiny platform_affiliates roster, divides 20% / N)
   try {
     const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc(
       "credit_affiliate_platform_share_atomic",
@@ -135,30 +259,14 @@ export async function creditAffiliatePlatformShare(rawCpi: number, adId?: string
     // Proceed to Redis / Direct fallback if RPC not yet applied
   }
 
-  // 2. Resolve all active affiliate emails (preconfigured + DB `is_affiliate = true`)
-  const affiliateEmails = new Set<string>(
-    Object.entries(PRECONFIGURED_SPECIAL_ROLES)
-      .filter(([, cfg]) => cfg.isAffiliate)
-      .map(([email]) => email.toLowerCase())
-  );
+  // 2. Resolve cached active affiliate roster (O(1) L1/L2 cached; zero scan on public.users)
+  const affiliateEmails = await resolveActiveAffiliateEmails();
+  if (affiliateEmails.length === 0) return;
 
-  try {
-    const { data: dbAffiliates } = await supabaseAdmin
-      .from("users")
-      .select("email")
-      .eq("is_affiliate", true)
-      .limit(50);
+  const perAffiliateCut = calculateSharedAffiliateCut(safeCpi, affiliateEmails.length);
+  if (perAffiliateCut <= 0) return;
 
-    if (Array.isArray(dbAffiliates)) {
-      for (const r of dbAffiliates) {
-        if (r?.email) affiliateEmails.add(String(r.email).trim().toLowerCase());
-      }
-    }
-  } catch {
-    // `is_affiliate` column might not exist before migration; preconfigured emails are still guaranteed
-  }
-
-  // 3. High-Concurrency Coalescing via Redis + Immediate Periodic Flush
+  // 3. High-Concurrency Coalescing via Redis + Atomic Periodic Flush
   if (isRedisReady()) {
     try {
       const pipe = redisConnection.pipeline();
@@ -167,7 +275,7 @@ export async function creditAffiliatePlatformShare(rawCpi: number, adId?: string
       }
       await pipe.exec();
 
-      // Acquire short 2-second coalescing lock so under 100M+ traffic spikes we flush at most once per 2s,
+      // Acquire short 2-second coalescing lock so under 500M+ traffic spikes we flush at most once per 2s,
       // while normal traffic flushes immediately on the same request!
       const shouldFlushNow = await redisConnection.set(AFFILIATE_FLUSH_LOCK_KEY, "1", "EX", 2, "NX");
 
@@ -182,8 +290,6 @@ export async function creditAffiliatePlatformShare(rawCpi: number, adId?: string
 
   // 4. Direct Fallback
   await Promise.allSettled(
-    Array.from(affiliateEmails).map((email) =>
-      creditSingleAffiliateDirect(email, perAffiliateCut)
-    )
+    affiliateEmails.map((email) => creditSingleAffiliateDirect(email, perAffiliateCut))
   );
 }

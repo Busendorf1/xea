@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getVerifiedUserEmail } from "../_shared/auth.ts";
+import { checkAccountBlockedEdge, getVerifiedUserEmail } from "../_shared/auth.ts";
 import { corsHeaders, errorResponse } from "../_shared/cors.ts";
 import {
   handleAgentNetwork,
@@ -68,6 +68,23 @@ serve(async (req: Request) => {
       verifiedEmail === "service_role" ? requestedEmail : verifiedEmail;
     if (!cleanEmail) {
       return errorResponse("Authentication required.", 401);
+    }
+
+    if (verifiedEmail !== "service_role") {
+      const blockStatus = await checkAccountBlockedEdge(supabase, cleanEmail);
+      if (blockStatus.blocked) {
+        return errorResponse(
+          blockStatus.message || "Your account is currently blocked from accessing Paayh.",
+          403,
+          {
+            code: "ACCOUNT_BLOCKED",
+            blocked: true,
+            blockType: blockStatus.blockType || "permanent",
+            blockedUntil: blockStatus.blockedUntil ?? null,
+            reason: blockStatus.reason ?? null,
+          },
+        );
+      }
     }
 
     if (action === "get_profile") {

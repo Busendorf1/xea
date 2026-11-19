@@ -329,8 +329,36 @@ export default function DashboardClient({
       )
       .subscribe();
 
+    const userBroadcastTopic = `realtime:user:${emailLower.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    const notifChannel = supabase
+      .channel(userBroadcastTopic)
+      .on("broadcast", { event: "notification" }, (msg: any) => {
+        const incoming = msg?.payload;
+        if (incoming && (incoming.title || incoming.message)) {
+          setNotifications((prev) => {
+            const incomingId = String(incoming.id || `rt_${Date.now()}`);
+            if (prev.some((n) => String(n.id) === incomingId)) return prev;
+            return [
+              {
+                id: incomingId,
+                user_email: emailLower,
+                title: incoming.title || "Notification",
+                message: incoming.message || "",
+                read: false,
+                created_at: incoming.created_at || new Date().toISOString(),
+                is_global: false,
+              },
+              ...prev,
+            ];
+          });
+        }
+        fetchNotifications();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(notifChannel);
     };
   }, [email]);
 
@@ -391,16 +419,22 @@ export default function DashboardClient({
       triggerEarnFeedback();
     };
 
+    const handleNotificationsRefresh = () => {
+      fetchNotifications();
+    };
+
     window.addEventListener("focus", onFocus);
     window.addEventListener("xea:click-increment", handleClickIncrement);
     window.addEventListener("xea:live-balance-sync", handleLiveBalanceSync);
     window.addEventListener("xea:live-balance-earned", handleLiveBalanceSync);
+    window.addEventListener("xea:notifications-refresh", handleNotificationsRefresh);
 
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("xea:click-increment", handleClickIncrement);
       window.removeEventListener("xea:live-balance-sync", handleLiveBalanceSync);
       window.removeEventListener("xea:live-balance-earned", handleLiveBalanceSync);
+      window.removeEventListener("xea:notifications-refresh", handleNotificationsRefresh);
     };
   }, [email]);
 

@@ -7,6 +7,8 @@ import { verifyTransactionPinEdge } from "../_shared/walletPin.ts";
 import { buildEdgeCampaignAnalyticsPayload, computeAdSpendMetricsEdge } from "./analytics.ts";
 import {
   applyProductSalesSubsidyEdge,
+  convertUsdToNgnEdge,
+  getCanonicalHighlightFloorRateNgnEdge,
   getLocalizedAdFloorRateEdge,
   getUserCurrencyEdge,
   isVerifiedSubscriberProductLinkEdge,
@@ -17,7 +19,6 @@ import {
 } from "../_shared/adPricing.ts";
 
 const MAX_HIGHLIGHT_DAYS = MAX_AD_DURATION_DAYS;
-const HIGHLIGHT_DAILY_RATE = 500;
 
 async function ensureActiveAdvertiser(
   // deno-lint-ignore no-explicit-any
@@ -189,9 +190,10 @@ export async function handleSubmitAd(
     }
   }
 
+  // Store canonically in NGN so wallet/gateways/earners stay 100% consistent (C-02)
   const impressions = pricing.impressionsCount;
-  const cpi = pricing.effectiveRate;
-  const totalCost = pricing.computedTotalCost;
+  const cpi = pricing.canonicalRateNgn;
+  const totalCost = pricing.canonicalTotalCostNgn;
   const isBidded = pricing.isBidded;
 
   const payload = {
@@ -283,14 +285,20 @@ export async function handleSubmitHighlight(
   }
 
   const isAdmin = isAdminEmail(cleanEmail);
+  const userCountry = await resolveUserPricingCountryEdge(supabase, cleanEmail);
+  const floorDailyRateNgn = getCanonicalHighlightFloorRateNgnEdge(userCountry);
+  const isUsdUser = getUserCurrencyEdge(userCountry) === "USD";
   const campaignDays = Math.max(
     1,
     Math.min(MAX_HIGHLIGHT_DAYS, Math.floor(Number(body?.campaign_days || body?.days || 1))),
   );
-  const dailyRate = isAdmin
-    ? 0
-    : Math.max(HIGHLIGHT_DAILY_RATE, Number(body?.bid_price || HIGHLIGHT_DAILY_RATE));
-  const bidBonus = isAdmin ? 0 : Math.max(0, Number(body?.bid_bonus || 0));
+  const rawBidPrice = Number(body?.bid_price || 0);
+  const normalizedBidNgn = rawBidPrice > 0
+    ? (isUsdUser && rawBidPrice < 500 ? convertUsdToNgnEdge(rawBidPrice) : rawBidPrice)
+    : floorDailyRateNgn;
+  const dailyRate = isAdmin ? 0 : Math.max(floorDailyRateNgn, normalizedBidNgn);
+  const rawBidBonus = Math.max(0, Number(body?.bid_bonus || 0));
+  const bidBonus = isAdmin ? 0 : (isUsdUser && rawBidBonus > 0 && rawBidBonus < 500 ? convertUsdToNgnEdge(rawBidBonus) : rawBidBonus);
   const totalCost = isAdmin ? 0 : Math.round((campaignDays * dailyRate + bidBonus) * 100) / 100;
 
   const { data: inserted, error } = await supabase
@@ -305,7 +313,7 @@ export async function handleSubmitHighlight(
         category: String(body?.category || "general"),
         campaign_days: campaignDays,
         bid_price: dailyRate + bidBonus,
-        is_bidded: !isAdmin && (bidBonus > 0 || dailyRate > HIGHLIGHT_DAILY_RATE),
+        is_bidded: !isAdmin && (bidBonus > 0 || dailyRate > floorDailyRateNgn),
         total_cost: totalCost,
         is_admin_post: isAdmin,
         editing_id: editingId,
@@ -396,21 +404,27 @@ export async function handleBoostCampaignOrHighlight(
     const remainingImp = Math.max(0, currentImp - deliveredImp);
 
     const userCountry = await resolveUserPricingCountryEdge(supabase, cleanEmail);
+    const isUsdUser = getUserCurrencyEdge(userCountry) === "USD";
     const adCategory = String(item.ad_type || "individual").trim().toLowerCase();
-    const baseFloor = getLocalizedAdFloorRateEdge(adCategory, userCountry);
+    const baseFloorLocal = getLocalizedAdFloorRateEdge(adCategory, userCountry);
     const subsidyQualified =
       adCategory === "product_sales"
         ? await isVerifiedSubscriberProductLinkEdge(supabase, item.product_cta_link)
         : false;
-    const adFloorRate = subsidyQualified ? applyProductSalesSubsidyEdge(baseFloor) : baseFloor;
+    const floorLocal = subsidyQualified ? applyProductSalesSubsidyEdge(baseFloorLocal) : baseFloorLocal;
+    const adFloorRate = isUsdUser ? convertUsdToNgnEdge(floorLocal) : floorLocal;
 
     const currentCpi = isAdmin
       ? 0
       : Math.max(adFloorRate, Number(item.cost_per_impression || item.bid_price || adFloorRate));
-    const requestedNewCpi = Number(
+    const rawRequestedCpi = Number(
       body?.newCostPerImpression ?? body?.newBidPrice ?? body?.new_cpi ?? body?.bidPrice ?? currentCpi,
     );
-    const eps = getUserCurrencyEdge(userCountry) === "USD" ? 0.0005 : 0.001;
+    const requestedNewCpi =
+      isUsdUser && rawRequestedCpi > 0 && rawRequestedCpi < 50
+        ? convertUsdToNgnEdge(rawRequestedCpi)
+        : rawRequestedCpi;
+    const eps = 0.01;
     if (!isAdmin && (!Number.isFinite(requestedNewCpi) || requestedNewCpi < currentCpi - eps || requestedNewCpi < adFloorRate - eps)) {
       return errorResponse(
         `Boost rate cannot be below category floor (${adFloorRate}) or current CPI (${currentCpi}).`,
@@ -502,12 +516,19 @@ export async function handleBoostCampaignOrHighlight(
       is_paused: false,
     };
   } else {
+    const userCountry = await resolveUserPricingCountryEdge(supabase, cleanEmail);
+    const hlFloorNgn = getCanonicalHighlightFloorRateNgnEdge(userCountry);
+    const isUsdUser = getUserCurrencyEdge(userCountry) === "USD";
     addDays = Math.max(0, Math.floor(Number(body?.additionalDays ?? body?.addDays ?? body?.add_days ?? 0)));
     const currentDaily =
-      item.is_bidded && Number(item.bid_price || 0) >= HIGHLIGHT_DAILY_RATE
+      item.is_bidded && Number(item.bid_price || 0) >= hlFloorNgn
         ? Number(item.bid_price)
-        : 1000;
-    const requestedDaily = Number(body?.newBidPrice ?? body?.newCostPerImpression ?? currentDaily);
+        : hlFloorNgn;
+    const rawRequestedDaily = Number(body?.newBidPrice ?? body?.newCostPerImpression ?? currentDaily);
+    const requestedDaily =
+      isUsdUser && rawRequestedDaily > 0 && rawRequestedDaily < 500
+        ? convertUsdToNgnEdge(rawRequestedDaily)
+        : rawRequestedDaily;
     const effectiveDaily = requestedDaily > currentDaily ? requestedDaily : currentDaily;
     effectiveCostPerUnit = effectiveDaily;
     const explicitIncrease = Number(body?.bidIncrease ?? body?.amount ?? 0);
@@ -515,7 +536,7 @@ export async function handleBoostCampaignOrHighlight(
       effectiveDaily > currentDaily
         ? (effectiveDaily - currentDaily) * Math.max(1, Number(item.campaign_days || 1))
         : explicitIncrease > 0
-        ? explicitIncrease
+        ? (isUsdUser && explicitIncrease < 500 ? convertUsdToNgnEdge(explicitIncrease) : explicitIncrease)
         : 0;
     totalCost = isAdmin ? 0 : Math.round((addDays * effectiveDaily + rateUpgradeCost) * 100) / 100;
 
@@ -528,7 +549,7 @@ export async function handleBoostCampaignOrHighlight(
       campaign_days: currentDays + addDays,
       expires_at: addDays > 0 ? new Date(baseExpiry + addDays * 86400 * 1000).toISOString() : item.expires_at,
       bid_price: isAdmin ? 0 : Math.max(effectiveDaily, currentDaily),
-      is_bidded: !isAdmin && (Boolean(item.is_bidded) || effectiveDaily > 1000),
+      is_bidded: !isAdmin && (Boolean(item.is_bidded) || effectiveDaily > hlFloorNgn),
       total_cost: isAdmin ? 0 : Number(item.total_cost || 0) + totalCost,
       is_admin_post: isAdmin || Boolean(item.is_admin_post),
       is_paused: false,

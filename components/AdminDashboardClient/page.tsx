@@ -156,6 +156,7 @@ export default function AdminDashboardClient({ session }: AdminDashboardClientPr
               handleUpdateSpecialRoles={s.handleUpdateSpecialRoles}
               userActionSubmitting={s.userActionSubmitting}
               activeActionId={s.activeActionId}
+              renderPagination={renderPagination}
             />
           )}
 

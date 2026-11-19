@@ -93,7 +93,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const adId = editingId || adData.id || crypto.randomUUID();
+    // Security (C-14): Never accept client-supplied adData.id for new submissions (prevents destructive IDOR)
+    const adId = editingId || crypto.randomUUID();
     const isAdmin = isAdminEmail(emailLower);
     const resolvedProductCtaLink =
       typeof adData.productCtaType === "string" && adData.productCtaType.trim().toLowerCase() === "none"
@@ -157,12 +158,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Store canonically in NGN so gateways, wallet balance, and earner payouts stay 100% consistent (C-02)
     const isBidded = pricing.isBidded;
-    const bidPrice = pricing.isBidded ? pricing.effectiveRate : null;
+    const effectiveRate = pricing.canonicalRateNgn;
+    const bidPrice = pricing.isBidded ? pricing.canonicalRateNgn : null;
     const adCategory = pricing.adCategory;
-    const effectiveRate = pricing.effectiveRate;
     const impressionsCount = pricing.impressionsCount;
-    const computedTotalCost = pricing.computedTotalCost;
+    const computedTotalCost = pricing.canonicalTotalCostNgn;
 
     // Check if editing an active delivering campaign & verify ownership (prevents IDOR)
     let isDeliveringActive = false;
@@ -234,6 +236,8 @@ export async function POST(req: NextRequest) {
       action_email: adData.actionEmail || null,
       cost_per_impression: effectiveRate,
       total_cost: computedTotalCost,
+      is_bidded: isBidded,
+      bid_price: bidPrice,
       user_email: emailLower,
       ad_media: adData.adMedia || adData.ad_media || null,
       display_mutual_button: adData.displayMutualButton ?? true,
@@ -283,9 +287,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If NOT an active delivering ad, guarantee it is removed from active feed
-    if (!isDeliveringActive) {
-      await supabaseAdmin.from("addsactive").delete().eq("id", adId);
+    // If NOT an active delivering ad, guarantee it is removed from active feed strictly scoped to owner (C-14)
+    if (!isDeliveringActive && editingId) {
+      let delActive = supabaseAdmin.from("addsactive").delete().eq("id", adId);
+      if (!isAdmin) delActive = delActive.eq("user_email", emailLower);
+      await delActive;
     }
 
     const notifRow = {

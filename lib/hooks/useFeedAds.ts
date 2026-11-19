@@ -115,6 +115,14 @@ export function useFeedAds({ userEmail, initialLimit = 10 }: UseFeedAdsOptions) 
                 },
               })
             );
+            if (
+              data.milestoneNotified ||
+              data.monetizationUnlocked ||
+              data.atwUpgraded ||
+              (data.clicksCount >= 500 && data.clicksCount % 500 === 0)
+            ) {
+              window.dispatchEvent(new CustomEvent("xea:notifications-refresh"));
+            }
           }
         } catch {}
         return true;

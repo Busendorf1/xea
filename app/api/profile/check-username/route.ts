@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 
 export async function GET(req: NextRequest) {
   try {
+    const rl = await checkRateLimit(req, {
+      limit: 30,
+      windowSeconds: 60,
+      identifierPrefix: "check_username",
+    });
+    if (!rl.allowed && rl.response) {
+      return rl.response;
+    }
+
     const { searchParams } = new URL(req.url);
     const username = searchParams.get("username") || "";
     const cleanUsername = username.trim().toLowerCase().replace(/^@/, "");
@@ -22,11 +32,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Resolve caller email from query param, mobile header, or authenticated session
-    const queryEmail = searchParams.get("email")?.toLowerCase().trim();
-    const headerEmail = req.headers.get("x-user-email")?.toLowerCase().trim();
-    const sessionEmail = await getAuthenticatedEmail(req, { allowMobileHeader: true }).catch(() => null);
-    const currentEmail = queryEmail || headerEmail || sessionEmail || null;
+    // Security (H-07): Derive caller identity ONLY from verified session (never unauthenticated query/header email oracle)
+    const currentEmail = await getAuthenticatedEmail(req, { allowMobileHeader: false }).catch(() => null);
 
     const dbClient = supabaseReadOnly || supabaseAdmin;
     // Use exact equality .in() instead of .ilike() to:

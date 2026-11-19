@@ -152,7 +152,7 @@ export default function PolicyPage() {
               <strong>60-Day Dormant Account Deactivation &amp; Credit Forfeiture:</strong> Accounts inactive for 60 consecutive days are deactivated (regardless of balance) and forfeit any remaining unclaimed promotional credits (including Follower and Agent earnings) to platform liquidity.
             </li>
             <li className={styles.listItem}>
-              <strong>Deleted Accounts &amp; 5-Year AML Financial Pseudonymisation:</strong> Active profile PII, media assets, social graphs, and auth logins are permanently purged upon deletion with no silent reactivation. Financial settlement, withdrawal, and compliance audit ledgers are pseudonymised and retained for five (5) years strictly as mandated by Nigerian AML/SCUML financial recordkeeping laws.
+              <strong>Deleted Accounts, Fresh Re-Registration &amp; 5-Year AML Financial Pseudonymisation:</strong> Active profile PII, media assets, social graphs, and prior auth sessions are permanently purged upon voluntary deletion with zero recovery of prior data or balances; returning non-blocked users who sign in with fresh OAuth credentials start a brand-new blank account through profile setup (administratively blocked accounts remain restricted). Financial settlement, withdrawal, and compliance audit ledgers are pseudonymised and retained for five (5) years strictly as mandated by Nigerian AML/SCUML financial recordkeeping laws.
             </li>
           </ul>
         </section>

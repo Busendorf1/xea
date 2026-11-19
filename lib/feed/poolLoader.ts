@@ -48,18 +48,20 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
 
   const fetchPromise = (async () => {
     try {
-      const buildQuery = async (fields: string, rolloverOnly = false) => {
+      const buildQuery = async (fields: string, sliceMode: "main" | "standard" | "rollover" = "main") => {
         let q: any = supabaseReadOnly
           .from("addsactive")
           .select(fields)
           .is("completed_at", null)
           .or("is_paused.is.null,is_paused.eq.false");
 
-        if (rolloverOnly) {
+        if (sliceMode === "rollover") {
           if (typeof q?.eq !== "function") {
             return { data: [], error: null };
           }
           q = q.eq("is_rollover", true);
+        } else if (sliceMode === "standard" && typeof q?.or === "function") {
+          q = q.or("is_bidded.is.null,is_bidded.eq.false");
         }
 
         if (poolKey !== "__global__") {
@@ -69,39 +71,53 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
           );
         }
 
+        const sliceLimit = sliceMode === "rollover" ? 60 : sliceMode === "standard" ? 65 : 250;
         return q
-          .order("bid_price", { ascending: false })
-          .order("cost_per_impression", { ascending: false })
+          .order("bid_price", { ascending: false, nullsFirst: false })
+          .order("cost_per_impression", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
-          .limit(rolloverOnly ? 60 : 250);
+          .limit(sliceLimit);
       };
 
       let activeFieldList = AD_SELECT_FIELDS;
-      const primaryRes = await buildQuery(AD_SELECT_FIELDS, false);
+      const primaryRes = await buildQuery(AD_SELECT_FIELDS, "main");
       let mainAds = primaryRes.data;
 
       if (primaryRes.error) {
         activeFieldList = AD_SELECT_FIELDS_FALLBACK;
-        const fallbackRes = await buildQuery(AD_SELECT_FIELDS_FALLBACK, false);
+        const fallbackRes = await buildQuery(AD_SELECT_FIELDS_FALLBACK, "main");
         mainAds = fallbackRes.data;
         if (fallbackRes.error) {
           activeFieldList = AD_SELECT_FIELDS_MINIMAL;
-          const minimalRes = await buildQuery(AD_SELECT_FIELDS_MINIMAL, false);
+          const minimalRes = await buildQuery(AD_SELECT_FIELDS_MINIMAL, "main");
           mainAds = minimalRes.data;
         }
       }
 
-      const rolloverRes = await buildQuery(activeFieldList, true).catch(() => ({
-        data: null,
-        error: null,
-      }));
+      const [standardRes, rolloverRes] = await Promise.all([
+        Promise.resolve(buildQuery(activeFieldList, "standard")).catch(() => ({
+          data: null,
+          error: null,
+        })),
+        Promise.resolve(buildQuery(activeFieldList, "rollover")).catch(() => ({
+          data: null,
+          error: null,
+        })),
+      ]);
 
-      // Merge dedicated rollover slice (uses partial index idx_addsactive_rollover_pool_bid)
-      // so lower-bid rollover ads never starve behind 250 high-bid active campaigns
+      // Merge dedicated floor-priced standard slice + rollover slice alongside top bidded ads
+      // so neither floor ads nor lower-bid rollover ads starve behind 250 high-bid campaigns
       const mergedById = new Map<string, any>();
       (mainAds || []).forEach((ad: any) => {
         if (ad?.id) mergedById.set(String(ad.id), ad);
       });
+      if (!standardRes?.error && Array.isArray(standardRes?.data)) {
+        standardRes.data.forEach((ad: any) => {
+          if (ad?.id && !mergedById.has(String(ad.id))) {
+            mergedById.set(String(ad.id), ad);
+          }
+        });
+      }
       if (!rolloverRes?.error && Array.isArray(rolloverRes?.data)) {
         rolloverRes.data.forEach((ad: any) => {
           if (ad?.id && !mergedById.has(String(ad.id))) {
@@ -127,14 +143,34 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
                 .filter(Boolean)
             )
           );
-          if (ownerEmails.length > 0 && isRedisReady() && typeof (redisConnection as any).smismember === "function") {
+          if (ownerEmails.length > 0 && isRedisReady()) {
             const deactSet = new Set<string>();
-            const flags: number[] = await (redisConnection as any)
-              .smismember("deactivated:users", ...ownerEmails)
-              .catch(() => []);
-            if (Array.isArray(flags) && flags.length === ownerEmails.length) {
+            const hasMget = typeof (redisConnection as any).mget === "function";
+            const hasSmismember = typeof (redisConnection as any).smismember === "function";
+
+            const keys = [
+              ...ownerEmails.map((e) => `deactivated:${e}`),
+              ...ownerEmails.map((e) => `perm_banned:${e}`),
+            ];
+
+            const [flags, memberFlags] = await Promise.all([
+              hasMget
+                ? Promise.resolve((redisConnection as any).mget(...keys)).catch(() => [])
+                : Promise.resolve([]),
+              hasSmismember
+                ? Promise.resolve((redisConnection as any).smismember("deactivated:users", ...ownerEmails)).catch(() => [])
+                : Promise.resolve([]),
+            ]);
+
+            if (Array.isArray(flags) && flags.length === keys.length) {
+              const half = ownerEmails.length;
               ownerEmails.forEach((em, idx) => {
-                if (flags[idx] === 1) deactSet.add(em);
+                if (flags[idx] || flags[idx + half]) deactSet.add(em);
+              });
+            }
+            if (Array.isArray(memberFlags) && memberFlags.length === ownerEmails.length) {
+              ownerEmails.forEach((em, idx) => {
+                if (Number(memberFlags[idx]) === 1) deactSet.add(em);
               });
             }
             if (deactSet.size > 0) {

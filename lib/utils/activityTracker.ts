@@ -65,6 +65,14 @@ export async function touchUserActivity(
           user_email_param: emailLower,
         });
         await invalidateCachedProfile(emailLower);
+        if (isRedisReady()) {
+          await Promise.allSettled([
+            redisConnection.del(`user:live_clicks:v2:${emailLower}`),
+            redisConnection.del(`user:live_clicks:${emailLower}`),
+            redisConnection.del(`monetize:status:v2:${emailLower}`),
+            redisConnection.del(`monetize:status:${emailLower}`),
+          ]);
+        }
         markL1ActivityTouched(emailLower);
         return { daysInactive, isDeMonetized: true };
       }

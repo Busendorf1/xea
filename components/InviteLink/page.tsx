@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { CANONICAL_WEB_ORIGIN, buildInviteUrl } from "@/lib/utils/inviteLink";
 import styles from "./page.module.css";
 
 interface InviteLinkProps {
@@ -35,8 +36,8 @@ export default function InviteLink({ username, referralCode }: InviteLinkProps) 
   useEffect(() => {
     const cleanFallback = (username || "").split("@")[0];
     const codeParam = resolvedCode || cleanFallback;
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://xea.app";
-    setInviteUrl(`${origin}/join?ref=${encodeURIComponent(codeParam)}`);
+    const origin = typeof window !== "undefined" ? window.location.origin : CANONICAL_WEB_ORIGIN;
+    setInviteUrl(buildInviteUrl(codeParam, origin));
   }, [username, resolvedCode]);
 
   const handleCopy = async () => {

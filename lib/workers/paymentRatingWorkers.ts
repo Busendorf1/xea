@@ -35,8 +35,8 @@ export const paymentWorker = new Worker<PaymentJobData>(
     try {
       if (type === "p2p_transfer" || type === "transfer-settlement") {
         const [{ data: senderUser }, { data: recipientUser }] = await Promise.all([
-          supabaseAdmin.from("users").select("balance").ilike("email", senderEmail).maybeSingle(),
-          supabaseAdmin.from("users").select("balance").ilike("email", recipientEmail).maybeSingle(),
+          supabaseAdmin.from("users").select("balance, username").ilike("email", senderEmail).maybeSingle(),
+          supabaseAdmin.from("users").select("balance, username").ilike("email", recipientEmail).maybeSingle(),
         ]);
 
         if (!job.data.settledImmediately && senderUser && recipientUser) {
@@ -51,7 +51,14 @@ export const paymentWorker = new Worker<PaymentJobData>(
 
         const senderRef = transferRef;
         const recipientRef = `${transferRef}_rcv`;
+        const senderHandle = senderUser?.username
+          ? `@${String(senderUser.username).replace(/^@/, "")}`
+          : "Paayh User";
+        const recipientHandle = recipientUser?.username
+          ? `@${String(recipientUser.username).replace(/^@/, "")}`
+          : "Paayh User";
 
+        // Preserve existing @username transfer descriptions written by /api/payments/transfer (never overwrite with raw PII emails)
         await Promise.all([
           supabaseAdmin.from("payments").upsert(
             {
@@ -60,18 +67,16 @@ export const paymentWorker = new Worker<PaymentJobData>(
               amount,
               status: "success",
               type: "transfer_sent",
-              description: `Sent money to ${recipientEmail}`,
+              description: `Transfer to ${recipientHandle}`,
               metadata: {
-                recipient_email: recipientEmail,
-                recipientEmail,
-                counterparty_email: recipientEmail,
+                recipient_username: recipientHandle,
                 amount,
                 amount_kobo: finalAmountKobo,
                 transfer_type: "outbound",
                 idempotency_key: transferRef,
               },
             },
-            { onConflict: "reference" }
+            { onConflict: "reference", ignoreDuplicates: true }
           ),
           supabaseAdmin.from("payments").upsert(
             {
@@ -80,18 +85,16 @@ export const paymentWorker = new Worker<PaymentJobData>(
               amount,
               status: "success",
               type: "transfer_received",
-              description: `Received money from ${senderEmail}`,
+              description: `Transfer from ${senderHandle}`,
               metadata: {
-                sender_email: senderEmail,
-                senderEmail,
-                counterparty_email: senderEmail,
+                sender_username: senderHandle,
                 amount,
                 amount_kobo: finalAmountKobo,
                 transfer_type: "inbound",
                 idempotency_key: transferRef,
               },
             },
-            { onConflict: "reference" }
+            { onConflict: "reference", ignoreDuplicates: true }
           ),
         ]);
 

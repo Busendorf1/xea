@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     }
 
     const reporterEmail = email.toLowerCase().trim();
-    let targetAdvertiser = (advertiserEmail || "").toLowerCase().trim();
+    let targetAdvertiser = "";
 
     // Enforce rate limit: 4 escalated reports per 24 hours per user (dont_show is private feed hygiene)
     if (reportType === "ad" || reportType === "advertiser") {
@@ -60,19 +60,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resolve advertiser email from active campaign if blocking advertiser without explicit email
-    if (reportType === "advertiser" && !targetAdvertiser) {
-      try {
-        const { data: adRow } = await supabaseAdmin
-          .from("addsactive")
+    // Security (H-08): Always derive advertiser_email strictly from DB campaign row, never trusting client body
+    try {
+      const { data: adRow } = await supabaseAdmin
+        .from("addsactive")
+        .select("user_email")
+        .eq("id", adId)
+        .maybeSingle();
+      if (adRow?.user_email) {
+        targetAdvertiser = String(adRow.user_email).toLowerCase().trim();
+      } else {
+        const { data: newsRow } = await supabaseAdmin
+          .from("newsactive")
           .select("user_email")
           .eq("id", adId)
           .maybeSingle();
-        if (adRow?.user_email) {
-          targetAdvertiser = String(adRow.user_email).toLowerCase().trim();
+        if (newsRow?.user_email) {
+          targetAdvertiser = String(newsRow.user_email).toLowerCase().trim();
         }
-      } catch {}
-    }
+      }
+    } catch {}
 
     // 1. Escalate report to admin review queue only when user explicitly reports ad or advertiser
     if (reportType === "ad" || reportType === "advertiser") {
@@ -129,10 +136,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Ensure ad disappears immediately if still in process L1 cache for single-node environments
-    if (reportType === "ad" || reportType === "dont_show") {
-      evictAdFromL1FeedCaches(adId);
-    }
+    // Per-user block rules in DB + Redis + viewer feed cache invalidation above hide the ad
+    // immediately for this reporter without globally evicting the campaign for all other users.
 
     return NextResponse.json({
       success: true,

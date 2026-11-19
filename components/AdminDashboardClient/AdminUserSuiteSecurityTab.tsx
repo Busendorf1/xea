@@ -113,28 +113,37 @@ export function AdminUserSuiteSecurityTab({
         </div>
       </div>
 
-      {/* BAN TYPE 1: PLATFORM ACCOUNT SUSPENSION */}
+      {/* BAN TYPE 1: PLATFORM ACCOUNT BLOCK (TEMPORARY & PERMANENT ACCESS LOCK) */}
       <div className={styles.banTypeCard}>
         <div className={styles.banTypeHeader}>
-          <span>1. Platform Account Suspension (Login &amp; Access Lock)</span>
-          {isSuspended && (
+          <span>1. Platform Account Block (Temporary &amp; Permanent Access Lock)</span>
+          {(isSuspended || activeUser.ad_account_status === "temp_blocked" || activeUser.ad_account_status === "perm_banned") && (
             <span className={styles.suiteBadgeDanger}>
-              {getBanRemainingText(activeUser.suspended_until)}
+              {activeUser.ad_account_status === "perm_banned"
+                ? "PERMANENTLY BLOCKED"
+                : getBanRemainingText(activeUser.suspended_until) || "BLOCKED"}
             </span>
           )}
         </div>
         <p className={`${styles.adminCls_47} ${styles.fontSm}`}>
-          Blocks user from logging in or using the platform until the countdown expires or an admin removes the suspension.
+          Blocks this user temporarily or permanently from accessing Paayh on Web &amp; Mobile and displays a notice message until unblocked or expired.
         </p>
 
-        {isSuspended ? (
+        {activeUser.ad_account_status === "perm_banned" ? (
           <div className={`${styles.statusAlertDanger} ${styles.mbSm}`}>
-            Account currently locked until:{" "}
-            <strong>{new Date(activeUser.suspended_until).toLocaleString()}</strong> ({getBanRemainingText(activeUser.suspended_until)})
+            Account is <strong>PERMANENTLY BLOCKED</strong>.
+            {activeUser.ad_ban_reason ? ` Reason: ${activeUser.ad_ban_reason}` : ""}
+          </div>
+        ) : isSuspended || activeUser.ad_account_status === "temp_blocked" ? (
+          <div className={`${styles.statusAlertDanger} ${styles.mbSm}`}>
+            Account temporarily blocked until:{" "}
+            <strong>{activeUser.suspended_until ? new Date(activeUser.suspended_until).toLocaleString() : "Admin review"}</strong>{" "}
+            {activeUser.suspended_until ? `(${getBanRemainingText(activeUser.suspended_until)})` : ""}
+            {activeUser.ad_ban_reason ? ` — Reason: ${activeUser.ad_ban_reason}` : ""}
           </div>
         ) : (
           <div className={`${styles.statusAlertSuccess} ${styles.mbSm}`}>
-            Account status is active and unsuspended.
+            Account access is active and unblocked.
           </div>
         )}
 
@@ -144,43 +153,52 @@ export function AdminUserSuiteSecurityTab({
             onClick={() => handleSuspendUser(activeUser, 2)}
             className={`${styles.btnAction} ${styles.btnDanger}`}
           >
-            Suspend 2 Hrs
+            Block 2 Hrs
           </button>
           <button
             disabled={userActionSubmitting}
             onClick={() => handleSuspendUser(activeUser, 24)}
             className={`${styles.btnAction} ${styles.btnDanger}`}
           >
-            Suspend 24 Hrs
+            Block 24 Hrs
           </button>
           <button
             disabled={userActionSubmitting}
             onClick={() => handleSuspendUser(activeUser, 72)}
             className={`${styles.btnAction} ${styles.btnDanger}`}
           >
-            Suspend 3 Days
+            Block 3 Days
           </button>
           <button
             disabled={userActionSubmitting}
             onClick={() => handleSuspendUser(activeUser, 168)}
             className={`${styles.btnAction} ${styles.btnDanger}`}
           >
-            Suspend 7 Days
+            Block 7 Days
+          </button>
+          <button
+            disabled={userActionSubmitting}
+            onClick={() => handleSuspendUser(activeUser, 720)}
+            className={`${styles.btnAction} ${styles.btnDanger}`}
+          >
+            Block 30 Days
           </button>
           <button
             disabled={userActionSubmitting}
             onClick={() => handleSuspendUser(activeUser, -1)}
             className={`${styles.btnAction} ${styles.btnDanger}`}
           >
-            PERMANENT BAN
+            PERMANENT BLOCK
           </button>
-          {activeUser.suspended_until && (
+          {(activeUser.suspended_until ||
+            activeUser.ad_account_status === "temp_blocked" ||
+            activeUser.ad_account_status === "perm_banned") && (
             <button
               disabled={userActionSubmitting}
               onClick={() => handleSuspendUser(activeUser, 0)}
               className={`${styles.btnAction} ${styles.btnSuccess}`}
             >
-              Remove Suspension
+              Unblock User
             </button>
           )}
         </div>

@@ -8,6 +8,11 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 import { validateAndComputeAdPricing } from "../../../../lib/ads/pricingEnforcement";
 import { assessAdDeliveryCapacity } from "../../../../lib/ads/capacityEstimator";
+import {
+  convertUsdToNgn,
+  getCanonicalHighlightFloorRateNgn,
+  getUserCurrency,
+} from "../../../../lib/utils/currency";
 
 export async function POST(req: NextRequest) {
   try {
@@ -76,13 +81,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Determine and enforce amount server-side based on business rules
+    // Determine and enforce amount server-side based on business rules (canonically in NGN)
     let verifiedAmount = 0;
     if (type === "highlight") {
-      const days = parseInt(metadata?.campaign_days || 1, 10);
+      const rawDays = parseInt(metadata?.campaign_days || 1, 10);
+      if (!Number.isFinite(rawDays) || rawDays < 1 || rawDays > 90) {
+        return NextResponse.json({ error: "Highlight duration must be between 1 and 90 days." }, { status: 400 });
+      }
+      const days = Math.floor(rawDays);
       const isBidded = !!metadata?.is_bidded;
-      const bidPrice = metadata?.bid_price ? Math.max(1000, parseFloat(metadata.bid_price)) : 1000;
-      verifiedAmount = (isBidded ? bidPrice : 1000) * Math.min(5, Math.max(1, days));
+      const floorRateNgn = getCanonicalHighlightFloorRateNgn(userCountry);
+      const isUsdUser = getUserCurrency(userCountry) === "USD";
+      const rawBid = metadata?.bid_price ? parseFloat(metadata.bid_price) : 0;
+      const bidNgn = rawBid > 0 ? (isUsdUser && rawBid < 500 ? convertUsdToNgn(rawBid) : rawBid) : floorRateNgn;
+      const dailyRateNgn = isBidded ? Math.max(floorRateNgn, bidNgn) : floorRateNgn;
+      verifiedAmount = Math.round(dailyRateNgn * days);
+      if (metadata) {
+        metadata.campaign_days = days;
+        metadata.bid_price = dailyRateNgn;
+      }
 
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers if editing
       const editingId = metadata?.editingId;
@@ -161,10 +178,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      verifiedAmount = pricing.computedTotalCost;
+      // Bill and store canonically in NGN (C-02)
+      verifiedAmount = pricing.canonicalTotalCostNgn;
       adData.adType = pricing.adCategory;
       adData.impressions = pricing.impressionsCount;
-      adData.costPerImpression = pricing.effectiveRate;
+      adData.costPerImpression = pricing.canonicalRateNgn;
+      adData.bidPrice = pricing.isBidded ? pricing.canonicalRateNgn : null;
       adData.totalCost = verifiedAmount;
 
       // Enforce 1 Edit per 24 Hours Rate Limit for Advertisers
@@ -194,7 +213,7 @@ export async function POST(req: NextRequest) {
           "ad_type, impressions, cost_per_impression, total_cost, product_cta_link, product_cta_type, is_bidded, bid_price, is_admin_post, admin_statement, user_email, targeting_all, country, state, province, gender, age_range, employment_status, industry, interest, lifestyle, behavior, personality, campaign_days, user_frequency_cap"
         )
         .eq("id", adId)
-        .ilike("user_email", email.toLowerCase().trim())
+        .eq("user_email", email.toLowerCase().trim())
         .maybeSingle();
 
       if (adErr || !adRow) {
@@ -227,6 +246,7 @@ export async function POST(req: NextRequest) {
           productCtaLink: adRow.product_cta_link,
           userCountry,
           isAdmin: false,
+          storedInCanonicalNgn: true,
         });
         if (!pricing.ok) {
           return NextResponse.json({ error: pricing.error }, { status: pricing.status });
@@ -260,14 +280,13 @@ export async function POST(req: NextRequest) {
           );
         }
         const storedCost = Number(adRow.total_cost || 0);
-        const tolerance = pricing.currency === "USD" ? 0.51 : 1;
-        if (storedCost <= 0 || Math.abs(storedCost - pricing.computedTotalCost) > tolerance) {
+        if (storedCost <= 0 || Math.abs(storedCost - pricing.canonicalTotalCostNgn) > 1) {
           return NextResponse.json(
             { error: "Stored campaign cost does not match current category floor pricing." },
             { status: 400 }
           );
         }
-        verifiedAmount = pricing.computedTotalCost;
+        verifiedAmount = pricing.canonicalTotalCostNgn;
       } else {
         const costVal = Number(adRow.total_cost || 0);
         if (Math.abs(clientAmount - costVal) > 1) {
@@ -284,7 +303,7 @@ export async function POST(req: NextRequest) {
         .from("news")
         .select("campaign_days, bid_price, is_bidded, admin_statement, user_email")
         .eq("id", highlightId)
-        .ilike("user_email", email.toLowerCase().trim())
+        .eq("user_email", email.toLowerCase().trim())
         .maybeSingle();
 
       if (hlErr || !hlRow) {
@@ -301,11 +320,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "This approved highlight has expired (exceeded 3 days)." }, { status: 400 });
       }
 
-      const days = hlRow.campaign_days || 1;
-      const rate = hlRow.is_bidded && hlRow.bid_price ? Number(hlRow.bid_price) : 1000;
-      const expectedHlCost = days * rate;
+      const days = Math.max(1, Math.min(90, Math.floor(Number(hlRow.campaign_days || 1))));
+      const floorRateNgn = getCanonicalHighlightFloorRateNgn(userCountry);
+      const isUsdUser = getUserCurrency(userCountry) === "USD";
+      const storedRate = hlRow.is_bidded && hlRow.bid_price ? Number(hlRow.bid_price) : floorRateNgn;
+      const rateNgn = Math.max(
+        floorRateNgn,
+        isUsdUser && storedRate < 500 ? convertUsdToNgn(storedRate) : storedRate
+      );
+      const expectedHlCost = Math.round(days * rateNgn);
       const clientAmount = parseFloat(amount);
-      if (Math.abs(clientAmount - expectedHlCost) > 1) {
+      const matchesDirect = Math.abs(clientAmount - expectedHlCost) <= 1;
+      const matchesFromUsd = isUsdUser && Math.abs(convertUsdToNgn(clientAmount) - expectedHlCost) <= 750;
+      if (!Number.isFinite(clientAmount) || (!matchesDirect && !matchesFromUsd)) {
         return NextResponse.json({ error: "Cost validation mismatch." }, { status: 400 });
       }
       verifiedAmount = expectedHlCost;
@@ -340,18 +367,37 @@ export async function POST(req: NextRequest) {
       narration: `Payment for ${type.replace("_", " ")}`,
     });
 
-    // Insert pending payment record
+    // Insert pending payment record bound strictly to paymentData.reference (C-01)
+    const boundMetadata = {
+      ...paymentMetadata,
+      gateway_reference: paymentData.reference,
+    };
     const { error: insertError } = await supabaseAdmin.from("payments").insert({
-      user_email: email,
+      user_email: email.toLowerCase().trim(),
       reference: paymentData.reference,
+      gateway_reference: paymentData.reference,
       amount: verifiedAmount,
       status: "pending",
       type,
       description: `Payment for ${type.replace("_", " ")}`,
-      metadata: paymentMetadata,
+      metadata: boundMetadata,
     });
 
-    if (insertError) {
+    if (insertError && String(insertError.message || "").includes("gateway_reference")) {
+      const { error: fallbackInsertErr } = await supabaseAdmin.from("payments").insert({
+        user_email: email.toLowerCase().trim(),
+        reference: paymentData.reference,
+        amount: verifiedAmount,
+        status: "pending",
+        type,
+        description: `Payment for ${type.replace("_", " ")}`,
+        metadata: boundMetadata,
+      });
+      if (fallbackInsertErr) {
+        console.error("❌ Error inserting payment record:", fallbackInsertErr);
+        return NextResponse.json({ error: fallbackInsertErr.message }, { status: 500 });
+      }
+    } else if (insertError) {
       console.error("❌ Error inserting payment record:", insertError);
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }

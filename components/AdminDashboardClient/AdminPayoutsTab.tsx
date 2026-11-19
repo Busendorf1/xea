@@ -346,11 +346,18 @@ export default function AdminPayoutsTab() {
     });
   };
 
+  const bulkEligiblePayouts = payouts.filter(
+    (p) => p.status === "queued" || p.status === "pending"
+  );
+
   const toggleSelectAll = () => {
-    if (selectedRefs.size === payouts.length && payouts.length > 0) {
+    if (
+      bulkEligiblePayouts.length > 0 &&
+      bulkEligiblePayouts.every((p) => selectedRefs.has(p.reference))
+    ) {
       setSelectedRefs(new Set());
     } else {
-      setSelectedRefs(new Set(payouts.map((p) => p.reference)));
+      setSelectedRefs(new Set(bulkEligiblePayouts.map((p) => p.reference)));
     }
   };
 

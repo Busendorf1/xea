@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { checkRateLimit, getClientIp } from "@/lib/edgeRateLimit";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { invalidateUserNotificationCaches } from "@/lib/notifications/notificationCache";
 import {
   hashWalletPinAsync,
   verifyWalletPinAsync,
@@ -104,6 +106,21 @@ export async function GET(req: NextRequest) {
     }
     const emailLower = email.toLowerCase().trim();
 
+    // Per-user + IP rate limiting to prevent PIN brute-forcing and reset flooding
+    const ip = getClientIp(req);
+    const rl = await checkRateLimit(req, {
+      limit: 12,
+      windowSeconds: 60,
+      identifier: `${emailLower}:${ip}`,
+      identifierPrefix: "wallet_pin",
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many Wallet PIN requests. Please wait a minute and try again." },
+        { status: 429 }
+      );
+    }
+
     const { user, error } = await fetchUserForPin(emailLower);
     if (error) {
       return NextResponse.json({ hasPin: false });
@@ -123,6 +140,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const emailLower = email.toLowerCase().trim();
+
+    // Per-user + IP rate limiting to prevent PIN brute-forcing and reset flooding
+    const ip = getClientIp(req);
+    const rl = await checkRateLimit(req, {
+      limit: 12,
+      windowSeconds: 60,
+      identifier: `${emailLower}:${ip}`,
+      identifierPrefix: "wallet_pin",
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many Wallet PIN requests. Please wait a minute and try again." },
+        { status: 429 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "").trim().toLowerCase();
@@ -335,6 +367,20 @@ export async function POST(req: NextRequest) {
     // 4. RESET FORGOTTEN PIN (Verify Registered Phone Number + Account Email)
     // -------------------------------------------------------------------------
     if (action === "reset") {
+      // Stricter rate limit specifically on PIN reset (5 attempts / 15 min)
+      const resetRl = await checkRateLimit(req, {
+        limit: 5,
+        windowSeconds: 900,
+        identifier: emailLower,
+        identifierPrefix: "wallet_pin_reset_rl",
+      });
+      if (!resetRl.allowed) {
+        return NextResponse.json(
+          { error: "Too many PIN reset requests. Please try again in 15 minutes." },
+          { status: 429 }
+        );
+      }
+
       const confirmEmail = String(body?.confirmEmail || "")
         .toLowerCase()
         .trim();
@@ -420,6 +466,7 @@ export async function POST(req: NextRequest) {
           read: false,
           is_global: false,
         });
+        await invalidateUserNotificationCaches(emailLower).catch(() => {});
       } catch {
         // Non-blocking notification insert
       }

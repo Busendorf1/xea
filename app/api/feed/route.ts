@@ -1,5 +1,6 @@
 import { transformMediaUrlsToCdn } from "@/lib/utils/cdnUrl";
 import { NextRequest, NextResponse } from "next/server";
+import * as authHelper from "@/lib/authHelper";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
 import { isExemptFromBarriersAndInactivity } from "../../../lib/adminHelper";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
@@ -34,7 +35,34 @@ let rpcGetFeedBrokenUntil = 0;
 
 export async function GET(req: NextRequest) {
   try {
-    let email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    let email: string | null = null;
+    let getEmailWithBlockInfoFn: typeof authHelper.getAuthenticatedEmailWithBlockInfo | undefined;
+    try {
+      getEmailWithBlockInfoFn = authHelper.getAuthenticatedEmailWithBlockInfo;
+    } catch {}
+    if (typeof getEmailWithBlockInfoFn === "function") {
+      const authRes = await getEmailWithBlockInfoFn(req, {
+        allowMobileHeader: true,
+      });
+      if (authRes.blocked) {
+        return NextResponse.json(
+          {
+            code: "ACCOUNT_BLOCKED",
+            blocked: true,
+            blockType: authRes.blocked.blockType || "permanent",
+            blockedUntil: authRes.blocked.blockedUntil ?? null,
+            reason: authRes.blocked.reason ?? null,
+            error:
+              authRes.blocked.message ||
+              "Your account is currently blocked from accessing Paayh.",
+          },
+          { status: 403 }
+        );
+      }
+      email = authRes.email;
+    } else {
+      email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    }
     if (!email && process.env.NODE_ENV !== "production") {
       const devHeader = req.headers.get("x-user-email");
       if (devHeader && devHeader.includes("@")) {
@@ -61,8 +89,10 @@ export async function GET(req: NextRequest) {
 
     const now = new Date();
     const servedAt = Date.now();
-    const limit = parseInt(searchParams.get("limit") || "15", 10);
-    const offset = parseInt(searchParams.get("offset") || "0", 10);
+    const rawLimit = parseInt(searchParams.get("limit") || "15", 10);
+    const rawOffset = parseInt(searchParams.get("offset") || "0", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, rawLimit)) : 15;
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.min(500, rawOffset)) : 0;
     const sharedAdId = searchParams.get("sharedAdId");
 
     const emailKey = email.toLowerCase().trim();

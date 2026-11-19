@@ -363,8 +363,38 @@ function AdCard({
       fetch("/api/campaigns/click", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adId: ad.id, clickType }),
-      }).catch((err) => console.error("Failed to log CTA click:", err));
+        body: JSON.stringify({
+          adId: ad.id,
+          clickType,
+          token: ad.verification_token || (ad as any)._token,
+          servedAt: ad.served_at || (ad as any)._served_at,
+        }),
+      })
+        .then((res) => (res.ok ? res.json().catch(() => null) : null))
+        .then((data) => {
+          if (!data || typeof window === "undefined") return;
+          if (typeof data.clicksCount === "number") {
+            window.dispatchEvent(
+              new CustomEvent("xea:click-increment", {
+                detail: {
+                  delta: 0,
+                  totalClicks: data.clicksCount,
+                  isMonetized: data.isMonetized,
+                  atwTier: data.atwTier,
+                },
+              })
+            );
+          }
+          if (
+            data.milestoneNotified ||
+            data.monetizationUnlocked ||
+            data.atwUpgraded ||
+            (typeof data.clicksCount === "number" && data.clicksCount >= 500 && data.clicksCount % 500 === 0)
+          ) {
+            window.dispatchEvent(new CustomEvent("xea:notifications-refresh"));
+          }
+        })
+        .catch((err) => console.error("Failed to log CTA click:", err));
 
       if (isPlatformPost && !seenAds.includes(ad.id)) {
         onMarkSeen(ad).catch(() => {});

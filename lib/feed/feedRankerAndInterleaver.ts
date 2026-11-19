@@ -121,71 +121,73 @@ export function buildOrderedCandidateFeed(params: BuildFeedCandidatesParams): {
     }
   });
 
-  // Sort both fresh & retargeted lists by bid_price DESC (no media bias)
-  freshAdsList.sort((a, b) => getEffectiveBidPrice(b) - getEffectiveBidPrice(a));
-  retargetedAdsList.sort((a, b) => getEffectiveBidPrice(b) - getEffectiveBidPrice(a));
+  // Helper: 3:1 Bidded-to-Floor auction interleaver with advertiser deduplication
+  const interleaveBiddedAndFloor = (sourceList: Ad[]): Ad[] => {
+    const biddedTier: Ad[] = [];
+    const standardTier: Ad[] = [];
 
-  // Space retargeted ads with at least 3 fresh items between retargeted impressions
-  const candidateAds: Ad[] = [];
+    sourceList.forEach((ad: Ad) => {
+      const isBiddedAd =
+        (ad as any).is_bidded ||
+        ((ad as any).bid_price && Number((ad as any).bid_price) > Number(ad.cost_per_impression || 0));
+      if (isBiddedAd) {
+        biddedTier.push(ad);
+      } else {
+        standardTier.push(ad);
+      }
+    });
+
+    biddedTier.sort((a, b) => getEffectiveBidPrice(b) - getEffectiveBidPrice(a));
+    standardTier.sort((a, b) => getEffectiveBidPrice(b) - getEffectiveBidPrice(a));
+
+    const out: Ad[] = [];
+    let bIdx = 0;
+    let sIdx = 0;
+
+    while (bIdx < biddedTier.length || sIdx < standardTier.length) {
+      for (let k = 0; k < 3 && bIdx < biddedTier.length; k++) {
+        const candidate = biddedTier[bIdx++];
+        if (
+          out.length > 0 &&
+          out[out.length - 1].user_email === candidate.user_email &&
+          bIdx < biddedTier.length
+        ) {
+          const nextCandidate = biddedTier[bIdx];
+          biddedTier[bIdx] = candidate;
+          out.push(nextCandidate);
+          bIdx++;
+        } else {
+          out.push(candidate);
+        }
+      }
+      if (sIdx < standardTier.length) {
+        out.push(standardTier[sIdx++]);
+      }
+    }
+    return out;
+  };
+
+  // Interleave 3:1 bidded/floor WITHIN fresh and retargeted tiers FIRST, then preserve 3-fresh-to-1-retargeted spacing (M-07)
+  const orderedFresh = interleaveBiddedAndFloor(freshAdsList);
+  const orderedRetargeted = interleaveBiddedAndFloor(retargetedAdsList);
+
+  const interleavedAds: Ad[] = [];
   let fIdx = 0;
   let rIdx = 0;
   let itemsSinceLastRetarget = 3;
 
-  while (fIdx < freshAdsList.length || rIdx < retargetedAdsList.length) {
+  while (fIdx < orderedFresh.length || rIdx < orderedRetargeted.length) {
     let freshAdded = 0;
-    while (freshAdded < 3 && fIdx < freshAdsList.length) {
-      candidateAds.push(freshAdsList[fIdx++]);
+    while (freshAdded < 3 && fIdx < orderedFresh.length) {
+      interleavedAds.push(orderedFresh[fIdx++]);
       itemsSinceLastRetarget++;
       freshAdded++;
     }
-    if (rIdx < retargetedAdsList.length) {
-      if (itemsSinceLastRetarget >= 3 || fIdx >= freshAdsList.length) {
-        candidateAds.push(retargetedAdsList[rIdx++]);
+    if (rIdx < orderedRetargeted.length) {
+      if (itemsSinceLastRetarget >= 3 || fIdx >= orderedFresh.length) {
+        interleavedAds.push(orderedRetargeted[rIdx++]);
         itemsSinceLastRetarget = 0;
       }
-    }
-  }
-
-  // Tiered Priority Auction Interleaver ordered by bid_price DESC (never hasMedia)
-  const biddedTier: Ad[] = [];
-  const standardTier: Ad[] = [];
-
-  candidateAds.forEach((ad: Ad) => {
-    const isBiddedAd =
-      (ad as any).is_bidded ||
-      ((ad as any).bid_price && Number((ad as any).bid_price) > Number(ad.cost_per_impression || 0));
-    if (isBiddedAd) {
-      biddedTier.push(ad);
-    } else {
-      standardTier.push(ad);
-    }
-  });
-
-  biddedTier.sort((a, b) => getEffectiveBidPrice(b) - getEffectiveBidPrice(a));
-  standardTier.sort((a, b) => getEffectiveBidPrice(b) - getEffectiveBidPrice(a));
-
-  const interleavedAds: Ad[] = [];
-  let bIdx = 0;
-  let sIdx = 0;
-
-  while (bIdx < biddedTier.length || sIdx < standardTier.length) {
-    for (let k = 0; k < 3 && bIdx < biddedTier.length; k++) {
-      const candidate = biddedTier[bIdx++];
-      if (
-        interleavedAds.length > 0 &&
-        interleavedAds[interleavedAds.length - 1].user_email === candidate.user_email &&
-        bIdx < biddedTier.length
-      ) {
-        const nextCandidate = biddedTier[bIdx];
-        biddedTier[bIdx] = candidate;
-        interleavedAds.push(nextCandidate);
-        bIdx++;
-      } else {
-        interleavedAds.push(candidate);
-      }
-    }
-    if (sIdx < standardTier.length) {
-      interleavedAds.push(standardTier[sIdx++]);
     }
   }
 

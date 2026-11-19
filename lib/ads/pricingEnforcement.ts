@@ -1,6 +1,7 @@
 import {
   applyProductSalesSubsidy,
   buildCandidateSubscriberDomains,
+  convertUsdToNgn,
   extractNormalizedHostname,
   getLocalizedAdFloorRate,
   getUserCurrency,
@@ -19,6 +20,12 @@ export interface AdPricingValidationInput {
   userCountry?: string | null;
   isAdmin?: boolean;
   /**
+   * When true, `costPerImpression` / `bidPrice` are already stored canonically in NGN
+   * (e.g. re-validating an `adds` row during `publish_ad`), while `clientTotalCost` may
+   * arrive either in canonical NGN or localized USD.
+   */
+  storedInCanonicalNgn?: boolean;
+  /**
    * Boost routes may encounter legacy `addsactive` rows without `ad_type`.
    * When provided, fallback category is used ONLY if `adType` is empty/null.
    */
@@ -35,6 +42,10 @@ export type AdPricingValidationResult =
       expectedFloorRate: number;
       effectiveRate: number;
       computedTotalCost: number;
+      /** Authoritative canonical NGN rate for DB storage, payout gateways, and earner rewards */
+      canonicalRateNgn: number;
+      /** Authoritative canonical NGN total for DB storage, wallet deductions, and payment gateways */
+      canonicalTotalCostNgn: number;
       subsidyQualified: boolean;
       isBidded: boolean;
       isAdminFreePost: boolean;
@@ -156,6 +167,8 @@ export async function validateAndComputeAdPricing(
       expectedFloorRate: 0,
       effectiveRate: 0,
       computedTotalCost: 0,
+      canonicalRateNgn: 0,
+      canonicalTotalCostNgn: 0,
       subsidyQualified: false,
       isBidded: false,
       isAdminFreePost: true,
@@ -192,40 +205,61 @@ export async function validateAndComputeAdPricing(
     ? applyProductSalesSubsidy(baseFloorRate)
     : baseFloorRate;
 
+  const expectedFloorRateNgn =
+    currency === "USD" ? convertUsdToNgn(expectedFloorRate) : expectedFloorRate;
+
+  // When re-validating a persisted `adds` row stored canonically in NGN, compare against NGN floor
+  const compareInNgn = Boolean(input.storedInCanonicalNgn) || currency === "NGN";
+  const comparisonFloor = compareInNgn ? expectedFloorRateNgn : expectedFloorRate;
+  const comparisonCurrency = compareInNgn ? "NGN" : currency;
+
   const effectiveRate =
-    requestedRate !== null ? requestedRate : expectedFloorRate;
+    requestedRate !== null ? requestedRate : comparisonFloor;
 
   // Reject any below-floor CPI or bid price tampering (tiny epsilon for float representation)
-  const rateEpsilon = currency === "USD" ? 0.0005 : 0.001;
+  const rateEpsilon = comparisonCurrency === "USD" ? 0.0005 : 0.001;
   if (
     !Number.isFinite(effectiveRate) ||
     effectiveRate <= 0 ||
-    effectiveRate < expectedFloorRate - rateEpsilon
+    effectiveRate < comparisonFloor - rateEpsilon
   ) {
     return {
       ok: false,
       status: 400,
-      error: `Rate ${effectiveRate} is below the ${rawCategory} floor of ${expectedFloorRate} ${currency} per attention.`,
+      error: `Rate ${effectiveRate} is below the ${rawCategory} floor of ${comparisonFloor} ${comparisonCurrency} per attention.`,
     };
   }
 
-  if (parsedCpi !== null && parsedCpi < expectedFloorRate - rateEpsilon) {
+  if (parsedCpi !== null && parsedCpi < comparisonFloor - rateEpsilon) {
     return {
       ok: false,
       status: 400,
-      error: `Cost per attention ${parsedCpi} is below the ${rawCategory} floor of ${expectedFloorRate} ${currency}.`,
+      error: `Cost per attention ${parsedCpi} is below the ${rawCategory} floor of ${comparisonFloor} ${comparisonCurrency}.`,
     };
   }
 
   const computedTotalCost = computeServerTotalCost(
     effectiveRate,
     parsedImpressions,
-    currency
+    comparisonCurrency
   );
 
+  const canonicalRateNgn =
+    compareInNgn ? Number(effectiveRate.toFixed(2)) : convertUsdToNgn(effectiveRate);
+  const canonicalTotalCostNgn =
+    compareInNgn
+      ? Math.round(canonicalRateNgn * parsedImpressions)
+      : Math.round(convertUsdToNgn(computedTotalCost));
+
   if (parsedClientTotal !== null) {
-    const tolerance = currency === "USD" ? 0.51 : 1;
-    if (Math.abs(parsedClientTotal - computedTotalCost) > tolerance) {
+    const tolLocal = comparisonCurrency === "USD" ? 0.51 : 1;
+    const matchesDirect = Math.abs(parsedClientTotal - computedTotalCost) <= tolLocal;
+    const matchesNgnFromUsd =
+      currency === "USD" &&
+      Math.abs(convertUsdToNgn(parsedClientTotal) - canonicalTotalCostNgn) <= Math.max(760, parsedImpressions * 0.75);
+    const matchesCanonicalNgn = Math.abs(parsedClientTotal - canonicalTotalCostNgn) <= 1;
+
+    if (!matchesDirect && !matchesNgnFromUsd && !matchesCanonicalNgn) {
       return {
         ok: false,
         status: 400,
@@ -243,8 +277,10 @@ export async function validateAndComputeAdPricing(
     expectedFloorRate,
     effectiveRate,
     computedTotalCost,
+    canonicalRateNgn,
+    canonicalTotalCostNgn,
     subsidyQualified,
-    isBidded: isBidded || effectiveRate > expectedFloorRate + rateEpsilon,
+    isBidded: isBidded || effectiveRate > comparisonFloor + rateEpsilon,
     isAdminFreePost: false,
   };
 }

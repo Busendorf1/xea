@@ -65,9 +65,9 @@ export async function GET(req: NextRequest) {
       { count: reportsCnt },
       { count: ticketsCnt },
     ] = await Promise.all([
-      supabaseAdmin.from("users").select("*", { count: "exact", head: true }),
-      supabaseAdmin.from("users").select("*", { count: "exact", head: true }).or("monetized.eq.yes,monetized.eq.true"),
-      supabaseAdmin.from("users").select("*", { count: "exact", head: true }).gt("suspended_until", new Date().toISOString()),
+      supabaseAdmin.from("users").select("*", { count: "estimated", head: true }),
+      supabaseAdmin.from("users").select("*", { count: "estimated", head: true }).or("monetized.eq.yes,monetized.eq.true"),
+      supabaseAdmin.from("users").select("*", { count: "estimated", head: true }).gt("suspended_until", new Date().toISOString()),
       supabaseAdmin.from("adds").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("addsactive").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("news").select("*", { count: "exact", head: true }),

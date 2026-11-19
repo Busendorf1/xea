@@ -3,18 +3,22 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { PayoutProvider } from "@/lib/payment/payoutProvider";
 import redisConnection, { isRedisReady } from "@/lib/redis";
-import { spendWalletBalanceAtomic } from "@/lib/services/payoutSettlementService";
+import { spendWalletBalanceAtomic, refundWalletDeductionAtomic } from "@/lib/services/payoutSettlementService";
 import { invalidateCachedProfile, invalidateCachedUserCampaigns } from "@/lib/utils/cache";
 import { verifyTransactionPin, resolveStoredWalletPinHash } from "@/lib/security/walletPinHelper";
 import { bridgeMobilePaymentCallbackUrl } from "../../../../lib/payment/paymentLookup";
 import {
   applyProductSalesSubsidy,
+  convertUsdToNgn,
+  getCanonicalHighlightFloorRateNgn,
   getLocalizedAdFloorRate,
   getUserCurrency,
   MIN_AD_ATTENTIONS,
 } from "../../../../lib/utils/currency";
 import { isVerifiedSubscriberProductLink } from "../../../../lib/ads/pricingEnforcement";
 import { assessAdDeliveryCapacity, isConcreteTargetingValue } from "../../../../lib/ads/capacityEstimator";
+import { syncBiddedAdActivation } from "../../../../lib/ads/biddedAdsSync";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -151,6 +155,28 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // 1b. Security (M-02): Block boosting rejected, pending, or unpaid drafts in `adds`/`news`
+    if (sourceTable === "adds" || sourceTable === "news") {
+      const stmtUpper = String(ad.admin_statement || "").toUpperCase().trim();
+      const statusLower = String(ad.status || "").toLowerCase().trim();
+      const payLower = String(ad.payment_status || "").toLowerCase().trim();
+      if (
+        stmtUpper.startsWith("REJECTED:") ||
+        stmtUpper.startsWith("STATUS:") ||
+        statusLower === "pending_review" ||
+        statusLower === "rejected" ||
+        statusLower === "approved_pending_publish" ||
+        payLower === "unpaid" ||
+        payLower === "pending" ||
+        !ad.approved_at
+      ) {
+        return NextResponse.json(
+          { error: "Boosting Unavailable: Only approved, paid, live (or completed) campaigns can be boosted." },
+          { status: 400 }
+        );
+      }
+    }
+
     // 2. Check if ad has an admin statement (deactivated or flagged by admin for moderation)
     // NOTE: APPROVED:, STATUS:, and REJECTED: prefixes are system workflow timestamps, NOT admin pause penalties!
     const isPausedByAdmin = Boolean(
@@ -175,20 +201,22 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    let userCountry: string | null = null;
+    try {
+      const { data: userRow } = await supabaseAdmin
+        .from("users")
+        .select("country")
+        .eq("email", emailLower)
+        .maybeSingle();
+      userCountry = userRow?.country || null;
+    } catch {
+      // Safe fallback to NGN if user profile mock does not expose country
+    }
+    const isUsdUser = getUserCurrency(userCountry) === "USD";
+    const highlightFloorNgn = getCanonicalHighlightFloorRateNgn(userCountry);
+
     let adFloorRate = 25;
     if (!isHighlight) {
-      let userCountry: string | null = null;
-      try {
-        const { data: userRow } = await supabaseAdmin
-          .from("users")
-          .select("country")
-          .ilike("email", emailLower)
-          .maybeSingle();
-        userCountry = userRow?.country || null;
-      } catch {
-        // Safe fallback to NGN if user profile mock does not expose country
-      }
-
       const adCategory = String(
         ad.ad_type ||
           (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) ||
@@ -196,18 +224,22 @@ export async function POST(req: NextRequest) {
       )
         .trim()
         .toLowerCase();
-      const baseFloor = getLocalizedAdFloorRate(adCategory, userCountry);
+      const baseFloorLocal = getLocalizedAdFloorRate(adCategory, userCountry);
       const subsidyQualified =
         adCategory === "product_sales"
           ? await isVerifiedSubscriberProductLink(supabaseAdmin, ad.product_cta_link)
           : false;
-      adFloorRate = subsidyQualified ? applyProductSalesSubsidy(baseFloor) : baseFloor;
+      const expectedFloorLocal = subsidyQualified ? applyProductSalesSubsidy(baseFloorLocal) : baseFloorLocal;
+      adFloorRate = isUsdUser ? convertUsdToNgn(expectedFloorLocal) : expectedFloorLocal;
 
       const requestedRaw = newCostPerImpression ?? newBidPrice;
       if (requestedRaw !== undefined && requestedRaw !== null && requestedRaw !== "") {
-        const parsedRequested = Number(requestedRaw);
-        const eps = getUserCurrency(userCountry) === "USD" ? 0.0005 : 0.001;
-        if (!Number.isFinite(parsedRequested) || parsedRequested < adFloorRate - eps) {
+        const parsedRequestedRaw = Number(requestedRaw);
+        const parsedRequestedNgn =
+          isUsdUser && parsedRequestedRaw > 0 && parsedRequestedRaw < 50
+            ? convertUsdToNgn(parsedRequestedRaw)
+            : parsedRequestedRaw;
+        if (!Number.isFinite(parsedRequestedNgn) || parsedRequestedNgn < adFloorRate - 0.01) {
           return NextResponse.json(
             { error: `Boost rate cannot be below category floor of ${adFloorRate}.` },
             { status: 400 }
@@ -217,12 +249,20 @@ export async function POST(req: NextRequest) {
     }
 
     const currentCost = isHighlight
-      ? (ad.is_bidded && ad.bid_price ? Number(ad.bid_price) : 1000)
+      ? (ad.is_bidded && ad.bid_price ? Math.max(highlightFloorNgn, Number(ad.bid_price)) : highlightFloorNgn)
       : Math.max(adFloorRate, Number(ad.cost_per_impression || adFloorRate));
 
-    const requestedRate = newCostPerImpression ?? newBidPrice;
-    const effectiveCost = requestedRate && Number(requestedRate) > currentCost
-      ? Number(requestedRate)
+    const requestedRateRaw = newCostPerImpression ?? newBidPrice;
+    const requestedRateNgn =
+      requestedRateRaw !== undefined && requestedRateRaw !== null && requestedRateRaw !== ""
+        ? isUsdUser && !isHighlight && Number(requestedRateRaw) > 0 && Number(requestedRateRaw) < 50
+          ? convertUsdToNgn(Number(requestedRateRaw))
+          : isUsdUser && isHighlight && Number(requestedRateRaw) > 0 && Number(requestedRateRaw) < 500
+          ? convertUsdToNgn(Number(requestedRateRaw))
+          : Number(requestedRateRaw)
+        : undefined;
+    const effectiveCost = requestedRateNgn && requestedRateNgn > currentCost
+      ? requestedRateNgn
       : currentCost;
 
     if (addDaysNum > 0 && Number(ad.campaign_days || 1) + addDaysNum > 90) {
@@ -302,8 +342,8 @@ export async function POST(req: NextRequest) {
     const totalCost = isHighlight
       ? Number((
           (addDaysNum > 0 ? addDaysNum * effectiveCost : 0) +
-          (requestedRate && Number(requestedRate) > currentCost
-            ? (Number(requestedRate) - currentCost) * Number(ad.campaign_days || 1)
+          (effectiveCost > currentCost
+            ? (effectiveCost - currentCost) * Number(ad.campaign_days || 1)
             : 0)
         ).toFixed(2))
       : Number((
@@ -331,6 +371,10 @@ export async function POST(req: NextRequest) {
     } else {
       updatePayload.cost_per_impression = effectiveCost;
       updatePayload.completed_at = null; // Clear completed flag if topped up!
+      if (effectiveCost > adFloorRate) {
+        updatePayload.bid_price = Math.max(Number(ad.bid_price || 0), effectiveCost);
+        updatePayload.is_bidded = true;
+      }
       if (addImpressionsNum > 0) {
         updatePayload.impressions = Number(ad.impressions || MIN_AD_ATTENTIONS) + addImpressionsNum;
       }
@@ -383,21 +427,20 @@ export async function POST(req: NextRequest) {
 
       // Update bidded_ads and Redis ranking whenever priority bid exceeds category floor
       if (!isHighlight && effectiveCost > adFloorRate) {
-        try {
-          const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
-          await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", adId);
-          await supabaseAdmin.from("bidded_ads").insert({
-            ad_id: adId,
-            user_email: emailLower,
-            industry: adIndustry,
-            bid_price: effectiveCost,
-            is_active: true,
-          });
-          await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, adId).catch(() => {});
-          await redisConnection.del("attention:market_rates").catch(() => {});
-        } catch (bidErr) {
-          console.warn("⚠️ bidded_ads update notice in boost:", bidErr);
-        }
+        await syncBiddedAdActivation(
+          supabaseAdmin,
+          {
+            adId,
+            userEmail: emailLower,
+            adType: ad.ad_type,
+            industry: ad.industry,
+            costPerImpression: effectiveCost,
+            bidPrice: effectiveCost,
+            isBidded: true,
+            isAdminPost: Boolean(ad.is_admin_post),
+          },
+          { redis: redisConnection }
+        );
       }
 
       // Immediately invalidate L1 and L2 feed & highlight caches so the boost priority takes effect in 0ms
@@ -416,6 +459,13 @@ export async function POST(req: NextRequest) {
 
     // Handle Payment Method
     if (totalCost === 0) {
+      // Security (M-02): Completed campaigns MUST pay for additional impressions to reactivate (never free!)
+      if (sourceTable === "completed_ads") {
+        return NextResponse.json(
+          { error: "Completed campaigns require adding paid impressions to reactivate." },
+          { status: 400 }
+        );
+      }
       // Free targeting/specs update or priority rate change without adding cost!
       await applyCampaignDatabaseUpdates();
       await invalidateCachedUserCampaigns(emailLower).catch(() => {});
@@ -460,7 +510,7 @@ export async function POST(req: NextRequest) {
 
       walletLockKey = `lock:wallet:${emailLower}`;
       if (isRedisReady()) {
-        const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
+        const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => null);
         if (!acquired) {
           return NextResponse.json(
             { error: "Another wallet transaction is currently in progress. Please wait a moment." },
@@ -485,6 +535,18 @@ export async function POST(req: NextRequest) {
       }
 
       const newBalance = spendRes.newBalance ?? 0;
+
+      // Update tables and bidded_ads with atomic refund rollback on DB failure (M-02)
+      try {
+        await applyCampaignDatabaseUpdates();
+      } catch (dbApplyErr: any) {
+        console.error("❌ Boost DB apply failed; rolling back wallet deduction:", dbApplyErr);
+        await refundWalletDeductionAtomic(emailLower, totalCost, "boost_db_apply_failed", reference).catch(() => {});
+        return NextResponse.json(
+          { error: "Failed to apply campaign boost. Your wallet balance has been restored." },
+          { status: 500 }
+        );
+      }
 
       // Log wallet transaction in payments table
       try {
@@ -511,9 +573,6 @@ export async function POST(req: NextRequest) {
       } catch (payLogErr) {
         console.warn("⚠️ Boost payment log notice:", payLogErr);
       }
-
-      // Update tables and bidded_ads
-      await applyCampaignDatabaseUpdates();
 
       await invalidateCachedProfile(emailLower);
       await invalidateCachedUserCampaigns(emailLower).catch(() => {});

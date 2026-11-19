@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
-import { dispatchFeedDropWebhook } from "@/lib/webhookDispatcher";
+import supabaseAdmin from "../utils/dbAdmin";
+import { purgeStorageMedia } from "../utils/storageCleaner";
+import { dispatchFeedDropWebhook, dispatchNotificationWebhook } from "../webhookDispatcher";
+import { invalidateUserNotificationCaches } from "../notifications/notificationCache";
 import {
   ALLOWED_AD_EDIT_FIELDS,
   ALLOWED_DIRECT_AD_FIELDS,
@@ -59,12 +60,12 @@ export async function handleAdminAdCampaignAction(
       await supabaseAdmin.from("adds").delete().eq("id", id);
 
       const notifRow = {
-        user_email: pendingAd.user_email,
+        user_email: String(pendingAd.user_email || "").toLowerCase().trim(),
         title: "Ad Edit Live",
         message: "Your ad edit was approved and applied to your live campaign.",
       };
       await supabaseAdmin.from("notifications").insert([notifRow]);
-      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      await invalidateUserNotificationCaches(notifRow.user_email);
       dispatchNotificationWebhook(notifRow).catch(() => {});
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
@@ -84,12 +85,12 @@ export async function handleAdminAdCampaignAction(
       .eq("id", id);
 
     const notifRow = {
-      user_email: pendingAd.user_email,
+      user_email: String(pendingAd.user_email || "").toLowerCase().trim(),
       title: "Ad Approved",
       message: "Your ad is approved! Complete payment in My Ads within 3 days to go live.",
     };
     await supabaseAdmin.from("notifications").insert([notifRow]);
-    const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+    await invalidateUserNotificationCaches(notifRow.user_email);
     dispatchNotificationWebhook(notifRow).catch(() => {});
 
     await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingAd.user_email);
@@ -123,13 +124,14 @@ export async function handleAdminAdCampaignAction(
       })
       .eq("id", id);
 
-    await supabaseAdmin.from("notifications").insert([
-      {
-        user_email: adToReject.user_email,
-        title: "Ad Revision Requested",
-        message: `Admin feedback: "${feedbackReason}". Please visit My Ads to edit and re-submit your campaign.`,
-      },
-    ]);
+    const rejectNotif = {
+      user_email: String(adToReject.user_email || "").toLowerCase().trim(),
+      title: "Ad Revision Requested",
+      message: `Admin feedback: "${feedbackReason}". Please visit My Ads to edit and re-submit your campaign.`,
+    };
+    await supabaseAdmin.from("notifications").insert([rejectNotif]);
+    await invalidateUserNotificationCaches(rejectNotif.user_email);
+    dispatchNotificationWebhook(rejectNotif).catch(() => {});
 
     await invalidateAdminCampaignCache(adminEmail, action, id, feedbackReason, payload, adToReject.user_email);
     return NextResponse.json({ success: true, message: "Feedback dropped. Advertiser can now review and adjust the campaign." });
@@ -205,12 +207,20 @@ export async function handleAdminAdCampaignAction(
       updateData.admin_statement = String(payload.statement);
     }
 
-    await Promise.all([
-      supabaseAdmin.from("addsactive").update(updateData).eq("id", id),
-      supabaseAdmin.from("adds").update(updateData).eq("id", id),
+    const [activeRes, pendingRes] = await Promise.all([
+      supabaseAdmin.from("addsactive").update(updateData).eq("id", id).select("user_email").maybeSingle(),
+      supabaseAdmin.from("adds").update(updateData).eq("id", id).select("user_email").maybeSingle(),
     ]);
 
-    await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload);
+    const targetEmail = activeRes?.data?.user_email || pendingRes?.data?.user_email;
+    await invalidateAdminCampaignCache(
+      adminEmail,
+      action,
+      id,
+      payload?.statement || payload?.reason,
+      payload,
+      targetEmail
+    );
     return NextResponse.json({ success: true, message: "Ad campaign deactivated successfully." });
   }
 
@@ -258,8 +268,8 @@ export async function handleAdminAdCampaignAction(
     }
 
     const [activeRes, pendingRes] = await Promise.all([
-      supabaseAdmin.from("addsactive").update(fieldsToUpdate).eq("id", id),
-      supabaseAdmin.from("adds").update(fieldsToUpdate).eq("id", id),
+      supabaseAdmin.from("addsactive").update(fieldsToUpdate).eq("id", id).select("user_email").maybeSingle(),
+      supabaseAdmin.from("adds").update(fieldsToUpdate).eq("id", id).select("user_email").maybeSingle(),
     ]);
 
     if (activeRes.error && pendingRes.error) {
@@ -269,14 +279,34 @@ export async function handleAdminAdCampaignAction(
       );
     }
 
-    await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, fieldsToUpdate);
+    const targetEmail = activeRes?.data?.user_email || pendingRes?.data?.user_email;
+    await invalidateAdminCampaignCache(
+      adminEmail,
+      action,
+      id,
+      payload?.statement || payload?.reason,
+      fieldsToUpdate,
+      targetEmail
+    );
     return NextResponse.json({ success: true, message: "Ad details updated successfully." });
   }
 
   if (action === "direct_post_ad") {
     if (!payload) return NextResponse.json({ error: "Payload is required" }, { status: 400 });
 
-    const cleanAd = pickAllowedFields(payload, ALLOWED_DIRECT_AD_FIELDS);
+    // Normalize legacy/frontend aliases into real public.addsactive schema columns before allowlist pick
+    const normalizedInput: Record<string, any> = {
+      ...payload,
+      ad_content: payload.ad_content ?? payload.content ?? payload.headline ?? "",
+      ad_media: payload.ad_media ?? payload.media_url ?? payload.ad_media_url ?? null,
+      ad_media_url: payload.ad_media_url ?? payload.media_url ?? payload.ad_media ?? null,
+      action_website: payload.action_website ?? payload.cta_link ?? null,
+    };
+
+    const cleanAd = pickAllowedFields(normalizedInput, ALLOWED_DIRECT_AD_FIELDS);
+    if (cleanAd.user_email) {
+      cleanAd.user_email = String(cleanAd.user_email).toLowerCase().trim();
+    }
     const adRecord = {
       ...cleanAd,
       cost_per_impression: 0,
@@ -297,8 +327,15 @@ export async function handleAdminAdCampaignAction(
     const publishedAd = insertedRows?.[0] || adRecord;
     dispatchFeedDropWebhook(publishedAd).catch(() => {});
 
-    await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, cleanAd);
-    return NextResponse.json({ success: true, message: "Ad published directly to active feed!" });
+    await invalidateAdminCampaignCache(
+      adminEmail,
+      action,
+      publishedAd?.id || id,
+      payload?.statement || payload?.reason,
+      cleanAd,
+      cleanAd.user_email
+    );
+    return NextResponse.json({ success: true, ad: publishedAd, message: "Ad published directly to active feed!" });
   }
 
   return NextResponse.json({ error: "Unhandled ad action" }, { status: 400 });

@@ -14,29 +14,46 @@ export interface CurrencyConfig {
 }
 
 export const NIGERIAN_REGIONS = [
-  "nigeria", "ng", "nga", "ngn", "lagos", "abuja", "fct", "fct-abuja",
-  "abia", "adamawa", "akwa ibom", "anambra", "bauchi", "bayelsa", "benue", "borno",
-  "cross river", "delta", "ebonyi", "edo", "ekiti", "enugu", "gombe", "imo",
-  "jigawa", "kaduna", "kano", "katsina", "kebbi", "kogi", "kwara", "nasarawa",
-  "niger", "ogun", "ondo", "osun", "oyo", "plateau", "rivers", "sokoto",
-  "taraba", "yobe", "zamfara", "port harcourt", "portharcourt", "ibadan", "calabar",
-  "asaba", "warri", "benin city", "onitsha", "aba", "uyo", "nnewi", "enugu"
+  "nigeria", "federal republic of nigeria", "ng", "nga", "ngn",
+  "lagos", "lagos state", "abuja", "fct", "fct-abuja", "fct abuja", "federal capital territory",
+  "abia", "abia state", "adamawa", "adamawa state", "akwa ibom", "akwa ibom state",
+  "anambra", "anambra state", "bauchi", "bauchi state", "bayelsa", "bayelsa state",
+  "benue", "benue state", "borno", "borno state", "cross river", "cross river state",
+  "delta", "delta state", "ebonyi", "ebonyi state", "edo", "edo state",
+  "ekiti", "ekiti state", "enugu", "enugu state", "gombe", "gombe state",
+  "imo", "imo state", "jigawa", "jigawa state", "kaduna", "kaduna state",
+  "kano", "kano state", "katsina", "katsina state", "kebbi", "kebbi state",
+  "kogi", "kogi state", "kwara", "kwara state", "nasarawa", "nasarawa state",
+  "niger state", "ogun", "ogun state", "ondo", "ondo state", "osun", "osun state",
+  "oyo", "oyo state", "plateau", "plateau state", "rivers", "rivers state",
+  "sokoto", "sokoto state", "taraba", "taraba state", "yobe", "yobe state",
+  "zamfara", "zamfara state", "port harcourt", "portharcourt", "ibadan", "calabar",
+  "asaba", "warri", "benin city", "onitsha", "aba", "uyo", "nnewi",
+  "abeokuta", "akure", "ilorin", "jos", "maiduguri", "zaria", "owerri", "awka",
+  "makurdi", "yola", "minna", "lokoja", "osogbo", "ado-ekiti", "ado ekiti",
+  "abakaliki", "lafia", "jalingo", "damaturu", "gusau", "birnin kebbi", "dutse", "yenagoa"
 ];
+
+const NIGERIAN_REGION_SET = new Set(NIGERIAN_REGIONS);
+const DEFAULT_NGN_SENTINELS = new Set(["null", "undefined", "placeholder"]);
 
 export const NGN_PER_USD = 1500; // Pegged platform reference rate: $1 USD = ₦1,500 NGN
 
 /**
- * Resolves currency code from user country
+ * Resolves currency code from user country using exact token & segment matching
+ * (never substring matching, so UK/England/Singapore/Hong Kong/Angola/Congo/Hungary/Niger stay USD).
  */
 export function getUserCurrency(country?: string | null): PlatformCurrency {
   if (!country || !country.trim()) return "NGN"; // Default fallback
-  const clean = country.trim().toLowerCase();
-  if (
-    clean === "null" ||
-    clean === "undefined" ||
-    clean === "placeholder" ||
-    NIGERIAN_REGIONS.some((r) => clean === r || clean.includes(r))
-  ) {
+  const clean = country.trim().toLowerCase().replace(/\s+/g, " ");
+  if (DEFAULT_NGN_SENTINELS.has(clean) || NIGERIAN_REGION_SET.has(clean) || /\bnigeria\b/.test(clean)) {
+    return "NGN";
+  }
+  const segments = clean
+    .split(/[,;/|]+|\s+-\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segments.some((seg) => NIGERIAN_REGION_SET.has(seg))) {
     return "NGN";
   }
   return "USD";
@@ -210,6 +227,14 @@ export function getLocalizedAdFloorRate(category: string, country?: string | nul
 export function getLocalizedHighlightFloorRate(country?: string | null): number {
   const isUSD = getUserCurrency(country) === "USD";
   return isUSD ? 3.00 : 1000.00;
+}
+
+/**
+ * Returns canonical NGN highlight floor rate ($3 -> ₦4,500 NGN for global advertisers; ₦1,000 NGN for Nigeria)
+ */
+export function getCanonicalHighlightFloorRateNgn(country?: string | null): number {
+  const isUSD = getUserCurrency(country) === "USD";
+  return isUSD ? convertUsdToNgn(3.00) : 1000.00;
 }
 
 /**

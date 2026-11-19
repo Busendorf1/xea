@@ -214,7 +214,9 @@ export function useAdminDashboardState() {
     reportedAds,
     setReportedAds,
     reportedAdsPage,
+    setReportedAdsPage,
     reportedAdsSearch,
+    setReportedAdsSearch,
     setReportedAdsCount,
     setInspectLoading,
     setInspectingAd,
@@ -287,7 +289,7 @@ export function useAdminDashboardState() {
       await alertDialog(`Ad account status updated for ${banModalUser.email}`, "Access Updated");
       setBanModalUser(null);
       setBanModalReason("");
-      dataAndSupport.fetchUsersTab(usersPage, searchQuery);
+      dataAndSupport.fetchUsersTab(usersPage, searchQuery, usersLimit, true, usersFilter);
     } catch (e: any) {
       await alertDialog(e.message || "Error updating ad account status", "Error");
     } finally {

@@ -8,7 +8,7 @@ export default function AdvertiserGuidelinesPage() {
       <main className={styles.main}>
         <h1 className={styles.title}>Paayh Advertising &amp; Content Guidelines</h1>
         <p className={styles.updatedDate}>
-          <em>Last Updated: September 12, 2026 | Effective Date: September 12, 2026</em>
+          <em>Last Updated: November 19, 2026 | Effective Date: November 19, 2026</em>
         </p>
 
         <div className={styles.noticeBox}>
@@ -184,7 +184,7 @@ export default function AdvertiserGuidelinesPage() {
           <h2 className={styles.heading}>7. Non Refundable Infrastructure Compensation Policy</h2>
           <div className={styles.warningBox}>
             <strong>STRICT NO REFUND POLICY:</strong> All payments made to Paayh for interactive feed campaigns, clicks,
-            impressions, or 24 hour Highlights represent consumable service fees for digital infrastructure
+            impressions, or configurable 1–90 day Highlights represent consumable service fees for digital infrastructure
             provisioning, algorithmic audience placement, and server capacity already consumed upon campaign launch.
             <br />
             <br />

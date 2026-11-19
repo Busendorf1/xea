@@ -20,15 +20,17 @@ export async function POST(req: NextRequest) {
   try {
     const signature = req.headers.get("x-korapay-signature");
     const bodyText = await req.text();
+    const isProd = process.env.NODE_ENV === "production";
     const candidateSecrets = [
+      process.env.KORA_LIVE_SECRET_KEY,
       process.env.KORA_SECRET_KEY,
       process.env.KORAPAY_SECRET_KEY,
       process.env.KORA_SECRET,
-      process.env.KORA_LIVE_SECRET_KEY,
-      process.env.KORA_TEST_SECRET_KEY,
+      ...(isProd ? [] : [process.env.KORA_TEST_SECRET_KEY]),
     ]
       .filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0))
-      .map((k) => k.trim());
+      .map((k) => k.trim())
+      .filter((k) => !(isProd && k.startsWith("sk_test_")));
 
     if (candidateSecrets.length === 0) {
       console.error("❌ Kora Webhook error: KORA_SECRET_KEY is missing from environment variables!");

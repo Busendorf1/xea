@@ -11,16 +11,23 @@ const formatCurrency = (amount: number | string, country?: string | null) =>
 
 export interface AdminAgentsNetworkTabProps {
   setSelectedUser: (u: any) => void;
-  handleToggleAgent?: (user: any, makeAgent: boolean) => void;
-  handleBanAgent?: (user: any, options: any) => void;
-  handleRemoveFollower?: (user: any, refereeEmail: string, followerLabel?: string) => void;
-  handleRemoveAllFollowers?: (user: any) => void;
+  handleToggleAgent?: (user: any, makeAgent: boolean) => Promise<void> | void;
+  handleBanAgent?: (user: any, options: any) => Promise<void> | void;
+  handleRemoveFollower?: (user: any, refereeEmail: string, followerLabel?: string) => Promise<void> | void;
+  handleRemoveAllFollowers?: (user: any) => Promise<void> | void;
   handleUpdateSpecialRoles?: (
     user: any,
     roles: { isCareer: boolean; isAffiliate: boolean; affiliateRole?: string | null }
-  ) => void;
+  ) => Promise<void> | void;
   userActionSubmitting?: boolean;
   activeActionId?: string | null;
+  renderPagination?: (
+    currentPage: number,
+    setCurrentPage: (p: number) => void,
+    totalCount: number,
+    limit?: number,
+    setLimit?: (l: number) => void
+  ) => React.ReactNode;
 }
 
 export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
@@ -31,6 +38,7 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
   handleUpdateSpecialRoles,
   userActionSubmitting,
   activeActionId,
+  renderPagination,
 }: AdminAgentsNetworkTabProps) {
   const [activeSubTab, setActiveSubTab] = React.useState<"agents" | "followers" | "affiliates">("agents");
 
@@ -54,10 +62,12 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
   const [affiliatesCount, setAffiliatesCount] = React.useState(0);
   const [affiliatesPage, setAffiliatesPage] = React.useState(0);
 
-  const fetchAgentsList = React.useCallback(async (query = "") => {
+  const fetchAgentsList = React.useCallback(async (query = "", fresh = false) => {
     setAgentsLoading(true);
     try {
-      const res = await fetch(`/api/admin/users?type=agents_list&search=${encodeURIComponent(query)}`);
+      const res = await fetch(
+        `/api/admin/users?type=agents_list&search=${encodeURIComponent(query)}${fresh ? "&fresh=true" : ""}`
+      );
       const data = await res.json();
       if (data?.agents) {
         setAgents(data.agents);
@@ -87,11 +97,11 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
     }
   }, []);
 
-  const fetchAffiliatesList = React.useCallback(async (page = 0, query = "") => {
+  const fetchAffiliatesList = React.useCallback(async (page = 0, query = "", fresh = false) => {
     setAffiliatesLoading(true);
     try {
       const res = await fetch(
-        `/api/admin/users?type=affiliates_list&page=${page}&limit=50&search=${encodeURIComponent(query)}`
+        `/api/admin/users?type=affiliates_list&page=${page}&limit=50&search=${encodeURIComponent(query)}${fresh ? "&fresh=true" : ""}`
       );
       const data = await res.json();
       if (data?.affiliates) {
@@ -106,15 +116,24 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
   }, []);
 
   React.useEffect(() => {
-    fetchAgentsList(agentsSearch);
+    const timer = setTimeout(() => {
+      fetchAgentsList(agentsSearch);
+    }, agentsSearch ? 250 : 0);
+    return () => clearTimeout(timer);
   }, [fetchAgentsList, agentsSearch]);
 
   React.useEffect(() => {
-    fetchFollowersList(followersPage, followersSearch, followersAgentFilter);
+    const timer = setTimeout(() => {
+      fetchFollowersList(followersPage, followersSearch, followersAgentFilter);
+    }, followersSearch ? 250 : 0);
+    return () => clearTimeout(timer);
   }, [fetchFollowersList, followersPage, followersSearch, followersAgentFilter]);
 
   React.useEffect(() => {
-    fetchAffiliatesList(affiliatesPage, affiliatesSearch);
+    const timer = setTimeout(() => {
+      fetchAffiliatesList(affiliatesPage, affiliatesSearch);
+    }, affiliatesSearch ? 250 : 0);
+    return () => clearTimeout(timer);
   }, [fetchAffiliatesList, affiliatesPage, affiliatesSearch]);
 
   const handleSwitchToAgentFollowers = (agentEmail: string) => {
@@ -135,9 +154,9 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
         <button
           type="button"
           onClick={() => {
-            fetchAgentsList(agentsSearch);
+            fetchAgentsList(agentsSearch, true);
             fetchFollowersList(followersPage, followersSearch, followersAgentFilter);
-            fetchAffiliatesList(affiliatesPage, affiliatesSearch);
+            fetchAffiliatesList(affiliatesPage, affiliatesSearch, true);
           }}
           disabled={agentsLoading || followersLoading || affiliatesLoading}
           className={`${styles.btnAction} ${styles.adminCls_40}`}
@@ -287,8 +306,10 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
                               disabled={userActionSubmitting}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                handleToggleAgent && handleToggleAgent(agent, false);
-                                setTimeout(() => fetchAgentsList(agentsSearch), 800);
+                                if (handleToggleAgent) {
+                                  await handleToggleAgent(agent, false);
+                                  await fetchAgentsList(agentsSearch, true);
+                                }
                               }}
                               className={`${styles.btnAction} ${styles.btnWarning}`}
                               title="Revoke official agent privileges"
@@ -303,8 +324,10 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
                               disabled={userActionSubmitting}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                handleToggleAgent && handleToggleAgent(agent, true);
-                                setTimeout(() => fetchAgentsList(agentsSearch), 800);
+                                if (handleToggleAgent) {
+                                  await handleToggleAgent(agent, true);
+                                  await fetchAgentsList(agentsSearch, true);
+                                }
                               }}
                               className={`${styles.btnAction} ${styles.btnSuccess}`}
                               title="Make this user an official Agent"
@@ -322,8 +345,10 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
                               disabled={userActionSubmitting}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                handleRemoveAllFollowers && handleRemoveAllFollowers(agent);
-                                setTimeout(() => fetchAgentsList(agentsSearch), 1000);
+                                if (handleRemoveAllFollowers) {
+                                  await handleRemoveAllFollowers(agent);
+                                  await fetchAgentsList(agentsSearch, true);
+                                }
                               }}
                               className={`${styles.btnAction} ${styles.btnDanger}`}
                               title="Purge / detach all followers from this agent"
@@ -459,8 +484,8 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
                           <button
                             disabled={userActionSubmitting}
                             onClick={async () => {
-                              handleRemoveFollower &&
-                                handleRemoveFollower(
+                              if (handleRemoveFollower) {
+                                await handleRemoveFollower(
                                   {
                                     id: row.agent_id,
                                     email: row.agent_email,
@@ -469,9 +494,8 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
                                   row.follower_email,
                                   `@${row.follower_username} (${row.follower_email})`
                                 );
-                              setTimeout(() => {
-                                fetchFollowersList(followersPage, followersSearch, followersAgentFilter);
-                              }, 1000);
+                                await fetchFollowersList(followersPage, followersSearch, followersAgentFilter);
+                              }
                             }}
                             className={`${styles.btnAction} ${styles.btnDanger}`}
                             title="Detach and remove this follower from the agent"
@@ -501,6 +525,8 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
               </table>
             </div>
           )}
+          {renderPagination && followersCount > 50 &&
+            renderPagination(followersPage, setFollowersPage, followersCount, 50)}
         </>
       )}
 
@@ -611,15 +637,16 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
                             {/* REVOKE AFFILIATE STATUS */}
                             <button
                               disabled={userActionSubmitting}
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                handleUpdateSpecialRoles &&
-                                  handleUpdateSpecialRoles(aff, {
+                                if (handleUpdateSpecialRoles) {
+                                  await handleUpdateSpecialRoles(aff, {
                                     isCareer: Boolean(aff.is_career),
                                     isAffiliate: false,
                                     affiliateRole: null,
                                   });
-                                setTimeout(() => fetchAffiliatesList(affiliatesPage, affiliatesSearch), 800);
+                                  await fetchAffiliatesList(affiliatesPage, affiliatesSearch, true);
+                                }
                               }}
                               className={`${styles.btnAction} ${styles.btnDanger}`}
                               title="Revoke affiliate badge and partnership privileges"
@@ -638,6 +665,8 @@ export const AdminAgentsNetworkTab = React.memo(function AdminAgentsNetworkTab({
               </table>
             </div>
           )}
+          {renderPagination && affiliatesCount > 50 &&
+            renderPagination(affiliatesPage, setAffiliatesPage, affiliatesCount, 50)}
         </>
       )}
     </>

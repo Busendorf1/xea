@@ -69,8 +69,6 @@ vi.mock("@/lib/utils/dbAdmin", () => ({
   },
 }));
 
-vi.mock("@/lib/targetingEngine", () => import("../targetingEngine"));
-
 vi.mock("@/lib/utils/cache", () => ({
   getCachedProfile: vi.fn().mockResolvedValue(null),
   setCachedProfile: vi.fn().mockResolvedValue(undefined),
@@ -81,12 +79,6 @@ vi.mock("@/lib/utils/cache", () => ({
 vi.mock("@/lib/utils/cdnUrl", () => ({
   transformMediaUrlsToCdn: vi.fn((u: unknown) => u),
 }));
-
-vi.mock("@/lib/ads/publicAdResolver", () => import("../ads/publicAdResolver"));
-vi.mock("@/lib/feed/feedCaches", () => import("../feed/feedCaches"));
-vi.mock("@/lib/feed/poolLoader", () => import("../feed/poolLoader"));
-vi.mock("@/lib/feed/feedRankerAndInterleaver", () => import("../feed/feedRankerAndInterleaver"));
-vi.mock("@/lib/feed/sharedAdResolver", () => import("../feed/sharedAdResolver"));
 
 vi.mock("@/lib/services/rolloverService", () => ({
   triggerBackgroundRolloverSync: vi.fn().mockResolvedValue(undefined),
@@ -576,6 +568,148 @@ describe("Feed Scale, Schema Resilience, Targeting & Frequency Cap (500M+)", () 
       for (const call of mocks.checkRateLimit.mock.calls) {
         expect(call[1].blockDurationSeconds).toBeUndefined();
       }
+    });
+  });
+
+  describe("Floor-priced ads feed inclusion & 3:1 bidded/floor interleaving", () => {
+    it("loadSharedActiveAdsForCountry fetches dedicated standard floor slice with nullsFirst:false and buildOrderedCandidateFeed renders floor ads alongside bidded ads", async () => {
+      vi.resetModules();
+      const orClauses: string[] = [];
+      const orderCalls: Array<[string, any]> = [];
+
+      const biddedAdsSample = Array.from({ length: 4 }, (_, i) => ({
+        id: `bid-${i + 1}`,
+        user_email: `bidder-${i + 1}@example.com`,
+        country: "Nigeria",
+        targeting_all: true,
+        impressions: 1000,
+        impression_count: 10,
+        cost_per_impression: 200 - i * 10,
+        bid_price: 200 - i * 10,
+        is_bidded: true,
+        user_frequency_cap: 5,
+        campaign_days: 5,
+        created_at: new Date().toISOString(),
+        is_paused: false,
+        completed_at: null,
+      }));
+      const floorAdsSample = [
+        {
+          id: "floor-1",
+          user_email: "floor-adv@example.com",
+          country: "Nigeria",
+          targeting_all: true,
+          impressions: 1000,
+          impression_count: 10,
+          cost_per_impression: 45,
+          bid_price: null,
+          is_bidded: false,
+          user_frequency_cap: 5,
+          campaign_days: 5,
+          created_at: new Date().toISOString(),
+          is_paused: false,
+          completed_at: null,
+        },
+      ];
+
+      vi.doMock("@/lib/redis", () => ({
+        default: { status: "end" },
+        isRedisReady: () => false,
+      }));
+      vi.doMock("@/lib/utils/cache", () => ({
+        registerL1FeedEvictionHandler: vi.fn(),
+        evictAdFromL1FeedCaches: vi.fn(),
+      }));
+      vi.doMock("@/lib/utils/dbAdmin", () => ({
+        supabaseReadOnly: {
+          from: vi.fn(() => {
+            let isStandardSlice = false;
+            let isRolloverSlice = false;
+            const chain: any = {
+              select: () => chain,
+              is: () => chain,
+              or: (expr: string) => {
+                orClauses.push(expr);
+                if (expr.includes("is_bidded.eq.false")) isStandardSlice = true;
+                return chain;
+              },
+              eq: (col: string, val: any) => {
+                if (col === "is_rollover" && val === true) isRolloverSlice = true;
+                return chain;
+              },
+              order: (col: string, opts: any) => {
+                orderCalls.push([col, opts]);
+                return chain;
+              },
+              limit: async () => ({
+                data: isRolloverSlice ? [] : isStandardSlice ? floorAdsSample : biddedAdsSample,
+                error: null,
+              }),
+            };
+            return chain;
+          }),
+        },
+      }));
+
+      const { loadSharedActiveAdsForCountry } = await import("../feed/poolLoader");
+      const pool = await loadSharedActiveAdsForCountry("Nigeria");
+
+      expect(orClauses.some((c) => c.includes("is_bidded.is.null,is_bidded.eq.false"))).toBe(true);
+      expect(orderCalls.some(([col, opts]) => col === "bid_price" && opts?.nullsFirst === false)).toBe(true);
+      expect(pool.map((a) => a.id)).toContain("floor-1");
+      expect(pool.map((a) => a.id)).toContain("bid-1");
+
+      const { buildOrderedCandidateFeed } = await import("../feed/feedRankerAndInterleaver");
+      const { orderedCandidateAds } = buildOrderedCandidateFeed({
+        rawAds: pool,
+        viewerProfile: { email: "viewer@example.com", country: "Nigeria" },
+        emailKey: "viewer@example.com",
+        isViewerAdmin: false,
+        seenAdIdsSet: new Set(),
+        blockedAdIdsSet: new Set(),
+        blockedAdvertisersSet: new Set(),
+        userImpressionMap: new Map(),
+        todayPacingMap: {},
+        todayDate: new Date().toISOString().slice(0, 10),
+        nowMs: Date.now(),
+      });
+
+      const orderedIds = orderedCandidateAds.map((a) => a.id);
+      expect(orderedIds).toEqual(["bid-1", "bid-2", "bid-3", "floor-1", "bid-4"]);
+    });
+
+    it("Edge interleaveBiddedAndStandardAds & SQL migration 20261119000000 preserve 3:1 bidded/floor delivery", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const ts = await import("typescript");
+
+      const targetingSrc = fs.readFileSync(
+        path.resolve(__dirname, "../../supabase/functions/_shared/targeting.ts"),
+        "utf8"
+      );
+      const transpiled = ts.transpileModule(targetingSrc, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+      });
+      const mod: any = { exports: {} };
+      new Function("exports", "module", transpiled.outputText)(mod.exports, mod);
+
+      const interleaved = mod.exports.interleaveBiddedAndStandardAds([
+        { id: "b1", user_email: "a@x.com", is_bidded: true, bid_price: 200, cost_per_impression: 200 },
+        { id: "b2", user_email: "b@x.com", is_bidded: true, bid_price: 150, cost_per_impression: 150 },
+        { id: "b3", user_email: "c@x.com", is_bidded: true, bid_price: 120, cost_per_impression: 120 },
+        { id: "b4", user_email: "d@x.com", is_bidded: true, bid_price: 100, cost_per_impression: 100 },
+        { id: "f1", user_email: "e@x.com", is_bidded: false, bid_price: null, cost_per_impression: 45 },
+      ]);
+      expect(interleaved.map((a: any) => a.id)).toEqual(["b1", "b2", "b3", "f1", "b4"]);
+
+      const migrationSql = fs.readFileSync(
+        path.resolve(__dirname, "../../supabase/migrations/20261119000000_ensure_floor_ads_and_bidded_interleave.sql"),
+        "utf8"
+      );
+      expect(migrationSql).toContain("idx_addsactive_floor_pool_cpi");
+      expect(migrationSql).toContain("standard_pool AS");
+      expect(migrationSql).toContain("tier_interleaved AS");
+      expect(migrationSql).toContain("ELSE f.tier_pos * 4");
     });
   });
 });

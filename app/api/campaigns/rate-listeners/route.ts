@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (beforeSnapshot.size > 0) {
-        notifyUpgradedUsersFromLevelMap(beforeSnapshot).catch(() => {});
+        await notifyUpgradedUsersFromLevelMap(beforeSnapshot).catch(() => {});
       }
     }
 

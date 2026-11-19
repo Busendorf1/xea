@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { verifyAdminUser } from "@/lib/authHelper";
+import { isAdminEmail } from "@/lib/adminHelper";
 import redisConnection, { scanDeletePattern } from "@/lib/redis";
+import { evictAdFromL1FeedCaches, invalidateCachedProfile } from "@/lib/utils/cache";
 
 export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizePostgrestSearch(raw: string): string {
+  return raw.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+}
 
 // GET /api/admin/reports?page=0
 export async function GET(req: NextRequest) {
@@ -14,8 +25,8 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get("page") || "0", 10);
-    const search = searchParams.get("search")?.trim() || "";
+    const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+    const search = sanitizePostgrestSearch(searchParams.get("search")?.trim() || "");
     const fresh = searchParams.get("fresh") === "true";
     const pageSize = 15;
 
@@ -101,7 +112,8 @@ export async function POST(req: NextRequest) {
         await supabaseAdmin.from("ad_reports").update({ status: "action_taken" }).eq("id", reportId);
       }
 
-      // Evict Redis caches & record audit log
+      // Evict L1/L2 feed caches & record audit log
+      evictAdFromL1FeedCaches(adId);
       try {
         await redisConnection.del(`ad:detail:${adId}`).catch(() => {});
         await scanDeletePattern("feed:ads:*");
@@ -109,6 +121,7 @@ export async function POST(req: NextRequest) {
         await scanDeletePattern("admin:reports:*");
         await scanDeletePattern("admin:users:list:*");
         await redisConnection.del("admin:overview:stats").catch(() => {});
+        await redisConnection.del("admin:overview_stats").catch(() => {});
         await supabaseAdmin.from("admin_audit_logs").insert([{
           admin_email: adminEmail,
           action: "deactivate_reported_ad",
@@ -125,6 +138,13 @@ export async function POST(req: NextRequest) {
       if (!advertiserEmail) return NextResponse.json({ error: "Missing advertiserEmail" }, { status: 400 });
 
       const targetEmail = advertiserEmail.toLowerCase().trim();
+      if (isAdminEmail(targetEmail)) {
+        return NextResponse.json(
+          { error: "Cannot ban or block an administrator account." },
+          { status: 403 }
+        );
+      }
+
       const updateData = {
         completed_at: now,
         is_paused: true,
@@ -158,6 +178,10 @@ export async function POST(req: NextRequest) {
         await supabaseAdmin.from("ad_reports").update({ status: "action_taken" }).eq("id", reportId);
       }
 
+      // Evict L1/L2 feed and profile caches
+      evictAdFromL1FeedCaches();
+      await invalidateCachedProfile(emailLower).catch(() => {});
+
       try {
         if (userAds && userAds.length > 0) {
           const detailKeys = userAds.map((a: any) => `ad:detail:${a.id}`);
@@ -166,12 +190,12 @@ export async function POST(req: NextRequest) {
         await redisConnection.set(`perm_banned:${emailLower}`, "1", "EX", 315360000);
         await redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 315360000);
         await redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 315360000);
-        await redisConnection.del(`profile:${emailLower}`);
         await scanDeletePattern("feed:ads:*");
         await scanDeletePattern("admin:campaigns:*");
         await scanDeletePattern("admin:reports:*");
         await scanDeletePattern("admin:users:list:*");
         await redisConnection.del("admin:overview:stats").catch(() => {});
+        await redisConnection.del("admin:overview_stats").catch(() => {});
         await supabaseAdmin.from("admin_audit_logs").insert([{
           admin_email: adminEmail,
           action: "block_reported_advertiser",

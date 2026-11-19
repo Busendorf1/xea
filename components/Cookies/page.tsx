@@ -8,7 +8,7 @@ export default function CookiesPage() {
       <main className={styles.main}>
         <h1 className={styles.title}>Paayh Device Storage, Security Tokens &amp; Tracking Policy</h1>
         <p className={styles.updatedDate}>
-          <em>Last Updated: November 5, 2026 | Effective Date: November 5, 2026</em>
+          <em>Last Updated: November 19, 2026 | Effective Date: November 19, 2026</em>
         </p>
 
         <div className={styles.noticeBox}>
@@ -56,9 +56,9 @@ export default function CookiesPage() {
               bot injection.
             </li>
             <li className={styles.listItem}>
-              <strong>Real Time Telemetry &amp; Server Sent Events (SSE):</strong> Persistent, multiplexed HTTP streaming
-              connections that securely broadcast wallet balance adjustments and notification updates
-              in real time without third party tracking cookies.
+              <strong>Authenticated Balance &amp; Notification Sync:</strong> Lightweight, first-party authenticated
+              API synchronization keeps your wallet balance, earning status, and notifications up to date without
+              third-party tracking cookies.
             </li>
           </ul>
 

@@ -19,6 +19,10 @@ export async function GET(req: NextRequest) {
     }
 
     const cleanId = id.trim();
+    const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!UUID_RE.test(cleanId)) {
+      return NextResponse.json({ error: "Invalid Ad ID format (must be a valid UUID)" }, { status: 400 });
+    }
 
     // 1. Search in active ads table
     const { data: initialAd } = await supabaseAdmin
@@ -54,6 +58,19 @@ export async function GET(req: NextRequest) {
       if (completedAd) {
         ad = completedAd;
         table = "completed_ads";
+      }
+    }
+
+    // 4. Fallback: search legacy addscompleted archive table
+    if (!ad) {
+      const { data: legacyCompletedAd } = await supabaseAdmin
+        .from("addscompleted")
+        .select("*")
+        .eq("id", cleanId)
+        .maybeSingle();
+      if (legacyCompletedAd) {
+        ad = legacyCompletedAd;
+        table = "addscompleted";
       }
     }
 

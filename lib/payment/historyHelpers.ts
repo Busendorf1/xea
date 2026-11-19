@@ -14,13 +14,16 @@ export function encodeStatementCursor(row: {
   return Buffer.from(payload, "utf8").toString("base64url");
 }
 
+const STRICT_ISO_TIMESTAMP_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+
 export function decodeStatementCursor(rawCursor: string | null): DecodedStatementCursor | null {
   if (!rawCursor || rawCursor.length > 256) return null;
   try {
     const parsed = JSON.parse(Buffer.from(rawCursor, "base64url").toString("utf8"));
     const c = typeof parsed?.c === "string" ? parsed.c.trim() : "";
     const i = typeof parsed?.i === "string" ? parsed.i.trim() : "";
-    if (!c || Number.isNaN(Date.parse(c))) return null;
+    if (!STRICT_ISO_TIMESTAMP_RE.test(c) || Number.isNaN(Date.parse(c))) return null;
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(i)) return null;
     return { createdAt: c, id: i };
   } catch {

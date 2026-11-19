@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import redisConnection, { isRedisReady } from "./redis";
+import * as redisModule from "./redis";
+import redisConnection from "./redis";
+
+function checkRedisAvailable(): boolean {
+  try {
+    if (typeof redisModule.isRedisReady === "function") {
+      return redisModule.isRedisReady();
+    }
+  } catch {}
+  return (redisConnection as any)?.status === "ready";
+}
 
 export interface RateLimitConfig {
   limit: number;                 // Maximum allowed requests in window
@@ -9,24 +19,40 @@ export interface RateLimitConfig {
   blockDurationSeconds?: number; // Optional penalty lockout duration (e.g. 6 hours = 21600s) on violation
 }
 
-export function getClientIp(request: NextRequest): string {
-  const xForwardedFor = request.headers.get("x-forwarded-for");
-  if (xForwardedFor) {
-    return xForwardedFor.split(",")[0].trim();
-  }
-  const xRealIp = request.headers.get("x-real-ip");
-  if (xRealIp) {
-    return xRealIp.trim();
+const MAX_MEMORY_RATE_ENTRIES = 10_000;
+
+/**
+ * Extracts the trusted client IP without trusting spoofable leftmost X-Forwarded-For headers (H-01).
+ * Priority: Vercel edge header -> Cloudflare connecting IP -> X-Real-IP -> rightmost X-Forwarded-For hop.
+ */
+export function getTrustedClientIp(request: NextRequest): string {
+  const vercelForwarded = request.headers.get("x-vercel-forwarded-for");
+  if (vercelForwarded) {
+    const parts = vercelForwarded.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
   }
   const cfConnectingIp = request.headers.get("cf-connecting-ip");
   if (cfConnectingIp) {
     return cfConnectingIp.trim();
   }
+  const xRealIp = request.headers.get("x-real-ip");
+  if (xRealIp) {
+    return xRealIp.trim();
+  }
+  const xForwardedFor = request.headers.get("x-forwarded-for");
+  if (xForwardedFor) {
+    const parts = xForwardedFor.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
   return "127.0.0.1";
 }
 
+export function getClientIp(request: NextRequest): string {
+  return getTrustedClientIp(request);
+}
+
 // ---------------------------------------------------------------------------
-// IN-MEMORY FALLBACK STORE (Active even if Redis is disabled or offline)
+// IN-MEMORY FALLBACK STORE (Bounded LRU to prevent serverless OOM)
 // ---------------------------------------------------------------------------
 interface MemoryRateRecord {
   count: number;
@@ -36,9 +62,24 @@ interface MemoryRateRecord {
 
 const memoryStore = new Map<string, MemoryRateRecord>();
 
+function pruneMemoryStoreIfNeeded(now: number) {
+  if (memoryStore.size < MAX_MEMORY_RATE_ENTRIES) return;
+  for (const [k, v] of memoryStore.entries()) {
+    if ((v.blockedUntil && v.blockedUntil < now) || now - v.windowStart > 3600000) {
+      memoryStore.delete(k);
+    }
+    if (memoryStore.size < MAX_MEMORY_RATE_ENTRIES * 0.8) break;
+  }
+  while (memoryStore.size >= MAX_MEMORY_RATE_ENTRIES) {
+    const oldestKey = memoryStore.keys().next().value;
+    if (!oldestKey) break;
+    memoryStore.delete(oldestKey);
+  }
+}
+
 // Routine cleanup every 10 minutes to prevent memory leaks
 if (typeof setInterval !== "undefined") {
-  setInterval(() => {
+  const timer = setInterval(() => {
     const now = Date.now();
     for (const [k, v] of memoryStore.entries()) {
       if ((v.blockedUntil && v.blockedUntil < now) || now - v.windowStart > 86400000) {
@@ -46,6 +87,9 @@ if (typeof setInterval !== "undefined") {
       }
     }
   }, 600000);
+  if (typeof (timer as any).unref === "function") {
+    (timer as any).unref();
+  }
 }
 
 function checkInMemoryRateLimit(
@@ -77,6 +121,7 @@ function checkInMemoryRateLimit(
   }
 
   if (!record || now - record.windowStart > config.windowSeconds * 1000) {
+    pruneMemoryStoreIfNeeded(now);
     record = { count: 1, windowStart: now };
     memoryStore.set(key, record);
     return { allowed: true, remaining: config.limit - 1, reset: config.windowSeconds };
@@ -131,7 +176,7 @@ export async function checkRateLimit(
   const blockKey = `ratelimit:block:${config.identifierPrefix}:${subject}`;
 
   // Layer 1: In-Memory Fallback if Redis is disabled or offline before an attack begins
-  if (!isRedisReady()) {
+  if (!checkRedisAvailable()) {
     return checkInMemoryRateLimit(key, config);
   }
 

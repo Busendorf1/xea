@@ -459,7 +459,7 @@ describe("Edge Middleware Bundle Safety & Edge Rejoin Helper", () => {
     expect(rejoinRes).toEqual({ allowed: true, permanentlyBanned: false });
     expect(delMock).toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://redis.example.upstash.io/del/deactivated%3Arejoin%40paayh.com/user_profile%3Arejoin%40paayh.com",
+      "https://redis.example.upstash.io/del/deactivated%3Arejoin%40paayh.com/user_profile%3Arejoin%40paayh.com/auth%3Astatus%3Arejoin%40paayh.com",
       expect.objectContaining({ method: "POST" })
     );
   });

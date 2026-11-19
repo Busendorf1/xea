@@ -184,15 +184,15 @@ export async function POST(req: NextRequest) {
     const idempotencyRedisKey = `idempotency:transfer:${rawIdempotency}`;
 
     try {
-      // Store without TTL so the key is 100% EXEMPT from eviction under volatile-lru
-      const isNew = await redisConnection.set(idempotencyRedisKey, "LOCKED", "NX");
+      // Bounded 24h TTL prevents unbounded Redis memory growth while still defeating all replay/double-click races
+      const isNew = await redisConnection.set(idempotencyRedisKey, "LOCKED", "EX", 86400, "NX");
       if (!isNew) {
         return NextResponse.json(
           { error: "Duplicate transfer request detected. This operation has already been submitted." },
           { status: 409 }
         );
       }
-      // Record in persistent sorted set for automated cron pruning (older than 48 hours)
+      // Record in sorted set for automated cron pruning
       await redisConnection.zadd("idempotency:transfer:zset", Date.now(), rawIdempotency).catch(() => {});
     } catch (redisErr) {
       console.warn("⚠️ Idempotency key Redis check warning:", redisErr);

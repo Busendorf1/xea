@@ -1,9 +1,42 @@
-import { getVerifiedUserEmail } from "../_shared/auth.ts";
+import { checkAccountBlockedEdge, getVerifiedUserEmail } from "../_shared/auth.ts";
 import { jsonResponse } from "../_shared/cors.ts";
+
+async function signEarnTokenEdge(
+  adId: string,
+  viewerEmail: string,
+  servedAt: number
+): Promise<string | null> {
+  const secret =
+    Deno.env.get("EARN_TOKEN_SECRET") ||
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+    "";
+  if (!secret || !viewerEmail || !adId) return null;
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      enc.encode(`${adId}:${viewerEmail.toLowerCase().trim()}:${servedAt}`)
+    );
+    return Array.from(new Uint8Array(sig))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return null;
+  }
+}
 import {
   type CampaignCandidate,
   computeCampaignBroadeningPlanEdge,
   evaluateAdTargeting,
+  interleaveBiddedAndStandardAds,
   rankAndSpaceAds,
   type ViewerTargetingProfile,
 } from "../_shared/targeting.ts";
@@ -91,20 +124,42 @@ export async function handleGetFeed(
     return jsonResponse({ ads: [], error: "Account is deactivated." }, 403);
   }
 
+  if (viewerEmail) {
+    const blockInfo = await checkAccountBlockedEdge(supabase, viewerEmail);
+    if (blockInfo.blocked) {
+      return jsonResponse(
+        {
+          code: "ACCOUNT_BLOCKED",
+          blocked: true,
+          blockType: blockInfo.blockType || "permanent",
+          blockedUntil: blockInfo.blockedUntil ?? null,
+          reason: blockInfo.reason ?? null,
+          ads: [],
+          error:
+            blockInfo.message ||
+            "Your account is currently blocked from accessing Paayh.",
+        },
+        403
+      );
+    }
+  }
+
   const viewerProfile: ViewerTargetingProfile | null = viewerRes.data || null;
   const viewerCountry = String(viewerProfile?.country || "").trim();
   const hasViewerCountry =
     viewerCountry.length > 0 && viewerCountry.toUpperCase() !== "PLACEHOLDER";
 
-  const buildPoolQuery = (rolloverOnly: boolean) => {
+  const buildPoolQuery = (sliceMode: "main" | "standard" | "rollover") => {
     let q = supabase
       .from("addsactive")
       .select("*")
       .is("completed_at", null)
       .or("is_paused.is.null,is_paused.eq.false");
 
-    if (rolloverOnly) {
+    if (sliceMode === "rollover") {
       q = q.eq("is_rollover", true);
+    } else if (sliceMode === "standard") {
+      q = q.or("is_bidded.is.null,is_bidded.eq.false");
     }
 
     if (hasViewerCountry) {
@@ -114,21 +169,30 @@ export async function handleGetFeed(
       );
     }
 
+    const sliceLimit = sliceMode === "rollover" ? 60 : sliceMode === "standard" ? 65 : 250;
     return q
       .order("bid_price", { ascending: false, nullsFirst: false })
       .order("cost_per_impression", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(rolloverOnly ? 60 : 250);
+      .limit(sliceLimit);
   };
 
-  const [mainAdsRes, rolloverAdsRes] = await Promise.all([
-    buildPoolQuery(false),
-    buildPoolQuery(true).catch(() => ({ data: [], error: null })),
+  const [mainAdsRes, standardAdsRes, rolloverAdsRes] = await Promise.all([
+    buildPoolQuery("main"),
+    Promise.resolve(buildPoolQuery("standard")).catch(() => ({ data: [], error: null })),
+    Promise.resolve(buildPoolQuery("rollover")).catch(() => ({ data: [], error: null })),
   ]);
 
   const mergedById = new Map<string, CampaignCandidate>();
   for (const ad of mainAdsRes.data || []) {
     if (ad?.id) mergedById.set(String(ad.id), ad as CampaignCandidate);
+  }
+  if (!standardAdsRes.error) {
+    for (const ad of standardAdsRes.data || []) {
+      if (ad?.id && !mergedById.has(String(ad.id))) {
+        mergedById.set(String(ad.id), ad as CampaignCandidate);
+      }
+    }
   }
   if (!rolloverAdsRes.error) {
     for (const ad of rolloverAdsRes.data || []) {
@@ -287,8 +351,8 @@ export async function handleGetFeed(
       ? [...strictRetargeted, ...relaxedGeoDemoRetargeted]
       : strictRetargeted;
 
-  const spacedFresh = rankAndSpaceAds(freshPool);
-  const spacedRetargeted = rankAndSpaceAds(retargetPool);
+  const spacedFresh = interleaveBiddedAndStandardAds(rankAndSpaceAds(freshPool));
+  const spacedRetargeted = interleaveBiddedAndStandardAds(rankAndSpaceAds(retargetPool));
 
   // Interleave 3 fresh : 1 retargeted, and drain remaining retargets once fresh exhausts
   const combined: Array<CampaignCandidate & { _relevanceScore?: number }> = [];
@@ -310,9 +374,19 @@ export async function handleGetFeed(
     }
   }
 
-  const ranked = combined
+  const servedAt = Date.now();
+  const sliced = combined
     .slice(offset, offset + limit)
     .map(({ _relevanceScore, ...rest }) => rest);
+
+  const ranked = viewerEmail
+    ? await Promise.all(
+        sliced.map(async (ad) => {
+          const earnToken = await signEarnTokenEdge(String(ad.id || ""), viewerEmail, servedAt);
+          return earnToken ? { ...ad, earnToken, servedAt } : { ...ad, servedAt };
+        })
+      )
+    : sliced;
 
   return jsonResponse({
     ads: ranked,

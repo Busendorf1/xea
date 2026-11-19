@@ -71,20 +71,20 @@ export async function validateEarnSecurityAndPoh(
   const now = Date.now();
   let verifiedViewDurationMs = 0;
 
-  // 1. Cryptographic HMAC token & dwell verification
-  if (type === "earn" || (type === "mutual" && (token || servedAt))) {
-    if (!token || !servedAt) {
-      return {
-        errorResponse: NextResponse.json(
-          { error: "Verification token and timestamp required to claim reward." },
-          { status: 403 }
-        ),
-        verifiedViewDurationMs: 0,
-        bonusSeconds: 0,
-        attentionSharePercent: 0.3,
-      };
-    }
+  // 1. Cryptographic HMAC token & dwell verification (MANDATORY for BOTH "earn" and "mutual" — C-16)
+  if (!token || !servedAt) {
+    return {
+      errorResponse: NextResponse.json(
+        { error: "Verification token and timestamp required to claim reward." },
+        { status: 403 }
+      ),
+      verifiedViewDurationMs: 0,
+      bonusSeconds: 0,
+      attentionSharePercent: 0.3,
+    };
+  }
 
+  {
     let resolvedLegacyUserId: string | undefined = userId;
     const getLegacyUserId = async (): Promise<string | undefined> => {
       if (resolvedLegacyUserId !== undefined) return resolvedLegacyUserId;
@@ -129,7 +129,7 @@ export async function validateEarnSecurityAndPoh(
 
     const parsedServedAt = parseInt(String(servedAt), 10);
     const batchDuration = now - parsedServedAt;
-    if (isNaN(parsedServedAt) || batchDuration > 1800000) {
+    if (isNaN(parsedServedAt) || parsedServedAt > now + 60000 || batchDuration > 1800000) {
       return {
         errorResponse: NextResponse.json(
           { error: "Ad session expired (Max 30m). Please refresh feed." },
@@ -245,8 +245,9 @@ export async function validateEarnSecurityAndPoh(
         };
       }
     } else {
+      // Mutual requires minimum dwell + unified feed token burn & pacing lock (C-16)
       verifiedViewDurationMs = isNaN(batchDuration) ? 0 : batchDuration;
-      if (verifiedViewDurationMs < 12000) {
+      if (verifiedViewDurationMs < 14000) {
         return {
           errorResponse: NextResponse.json(
             { error: "Minimum attention duration not met. Please view the ad completely before claiming." },
@@ -257,36 +258,56 @@ export async function validateEarnSecurityAndPoh(
           attentionSharePercent: 0.3,
         };
       }
-    }
-  } else if (type === "mutual" && isRedisReady()) {
-    try {
-      const mutualPaceKey = `lock:attention_pace:${emailKey}`;
-      const paceAcquired = await redisConnection.set(mutualPaceKey, "1", "EX", 10, "NX");
-      if (!paceAcquired) {
-        return {
-          errorResponse: NextResponse.json(
-            { error: "Please view one ad at a time before claiming the next action." },
-            { status: 429 }
-          ),
-          verifiedViewDurationMs: 0,
-          bonusSeconds: 0,
-          attentionSharePercent: 0.3,
-        };
+      if (isRedisReady()) {
+        const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32);
+        const unifiedTokenKey = `used:feed_token:${tokenHash}`;
+        const progressBurnKey = `used:feed_progress:${tokenHash}`;
+        const mutualPaceKey = `lock:attention_pace:${emailKey}`;
+        const paceAcquired = await redisConnection.set(mutualPaceKey, "1", "EX", 10, "NX").catch(() => null);
+        if (!paceAcquired) {
+          return {
+            errorResponse: NextResponse.json(
+              { error: "Please view one ad at a time before claiming the next action." },
+              { status: 429 }
+            ),
+            verifiedViewDurationMs,
+            bonusSeconds: 0,
+            attentionSharePercent: 0.3,
+          };
+        }
+        const tokenFresh = await redisConnection.set(unifiedTokenKey, "1", "EX", 2100, "NX").catch(() => null);
+        if (!tokenFresh) {
+          return {
+            errorResponse: NextResponse.json(
+              { error: "This verification token has already been used.", code: "ALREADY_EARNED" },
+              { status: 403 }
+            ),
+            verifiedViewDurationMs,
+            bonusSeconds: 0,
+            attentionSharePercent: 0.3,
+          };
+        }
+        await redisConnection.set(progressBurnKey, "1", "EX", 2100, "NX").catch(() => {});
       }
-    } catch {}
+    }
   }
 
-  // 2. Earn-specific PoH kinematics BEFORE burning earn_token / attention_pace
+  // 2. Earn-specific PoH kinematics BEFORE burning unified feed_token / attention_pace (C-16)
   if (type === "earn") {
     const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32);
-    const tokenBurnKey = `used:earn_token:${tokenHash}`;
+    const tokenBurnKey = `used:feed_token:${tokenHash}`;
+    const legacyBurnKey = `used:earn_token:${tokenHash}`;
+    const progressBurnKey = `used:feed_progress:${tokenHash}`;
     const globalPaceKey = `lock:attention_pace:${emailKey}`;
 
     // Fast read-only check so an already-burned token cannot be used for retries
     if (isRedisReady()) {
       try {
-        const alreadyBurned = await redisConnection.exists(tokenBurnKey);
-        if (alreadyBurned) {
+        const [alreadyBurned, alreadyBurnedLegacy] = await Promise.all([
+          redisConnection.exists(tokenBurnKey),
+          redisConnection.exists(legacyBurnKey),
+        ]);
+        if (alreadyBurned || alreadyBurnedLegacy) {
           return {
             errorResponse: NextResponse.json(
               { error: "This verification token has already been used.", code: "ALREADY_EARNED" },
@@ -463,6 +484,10 @@ export async function validateEarnSecurityAndPoh(
             attentionSharePercent: 0.3,
           };
         }
+        await Promise.all([
+          redisConnection.set(legacyBurnKey, "1", "EX", 2100, "NX").catch(() => {}),
+          redisConnection.set(progressBurnKey, "1", "EX", 2100, "NX").catch(() => {}),
+        ]);
       } catch {}
     }
   }

@@ -5,7 +5,11 @@ import type { Ad, AdvertiserProfile } from "@/types/ads";
 import type { HighlightItem } from "@/components/MyNews/types";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import crypto from "crypto";
-import { isAdminEmail, isEmailDeactivated, isEmailPermanentlyBanned } from "@/lib/authHelper";
+import * as authHelper from "@/lib/authHelper";
+import {
+  isAdminEmail,
+  type AccountAccessStatus,
+} from "@/lib/authHelper";
 import { getSpecialRoleProfile, isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { touchUserActivity } from "@/lib/utils/activityTracker";
 import { invalidateCachedProfile, getCachedProfile, setCachedProfile, getCachedHighlights } from "@/lib/utils/cache";
@@ -23,6 +27,7 @@ export interface DashboardProfileResult {
   initialProfiles?: Record<string, AdvertiserProfile>;
   initialHighlights?: HighlightItem[];
   initialHighlightProfiles?: Record<string, AdvertiserProfile>;
+  blockedAccount?: AccountAccessStatus;
   redirectUrl?: string;
   error?: string;
 }
@@ -58,20 +63,56 @@ export async function getUserProfileForDashboard(session: SessionLike | null | u
   }
   const email = rawEmail.toLowerCase().trim();
 
-  if (typeof isEmailPermanentlyBanned === "function" && (await isEmailPermanentlyBanned(email))) {
-    await invalidateCachedProfile(email).catch(() => {});
-    return {
-      error: "Account has been permanently banned.",
-      redirectUrl: "/auth/logout?reason=perm_banned",
-    };
-  }
+  let getAccountAccessStatusFn: typeof authHelper.getAccountAccessStatus | undefined;
+  let isEmailPermanentlyBannedFn: typeof authHelper.isEmailPermanentlyBanned | undefined;
+  let isEmailDeactivatedFn: typeof authHelper.isEmailDeactivated | undefined;
+  try {
+    getAccountAccessStatusFn = authHelper.getAccountAccessStatus;
+  } catch {}
+  try {
+    isEmailPermanentlyBannedFn = authHelper.isEmailPermanentlyBanned;
+  } catch {}
+  try {
+    isEmailDeactivatedFn = authHelper.isEmailDeactivated;
+  } catch {}
 
-  if (typeof isEmailDeactivated === "function" && (await isEmailDeactivated(email))) {
-    await invalidateCachedProfile(email).catch(() => {});
-    return {
-      error: "Account has been permanently deactivated.",
-      redirectUrl: "/auth/logout",
-    };
+  if (typeof getAccountAccessStatusFn === "function") {
+    const accessStatus = await getAccountAccessStatusFn(email);
+    if (accessStatus.state === "perm_banned" || accessStatus.state === "temp_blocked") {
+      await invalidateCachedProfile(email).catch(() => {});
+      return {
+        blockedAccount: accessStatus,
+        error: accessStatus.message || "Your account is currently blocked from accessing Paayh.",
+      };
+    }
+    if (accessStatus.state === "deactivated") {
+      await invalidateCachedProfile(email).catch(() => {});
+      return {
+        error: "Account has been permanently deactivated.",
+        redirectUrl: "/auth/logout",
+      };
+    }
+  } else {
+    if (typeof isEmailPermanentlyBannedFn === "function" && (await isEmailPermanentlyBannedFn(email))) {
+      await invalidateCachedProfile(email).catch(() => {});
+      return {
+        blockedAccount: {
+          state: "perm_banned",
+          blocked: true,
+          blockType: "permanent",
+          message: "Your account has been permanently blocked from accessing Paayh.",
+        },
+        error: "Account has been permanently banned.",
+      };
+    }
+
+    if (typeof isEmailDeactivatedFn === "function" && (await isEmailDeactivatedFn(email))) {
+      await invalidateCachedProfile(email).catch(() => {});
+      return {
+        error: "Account has been permanently deactivated.",
+        redirectUrl: "/auth/logout",
+      };
+    }
   }
 
   const BASELINE_COLUMNS = `

@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { clearMonetizationUnlockDedup } from "@/lib/notifications/milestoneNotifications";
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
       .from("users")
       .update({
         monetized: "false",
+        monetized_at: null,
         monetization_clicks: 0,
         has_cancelled_monetization: true,
       })
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
     // Invalidate L1 & L2 Redis Caches including live_clicks counter so GET /api/monetize never re-monetizes
     await Promise.all([
       invalidateCachedProfile(cleanUserEmail),
+      clearMonetizationUnlockDedup(cleanUserEmail).catch(() => {}),
       redisConnection.del(`monetize:status:${cleanUserEmail}`).catch(() => {}),
       redisConnection.del(`monetize:status:v2:${cleanUserEmail}`).catch(() => {}),
       redisConnection.del(`user:live_clicks:${cleanUserEmail}`).catch(() => {}),

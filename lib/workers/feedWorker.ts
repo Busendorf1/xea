@@ -172,13 +172,22 @@ export const flushBatch = async (): Promise<void> => {
         try {
           const { data: userData } = await supabaseAdmin
             .from("users")
-            .select("balance, monetization_clicks, atw_tier, attention_worth_score, is_affiliate, is_career")
+            .select("balance, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career")
             .ilike("email", userEmail)
             .maybeSingle();
 
           const currentBal = parseFloat(userData?.balance || "0");
-          const { getAtwBalanceLimit } = await import("../attentionTierEngine");
+          const prevClicks = Number(userData?.monetization_clicks || 0);
+          const prevMonetized =
+            userData?.monetized === true ||
+            userData?.monetized === "true" ||
+            userData?.monetized === "yes" ||
+            userData?.monetized === "1" ||
+            userData?.monetized === "t";
+          const hasCancelled = Boolean(userData?.has_cancelled_monetization);
+          const { getAtwBalanceLimit, computeAtwTierDetails } = await import("../attentionTierEngine");
           const { isExemptFromBarriersAndInactivity } = await import("../adminHelper");
+          const { checkAndNotifyClickAndAtwMilestones } = await import("../notifications/milestoneNotifications");
           const isExempt = isExemptFromBarriersAndInactivity(userEmail, userData as any);
           const balanceCap = getAtwBalanceLimit(
             userData?.atw_tier,
@@ -189,10 +198,38 @@ export const flushBatch = async (): Promise<void> => {
           const formattedCap = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(balanceCap);
 
           if (clickCount > 0) {
-            await supabaseAdmin.rpc("increment_user_click_progress", {
+            const { data: rpcClickData } = await supabaseAdmin.rpc("increment_user_click_progress", {
               p_email: userEmail,
               p_count: clickCount,
             });
+            const nextClicks = Number(rpcClickData?.[0]?.new_click_count ?? prevClicks + clickCount);
+            const nextMonetized =
+              !hasCancelled &&
+              (isExempt || Boolean(rpcClickData?.[0]?.is_now_monetized) || prevMonetized || nextClicks >= 500);
+            const nextTierDetails = computeAtwTierDetails(
+              nextClicks,
+              userData?.atw_tier,
+              isExempt,
+              userData?.attention_worth_score
+            );
+            if (nextTierDetails.tierCode !== userData?.atw_tier) {
+              await supabaseAdmin
+                .from("users")
+                .update({ atw_tier: nextTierDetails.tierCode })
+                .ilike("email", userEmail);
+            }
+            await checkAndNotifyClickAndAtwMilestones({
+              email: userEmail,
+              prevClicks,
+              prevMonetized,
+              prevAtwTier: userData?.atw_tier,
+              nextClicks,
+              nextMonetized,
+              nextAtwTier: nextTierDetails.tierCode,
+              attentionWorthScore: userData?.attention_worth_score,
+              isExempt,
+              hasCancelled,
+            }).catch(() => {});
           }
 
           if (currentBal >= balanceCap) {

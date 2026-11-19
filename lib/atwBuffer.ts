@@ -139,7 +139,7 @@ export async function flushAtwScoreBufferToDB(): Promise<{ flushedUsers: number;
       }
 
       if (beforeSnapshot.size > 0) {
-        notifyUpgradedUsersFromLevelMap(beforeSnapshot).catch(() => {});
+        await notifyUpgradedUsersFromLevelMap(beforeSnapshot).catch(() => {});
       }
     }
 

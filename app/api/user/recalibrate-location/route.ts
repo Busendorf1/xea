@@ -32,26 +32,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { country, state, location, source, proofOfLocationAgreed } = parseResult.data;
+    const { country, state, location, source } = parseResult.data;
 
-    // 1. Rate-limiting guard: strictly enforce once-a-day recalibration (24 hours = 86400 seconds)
-    // unless explicit Proof of Location GPS authentication is being enforced.
-    if (isRedisReady() && !proofOfLocationAgreed) {
-      try {
-        const rateLimitKey = `ratelimit:recalibrate:${emailLower}`;
-        const alreadyChecked = await redisConnection.get(rateLimitKey);
-        if (alreadyChecked) {
-          return NextResponse.json(
-            { updated: false, message: "Location has already been verified today. 24-hour rate limit in effect." },
-            { status: 200 }
-          );
-        }
-      } catch (err: any) {
-        console.warn("⚠️ Rate-limit check warning:", err?.message || err);
-      }
-    }
-
-    // 2. Fetch current profile location from Supabase
+    // 1. Fetch current profile location first so first-time PLACEHOLDER calibration works while preventing rate-limit bypasses
     const { data: userProfile, error: fetchErr } = await supabaseAdmin
       .from("users")
       .select("email, country, state, location")
@@ -67,7 +50,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User profile not found" }, { status: 404 });
     }
 
-    const currentCountry = (userProfile.country || "").trim().toLowerCase();
+    const currentCountryRaw = (userProfile.country || "").trim();
+    const isInitialPlaceholder =
+      !currentCountryRaw || currentCountryRaw.toUpperCase() === "PLACEHOLDER";
+
+    // 2. Enforce strict 24-hour rate limit (cannot be bypassed by client setting proofOfLocationAgreed=true)
+    if (isRedisReady() && !isInitialPlaceholder) {
+      try {
+        const rateLimitKey = `ratelimit:recalibrate:${emailLower}`;
+        const alreadyChecked = await redisConnection.get(rateLimitKey);
+        if (alreadyChecked) {
+          return NextResponse.json(
+            { updated: false, message: "Location has already been verified today. 24-hour rate limit in effect." },
+            { status: 429 }
+          );
+        }
+      } catch (err: any) {
+        console.warn("⚠️ Rate-limit check warning:", err?.message || err);
+      }
+    }
+
+    // 2b. Cross-check against trusted edge geo header to block currency/country spoofing (H-05)
+    const edgeCountryCode = (
+      req.headers.get("x-vercel-ip-country") ||
+      req.headers.get("cf-ipcountry") ||
+      ""
+    )
+      .trim()
+      .toUpperCase();
+    const claimedLower = country.trim().toLowerCase();
+    const claimedIsNigeria =
+      claimedLower === "nigeria" || claimedLower === "ng" || claimedLower === "ngn";
+    if (edgeCountryCode === "NG" && !claimedIsNigeria) {
+      return NextResponse.json(
+        { error: "Location mismatch detected. Please verify your location without a proxy or spoofed country." },
+        { status: 403 }
+      );
+    }
+
+    const currentCountry = currentCountryRaw.toLowerCase();
     const currentState = (userProfile.state || "").trim().toLowerCase();
     const currentLocation = (userProfile.location || "").trim().toLowerCase();
 
@@ -112,11 +133,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to persist updated location" }, { status: 500 });
     }
 
-    // 5. Invalidate profile and feed caches in Redis so feed is immediately recalibrated
+    // 5. Always invalidate L1 profile cache (even when Redis is offline), plus Redis keys when available
+    await invalidateCachedProfile(emailLower).catch(() => {});
     if (isRedisReady()) {
       try {
         await Promise.all([
-          invalidateCachedProfile(emailLower),
           redisConnection.del(`profile:${emailLower}`),
           redisConnection.del(`feed:ad_ids:${emailLower}`),
           redisConnection.del(`feed:profiles:${emailLower}`),

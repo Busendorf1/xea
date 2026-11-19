@@ -14,8 +14,8 @@ export function sanitizeRedirectUrl(rawUrl: string | null): string {
   if (!rawUrl) return DEFAULT_REDIRECT;
   const trimmed = rawUrl.trim();
 
-  // 1. Safe deep links: xea-auth:// or xea:// (and exp:// in non-production Expo Go dev)
-  if (/^xea(-auth)?:\/\/[a-zA-Z0-9_.\-\/?=&%]+$/.test(trimmed)) {
+  // 1. Safe deep links: xea-auth://, xea://, paayh:// (and exp:// in non-production Expo Go dev)
+  if (/^(?:xea(-auth)?|paayh):\/\/[a-zA-Z0-9_.\-\/?=&%]+$/.test(trimmed)) {
     return trimmed;
   }
   if (
@@ -26,8 +26,12 @@ export function sanitizeRedirectUrl(rawUrl: string | null): string {
   }
 
   // 2. Safe relative paths on current origin (e.g. /dashboard, /wallet)
-  // Must start with single slash, not protocol-relative (//) and no backslashes
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes("\\")) {
+  // Strict character allowlist excludes quotes, angle brackets, backslashes, and control characters (C-11 XSS defense)
+  if (
+    trimmed.startsWith("/") &&
+    !trimmed.startsWith("//") &&
+    /^\/[a-zA-Z0-9._~:/?#[\]@!$&()*+,;=%-]*$/.test(trimmed)
+  ) {
     return trimmed;
   }
 
@@ -44,7 +48,11 @@ export function sanitizeRedirectUrl(rawUrl: string | null): string {
     const isSecureHttp = parsed.protocol === "https:";
     const isDevHttp = !isProd && parsed.protocol === "http:" && parsed.hostname === "localhost";
 
-    if ((isSecureHttp || isDevHttp) && allowedHostnames.has(parsed.hostname.toLowerCase())) {
+    if (
+      (isSecureHttp || isDevHttp) &&
+      allowedHostnames.has(parsed.hostname.toLowerCase()) &&
+      !/[<>"'`\r\n]/.test(trimmed)
+    ) {
       return trimmed;
     }
   } catch {

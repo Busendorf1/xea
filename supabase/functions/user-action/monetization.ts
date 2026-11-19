@@ -1,5 +1,9 @@
 import { computeAtwTierDetails } from "../_shared/atwEngine.ts";
 import { AFFILIATE_EMAILS, errorResponse, jsonResponse } from "../_shared/cors.ts";
+import {
+  checkAndInsertEdgeMilestoneNotifications,
+  parseNumericAtwLevel,
+} from "../_shared/milestoneNotifications.ts";
 
 export async function handleGetMonetization(
   // deno-lint-ignore no-explicit-any
@@ -11,7 +15,7 @@ export async function handleGetMonetization(
     supabase
       .from("users")
       .select(
-        "id, email, username, balance, monetized, monetization_clicks, has_cancelled_monetization, attention_worth_score, atw_tier, last_active_at, is_affiliate, is_career, ad_account_status, suspended_until",
+        "id, email, username, balance, monetized, monetized_at, monetization_clicks, has_cancelled_monetization, attention_worth_score, atw_tier, last_active_at, is_affiliate, is_career, ad_account_status, suspended_until",
       )
       .ilike("email", cleanEmail)
       .maybeSingle(),
@@ -62,11 +66,9 @@ export async function handleGetMonetization(
     }
   }
 
-  // Enforce 60-day dormancy balance forfeiture if inactive >= 60 days and non-exempt
+  // Enforce 60-day dormancy balance forfeiture for THIS user only (never call table-scanning RPC inline!)
   if (!isExempt && daysInactive >= 60) {
-    await supabase.rpc("forfeit_dormant_user_balances_60_days").catch(() => {});
-
-    // Verify caller row updated; if still > 0 / monetized, forfeit explicitly without PII logs
+    // Forfeit caller's own row directly without scanning 500M users inline
     if (balance > 0) {
       await supabase.from("forfeited_balances").insert({
         user_email: cleanEmail,
@@ -131,6 +133,46 @@ export async function handleGetMonetization(
     isCareer: user.is_career,
   });
 
+  const dbWasMonetized = ["true", "yes", "1", "t"].includes(String(user.monetized || "").toLowerCase());
+  const prevLevel = parseNumericAtwLevel(user.atw_tier);
+  if (!wasReset && !user.has_cancelled_monetization && (isMonetized || clicks >= 500)) {
+    const finalMonetized = isExempt || isMonetized || clicks >= 500;
+    if ((finalMonetized && !dbWasMonetized) || atw.tier !== user.atw_tier) {
+      await supabase
+        .from("users")
+        .update({
+          monetized: finalMonetized ? "true" : "false",
+          atw_tier: atw.tier,
+          ...(finalMonetized && !dbWasMonetized ? { monetized_at: new Date().toISOString() } : {}),
+        })
+        .eq("id", user.id);
+    }
+
+    const monetizedAtMs = user.monetized_at ? new Date(user.monetized_at).getTime() : 0;
+    const unlockedRecently = monetizedAtMs > 0 && Date.now() - monetizedAtMs <= 7 * 86400_000;
+    if (
+      !isExempt &&
+      finalMonetized &&
+      clicks >= 500 &&
+      (!dbWasMonetized || atw.tierLevel > prevLevel || unlockedRecently)
+    ) {
+      await checkAndInsertEdgeMilestoneNotifications(supabase, {
+        email: cleanEmail,
+        prevClicks: Number(user.monetization_clicks || 0),
+        prevMonetized: dbWasMonetized,
+        prevAtwTier: user.atw_tier,
+        nextClicks: clicks,
+        nextMonetized: finalMonetized,
+        nextAtwTier: atw.tier,
+        attentionWorthScore: score,
+        isExempt,
+        hasCancelled: Boolean(user.has_cancelled_monetization),
+        checkRecentUnlock: unlockedRecently,
+      });
+    }
+    isMonetized = finalMonetized;
+  }
+
   return jsonResponse({
     monetized: isMonetized,
     hasCancelledMonetization: Boolean(user.has_cancelled_monetization),
@@ -158,12 +200,18 @@ export async function handleResumeMonetization(
   supabase: any,
   cleanEmail: string,
 ): Promise<Response> {
-  const { data: tomb } = await supabase
-    .from("deactivated_users")
-    .select("email")
-    .eq("email", cleanEmail)
-    .maybeSingle();
+  const [{ data: tomb }, { data: currentUser }] = await Promise.all([
+    supabase.from("deactivated_users").select("email").eq("email", cleanEmail).maybeSingle(),
+    supabase
+      .from("users")
+      .select("has_cancelled_monetization")
+      .ilike("email", cleanEmail)
+      .maybeSingle(),
+  ]);
   if (tomb) return errorResponse("Account is deactivated.", 403);
+  if (!currentUser?.has_cancelled_monetization) {
+    return errorResponse("Monetization is not cancelled for this account.", 400);
+  }
 
   await supabase
     .from("users")

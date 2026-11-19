@@ -155,6 +155,8 @@ export async function POST(request: NextRequest) {
         employment_status: employmentStatus,
         cost_per_impression: pricing.effectiveRate,
         cost: pricing.computedTotalCost,
+        is_bidded: pricing.isBidded,
+        bid_price: pricing.isBidded ? pricing.effectiveRate : null,
         ad_content: adContent || "",
         ad_media: adMedia || null,
         hls_url: hlsUrl || null,

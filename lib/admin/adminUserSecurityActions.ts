@@ -1,33 +1,201 @@
 import { NextResponse } from "next/server";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
+import supabaseAdmin from "../utils/dbAdmin";
+import { isAdminEmail } from "../adminHelper";
+import { invalidateAuthStatusCache } from "../authHelper";
+import { invalidateUserNotificationCaches } from "../notifications/notificationCache";
 import { recordAdminAudit } from "./adminAudit";
 
+const VALID_AD_ACCOUNT_STATUSES = new Set([
+  "active",
+  "temp_banned",
+  "temp_blocked",
+  "perm_banned",
+  "deactivated",
+]);
+
 export async function handleSuspendUser(adminEmail: string, userId: string, payload: any) {
-  const { suspendedUntil, reason } = payload || {};
+  const { suspendedUntil, reason, permanent } = payload || {};
+
+  const { data: targetUser } = await supabaseAdmin
+    .from("users")
+    .select("email, suspended_until, ad_account_status, ad_ban_reason")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!targetUser) {
+    return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+  }
+  if (isAdminEmail(targetUser.email)) {
+    return NextResponse.json(
+      { error: "Cannot block or suspend an administrator account." },
+      { status: 403 }
+    );
+  }
+
+  let normalizedUntil: string | null = null;
+  if (suspendedUntil !== null && suspendedUntil !== undefined && suspendedUntil !== "") {
+    const parsedMs = Date.parse(String(suspendedUntil));
+    if (Number.isNaN(parsedMs)) {
+      return NextResponse.json({ error: "Invalid suspendedUntil timestamp" }, { status: 400 });
+    }
+    normalizedUntil = new Date(parsedMs).toISOString();
+  }
+
+  const isPermanentBlock =
+    Boolean(permanent) ||
+    (normalizedUntil !== null &&
+      Date.parse(normalizedUntil) - Date.now() >= 40 * 365 * 24 * 60 * 60 * 1000);
+  const isUnblock = !normalizedUntil && !isPermanentBlock;
+  const cleanReason =
+    typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : null;
+
+  const nextStatus = isUnblock
+    ? "active"
+    : isPermanentBlock
+    ? "perm_banned"
+    : "temp_blocked";
+
   const { error } = await supabaseAdmin
     .from("users")
-    .update({ suspended_until: suspendedUntil })
+    .update({
+      suspended_until: isPermanentBlock
+        ? "2099-12-31T23:59:59.000Z"
+        : normalizedUntil,
+      ad_account_status: nextStatus,
+      ad_ban_reason: isUnblock ? null : cleanReason,
+    })
     .eq("id", userId);
 
   if (error) throw error;
 
+  if (targetUser.email) {
+    const emailLower = String(targetUser.email).toLowerCase().trim();
+    const { invalidateCachedProfile } = await import("../utils/cache");
+    const { redisConnection, isRedisReady } = await import("../redis");
+
+    if (isPermanentBlock) {
+      await supabaseAdmin
+        .from("deactivated_users")
+        .upsert(
+          {
+            email: emailLower,
+            deactivated_at: new Date().toISOString(),
+            reason: "admin_perm_banned",
+          },
+          { onConflict: "email" }
+        );
+      if (isRedisReady()) {
+        await Promise.allSettled([
+          redisConnection.set(`perm_banned:${emailLower}`, "1", "EX", 315360000),
+          redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 315360000),
+          redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 315360000),
+        ]);
+      }
+    } else if (isUnblock) {
+      await supabaseAdmin
+        .from("deactivated_users")
+        .delete()
+        .ilike("email", emailLower)
+        .in("reason", ["admin_perm_banned", "perm_banned", "admin_deactivated"]);
+      if (isRedisReady()) {
+        await Promise.allSettled([
+          redisConnection.del(`perm_banned:${emailLower}`),
+          redisConnection.del(`deactivated:${emailLower}`),
+          redisConnection.del(`revoked_before:${emailLower}`),
+        ]);
+      }
+    } else if (isRedisReady()) {
+      const ttlSecs = Math.max(
+        60,
+        Math.ceil((Date.parse(normalizedUntil!) - Date.now()) / 1000)
+      );
+      await redisConnection
+        .set(`revoked_before:${emailLower}`, String(Date.now()), "EX", Math.min(ttlSecs, 31536000))
+        .catch(() => {});
+    }
+
+    await invalidateAuthStatusCache(emailLower).catch(() => {});
+    await invalidateCachedProfile(emailLower).catch(() => {});
+  }
+
   await recordAdminAudit(
     adminEmail,
-    "suspend_user",
+    isUnblock ? "unblock_user" : isPermanentBlock ? "permanent_block_user" : "temporary_block_user",
     userId,
     "user",
-    reason || "Admin suspension",
-    null,
-    { suspended_until: suspendedUntil }
+    cleanReason || (isUnblock ? "Admin lifted block" : isPermanentBlock ? "Admin permanent block" : "Admin temporary block"),
+    {
+      suspended_until: targetUser.suspended_until,
+      ad_account_status: targetUser.ad_account_status,
+    },
+    {
+      suspended_until: isPermanentBlock ? "2099-12-31T23:59:59.000Z" : normalizedUntil,
+      ad_account_status: nextStatus,
+      reason: cleanReason,
+    }
   );
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    status: nextStatus,
+    blockedUntil: isPermanentBlock ? null : normalizedUntil,
+  });
+}
+
+export async function handleBlockUser(adminEmail: string, userId: string, payload: any) {
+  const mode = String(payload?.mode || "temporary").toLowerCase().trim();
+  const reason = typeof payload?.reason === "string" ? payload.reason.trim() : "";
+
+  if (mode === "unblock") {
+    return handleSuspendUser(adminEmail, userId, { suspendedUntil: null, permanent: false, reason });
+  }
+  if (mode === "permanent") {
+    return handleSuspendUser(adminEmail, userId, {
+      suspendedUntil: "2099-12-31T23:59:59.000Z",
+      permanent: true,
+      reason,
+    });
+  }
+
+  let blockedUntil = payload?.blockedUntil || payload?.suspendedUntil || null;
+  if (!blockedUntil) {
+    const durationHours = Number(payload?.durationHours);
+    const durationDays = Number(payload?.durationDays);
+    const ms =
+      Number.isFinite(durationHours) && durationHours > 0
+        ? durationHours * 60 * 60 * 1000
+        : Number.isFinite(durationDays) && durationDays > 0
+        ? durationDays * 24 * 60 * 60 * 1000
+        : 24 * 60 * 60 * 1000;
+    blockedUntil = new Date(Date.now() + ms).toISOString();
+  }
+
+  return handleSuspendUser(adminEmail, userId, {
+    suspendedUntil: blockedUntil,
+    permanent: false,
+    reason,
+  });
+}
+
+export async function handleUnblockUser(adminEmail: string, userId: string, payload: any) {
+  return handleSuspendUser(adminEmail, userId, {
+    suspendedUntil: null,
+    permanent: false,
+    reason: payload?.reason || "Admin unblocked user",
+  });
 }
 
 export async function handleAdjustUserBalance(adminEmail: string, userId: string, payload: any) {
-  const { newBalance, reason } = payload || {};
-  const parsedNewBalance = Number(newBalance);
-  if (!Number.isFinite(parsedNewBalance) || parsedNewBalance < 0) {
+  const { newBalance, delta, reason } = payload || {};
+  const hasDelta = delta !== undefined && delta !== null && delta !== "";
+  const parsedDelta = hasDelta ? Number(delta) : NaN;
+  const parsedNewBalanceInput =
+    newBalance !== undefined && newBalance !== null && newBalance !== "" ? Number(newBalance) : NaN;
+
+  if (hasDelta && (!Number.isFinite(parsedDelta) || parsedDelta === 0)) {
+    return NextResponse.json({ error: "Invalid balance delta amount" }, { status: 400 });
+  }
+  if (!hasDelta && (!Number.isFinite(parsedNewBalanceInput) || parsedNewBalanceInput < 0)) {
     return NextResponse.json({ error: "Invalid balance amount" }, { status: 400 });
   }
 
@@ -42,13 +210,17 @@ export async function handleAdjustUserBalance(adminEmail: string, userId: string
   }
 
   const prevBalance = Number(previousUser.balance || 0);
-  const deltaAmount = Math.abs(parsedNewBalance - prevBalance);
+  const effectiveNewBalance = hasDelta
+    ? Math.max(0, Math.round((prevBalance + parsedDelta) * 100) / 100)
+    : Math.round(parsedNewBalanceInput * 100) / 100;
+  const deltaAmount = Math.abs(Math.round((effectiveNewBalance - prevBalance) * 100) / 100);
+  const signedDelta = hasDelta ? parsedDelta : Math.round((effectiveNewBalance - prevBalance) * 100) / 100;
 
   const {
     checkAdminVelocityLimit,
     requiresDualApproval,
     createPendingAdminRequest,
-  } = await import("@/lib/security/adminGuard");
+  } = await import("../security/adminGuard");
 
   const velocityCheck = await checkAdminVelocityLimit(adminEmail, deltaAmount);
   if (!velocityCheck.allowed) {
@@ -65,43 +237,96 @@ export async function handleAdjustUserBalance(adminEmail: string, userId: string
         userId,
         userEmail: previousUser.email,
         previousBalance: prevBalance,
-        newBalance: parsedNewBalance,
+        previous_balance: prevBalance,
+        newBalance: effectiveNewBalance,
+        new_balance: effectiveNewBalance,
+        ...(hasDelta ? { delta: signedDelta } : {}),
       },
       reason: reason || "Manual administrative balance adjustment",
     });
 
-    return NextResponse.json({
-      success: true,
-      requiresDualApproval: true,
-      requestId: pendingReq.id,
-      message: `Balance adjustment of ₦${deltaAmount.toLocaleString("en-NG")} exceeds ₦50,000 threshold and has been queued for dual-admin approval.`,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        requiresDualApproval: true,
+        requestId: pendingReq.id,
+        message: `Balance adjustment of ₦${deltaAmount.toLocaleString("en-NG")} exceeds ₦50,000 threshold and has been queued for dual-admin approval.`,
+      },
+      { status: 202 }
+    );
   }
 
-  const { error } = await supabaseAdmin
-    .from("users")
-    .update({ balance: parsedNewBalance })
-    .eq("id", userId);
+  // Prefer atomic FOR UPDATE RPC so concurrent user earnings/withdrawals are never lost
+  let finalPrevBalance = prevBalance;
+  let finalNewBalance = effectiveNewBalance;
+  let finalAppliedDelta = signedDelta;
 
-  if (error) throw error;
+  const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc("adjust_user_balance_atomic", {
+    p_user_id: userId,
+    p_delta: hasDelta ? signedDelta : null,
+    p_new_balance: hasDelta ? null : effectiveNewBalance,
+  });
+
+  const rpcPayload = rpcRes as Record<string, any> | null;
+  if (!rpcErr && rpcPayload?.success) {
+    finalPrevBalance = Number(rpcPayload.previous_balance ?? prevBalance);
+    finalNewBalance = Number(rpcPayload.new_balance ?? effectiveNewBalance);
+    finalAppliedDelta = Number(rpcPayload.delta ?? signedDelta);
+  } else if (!rpcErr && rpcPayload && rpcPayload.success === false) {
+    return NextResponse.json(
+      { error: String(rpcPayload.error || "Balance adjustment failed") },
+      { status: 400 }
+    );
+  } else if (
+    rpcErr &&
+    !String(rpcErr.message || "").includes("does not exist") &&
+    !String(rpcErr.message || "").includes("could not find function")
+  ) {
+    return NextResponse.json(
+      { error: rpcErr.message || "Balance adjustment failed" },
+      { status: 400 }
+    );
+  } else {
+    // Fallback if migration not yet applied
+    const { error } = await supabaseAdmin
+      .from("users")
+      .update({ balance: effectiveNewBalance })
+      .eq("id", userId);
+    if (error) throw error;
+  }
 
   if (previousUser.email) {
-    const { invalidateCachedProfile } = await import("@/lib/utils/cache");
-    await invalidateCachedProfile(previousUser.email).catch(() => {});
-    await supabaseAdmin.from("payments").insert({
-      user_email: previousUser.email.toLowerCase().trim(),
-      reference: `admin_adj_${Date.now()}_${userId.substring(0, 6)}`,
-      amount: deltaAmount,
-      status: "success",
-      type: "admin_adjustment",
-      description: reason || `Admin balance adjustment (${prevBalance} -> ${parsedNewBalance})`,
-      metadata: {
-        admin_email: adminEmail,
-        previous_balance: prevBalance,
-        new_balance: parsedNewBalance,
-        reason: reason || "Manual administrative adjustment",
-      },
-    }).then(() => {}, () => {});
+    const emailLower = previousUser.email.toLowerCase().trim();
+    const { invalidateCachedProfile } = await import("../utils/cache");
+    await invalidateCachedProfile(emailLower).catch(() => {});
+    await supabaseAdmin
+      .from("payments")
+      .insert({
+        user_email: emailLower,
+        reference: `admin_adj_${Date.now()}_${userId.substring(0, 6)}`,
+        amount: Math.abs(finalAppliedDelta),
+        status: "success",
+        type: "admin_adjustment",
+        description: reason || `Admin balance adjustment (${finalPrevBalance} -> ${finalNewBalance})`,
+        metadata: {
+          admin_email: adminEmail,
+          previous_balance: finalPrevBalance,
+          new_balance: finalNewBalance,
+          delta: finalAppliedDelta,
+          reason: reason || "Manual administrative adjustment",
+        },
+      })
+      .then(() => {}, () => {});
+
+    await supabaseAdmin
+      .from("notifications")
+      .insert({
+        user_email: emailLower,
+        title: "Wallet Balance Updated",
+        message: `Your wallet balance was updated by an administrator to ₦${finalNewBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}.`,
+      })
+      .then(() => {}, () => {});
+    await invalidateUserNotificationCaches(emailLower).catch(() => {});
   }
 
   await recordAdminAudit(
@@ -110,11 +335,16 @@ export async function handleAdjustUserBalance(adminEmail: string, userId: string
     userId,
     "user",
     reason || "Manual administrative adjustment",
-    { balance: prevBalance, email: previousUser.email },
-    { balance: parsedNewBalance }
+    { balance: finalPrevBalance, email: previousUser.email },
+    { balance: finalNewBalance, delta: finalAppliedDelta }
   );
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    previousBalance: finalPrevBalance,
+    newBalance: finalNewBalance,
+    delta: finalAppliedDelta,
+  });
 }
 
 export async function handleDeleteUser(adminEmail: string, userId: string) {
@@ -126,6 +356,13 @@ export async function handleDeleteUser(adminEmail: string, userId: string) {
 
   if (!previousUser || !previousUser.email) {
     return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+  }
+
+  if (isAdminEmail(previousUser.email)) {
+    return NextResponse.json(
+      { error: "Cannot delete an administrator account." },
+      { status: 403 }
+    );
   }
 
   const emailLower = String(previousUser.email).toLowerCase().trim();
@@ -351,10 +588,36 @@ export async function handleDeleteUser(adminEmail: string, userId: string) {
 
 export async function handleAdAccountAction(adminEmail: string, userId: string, payload: any) {
   const { adStatus, banDays, banReason } = payload || {};
-  let adBanUntil = null;
+  if (!adStatus || !VALID_AD_ACCOUNT_STATUSES.has(String(adStatus))) {
+    return NextResponse.json(
+      { error: "Invalid adStatus. Allowed: active, temp_banned, perm_banned, deactivated." },
+      { status: 400 }
+    );
+  }
+
+  const { data: targetUser } = await supabaseAdmin
+    .from("users")
+    .select("email, ad_account_status")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!targetUser) {
+    return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+  }
+  if (adStatus !== "active" && isAdminEmail(targetUser.email)) {
+    return NextResponse.json(
+      { error: "Cannot ban or deactivate an administrator account." },
+      { status: 403 }
+    );
+  }
+
+  let adBanUntil: string | null = null;
   if (adStatus === "temp_banned") {
-    const days = parseInt(banDays || "7", 10);
-    adBanUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const parsedDays = parseInt(String(banDays ?? "7"), 10);
+    if (!Number.isFinite(parsedDays) || parsedDays < 1 || parsedDays > 3650) {
+      return NextResponse.json({ error: "banDays must be a valid integer between 1 and 3650" }, { status: 400 });
+    }
+    adBanUntil = new Date(Date.now() + parsedDays * 24 * 60 * 60 * 1000).toISOString();
   } else if (adStatus === "perm_banned") {
     adBanUntil = new Date("2099-12-31T23:59:59Z").toISOString();
   }
@@ -364,7 +627,7 @@ export async function handleAdAccountAction(adminEmail: string, userId: string, 
     .update({
       ad_account_status: adStatus,
       ad_ban_until: adBanUntil,
-      ad_ban_reason: banReason || null
+      ad_ban_reason: adStatus === "active" ? null : banReason || null,
     })
     .eq("id", userId)
     .select("email")
@@ -374,10 +637,10 @@ export async function handleAdAccountAction(adminEmail: string, userId: string, 
 
   if (updatedUser?.email) {
     const emailLower = String(updatedUser.email).trim().toLowerCase();
-    const { invalidateCachedProfile } = await import("@/lib/utils/cache");
+    const { invalidateCachedProfile } = await import("../utils/cache");
     await invalidateCachedProfile(emailLower).catch(() => {});
 
-    const { redisConnection, isRedisReady } = await import("@/lib/redis");
+    const { redisConnection, isRedisReady } = await import("../redis");
     if (adStatus === "perm_banned") {
       await supabaseAdmin
         .from("deactivated_users")
@@ -394,16 +657,36 @@ export async function handleAdAccountAction(adminEmail: string, userId: string, 
         await redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 315360000).catch(() => {});
         await redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 315360000).catch(() => {});
       }
+    } else if (adStatus === "deactivated") {
+      await supabaseAdmin
+        .from("deactivated_users")
+        .upsert(
+          {
+            email: emailLower,
+            deactivated_at: new Date().toISOString(),
+            reason: "admin_deactivated",
+          },
+          { onConflict: "email" }
+        );
+      if (isRedisReady()) {
+        await redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 2592000).catch(() => {});
+        await redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 2592000).catch(() => {});
+      }
     } else if (adStatus === "active") {
       await supabaseAdmin
         .from("deactivated_users")
         .delete()
-        .eq("email", emailLower)
-        .in("reason", ["admin_perm_banned", "perm_banned"]);
+        .ilike("email", emailLower)
+        .in("reason", ["admin_perm_banned", "perm_banned", "admin_deactivated"]);
       if (isRedisReady()) {
-        await redisConnection.del(`perm_banned:${emailLower}`).catch(() => {});
+        await Promise.allSettled([
+          redisConnection.del(`perm_banned:${emailLower}`),
+          redisConnection.del(`deactivated:${emailLower}`),
+          redisConnection.del(`revoked_before:${emailLower}`),
+        ]);
       }
     }
+    await invalidateAuthStatusCache(emailLower).catch(() => {});
   }
 
   await recordAdminAudit(
@@ -412,7 +695,7 @@ export async function handleAdAccountAction(adminEmail: string, userId: string, 
     userId,
     "user",
     banReason || null,
-    null,
+    { ad_account_status: targetUser.ad_account_status },
     { adStatus, adBanUntil, banReason }
   );
 
@@ -429,6 +712,16 @@ export async function handleDeactivateAccount(adminEmail: string, userId: string
     .eq("id", userId)
     .maybeSingle();
 
+  if (!previousUser) {
+    return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+  }
+  if (isDeactivated && isAdminEmail(previousUser.email)) {
+    return NextResponse.json(
+      { error: "Cannot deactivate an administrator account." },
+      { status: 403 }
+    );
+  }
+
   const adStatus = isDeactivated ? "deactivated" : "active";
   const banReason = reason || (isDeactivated ? "Account deactivated by admin" : null);
 
@@ -444,10 +737,10 @@ export async function handleDeactivateAccount(adminEmail: string, userId: string
 
   if (previousUser?.email) {
     const emailLower = String(previousUser.email).trim().toLowerCase();
-    const { invalidateCachedProfile } = await import("@/lib/utils/cache");
+    const { invalidateCachedProfile } = await import("../utils/cache");
     await invalidateCachedProfile(emailLower).catch(() => {});
 
-    const { redisConnection, isRedisReady } = await import("@/lib/redis");
+    const { redisConnection, isRedisReady } = await import("../redis");
     if (isDeactivated) {
       await supabaseAdmin
         .from("deactivated_users")
@@ -467,12 +760,16 @@ export async function handleDeactivateAccount(adminEmail: string, userId: string
       await supabaseAdmin
         .from("deactivated_users")
         .delete()
-        .eq("email", emailLower)
+        .ilike("email", emailLower)
         .not("reason", "in", '("admin_perm_banned","perm_banned")');
       if (isRedisReady()) {
-        await redisConnection.del(`deactivated:${emailLower}`).catch(() => {});
+        await Promise.allSettled([
+          redisConnection.del(`deactivated:${emailLower}`),
+          redisConnection.del(`revoked_before:${emailLower}`),
+        ]);
       }
     }
+    await invalidateAuthStatusCache(emailLower).catch(() => {});
   }
 
   await recordAdminAudit(

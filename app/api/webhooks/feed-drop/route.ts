@@ -100,7 +100,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, skipped: "Ad is paused or completed" });
     }
 
-    await dispatchFeedDropWebhook(adRecord, publisherProfile);
+    // Prevent infinite self-recursion when FEED_DROP_WEBHOOK_URL points back to /api/webhooks/feed-drop (M-06)
+    await dispatchFeedDropWebhook(adRecord, publisherProfile, { skipExternalWebhook: true });
 
     return NextResponse.json({
       received: true,

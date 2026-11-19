@@ -160,14 +160,16 @@ export async function GET(req: NextRequest) {
     let hasMore = false;
 
     if (cursor) {
-      const [cursorCreatedAt, cursorId] = cursor.split("|");
-      if (cursorCreatedAt && !Number.isNaN(Date.parse(cursorCreatedAt))) {
+      const [rawCursorCreatedAt, cursorId] = cursor.split("|");
+      const parsedCursorMs = rawCursorCreatedAt ? Date.parse(rawCursorCreatedAt) : NaN;
+      if (!Number.isNaN(parsedCursorMs)) {
+        const safeCursorIso = new Date(parsedCursorMs).toISOString();
         if (cursorId) {
           query = query.or(
-            `created_at.lt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},id.lt.${sanitizeFilterInput(cursorId)})`
+            `created_at.lt.${safeCursorIso},and(created_at.eq.${safeCursorIso},id.lt.${sanitizeFilterInput(cursorId)})`
           );
         } else {
-          query = query.lt("created_at", cursorCreatedAt);
+          query = query.lt("created_at", safeCursorIso);
         }
       }
       const res = await query

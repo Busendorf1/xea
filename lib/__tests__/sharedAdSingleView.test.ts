@@ -56,7 +56,6 @@ describe("Shared Ad Single-Ad Rendering (Web)", () => {
       registerL1FeedEvictionHandler: vi.fn(),
     }));
     vi.doMock("@/lib/targetingEngine", () => ({}));
-    vi.doMock("@/lib/ads/publicAdResolver", async () => await import("../ads/publicAdResolver"));
     vi.doMock("@/lib/redis", () => ({
       default: { get: vi.fn(), set: vi.fn() },
       isRedisReady: vi.fn().mockReturnValue(false),

@@ -3,8 +3,10 @@ import redisConnection, { isRedisReady } from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { isAdminEmail } from "@/lib/authHelper";
 import { isExemptFromBarriersAndInactivity } from "../adminHelper";
+import * as cacheUtils from "@/lib/utils/cache";
 import { atomicCheckAndAcquireEarnLock } from "@/lib/utils/cache";
 import { creditAffiliatePlatformShare } from "@/lib/affiliateEngine";
+import * as impressionBuffer from "@/lib/impressionBuffer";
 import { bufferAdImpression } from "@/lib/impressionBuffer";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { syncPostEarnCaches, publishEarnSideEffects } from "./redisSync";
@@ -47,6 +49,9 @@ export interface EarnClaimOutput {
   atomicCap: number;
   maxCap?: number;
   attentionWorthScore?: number | null;
+  milestoneNotified?: boolean;
+  monetizationUnlocked?: boolean;
+  atwUpgraded?: boolean;
 }
 
 async function evictExhaustedAdCaches(adId: string): Promise<void> {
@@ -78,6 +83,9 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
   let maxCap = 3;
   let attentionWorthScore: number | null | undefined;
   let isEarnerNowMonetized = false;
+  let milestoneNotified = false;
+  let monetizationUnlocked = false;
+  let atwUpgraded = false;
 
   const earnedSetKey = `earned:ads:${emailKey}`;
 
@@ -129,14 +137,54 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     `\n========================================================================\n🟢 [EARN CLAIM INITIATED]\n   👤 User Email : ${emailKey}\n   📢 Ad ID      : ${adId}\n   📊 Base CPI   : ₦${rawCpi.toFixed(2)}\n   ⏱️ Focus Bonus: +${bonusSeconds}s (${Math.round(attentionSharePercent * 100)}% Rate: ₦${earnedRateNumber.toFixed(2)})\n========================================================================\n`
   );
 
+  // 1b. Atomic Redis Budget Guard (C-05): Reserve 1 paid impression slot BEFORE allowing p_skip_ad_counter=true
+  let budgetReservedInRedis = false;
+  let reserveSlotFn: typeof impressionBuffer.reserveAdBudgetSlot | undefined;
+  let releaseSlotFn: typeof impressionBuffer.releaseAdBudgetSlot | undefined;
+  try {
+    reserveSlotFn = impressionBuffer.reserveAdBudgetSlot;
+    releaseSlotFn = impressionBuffer.releaseAdBudgetSlot;
+  } catch {}
+
+  if (isRedisReady() && typeof reserveSlotFn === "function") {
+    const budgetCheck = await reserveSlotFn(adId);
+    if (budgetCheck.exhausted) {
+      await evictExhaustedAdCaches(adId);
+      return {
+        errorResponse: NextResponse.json(
+          {
+            success: false,
+            code: "CAMPAIGN_COMPLETED",
+            error: "This campaign has already reached its purchased impression limit.",
+          },
+          { status: 400 }
+        ),
+        adIdToUnlock,
+        earnedRateNumber: 0,
+        updatedBalance: null,
+        liveClicks: 0,
+        atomicViews: 1,
+        atomicCap: 1,
+      };
+    }
+    budgetReservedInRedis = budgetCheck.reserved;
+  }
+
   // 2. Authoritative Atomic Transaction in PostgreSQL (Single ACID RPC)
   const { data: atomicResult, error: atomicErr } = await supabaseAdmin.rpc("claim_ad_earning_atomic", {
     p_ad_id: adId,
     p_user_email: emailKey,
     p_expected_rate: earnedRateNumber,
     p_device_id: deviceId || null,
-    p_skip_ad_counter: isRedisReady(),
+    p_skip_ad_counter: budgetReservedInRedis,
   });
+
+  if (budgetReservedInRedis && (atomicErr || !atomicResult || !atomicResult.success)) {
+    if (typeof releaseSlotFn === "function") {
+      await releaseSlotFn(adId).catch(() => {});
+    }
+    budgetReservedInRedis = false;
+  }
 
   const isLegitRejection = Boolean(
     atomicResult && !atomicResult.success && LEGIT_REJECTION_CODES.has(String(atomicResult.code || ""))
@@ -153,7 +201,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
       supabaseAdmin
         .from("users")
         .select(
-          "id, balance, monetization_clicks, monetized, referral_downloads_count, suspended_until, atw_tier, attention_worth_score, is_affiliate, is_career"
+          "id, balance, monetization_clicks, monetized, has_cancelled_monetization, referral_downloads_count, suspended_until, atw_tier, attention_worth_score, is_affiliate, is_career"
         )
         .ilike("email", emailKey)
         .maybeSingle(),
@@ -371,16 +419,16 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
 
     const currentBal = Number(dbUser.balance) || 0;
     const currentClicks = Number(dbUser.monetization_clicks) || 0;
-    const currentInvites = Number(dbUser.referral_downloads_count) || 0;
+    const hasCancelled = Boolean((dbUser as any).has_cancelled_monetization);
     const isMonetized = Boolean(
-      isExemptDbUser ||
-        dbUser.monetized === true ||
-        dbUser.monetized === "true" ||
-        dbUser.monetized === "yes" ||
-        dbUser.monetized === "1" ||
-        dbUser.monetized === "t" ||
-        currentClicks >= 500 ||
-        currentInvites >= 12
+      !hasCancelled &&
+        (isExemptDbUser ||
+          dbUser.monetized === true ||
+          dbUser.monetized === "true" ||
+          dbUser.monetized === "yes" ||
+          dbUser.monetized === "1" ||
+          dbUser.monetized === "t" ||
+          currentClicks >= 500)
     );
     isEarnerNowMonetized = isMonetized;
     attentionWorthScore = (dbUser as any).attention_worth_score;
@@ -493,13 +541,25 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
       invalidateCachedUserCampaigns(adOwnerToInvalidate).catch(() => {});
     }
 
+    const nextMonetizedFallback = !hasCancelled && (isMonetized || liveClicks >= 500 || isExemptDbUser);
+    const prevMonetizedFallback = Boolean(
+      !hasCancelled &&
+        (dbUser.monetized === true ||
+          dbUser.monetized === "true" ||
+          dbUser.monetized === "yes" ||
+          dbUser.monetized === "1" ||
+          dbUser.monetized === "t" ||
+          currentClicks >= 500)
+    );
+
     const { error: userUpdateErr } = await supabaseAdmin
       .from("users")
       .update({
         balance: updatedBalance,
         monetization_clicks: liveClicks,
         atw_tier: tierDetails.tierCode,
-        monetized: isMonetized || liveClicks >= 500 || isExemptDbUser ? "true" : dbUser.monetized ? "true" : "false",
+        monetized: nextMonetizedFallback ? "true" : "false",
+        ...(nextMonetizedFallback && !prevMonetizedFallback ? { monetized_at: new Date().toISOString() } : {}),
         last_active_at: new Date().toISOString(),
       })
       .ilike("email", emailKey);
@@ -520,25 +580,23 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     if (userUpdateErr) {
       console.error("❌ DB fallback error updating user balance:", userUpdateErr);
     } else {
-      const prevMonetizedFallback = Boolean(
-        dbUser.monetized === true ||
-          dbUser.monetized === "true" ||
-          dbUser.monetized === "yes" ||
-          dbUser.monetized === "1" ||
-          dbUser.monetized === "t" ||
-          currentClicks >= 500
-      );
-      checkAndNotifyClickAndAtwMilestones({
+      const fallbackMilestoneRes = await checkAndNotifyClickAndAtwMilestones({
         email: emailKey,
         prevClicks: currentClicks,
         prevMonetized: prevMonetizedFallback,
         prevAtwTier: dbUser.atw_tier,
         nextClicks: liveClicks,
-        nextMonetized: Boolean(isMonetized || liveClicks >= 500),
+        nextMonetized: nextMonetizedFallback,
         nextAtwTier: tierDetails.tierCode,
         attentionWorthScore,
         isExempt: isExemptDbUser,
-      }).catch(() => {});
+        hasCancelled,
+      }).catch(() => null);
+      if (fallbackMilestoneRes) {
+        monetizationUnlocked = Boolean(fallbackMilestoneRes.monetizationNotified);
+        atwUpgraded = Boolean(fallbackMilestoneRes.atwNotified);
+        milestoneNotified = monetizationUnlocked || atwUpgraded;
+      }
     }
 
     if (isMonetized && earnedRateNumber > 0) {
@@ -593,7 +651,7 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
       atomicCap = Number(atomicResult.max_views ?? atomicResult.cap);
       const stage = Number(atomicResult.broadening_stage ?? 0);
       const remainingHeadroom = stage >= 2 ? 0 : stage === 1 ? 1 : 2;
-      maxCap = Math.min(102, atomicCap + remainingHeadroom);
+      maxCap = Math.min(5_000_000, atomicCap + remainingHeadroom);
     }
     if (atomicResult.is_exhausted || atomicResult.completed) {
       await evictExhaustedAdCaches(adId);
@@ -647,6 +705,12 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     }
   }
 
+  // Capture pre-update cached profile metadata before syncPostEarnCaches overwrites it
+  const prevCachedProf =
+    typeof cacheUtils.getCachedProfile === "function"
+      ? await cacheUtils.getCachedProfile<any>(emailKey).catch(() => null)
+      : null;
+
   // 4. Sync Redis caches, statement/monetize invalidation & live broadcasts
   await syncPostEarnCaches({
     emailKey,
@@ -656,30 +720,53 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     atomicViews,
     atomicCap,
     maxCap,
-    attentionWorthScore,
+    attentionWorthScore: attentionWorthScore ?? prevCachedProf?.attention_worth_score,
   });
 
-  const isExemptEarn = isExemptFromBarriersAndInactivity(emailKey);
-  const earnTier = computeAtwTierDetails(liveClicks, atomicResult?.atw_tier, isExemptEarn, attentionWorthScore);
+  const isExemptEarn = isExemptFromBarriersAndInactivity(emailKey, prevCachedProf);
+  const resolvedScore = attentionWorthScore ?? prevCachedProf?.attention_worth_score;
+  const earnTier = computeAtwTierDetails(liveClicks, atomicResult?.atw_tier, isExemptEarn, resolvedScore);
 
   if (atomicResult && atomicResult.success && !isExemptEarn) {
     const prevClicksApprox = Math.max(0, liveClicks - 1);
+    const hasCancelledAtomic = Boolean(
+      atomicResult.has_cancelled_monetization ?? prevCachedProf?.has_cancelled_monetization
+    );
+    const prevMonetizedAtomic =
+      typeof atomicResult.prev_monetized === "boolean"
+        ? atomicResult.prev_monetized
+        : prevCachedProf?.monetized !== undefined
+        ? prevCachedProf.monetized === true ||
+          prevCachedProf.monetized === "true" ||
+          prevCachedProf.monetized === "yes" ||
+          prevCachedProf.monetized === "1" ||
+          prevCachedProf.monetized === "t"
+        : prevClicksApprox >= 500;
     const prevTierApprox =
       atomicResult.prev_atw_tier ??
+      prevCachedProf?.atw_tier ??
       (prevClicksApprox > 0
-        ? computeAtwTierDetails(prevClicksApprox, undefined, isExemptEarn, attentionWorthScore).tierCode
+        ? computeAtwTierDetails(prevClicksApprox, undefined, isExemptEarn, resolvedScore).tierCode
         : "ATW1");
-    checkAndNotifyClickAndAtwMilestones({
+    const atomicMilestoneRes = await checkAndNotifyClickAndAtwMilestones({
       email: emailKey,
       prevClicks: prevClicksApprox,
-      prevMonetized: typeof atomicResult.prev_monetized === "boolean" ? atomicResult.prev_monetized : prevClicksApprox >= 500,
+      prevMonetized: prevMonetizedAtomic,
       prevAtwTier: prevTierApprox,
       nextClicks: liveClicks,
-      nextMonetized: isEarnerNowMonetized || liveClicks >= 500,
+      nextMonetized: !hasCancelledAtomic && (isEarnerNowMonetized || liveClicks >= 500),
       nextAtwTier: earnTier.tierCode,
-      attentionWorthScore,
+      attentionWorthScore: resolvedScore,
       isExempt: isExemptEarn,
-    }).catch(() => {});
+      hasCancelled: hasCancelledAtomic,
+      sqlMonetizationNotified: Boolean(atomicResult.monetization_notified),
+      sqlAtwNotified: Boolean(atomicResult.atw_notified),
+    }).catch(() => null);
+    if (atomicMilestoneRes) {
+      monetizationUnlocked = Boolean(atomicMilestoneRes.monetizationNotified);
+      atwUpgraded = Boolean(atomicMilestoneRes.atwNotified);
+      milestoneNotified = monetizationUnlocked || atwUpgraded;
+    }
   }
 
   await publishEarnSideEffects({
@@ -700,6 +787,9 @@ export async function processEarnClaim(input: EarnClaimInput): Promise<EarnClaim
     atomicViews,
     atomicCap,
     maxCap,
-    attentionWorthScore,
+    attentionWorthScore: resolvedScore,
+    milestoneNotified,
+    monetizationUnlocked,
+    atwUpgraded,
   };
 }

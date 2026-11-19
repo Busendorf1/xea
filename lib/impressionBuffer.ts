@@ -34,6 +34,101 @@ export const CLICK_TYPE_TO_COLUMN: Record<CanonicalClickType, string> = {
 };
 
 const REDIS_KEY_IMPRESSIONS = "buffer:ad_impressions";
+const REDIS_BUDGET_PREFIX = "ad:budget_rem:";
+
+// Atomic Lua reservation: decrements remaining impression budget only if > 0.
+// Returns {1, nextRemaining} on success, {0, 0} if exhausted, {-1, 0} if uninitialized.
+const ATOMIC_RESERVE_BUDGET_LUA = `
+local cur = redis.call("GET", KEYS[1])
+if not cur then
+  return {-1, 0}
+end
+local rem = tonumber(cur)
+if not rem or rem <= 0 then
+  return {0, 0}
+end
+local nextRem = redis.call("DECR", KEYS[1])
+return {1, nextRem}
+`;
+
+/**
+ * Atomically reserves 1 paid impression slot in Redis BEFORE allowing `p_skip_ad_counter: true` (C-05).
+ * Prevents concurrent earn claims from overshooting a campaign's purchased impression budget.
+ */
+export async function reserveAdBudgetSlot(adId: string): Promise<{
+  reserved: boolean;
+  exhausted: boolean;
+  fallbackToDbCounter: boolean;
+}> {
+  if (!adId || !isRedisReady() || typeof (redisConnection as any).eval !== "function") {
+    return { reserved: false, exhausted: false, fallbackToDbCounter: true };
+  }
+
+  const budgetKey = `${REDIS_BUDGET_PREFIX}${adId}`;
+  try {
+    let res = (await (redisConnection as any).eval(ATOMIC_RESERVE_BUDGET_LUA, 1, budgetKey)) as [
+      number,
+      number,
+    ];
+
+    // Lazy-initialize remaining budget key from DB once per 30m TTL using SET NX
+    if (Array.isArray(res) && Number(res[0]) === -1) {
+      const { data: adRow } = await supabaseAdmin
+        .from("addsactive")
+        .select("impressions, impression_count, is_admin_post, completed_at, is_paused")
+        .eq("id", adId)
+        .maybeSingle();
+
+      if (!adRow || adRow.completed_at || adRow.is_paused === true) {
+        return { reserved: false, exhausted: true, fallbackToDbCounter: false };
+      }
+      if (adRow.is_admin_post || Number(adRow.impressions || 0) <= 0) {
+        return { reserved: false, exhausted: false, fallbackToDbCounter: true };
+      }
+
+      const bufferedRaw = await redisConnection.hget(REDIS_KEY_IMPRESSIONS, adId).catch(() => "0");
+      const bufferedCount = Math.max(0, Number(bufferedRaw || 0));
+      const remaining = Math.max(
+        0,
+        Number(adRow.impressions || 0) - (Number(adRow.impression_count || 0) + bufferedCount)
+      );
+
+      await redisConnection.set(budgetKey, String(remaining), "EX", 1800, "NX").catch(() => null);
+      res = (await (redisConnection as any).eval(ATOMIC_RESERVE_BUDGET_LUA, 1, budgetKey)) as [
+        number,
+        number,
+      ];
+    }
+
+    if (Array.isArray(res)) {
+      const status = Number(res[0]);
+      if (status === 1) {
+        return { reserved: true, exhausted: false, fallbackToDbCounter: false };
+      }
+      if (status === 0) {
+        return { reserved: false, exhausted: true, fallbackToDbCounter: false };
+      }
+    }
+  } catch {
+    // Fall back to authoritative Postgres row counter if Redis fails mid-flight
+  }
+
+  return { reserved: false, exhausted: false, fallbackToDbCounter: true };
+}
+
+/**
+ * Releases a previously reserved Redis impression slot if the downstream DB claim is rejected.
+ */
+export async function releaseAdBudgetSlot(adId: string): Promise<void> {
+  if (!adId || !isRedisReady()) return;
+  const budgetKey = `${REDIS_BUDGET_PREFIX}${adId}`;
+  try {
+    const exists = await redisConnection.exists(budgetKey);
+    if (exists) {
+      await redisConnection.incr(budgetKey);
+    }
+  } catch {}
+}
 const REDIS_KEY_CLICKS_PHONE = "buffer:clicks_phone";
 const REDIS_KEY_CLICKS_WHATSAPP = "buffer:clicks_whatsapp";
 const REDIS_KEY_CLICKS_WEBSITE = "buffer:clicks_website";

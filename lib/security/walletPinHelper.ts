@@ -27,7 +27,27 @@ interface PinFailRecord {
   expiresAt: number;
 }
 
+const MAX_MEMORY_PIN_ENTRIES = 10_000;
 const memoryPinFailStore = new Map<string, PinFailRecord>();
+
+function extractEmailFromBucket(bucketKey: string): string {
+  const idx = bucketKey.indexOf(":");
+  return idx >= 0 ? bucketKey.slice(idx + 1).toLowerCase().trim() : bucketKey.toLowerCase().trim();
+}
+
+function setMemoryPinEntry(key: string, rec: PinFailRecord) {
+  if (memoryPinFailStore.size >= MAX_MEMORY_PIN_ENTRIES) {
+    const now = Date.now();
+    for (const [k, v] of memoryPinFailStore.entries()) {
+      if (v.expiresAt <= now) memoryPinFailStore.delete(k);
+    }
+    if (memoryPinFailStore.size >= MAX_MEMORY_PIN_ENTRIES) {
+      const oldest = memoryPinFailStore.keys().next().value;
+      if (oldest) memoryPinFailStore.delete(oldest);
+    }
+  }
+  memoryPinFailStore.set(key, rec);
+}
 
 export function getPinAttemptBucket(email: string): string {
   return `wallet_pin_fail:${email.toLowerCase().trim()}`;
@@ -75,6 +95,29 @@ export async function getPinLockoutStatus(bucketKey: string): Promise<{
       return { locked: false, secondsLeft: 0, minsLeft: 0 };
     } catch {
       // Fallback to in-memory store
+    }
+  }
+
+  // Cross-instance DB fallback when Redis is unavailable (prevents cold-start lockout bypass)
+  const cleanEmail = extractEmailFromBucket(bucketKey);
+  if (cleanEmail.includes("@") && bucketKey.startsWith("wallet_pin_fail:")) {
+    try {
+      const { default: supabaseAdmin } = await import("../utils/dbAdmin");
+      if (typeof supabaseAdmin?.rpc === "function") {
+        const { data, error } = await supabaseAdmin.rpc("check_wallet_pin_lockout", {
+          p_user_email: cleanEmail,
+        });
+        if (!error && data && Boolean(data.is_locked ?? data.locked)) {
+          const secondsLeft = Math.max(1, Number(data.remaining_seconds ?? data.seconds_left ?? PIN_LOCKOUT_SECONDS));
+          return {
+            locked: true,
+            secondsLeft,
+            minsLeft: Math.max(1, Math.ceil(secondsLeft / 60)),
+          };
+        }
+      }
+    } catch {
+      // Fall through to bounded in-memory store
     }
   }
 
@@ -148,6 +191,35 @@ export async function recordFailedPinAttempt(bucketKey: string): Promise<{
     }
   }
 
+  // Cross-instance DB persistence when Redis is unavailable
+  const cleanEmail = extractEmailFromBucket(bucketKey);
+  if (cleanEmail.includes("@") && bucketKey.startsWith("wallet_pin_fail:")) {
+    try {
+      const { default: supabaseAdmin } = await import("../utils/dbAdmin");
+      if (typeof supabaseAdmin?.rpc === "function") {
+        const { data, error } = await supabaseAdmin.rpc("record_wallet_pin_attempt", {
+          p_user_email: cleanEmail,
+          p_success: false,
+          p_max_attempts: MAX_FAILED_PIN_ATTEMPTS,
+          p_lock_minutes: PIN_LOCKOUT_MINUTES,
+        });
+        if (!error && data) {
+          const attempts = Math.max(1, Number(data.failed_attempts ?? 1));
+          const locked = Boolean(data.is_locked ?? attempts >= MAX_FAILED_PIN_ATTEMPTS);
+          const secondsLeft = Math.max(1, Number(data.remaining_seconds ?? PIN_LOCKOUT_SECONDS));
+          return {
+            locked,
+            attemptsRemaining: locked ? 0 : Math.max(0, MAX_FAILED_PIN_ATTEMPTS - attempts),
+            secondsLeft,
+            minsLeft: Math.max(1, Math.ceil(secondsLeft / 60)),
+          };
+        }
+      }
+    } catch {
+      // Fall through to bounded in-memory store
+    }
+  }
+
   const existing = memoryPinFailStore.get(bucketKey);
   let count = 1;
   let expiresAt = now + PIN_LOCKOUT_SECONDS * 1000;
@@ -158,7 +230,7 @@ export async function recordFailedPinAttempt(bucketKey: string): Promise<{
       count >= MAX_FAILED_PIN_ATTEMPTS ? now + PIN_LOCKOUT_SECONDS * 1000 : existing.expiresAt;
   }
 
-  memoryPinFailStore.set(bucketKey, { count, expiresAt });
+  setMemoryPinEntry(bucketKey, { count, expiresAt });
 
   if (count >= MAX_FAILED_PIN_ATTEMPTS) {
     const secondsLeft = Math.max(1, Math.ceil((expiresAt - now) / 1000));
@@ -183,6 +255,20 @@ export async function clearFailedPinAttempts(bucketKey: string): Promise<void> {
   if (isRedisReady()) {
     try {
       await redisConnection.del(bucketKey);
+    } catch {}
+  }
+  const cleanEmail = extractEmailFromBucket(bucketKey);
+  if (cleanEmail.includes("@") && bucketKey.startsWith("wallet_pin_fail:")) {
+    try {
+      const { default: supabaseAdmin } = await import("../utils/dbAdmin");
+      if (typeof supabaseAdmin?.rpc === "function") {
+        await supabaseAdmin.rpc("record_wallet_pin_attempt", {
+          p_user_email: cleanEmail,
+          p_success: true,
+          p_max_attempts: MAX_FAILED_PIN_ATTEMPTS,
+          p_lock_minutes: PIN_LOCKOUT_MINUTES,
+        });
+      }
     } catch {}
   }
 }

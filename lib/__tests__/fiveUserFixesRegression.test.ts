@@ -414,4 +414,28 @@ describe("Five User Fixes Regression Suite", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("timeout")) as unknown as typeof fetch);
     expect(await verifyKoraCheckoutSessionUsable("https://checkout.korapay.com/KPY-PI-timeout/pay")).toBe(true);
   });
+
+  it("Invite links resolve to one canonical /join?ref= URL with one referral code", async () => {
+    const { buildInviteUrl, normalizeReferralCode } = await import("../utils/inviteLink");
+    expect(normalizeReferralCode(" PA998877 ")).toBe("PA998877");
+    expect(normalizeReferralCode("https://paayh.com/join?ref=PA998877")).toBe("PA998877");
+    expect(buildInviteUrl("PA998877")).toBe("https://paayh.com/join?ref=PA998877");
+    expect(buildInviteUrl("https://paayh.com/join?ref=PA998877", "https://paayh.com/")).toBe(
+      "https://paayh.com/join?ref=PA998877"
+    );
+    expect(buildInviteUrl("")).toBe("https://paayh.com");
+
+    const becomeAgentSource = fs.readFileSync(
+      path.resolve(process.cwd(), "components/AgentSystem/BecomeAgentPage.tsx"),
+      "utf8"
+    );
+    const inviteLinkSource = fs.readFileSync(
+      path.resolve(process.cwd(), "components/InviteLink/page.tsx"),
+      "utf8"
+    );
+    expect(becomeAgentSource).not.toContain("/signup?ref=");
+    expect(becomeAgentSource).toContain("buildInviteUrl");
+    expect(inviteLinkSource).not.toContain("https://xea.app");
+    expect(inviteLinkSource).toContain("buildInviteUrl");
+  });
 });

@@ -28,7 +28,14 @@ export async function handleDeactivateAccount(
     // Still record tombstone if auth account exists without users row
     await supabase
       .from("deactivated_users")
-      .upsert({ email: cleanEmail, deactivated_at: new Date().toISOString() }, { onConflict: "email" });
+      .upsert(
+        {
+          email: cleanEmail,
+          reason: "voluntary_deactivation",
+          deactivated_at: new Date().toISOString(),
+        },
+        { onConflict: "email" },
+      );
     await supabase.rpc("delete_auth_user_by_email", { p_email: cleanEmail }).catch(() => {});
     return jsonResponse({
       success: true,
@@ -37,6 +44,23 @@ export async function handleDeactivateAccount(
   }
 
   const balance = Math.round(Number(user.balance || 0) * 100) / 100;
+
+  // Block deactivation while any bank withdrawal is still in-flight (prevents orphaned payouts)
+  const { data: pendingWithdrawals } = await supabase
+    .from("payments")
+    .select("id")
+    .ilike("user_email", cleanEmail)
+    .eq("type", "withdrawal")
+    .in("status", ["pending", "processing", "queued"])
+    .limit(1);
+
+  if (Array.isArray(pendingWithdrawals) && pendingWithdrawals.length > 0) {
+    return errorResponse(
+      "You have a pending or processing bank withdrawal. Please wait until it settles before deactivating your account.",
+      400,
+      { pendingWithdrawal: true },
+    );
+  }
 
   // Balance >= 10,000 NGN blocks deactivation until withdrawn
   if (balance >= 10000) {
@@ -112,7 +136,14 @@ export async function handleDeactivateAccount(
   if (rpcErr || !rpcRes?.success) {
     await supabase
       .from("deactivated_users")
-      .upsert({ email: cleanEmail, deactivated_at: new Date().toISOString() }, { onConflict: "email" });
+      .upsert(
+        {
+          email: cleanEmail,
+          reason: "voluntary_deactivation",
+          deactivated_at: new Date().toISOString(),
+        },
+        { onConflict: "email" },
+      );
 
     // Remove ads, highlights, and bids
     await Promise.allSettled([

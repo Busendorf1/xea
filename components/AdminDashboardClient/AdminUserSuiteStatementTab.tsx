@@ -121,7 +121,14 @@ export function AdminUserSuiteStatementTab({
             </thead>
             <tbody>
               {userStatement.map((tx) => {
-                const isDebit = tx.type === "withdrawal" || tx.type === "ad_payment";
+                const isDebit =
+                  tx.type === "withdrawal" ||
+                  tx.type === "ad_payment" ||
+                  tx.type === "ad" ||
+                  tx.type === "highlight" ||
+                  tx.type === "highlight_payment" ||
+                  tx.type === "transfer_sent" ||
+                  tx.type === "transfer_reversal_debit";
                 return (
                   <tr key={tx.id || tx.reference}>
                     <td>

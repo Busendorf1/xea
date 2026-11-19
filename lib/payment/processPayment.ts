@@ -2,6 +2,7 @@
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { clampFrequencyCap } from "../ads/frequencyCap";
+import { syncBiddedAdActivation } from "../ads/biddedAdsSync";
 
 async function sendIdempotentNotification(userEmail: string, title: string, message: string) {
   try {
@@ -97,8 +98,9 @@ export async function processSuccessfulPayment(
     }
     claimedByWorker = true;
 
-  const mergedMetadata = { ...(existingPayment.metadata || {}), ...(metadata || {}) };
-  const type = (mergedMetadata.type || existingPayment.type) as string | undefined;
+  // Security (C-07): DB-recorded existingPayment.metadata is strictly authoritative over gateway metadata
+  const mergedMetadata = { ...(metadata || {}), ...(existingPayment.metadata || {}) };
+  const type = (existingPayment.type || mergedMetadata.type) as string | undefined;
   const rawUserEmail = (existingPayment.user_email || mergedMetadata.user_email || mergedMetadata.userEmail || mergedMetadata.email) as string | undefined;
   const user_email = rawUserEmail ? rawUserEmail.toLowerCase().trim() : undefined;
   if (!type || !user_email) {
@@ -109,18 +111,29 @@ export async function processSuccessfulPayment(
 
     // 2.A: Publish Approved Ad (Post-Review Direct-to-Feed)
   if (type === "publish_ad") {
-    const adId = (mergedMetadata.adId || mergedMetadata.id) as string;
+    const adId = (mergedMetadata.adId || mergedMetadata.ad_id || mergedMetadata.id) as string;
     if (!adId) throw new Error("Missing adId in publish_ad payment metadata");
 
     const { data: adToPublish, error: fetchErr } = await supabaseAdmin
       .from("adds")
       .select("*")
       .eq("id", adId)
-      .ilike("user_email", user_email)
+      .eq("user_email", user_email)
       .maybeSingle();
 
     if (fetchErr || !adToPublish) {
       throw new Error("Ad not found in review queue for publishing");
+    }
+
+    // Security (C-07): Re-verify moderation approval & 72h window before moving to active feed
+    const adStmt = String(adToPublish.admin_statement || "");
+    if (!adStmt.startsWith("APPROVED:")) {
+      throw new Error("Campaign is not approved for publishing.");
+    }
+    const adApprovedTs = adStmt.replace("APPROVED:", "").trim();
+    const adApprovedDate = new Date(adApprovedTs);
+    if (adApprovedTs && !isNaN(adApprovedDate.getTime()) && adApprovedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+      throw new Error("Campaign approval has expired (exceeded 72 hours).");
     }
 
     // Strip review/approval queue specific fields that don't exist on addsactive
@@ -148,6 +161,26 @@ export async function processSuccessfulPayment(
     await supabaseAdmin.from("adds").delete().eq("id", adId).ilike("user_email", user_email);
 
     const publishedAd = insertedRows?.[0] || activeAd;
+    await syncBiddedAdActivation(
+      supabaseAdmin,
+      {
+        adId: String(adId),
+        userEmail: user_email,
+        adType: publishedAd.ad_type,
+        industry: publishedAd.industry,
+        costPerImpression: publishedAd.cost_per_impression,
+        bidPrice: publishedAd.bid_price,
+        isBidded: publishedAd.is_bidded,
+        isAdminPost: publishedAd.is_admin_post,
+      },
+      { redis: redisConnection }
+    );
+    try {
+      const cacheMod = await import("@/lib/utils/cache");
+      if (typeof (cacheMod as any).evictAdFromL1FeedCaches === "function") {
+        (cacheMod as any).evictAdFromL1FeedCaches(String(adId));
+      }
+    } catch {}
     const { dispatchFeedDropWebhook } = await import("@/lib/webhookDispatcher");
     dispatchFeedDropWebhook(publishedAd).catch(() => {});
 
@@ -160,18 +193,29 @@ export async function processSuccessfulPayment(
 
   // 2.B: Publish Approved Highlight (Post-Review Direct-to-Feed)
   if (type === "publish_highlight") {
-    const highlightId = (mergedMetadata.highlightId || mergedMetadata.id) as string;
+    const highlightId = (mergedMetadata.highlightId || mergedMetadata.highlight_id || mergedMetadata.id) as string;
     if (!highlightId) throw new Error("Missing highlightId in publish_highlight payment metadata");
 
     const { data: hlToPublish, error: fetchErr } = await supabaseAdmin
       .from("news")
       .select("*")
       .eq("id", highlightId)
-      .ilike("user_email", user_email)
+      .eq("user_email", user_email)
       .maybeSingle();
 
     if (fetchErr || !hlToPublish) {
       throw new Error("Highlight not found in review queue for publishing");
+    }
+
+    // Security (C-07): Re-verify moderation approval & 72h window before publishing
+    const hlStmt = String(hlToPublish.admin_statement || "");
+    if (!hlStmt.startsWith("APPROVED:")) {
+      throw new Error("Highlight is not approved for publishing.");
+    }
+    const hlApprovedTs = hlStmt.replace("APPROVED:", "").trim();
+    const hlApprovedDate = new Date(hlApprovedTs);
+    if (hlApprovedTs && !isNaN(hlApprovedDate.getTime()) && hlApprovedDate.getTime() < Date.now() - 72 * 60 * 60 * 1000) {
+      throw new Error("Highlight approval has expired (exceeded 72 hours).");
     }
 
     // Strip review/approval queue specific fields that don't exist on newsactive
@@ -202,7 +246,14 @@ export async function processSuccessfulPayment(
       throw insertErr;
     }
 
-    await supabaseAdmin.from("news").delete().eq("id", highlightId).ilike("user_email", user_email);
+    await supabaseAdmin.from("news").delete().eq("id", highlightId).eq("user_email", user_email);
+    try {
+      const cacheMod = await import("@/lib/utils/cache");
+      await cacheMod.invalidateSharedHighlightsPool?.();
+    } catch {}
+    if (isRedisReady()) {
+      await redisConnection.del("highlights:active_pool:v3").catch(() => {});
+    }
 
     await sendIdempotentNotification(
       user_email,
@@ -339,6 +390,12 @@ export async function processSuccessfulPayment(
 
         const updatePayload: Record<string, any> = {
           cost_per_impression: effectiveCost,
+          ...(effectiveCost > 25
+            ? {
+                bid_price: Math.max(Number(ad.bid_price || 0), effectiveCost),
+                is_bidded: true,
+              }
+            : {}),
           completed_at: null,
           is_paused: false,
         };
@@ -380,21 +437,20 @@ export async function processSuccessfulPayment(
         }
 
         if (effectiveCost > 25) {
-          try {
-            const adIndustry = (ad.ad_type || (Array.isArray(ad.industry) ? ad.industry[0] : ad.industry) || "business").toLowerCase();
-            await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", ad_id).ilike("user_email", user_email);
-            await supabaseAdmin.from("bidded_ads").insert({
-              ad_id,
-              user_email: user_email.toLowerCase().trim(),
-              industry: adIndustry,
-              bid_price: effectiveCost,
-              is_active: true,
-            });
-            await redisConnection.zadd(`bids:zset:${adIndustry}`, effectiveCost, ad_id).catch(() => {});
-            await redisConnection.del("attention:market_rates").catch(() => {});
-          } catch (bidErr) {
-            console.warn("⚠️ bidded_ads update notice in processPayment boost:", bidErr);
-          }
+          await syncBiddedAdActivation(
+            supabaseAdmin,
+            {
+              adId: String(ad_id),
+              userEmail: user_email,
+              adType: ad.ad_type,
+              industry: ad.industry,
+              costPerImpression: effectiveCost,
+              bidPrice: effectiveCost,
+              isBidded: true,
+              isAdminPost: Boolean(ad.is_admin_post),
+            },
+            { redis: redisConnection }
+          );
         }
       } else {
         // Check highlight tables
@@ -505,26 +561,20 @@ export async function processSuccessfulPayment(
     }
 
     // If ad is bidded, record in bidded_ads table and Redis ZSET for instant priority auction inclusion
-    if (isBidded && bidPrice) {
-      const adIndustry = ((adData.adType as string) || "business").toLowerCase();
-      const { error: bidInsertErr } = await supabaseAdmin.from("bidded_ads").insert({
-        ad_id: adData.id,
-        user_email,
-        industry: adIndustry,
-        bid_price: bidPrice,
-        is_active: true,
-      });
-      if (bidInsertErr) {
-        console.error("❌ Failed to insert bidded ad in processPayment:", bidInsertErr);
-      }
-      try {
-        const redisConnection = (await import("@/lib/redis")).default;
-        await redisConnection.zadd(`bids:zset:${adIndustry}`, bidPrice, String(adData.id));
-        await redisConnection.del("attention:market_rates");
-      } catch (redisErr) {
-        console.warn("⚠️ Redis ZSET update warning in processPayment:", redisErr);
-      }
-    }
+    await syncBiddedAdActivation(
+      supabaseAdmin,
+      {
+        adId: String(adData.id),
+        userEmail: user_email,
+        adType: adData.adType as string,
+        industry: adData.industry,
+        costPerImpression: effectiveRate as number,
+        bidPrice,
+        isBidded,
+        isAdminPost: Boolean(adData.isAdminPost),
+      },
+      { redis: redisConnection }
+    );
 
     // Insert user notification
     await sendIdempotentNotification(
@@ -532,9 +582,26 @@ export async function processSuccessfulPayment(
       "Ad Submitted",
       `Your ad (${adData.impressions} attentions) is in review.`
     );
-  } else if (type === "brand_subscription") {
+  } else if (type === "brand_subscription" || type === "business_subscription") {
     const subscriberId = (mergedMetadata.subscriber_id || mergedMetadata.brand_id) as string | undefined;
     if (subscriberId) {
+      // Security (C-04/C-07): Require ownership & admin approval before activating 30% brand subsidy
+      const { data: existingSub } = await supabaseAdmin
+        .from("premium_subscribers")
+        .select("id, user_email, status, domain, business_name")
+        .eq("id", subscriberId)
+        .maybeSingle();
+
+      if (!existingSub) {
+        throw new Error("Brand subscription record not found.");
+      }
+      if (String(existingSub.user_email || "").toLowerCase().trim() !== user_email) {
+        throw new Error("Brand subscription owner mismatch.");
+      }
+      if (existingSub.status !== "approved" && existingSub.status !== "active") {
+        throw new Error("Brand subscription has not been approved by moderation.");
+      }
+
       const { data: updatedSub } = await supabaseAdmin
         .from("premium_subscribers")
         .update({
@@ -544,11 +611,12 @@ export async function processSuccessfulPayment(
           payment_reference: reference,
         })
         .eq("id", subscriberId)
+        .eq("user_email", user_email)
         .select("*")
         .maybeSingle();
 
-      const domain = String(updatedSub?.domain || mergedMetadata.domain || "").toLowerCase().trim();
-      const businessName = String(updatedSub?.business_name || mergedMetadata.business_name || "Premium Brand");
+      const domain = String(updatedSub?.domain || existingSub.domain || mergedMetadata.domain || "").toLowerCase().trim();
+      const businessName = String(updatedSub?.business_name || existingSub.business_name || mergedMetadata.business_name || "Premium Brand");
 
       if (domain) {
         try {

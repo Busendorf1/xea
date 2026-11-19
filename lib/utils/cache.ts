@@ -45,7 +45,7 @@ export async function publishLiveBalanceUpdate(
   if (!email) return;
   const emailLower = email.toLowerCase().trim();
 
-  // 1. Redis Pub/Sub for Server-Sent Events (SSE) Stream
+  // Lightweight Redis Pub/Sub only — retired leaked supabaseAdmin.channel() server WebSocket (C-19)
   if (isRedisReady()) {
     try {
       await redisConnection.publish(
@@ -65,28 +65,6 @@ export async function publishLiveBalanceUpdate(
         console.warn("⚠️ Redis publishLiveBalanceUpdate notice:", err.message || err);
       }
     }
-  }
-
-  // 2. Supabase Realtime WebSocket Broadcast (0ms cross-device delivery to mobile & web)
-  try {
-    const supabaseAdmin = (await import("./dbAdmin")).default;
-    const channelName = `realtime:user:${emailLower.replace(/[^a-zA-Z0-9]/g, "_")}`;
-    const channel = supabaseAdmin.channel(channelName);
-    await channel.send({
-      type: "broadcast",
-      event: "balance_update",
-      payload: {
-        balance: event.newBalance,
-        delta: event.delta,
-        monetization_clicks: event.clicks,
-        monetized: event.clicks !== undefined ? event.clicks >= 500 : undefined,
-        earnedAdId: event.earnedAdId,
-        email: emailLower,
-        timestamp: Date.now(),
-      },
-    });
-  } catch (sbErr) {
-    console.warn("⚠️ Supabase Realtime WebSocket broadcast notice:", sbErr);
   }
 }
 
@@ -270,19 +248,30 @@ export async function incrementCachedMonetizationClicks(email: string, count: nu
 export async function invalidateCachedProfile(email: string): Promise<void> {
   if (!email) return;
   const emailLower = email.toLowerCase().trim();
+  const prevL1 = l1ProfileCache.get(emailLower)?.data;
+  const prevUsername = prevL1?.username
+    ? String(prevL1.username).toLowerCase().trim().replace(/^@/, "")
+    : "";
   l1ProfileCache.delete(emailLower);
 
   if (!isRedisReady()) return;
   try {
-    await Promise.all([
-      redisConnection.del(`user:profile:${emailLower}`),
-      redisConnection.del(`profile:${emailLower}`),
-      redisConnection.del(`user:recipient:${emailLower}`),
-      redisConnection.del(`monetize:status:${emailLower}`),
-      redisConnection.del(`statement:payments:${emailLower}`),
-      redisConnection.del(`statement:withdrawals:${emailLower}`),
-      redisConnection.del(`statement:all:${emailLower}`),
-    ]);
+    const keysToDelete = [
+      `user:profile:${emailLower}`,
+      `profile:${emailLower}`,
+      `user:recipient:${emailLower}`,
+      `user:recipient:email:${emailLower}`,
+      `monetize:status:v2:${emailLower}`,
+      `monetize:status:${emailLower}`,
+      `statement:payments:${emailLower}`,
+      `statement:withdrawals:${emailLower}`,
+      `statement:all:${emailLower}`,
+    ];
+    if (prevUsername) {
+      keysToDelete.push(`user:recipient:username:${prevUsername}`);
+      keysToDelete.push(`user:recipient:${prevUsername}`);
+    }
+    await Promise.all(keysToDelete.map((k) => redisConnection.del(k)));
   } catch (err: any) {
     if (err?.message !== "Connection is closed.") {
       console.warn("⚠️ Redis invalidateCachedProfile notice:", err.message || err);
@@ -425,14 +414,30 @@ export async function invalidateCachedRecipient(email: string): Promise<void> {
 const l1HighlightsCache = new Map<string, { data: any[]; expiresAt: number }>();
 const MAX_L1_HIGHLIGHT_KEYS = 500;
 const L1_HIGHLIGHTS_TTL_MS = 60 * 1000;
+let cachedHighlightsVer = { ver: "0", expiresAt: 0 };
+
+async function getHighlightsCacheVersion(): Promise<string> {
+  const now = Date.now();
+  if (now < cachedHighlightsVer.expiresAt) return cachedHighlightsVer.ver;
+  if (isRedisReady()) {
+    try {
+      const raw = await redisConnection.get("highlights:v3:ver");
+      const ver = raw ? String(raw) : "0";
+      cachedHighlightsVer = { ver, expiresAt: now + 5000 };
+      return ver;
+    } catch {}
+  }
+  return cachedHighlightsVer.ver;
+}
 
 export async function getCachedHighlights<T = Record<string, unknown>>(
   interests: string[],
   country?: string | null,
   state?: string | null
 ): Promise<T[] | null> {
+  const ver = await getHighlightsCacheVersion();
   const sortedInterests = [...interests].map((s) => s.toLowerCase().trim()).sort();
-  const key = `highlights:v3:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
+  const key = `highlights:v3:${ver}:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
 
   const l1 = l1HighlightsCache.get(key);
   if (l1) {
@@ -469,8 +474,9 @@ export async function setCachedHighlights<T = Record<string, unknown>>(
   country?: string | null,
   state?: string | null
 ): Promise<void> {
+  const ver = await getHighlightsCacheVersion();
   const sortedInterests = [...interests].map((s) => s.toLowerCase().trim()).sort();
-  const key = `highlights:v3:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
+  const key = `highlights:v3:${ver}:${(country || "all").toLowerCase()}:${(state || "all").toLowerCase()}:${sortedInterests.join(",")}`;
 
   if (l1HighlightsCache.size >= MAX_L1_HIGHLIGHT_KEYS && !l1HighlightsCache.has(key)) {
     const firstKey = l1HighlightsCache.keys().next().value;
@@ -493,23 +499,31 @@ export async function setCachedHighlights<T = Record<string, unknown>>(
   }
 }
 
-// Rely 100% on Natural TTL Expiry across the entire app
+// O(1) versioned invalidation — evicts L1 + bumps Redis highlights version without SCAN storms
 export async function invalidateTargetedHighlightCache(_interest?: string, _country?: string | null, _state?: string | null): Promise<void> {
   l1HighlightsCache.clear();
+  cachedHighlightsVer = { ver: String(Date.now()), expiresAt: 0 };
   if (isRedisReady()) {
-    redisConnection.del("highlights:active_pool:v3").catch(() => {});
+    await Promise.allSettled([
+      redisConnection.del("highlights:active_pool:v3"),
+      redisConnection.incr("highlights:v3:ver"),
+    ]);
   }
 }
 
 export async function invalidateAllHighlights(): Promise<void> {
   l1HighlightsCache.clear();
+  cachedHighlightsVer = { ver: String(Date.now()), expiresAt: 0 };
   if (l1HighlightsEvictionHandler) {
     try {
       l1HighlightsEvictionHandler();
     } catch {}
   }
   if (isRedisReady()) {
-    redisConnection.del("highlights:active_pool:v3").catch(() => {});
+    await Promise.allSettled([
+      redisConnection.del("highlights:active_pool:v3"),
+      redisConnection.incr("highlights:v3:ver"),
+    ]);
   }
 }
 
@@ -517,7 +531,16 @@ export async function invalidateAllHighlights(): Promise<void> {
 // USER CAMPAIGNS & CAMPAIGN ANALYTICS CACHING
 // ----------------------------------------------------
 
+const MAX_L1_CAMPAIGNS = 5000;
 const l1CampaignsCache = new Map<string, { data: any; expiresAt: number }>();
+
+function setL1CampaignEntry(key: string, data: any, ttlMs: number) {
+  if (l1CampaignsCache.size >= MAX_L1_CAMPAIGNS && !l1CampaignsCache.has(key)) {
+    const oldest = l1CampaignsCache.keys().next().value;
+    if (oldest) l1CampaignsCache.delete(oldest);
+  }
+  l1CampaignsCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+}
 
 export async function getCachedUserCampaigns<T = Record<string, unknown>>(
   email: string
@@ -532,7 +555,7 @@ export async function getCachedUserCampaigns<T = Record<string, unknown>>(
     const data = await redisConnection.get(`user:campaigns:${emailLower}`);
     if (data) {
       const parsed = JSON.parse(data) as T;
-      l1CampaignsCache.set(`camp:${emailLower}`, { data: parsed, expiresAt: Date.now() + 30000 });
+      setL1CampaignEntry(`camp:${emailLower}`, parsed, 30000);
       return parsed;
     }
     return null;
@@ -550,7 +573,7 @@ export async function setCachedUserCampaigns<T = Record<string, unknown>>(
 ): Promise<void> {
   if (!email) return;
   const emailLower = email.toLowerCase().trim();
-  l1CampaignsCache.set(`camp:${emailLower}`, { data: campaigns, expiresAt: Date.now() + 30000 });
+  setL1CampaignEntry(`camp:${emailLower}`, campaigns, 30000);
 
   if (!isRedisReady()) return;
   try {
@@ -604,7 +627,7 @@ export async function getCachedUserCampaignAnalytics<T = Record<string, unknown>
     const data = await redisConnection.get(`user:campaign_analytics:${emailLower}`);
     if (data) {
       const parsed = JSON.parse(data) as T;
-      l1CampaignsCache.set(`analytics:${emailLower}`, { data: parsed, expiresAt: Date.now() + 60000 });
+      setL1CampaignEntry(`analytics:${emailLower}`, parsed, 60000);
       return parsed;
     }
     return null;
@@ -622,7 +645,7 @@ export async function setCachedUserCampaignAnalytics<T = Record<string, unknown>
 ): Promise<void> {
   if (!email) return;
   const emailLower = email.toLowerCase().trim();
-  l1CampaignsCache.set(`analytics:${emailLower}`, { data: analytics, expiresAt: Date.now() + 60000 });
+  setL1CampaignEntry(`analytics:${emailLower}`, analytics, 60000);
 
   if (!isRedisReady()) return;
   try {

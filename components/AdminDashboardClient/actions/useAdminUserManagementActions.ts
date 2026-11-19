@@ -91,10 +91,27 @@ export function useAdminUserManagementActions(params: AdminUserManagementParams)
 
   const handleSuspendUser = async (user: any, hours: number) => {
     if (userActionSubmitting) return;
-    const desc = hours === -1 ? "permanently suspend" : hours === 0 ? "lift the suspension for" : `temporarily suspend @${user.username} for ${hours} hours`;
+    const userLabel = user.username ? `@${user.username}` : user.email;
+    const desc =
+      hours === -1
+        ? `permanently block ${userLabel}`
+        : hours === 0
+        ? `unblock ${userLabel}`
+        : `temporarily block ${userLabel} for ${hours >= 24 ? `${Math.round(hours / 24)} day(s)` : `${hours} hours`}`;
+
+    let reasonInput = "";
+    if (hours !== 0) {
+      const prompted = prompt(
+        `Optional reason for ${hours === -1 ? "permanently blocking" : "temporarily blocking"} ${userLabel} (shown to user in notice modal):`,
+        ""
+      );
+      if (prompted === null) return;
+      reasonInput = prompted.trim();
+    }
+
     const confirmed = await confirmDialog(
-      `Are you sure you want to ${desc}?`,
-      hours === 0 ? "Lift Suspension" : "Account Suspension",
+      `Are you sure you want to ${desc}?${reasonInput ? `\n\nReason: "${reasonInput}"` : ""}`,
+      hours === 0 ? "Unblock Account" : hours === -1 ? "Permanent Account Block" : "Temporary Account Block",
       hours !== 0
     );
     if (!confirmed) return;
@@ -106,7 +123,7 @@ export function useAdminUserManagementActions(params: AdminUserManagementParams)
     if (hours > 0) {
       suspendedUntil = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
     } else if (hours === -1) {
-      suspendedUntil = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString();
+      suspendedUntil = "2099-12-31T23:59:59.000Z";
     }
 
     try {
@@ -114,25 +131,40 @@ export function useAdminUserManagementActions(params: AdminUserManagementParams)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "suspend",
+          action: hours === 0 ? "unblock_user" : "block_user",
           userId: user.id,
-          payload: { suspendedUntil },
+          payload:
+            hours === 0
+              ? { reason: "Admin unblocked user" }
+              : hours === -1
+              ? { mode: "permanent", reason: reasonInput || undefined }
+              : { mode: "temporary", durationHours: hours, blockedUntil: suspendedUntil, reason: reasonInput || undefined },
         }),
       });
 
       if (!response.ok) {
         const err = await response.json();
-        await alertDialog(`Failed to suspend account: ${err.error || "Server error"}`, "Error");
+        await alertDialog(`Failed to update block status: ${err.error || "Server error"}`, "Error");
       } else {
-        const descApplied = hours === -1 ? "permanently suspended" : hours === 0 ? "unsuspended" : `suspended for ${hours} hours`;
-        await alertDialog(`Successfully ${descApplied} user @${user.username}`, "Suspension Updated");
+        const descApplied =
+          hours === -1
+            ? "permanently blocked"
+            : hours === 0
+            ? "unblocked"
+            : `temporarily blocked for ${hours >= 24 ? `${Math.round(hours / 24)} day(s)` : `${hours} hours`}`;
+        await alertDialog(`Successfully ${descApplied} ${userLabel}`, "Access Status Updated");
         handleRefresh();
         if (selectedUser && selectedUser.id === user.id) {
-          setSelectedUser({ ...selectedUser, suspended_until: suspendedUntil });
+          setSelectedUser({
+            ...selectedUser,
+            suspended_until: suspendedUntil,
+            ad_account_status: hours === 0 ? "active" : hours === -1 ? "perm_banned" : "temp_blocked",
+            ad_ban_reason: hours === 0 ? null : reasonInput || null,
+          });
         }
       }
     } catch (e: any) {
-      await alertDialog(`Error setting suspension: ${e.message}`, "Error");
+      await alertDialog(`Error updating access block: ${e.message}`, "Error");
     } finally {
       setUserActionSubmitting(false);
       setActiveActionId(null);
@@ -166,21 +198,30 @@ export function useAdminUserManagementActions(params: AdminUserManagementParams)
         body: JSON.stringify({
           action: "adjust_balance",
           userId: user.id,
-          payload: { newBalance, reason: reason.trim() },
+          payload: { delta: amount, newBalance, reason: reason.trim() },
         }),
       });
 
+      const resData = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const err = await response.json();
-        await alertDialog(`Failed to update balance: ${err.error || "Server error"}`, "Error");
-      } else {
+        await alertDialog(`Failed to update balance: ${resData.error || "Server error"}`, "Error");
+      } else if (response.status === 202 || resData.requiresDualApproval) {
         await alertDialog(
-          `Wallet balance adjusted by ${formatCurrency(amount)}. New Balance: ${formatCurrency(newBalance)}`,
+          resData.message ||
+            `Balance adjustment of ${formatCurrency(Math.abs(amount))} exceeds ₦50,000 and has been queued for second-admin approval in the Reconciliation tab.`,
+          "Queued for Dual Authorization"
+        );
+        handleRefresh();
+      } else {
+        const appliedBalance =
+          typeof resData.newBalance === "number" ? resData.newBalance : newBalance;
+        await alertDialog(
+          `Wallet balance adjusted by ${formatCurrency(amount)}. New Balance: ${formatCurrency(appliedBalance)}`,
           "Wallet Adjusted"
         );
         handleRefresh();
         if (selectedUser && selectedUser.id === user.id) {
-          setSelectedUser({ ...selectedUser, balance: newBalance });
+          setSelectedUser({ ...selectedUser, balance: appliedBalance });
         }
       }
     } catch (e: any) {

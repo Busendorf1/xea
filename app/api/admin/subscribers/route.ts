@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection, { scanDeletePattern } from "@/lib/redis";
+import { recordAdminAuditTrail } from "@/lib/security/adminGuard";
+
+export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizePostgrestSearch(raw: string): string {
+  return raw.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,10 +23,10 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "10", 10)));
+    const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+    const limit = Math.min(50, Math.max(1, parseSafeInt(searchParams.get("limit"), 10)));
     const status = searchParams.get("status") || "all";
-    const search = searchParams.get("search")?.trim().toLowerCase() || "";
+    const search = sanitizePostgrestSearch(searchParams.get("search")?.trim().toLowerCase() || "");
     const fresh = searchParams.get("fresh") === "true";
 
     const cacheKey = `admin:subscribers:list:${page}:${limit}:${status}:${encodeURIComponent(search)}`;
@@ -120,18 +132,36 @@ export async function POST(req: NextRequest) {
           rejection_reason: null,
         })
         .eq("id", subscriber_id)
+        .in("status", ["pending", "rejected"])
         .select()
-        .single();
+        .maybeSingle();
 
       if (updateErr) {
         console.error("❌ Error approving subscriber:", updateErr);
         return NextResponse.json({ error: "Failed to approve subscriber" }, { status: 500 });
       }
 
+      if (!updatedSub) {
+        return NextResponse.json(
+          { error: "Subscriber not found or is already approved/active and cannot be downgraded." },
+          { status: 409 }
+        );
+      }
+
       // Invalidate admin cache using non-blocking SCAN
       try {
         await scanDeletePattern("admin:subscribers:*");
       } catch (cacheErr) {}
+
+      await recordAdminAuditTrail({
+        adminEmail: authEmail,
+        action: "approve_brand_subscriber",
+        targetId: String(subscriber_id),
+        targetType: "premium_subscriber",
+        reason: `Approved brand subscriber ${updatedSub.domain}`,
+        newState: { status: "approved", domain: updatedSub.domain },
+        req,
+      });
 
       return NextResponse.json({
         success: true,
@@ -152,11 +182,15 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", subscriber_id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (updateErr) {
         console.error("❌ Error rejecting subscriber:", updateErr);
         return NextResponse.json({ error: "Failed to reject subscriber" }, { status: 500 });
+      }
+
+      if (!updatedSub) {
+        return NextResponse.json({ error: "Subscriber not found." }, { status: 404 });
       }
 
       // Invalidate admin cache and domain cache if was active
@@ -166,6 +200,16 @@ export async function POST(req: NextRequest) {
           await redisConnection.del(`cache:domain_subscriber:${updatedSub.domain.toLowerCase().trim()}`);
         }
       } catch (cacheErr) {}
+
+      await recordAdminAuditTrail({
+        adminEmail: authEmail,
+        action: "reject_brand_subscriber",
+        targetId: String(subscriber_id),
+        targetType: "premium_subscriber",
+        reason,
+        newState: { status: "rejected", domain: updatedSub.domain },
+        req,
+      });
 
       return NextResponse.json({
         success: true,

@@ -99,7 +99,7 @@ export function useAdminSupportAndNotifications({
       await alertDialog("Reply sent successfully!", "Support Reply Sent");
       setReplyingTicket(null);
       setReplyText("");
-      fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+      fetchHelpTickets(helpTicketsPage, helpTicketSearch, true);
     } catch (e: any) {
       await alertDialog("Failed to send reply: " + e.message, "Error");
     } finally {
@@ -135,10 +135,10 @@ export function useAdminSupportAndNotifications({
         "Ticket marked as CLOSED! Notification sent to user. Ticket will auto-delete in 24 hours.",
         "Ticket Closed"
       );
-      fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+      fetchHelpTickets(helpTicketsPage, helpTicketSearch, true);
     } catch (e: any) {
       await alertDialog("Failed to close ticket: " + e.message, "Error");
-      fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+      fetchHelpTickets(helpTicketsPage, helpTicketSearch, true);
     }
   };
 
@@ -161,7 +161,7 @@ export function useAdminSupportAndNotifications({
 
       setHelpTickets((prev) => prev.filter((t) => t.id !== ticketId));
       await alertDialog("Ticket deleted successfully.", "Ticket Deleted");
-      fetchHelpTickets(helpTicketsPage, helpTicketSearch);
+      fetchHelpTickets(helpTicketsPage, helpTicketSearch, true);
     } catch (e: any) {
       await alertDialog("Failed to delete ticket: " + e.message, "Error");
     }

@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { recordAdminAuditTrail } from "@/lib/security/adminGuard";
-import redisConnection from "@/lib/redis";
+import redisConnection, { scanDeletePattern } from "@/lib/redis";
+import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { invalidateUserNotificationCaches } from "@/lib/notifications/notificationCache";
+
+export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizePostgrestSearch(raw: string): string {
+  return raw.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+}
 
 // Helper to proactively invalidate dual auth and related reconciliation caches
 async function invalidateDualAuthCaches() {
@@ -13,14 +26,21 @@ async function invalidateDualAuthCaches() {
       "admin:dual_auth:page_PENDING_20",
       "admin:dual_auth:page_APPROVED_10",
       "admin:dual_auth:page_APPROVED_20",
+      "admin:dual_auth:page_EXECUTED_10",
+      "admin:dual_auth:page_EXECUTED_20",
       "admin:dual_auth:page_REJECTED_10",
       "admin:dual_auth:page_REJECTED_20",
       "admin:dual_auth:page_ALL_10",
       "admin:dual_auth:page_ALL_20",
       "admin:reconciliation:metrics_cache",
       "admin:reconciliation:treasury_and_summary",
+      "admin:overview:stats",
+      "admin:overview_stats",
     ];
-    await Promise.all(keysToDelete.map((k) => redisConnection.del(k)));
+    await Promise.all([
+      ...keysToDelete.map((k) => redisConnection.del(k).catch(() => 0)),
+      scanDeletePattern("admin:users:list:*").catch(() => {}),
+    ]);
   } catch {}
 }
 
@@ -32,10 +52,10 @@ export async function GET(req: NextRequest) {
     }
 
     const searchParams = req.nextUrl.searchParams;
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || "10", 10)), 100);
+    const page = Math.max(1, parseSafeInt(searchParams.get("page"), 1));
+    const limit = Math.min(Math.max(1, parseSafeInt(searchParams.get("limit"), 10)), 100);
     const status = (searchParams.get("status") || "PENDING").toUpperCase();
-    const search = searchParams.get("search")?.trim().toLowerCase() || "";
+    const search = sanitizePostgrestSearch(searchParams.get("search")?.trim().toLowerCase() || "");
     const fresh = searchParams.get("fresh") === "true";
 
     // 1. Dual-Auth Requests Summary (Cached in Redis for 60s)
@@ -55,10 +75,10 @@ export async function GET(req: NextRequest) {
         if (!rpcErr && rpcSum) {
           summary = rpcSum;
         } else {
-          // Bounded index-backed fallback
+          // Bounded index-backed fallback (counts both APPROVED and EXECUTED as approved)
           const [{ count: pCount }, { count: aCount }, { count: rCount }, { count: tCount }] = await Promise.all([
             supabaseAdmin.from("pending_admin_requests").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
-            supabaseAdmin.from("pending_admin_requests").select("id", { count: "exact", head: true }).eq("status", "APPROVED"),
+            supabaseAdmin.from("pending_admin_requests").select("id", { count: "exact", head: true }).in("status", ["APPROVED", "EXECUTED"]),
             supabaseAdmin.from("pending_admin_requests").select("id", { count: "exact", head: true }).eq("status", "REJECTED"),
             supabaseAdmin.from("pending_admin_requests").select("id", { count: "exact", head: true }),
           ]);
@@ -110,7 +130,11 @@ export async function GET(req: NextRequest) {
         .select("id, action_type, requested_by, target_identifier, amount_naira, payload, reason, status, approved_by, rejected_by, rejection_reason, created_at, updated_at", { count: "exact" });
 
       if (status && status !== "ALL") {
-        query = query.eq("status", status);
+        if (status === "APPROVED" || status === "EXECUTED") {
+          query = query.in("status", ["APPROVED", "EXECUTED"]);
+        } else {
+          query = query.eq("status", status);
+        }
       }
 
       if (search) {
@@ -173,6 +197,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "approve") {
+      // Pre-read request metadata so we can reliably invalidate affected user caches even with older RPC versions
+      const { data: reqMeta } = await supabaseAdmin
+        .from("pending_admin_requests")
+        .select("target_identifier, payload, action_type")
+        .eq("id", requestId)
+        .maybeSingle();
+
       // Execute the approval RPC which strictly prevents self-approval (Four-Eyes Rule)
       const { data: result, error: rpcErr } = await supabaseAdmin.rpc("approve_admin_request", {
         p_approving_admin_email: adminEmail,
@@ -185,6 +216,26 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+
+      // Evict affected users' L1/L2 profile & notification caches so balance/reversal reflects immediately
+      const affectedEmails = new Set<string>();
+      if (Array.isArray(result?.affected_emails)) {
+        result.affected_emails.forEach((em: any) => {
+          if (typeof em === "string" && em.includes("@")) affectedEmails.add(em.toLowerCase().trim());
+        });
+      }
+      if (typeof reqMeta?.target_identifier === "string" && reqMeta.target_identifier.includes("@")) {
+        affectedEmails.add(reqMeta.target_identifier.toLowerCase().trim());
+      }
+      if (typeof reqMeta?.payload?.userEmail === "string" && reqMeta.payload.userEmail.includes("@")) {
+        affectedEmails.add(reqMeta.payload.userEmail.toLowerCase().trim());
+      }
+      await Promise.allSettled(
+        Array.from(affectedEmails).flatMap((em) => [
+          invalidateCachedProfile(em),
+          invalidateUserNotificationCaches(em),
+        ])
+      );
 
       await recordAdminAuditTrail({
         adminEmail,
@@ -204,7 +255,7 @@ export async function POST(req: NextRequest) {
         message: result.message || "Request approved and executed successfully.",
       });
     } else if (action === "reject") {
-      const { error: updateErr } = await supabaseAdmin
+      const { data: rejectedRow, error: updateErr } = await supabaseAdmin
         .from("pending_admin_requests")
         .update({
           status: "REJECTED",
@@ -212,10 +263,20 @@ export async function POST(req: NextRequest) {
           rejection_reason: rejectionReason || "Rejected by administrator",
           updated_at: new Date().toISOString(),
         })
-        .eq("id", requestId);
+        .eq("id", requestId)
+        .eq("status", "PENDING")
+        .select("id")
+        .maybeSingle();
 
       if (updateErr) {
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
+
+      if (!rejectedRow) {
+        return NextResponse.json(
+          { error: "Request not found or is no longer PENDING (already executed or rejected)." },
+          { status: 409 }
+        );
       }
 
       await recordAdminAuditTrail({

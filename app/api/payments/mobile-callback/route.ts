@@ -19,8 +19,19 @@ export async function GET(req: NextRequest) {
   const separator = sanitizedBase.includes("?") ? "&" : "?";
   const targetDeepLink = queryString ? `${sanitizedBase}${separator}${queryString}` : sanitizedBase;
 
-  const safeHref = targetDeepLink.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const safeJsUrl = JSON.stringify(targetDeepLink);
+  const safeHref = targetDeepLink
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  // Escape HTML/script-breaking characters inside inline <script> JSON literal (C-11 Reflected XSS defense)
+  const safeJsUrl = JSON.stringify(targetDeepLink)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 
   const html = `<!DOCTYPE html>
 <html lang="en">

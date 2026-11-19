@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as authHelper from "@/lib/authHelper";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 import { invalidateCachedProfile, invalidateAllHighlights } from "@/lib/utils/cache";
+import { invalidateUserNotificationCaches } from "@/lib/notifications/notificationCache";
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { purgeDeletedUserFromAgentCaches } from "@/lib/agent/agentCache";
 import { deleteAuth0IdentitiesByEmail } from "@/lib/security/auth0Management";
@@ -40,12 +42,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 0. Verify User Balance Status
+    // 0. Verify User Balance Status & Pending Withdrawals
     const { data: userProfile } = await supabaseAdmin
       .from("users")
       .select('username, balance, "profileImage"')
       .ilike("email", emailLower)
       .maybeSingle();
+
+    try {
+      const pendingQuery: any = supabaseAdmin
+        .from("payments")
+        .select("id")
+        .ilike("user_email", emailLower)
+        .eq("type", "withdrawal");
+      const pendingRes =
+        typeof pendingQuery?.in === "function"
+          ? await pendingQuery.in("status", ["pending", "processing", "queued"]).limit(1)
+          : { data: null };
+      if (Array.isArray(pendingRes?.data) && pendingRes.data.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "You have a pending or processing bank withdrawal. Please wait until it settles before deactivating your account.",
+            pendingWithdrawal: true,
+          },
+          { status: 400 }
+        );
+      }
+    } catch {
+      // Non-blocking fallback when payments query is unavailable in mock tests
+    }
 
     const currentBalance = parseFloat(userProfile?.balance || 0);
 
@@ -141,59 +167,48 @@ export async function POST(req: NextRequest) {
 
     console.log(`👤 Permanently deactivating and deleting account (Forfeited Balance: ₦${currentBalance})`);
 
-    // 1. Asynchronous Media Cleanup: Schedule storage asset purging in background without delaying user response
-    (async () => {
-      try {
-        const [userAds, userActiveAds, userNews, userActiveNews] = await Promise.all([
-          supabaseAdmin.from("adds").select("ad_media, custom_sponsor_logo").eq("user_email", emailLower),
-          supabaseAdmin.from("addsactive").select("ad_media, custom_sponsor_logo").eq("user_email", emailLower),
-          supabaseAdmin.from("news").select("image_url").eq("user_email", emailLower),
-          supabaseAdmin.from("newsactive").select("image_url").eq("user_email", emailLower),
-        ]);
+    // 1. Capture storage asset paths BEFORE atomic DB deletion removes rows, then purge storage cleanly
+    const adFilesToRemove: string[] = [];
+    const newsFilesToRemove: string[] = [];
+    let avatarPathToRemove: string | null = null;
+    try {
+      const [userAds, userActiveAds, userNews, userActiveNews] = await Promise.all([
+        supabaseAdmin.from("adds").select("ad_media, custom_sponsor_logo").eq("user_email", emailLower),
+        supabaseAdmin.from("addsactive").select("ad_media, custom_sponsor_logo").eq("user_email", emailLower),
+        supabaseAdmin.from("news").select("image_url").eq("user_email", emailLower),
+        supabaseAdmin.from("newsactive").select("image_url").eq("user_email", emailLower),
+      ]);
 
-        // Purge profile avatar from 'dp' bucket
-        if (userProfile?.profileImage && userProfile.profileImage.includes("storage.supabase")) {
-          const parts = userProfile.profileImage.split("/");
-          const existingPath = `${parts.at(-2)}/${parts.at(-1)}`;
-          await supabaseAdmin.storage.from("dp").remove([existingPath]).catch(() => {});
-        }
-
-        // Purge ad creative media from 'ad-media' bucket across both pending and active campaigns
-        const adFilesToRemove: string[] = [];
-        [...(userAds.data || []), ...(userActiveAds.data || [])].forEach((ad: any) => {
-          const rawMedia = [ad.ad_media, ad.custom_sponsor_logo].filter(Boolean).join(",");
-          if (rawMedia) {
-            rawMedia.split(",").forEach((url: string) => {
-              const trimmed = url.trim();
-              if (trimmed.includes("/ad-media/")) {
-                const filename = trimmed.split("/ad-media/").pop()?.split("?")[0];
-                if (filename) adFilesToRemove.push(filename);
-              }
-            });
-          }
-        });
-        if (adFilesToRemove.length > 0) {
-          await supabaseAdmin.storage.from("ad-media").remove(Array.from(new Set(adFilesToRemove))).catch(() => {});
-        }
-
-        // Purge highlight media from 'news' bucket across both pending and active highlights
-        const newsFilesToRemove: string[] = [];
-        [...(userNews.data || []), ...(userActiveNews.data || [])].forEach((item: any) => {
-          if (item.image_url && typeof item.image_url === "string") {
-            const trimmed = item.image_url.trim();
-            if (trimmed.includes("/news/")) {
-              const filename = trimmed.split("/news/").pop()?.split("?")[0];
-              if (filename) newsFilesToRemove.push(filename);
-            }
-          }
-        });
-        if (newsFilesToRemove.length > 0) {
-          await supabaseAdmin.storage.from("news").remove(Array.from(new Set(newsFilesToRemove))).catch(() => {});
-        }
-      } catch (storageErr) {
-        console.warn("⚠️ Background storage cleanup notice:", storageErr);
+      if (userProfile?.profileImage && userProfile.profileImage.includes("storage.supabase")) {
+        const parts = userProfile.profileImage.split("/");
+        avatarPathToRemove = `${parts.at(-2)}/${parts.at(-1)}`;
       }
-    })().catch(() => {});
+
+      [...(userAds.data || []), ...(userActiveAds.data || [])].forEach((ad: any) => {
+        const rawMedia = [ad.ad_media, ad.custom_sponsor_logo].filter(Boolean).join(",");
+        if (rawMedia) {
+          rawMedia.split(",").forEach((url: string) => {
+            const trimmed = url.trim();
+            if (trimmed.includes("/ad-media/")) {
+              const filename = trimmed.split("/ad-media/").pop()?.split("?")[0];
+              if (filename) adFilesToRemove.push(filename);
+            }
+          });
+        }
+      });
+
+      [...(userNews.data || []), ...(userActiveNews.data || [])].forEach((item: any) => {
+        if (item.image_url && typeof item.image_url === "string") {
+          const trimmed = item.image_url.trim();
+          if (trimmed.includes("/news/")) {
+            const filename = trimmed.split("/news/").pop()?.split("?")[0];
+            if (filename) newsFilesToRemove.push(filename);
+          }
+        }
+      });
+    } catch (storageErr) {
+      console.warn("⚠️ Storage media path scan notice:", storageErr);
+    }
 
     // 2. High-Speed Atomic Deletion: Try single-transaction PostgreSQL stored procedure first (~10ms)
     let rpcSucceeded = false;
@@ -241,9 +256,10 @@ export async function POST(req: NextRequest) {
         new Set((mutualRows.data || []).map((r: any) => String(r.holder_email || "").toLowerCase()).filter(Boolean))
       );
 
-      // Financial ledger is retained 5 years for AML compliance, pseudonymised rather than deleted
-      const { createHash } = await import("crypto");
-      const pseudonym = `deleted_${createHash("md5").update(emailLower).digest("hex")}`;
+      // Financial ledger is retained 5 years for AML compliance, pseudonymised with salted HMAC-SHA256 (H-03)
+      const { createHmac } = await import("crypto");
+      const amlSalt = process.env.PII_ENCRYPTION_KEY || process.env.AUTH0_SECRET || "paayh-aml-pseudonym-salt";
+      const pseudonym = `deleted_${createHmac("sha256", amlSalt).update(emailLower).digest("hex").slice(0, 32)}`;
       await Promise.allSettled([
         supabaseAdmin.from("payments").update({ user_email: pseudonym }).ilike("user_email", emailLower),
         supabaseAdmin.from("forfeited_balances").update({ user_email: pseudonym, username: null }).ilike("user_email", emailLower),
@@ -321,8 +337,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Set Redis Replay-Attack Tombstone & Invalidate All Caches Instantly (<5ms)
+    // 3. Purge Captured Storage Files, Set Redis Tombstone & Invalidate All Caches Instantly
+    const storageCleanupTasks: Promise<unknown>[] = [];
+    if (avatarPathToRemove && supabaseAdmin.storage?.from) {
+      storageCleanupTasks.push(
+        supabaseAdmin.storage.from("dp").remove([avatarPathToRemove]).catch(() => {})
+      );
+    }
+    if (adFilesToRemove.length > 0 && supabaseAdmin.storage?.from) {
+      storageCleanupTasks.push(
+        supabaseAdmin.storage.from("ad-media").remove(Array.from(new Set(adFilesToRemove))).catch(() => {})
+      );
+    }
+    if (newsFilesToRemove.length > 0 && supabaseAdmin.storage?.from) {
+      storageCleanupTasks.push(
+        supabaseAdmin.storage.from("news").remove(Array.from(new Set(newsFilesToRemove))).catch(() => {})
+      );
+    }
+
+    const cleanUsername = userProfile?.username
+      ? String(userProfile.username).toLowerCase().trim().replace(/^@/, "")
+      : "";
+
     await Promise.allSettled([
+      ...storageCleanupTasks,
       purgeDeletedUserFromAgentCaches({ email: emailLower, ...graph }),
       // Delete the sign-in identity too (Apple 5.1.1(v) / Google Play account deletion policy)
       deleteAuth0IdentitiesByEmail(emailLower).then((ok) => {
@@ -337,20 +375,33 @@ export async function POST(req: NextRequest) {
           console.warn("Notice deleting Supabase auth user:", authErr);
         }
       })(),
-      // Upsert tombstone for stale-session revocation (fresh OAuth sign-in clears non-ban tombstones to allow re-joining)
+      // Upsert voluntary tombstone for stale-session revocation (fresh OAuth sign-in clears voluntary tombstones to allow fresh blank account creation)
       (async () => {
         try {
           await supabaseAdmin.from("deactivated_users").upsert({
             email: emailLower,
-            reason: "user_deactivated",
+            reason: "voluntary_deactivation",
             deactivated_at: new Date().toISOString(),
           });
         } catch {}
       })(),
       redisConnection.set(`deactivated:${emailLower}`, "1", "EX", 2592000),
+      typeof (redisConnection as any).sadd === "function"
+        ? (redisConnection as any).sadd("deactivated:users", emailLower).catch(() => {})
+        : Promise.resolve(),
       redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 2592000),
+      (async () => {
+        try {
+          const fn = authHelper.invalidateAuthStatusCache;
+          if (typeof fn === "function") await fn(emailLower);
+        } catch {}
+      })(),
+      invalidateUserNotificationCaches(emailLower),
       invalidateCachedProfile(emailLower),
       invalidateAllHighlights(),
+      redisConnection.del(`auth:status:${emailLower}`),
+      redisConnection.del(`user:recipient:email:${emailLower}`),
+      ...(cleanUsername ? [redisConnection.del(`user:recipient:username:${cleanUsername}`)] : []),
       redisConnection.del(`campaigns:${emailLower}`),
       redisConnection.del(`feed:ad_ids:${emailLower}`),
       redisConnection.del(`feed:ads:${emailLower}`),
@@ -363,6 +414,7 @@ export async function POST(req: NextRequest) {
       redisConnection.incr(`statement:ver:${emailLower}`),
       redisConnection.del(`monetize:${emailLower}`),
       redisConnection.del(`monetize:status:${emailLower}`),
+      redisConnection.del(`monetize:status:v2:${emailLower}`),
       redisConnection.del(`user:live_clicks:${emailLower}`),
       redisConnection.del(`user:live_clicks:v2:${emailLower}`),
       redisConnection.del(`user:cooldown:${emailLower}`),

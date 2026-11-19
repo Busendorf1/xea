@@ -118,6 +118,9 @@ export async function POST(request: NextRequest) {
     let liveClicks = 0;
     let earnedRateNumber = 0;
     let attentionWorthScore: number | null | undefined;
+    let milestoneNotified = false;
+    let monetizationUnlocked = false;
+    let atwUpgraded = false;
 
     if (type === "earn") {
       const claimResult = await processEarnClaim({
@@ -147,6 +150,9 @@ export async function POST(request: NextRequest) {
       atomicCap = claimResult.atomicCap;
       maxCap = claimResult.maxCap ?? claimResult.atomicCap;
       attentionWorthScore = claimResult.attentionWorthScore;
+      milestoneNotified = Boolean(claimResult.milestoneNotified);
+      monetizationUnlocked = Boolean(claimResult.monetizationUnlocked);
+      atwUpgraded = Boolean(claimResult.atwUpgraded);
     } else {
       const mutualResult = await processMutualClaim({ adId, emailKey, deviceId });
       if (mutualResult.errorResponse) {
@@ -155,6 +161,9 @@ export async function POST(request: NextRequest) {
       updatedBalance = mutualResult.updatedBalance;
       liveClicks = mutualResult.liveClicks;
       attentionWorthScore = mutualResult.attentionWorthScore;
+      milestoneNotified = Boolean(mutualResult.milestoneNotified);
+      monetizationUnlocked = Boolean(mutualResult.monetizationUnlocked);
+      atwUpgraded = Boolean(mutualResult.atwUpgraded);
     }
 
     await syncPacingAndSeenSet(emailKey, adId, atomicViews, atomicCap, maxCap);
@@ -172,6 +181,9 @@ export async function POST(request: NextRequest) {
       holdingCap: finalTier.isUnlimited ? null : finalTier.holdingCap,
       views: atomicViews,
       cap: atomicCap,
+      milestoneNotified,
+      monetizationUnlocked,
+      atwUpgraded,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/earn:", err);

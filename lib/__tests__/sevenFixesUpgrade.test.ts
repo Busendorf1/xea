@@ -18,7 +18,8 @@ describe("7-Item Cross-Platform Upgrade Verification", () => {
     const raw = fs.readFileSync(path.join(process.cwd(), "vercel.json"), "utf8");
     const parsed = JSON.parse(raw) as { crons?: Array<{ path: string; schedule: string }> };
     expect(Array.isArray(parsed.crons)).toBe(true);
-    expect(parsed.crons!.length).toBeGreaterThanOrEqual(4);
+    expect(parsed.crons!.length).toBeGreaterThanOrEqual(1);
+    expect(parsed.crons!.length).toBeLessThanOrEqual(2);
 
     for (const cron of parsed.crons!) {
       // Standard 5-field daily cron: `<minute> <hour> * * *` with fixed numeric minute & hour

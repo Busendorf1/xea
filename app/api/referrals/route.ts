@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       referralCode: refCode,
-      referralLink: `https://xea.app/join?ref=${refCode}`,
+      referralLink: `https://paayh.com/?ref=${refCode}`,
       qualifiedCount,
       pendingCount: sanitizedReferrals.filter((r) => r.status === "pending").length,
       totalInvites: sanitizedReferrals.length,

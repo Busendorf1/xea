@@ -30,6 +30,12 @@ describe("Core API Campaigns, Boost, Cron & Real-Time Buffers", () => {
     vi.doMock("@/lib/notifications/milestoneNotifications", () => ({
       snapshotUserLevelsByEmails: vi.fn(async () => new Map()),
       notifyUpgradedUsersFromLevelMap: vi.fn(async () => {}),
+      checkAndNotifyClickAndAtwMilestones: vi.fn(async () => ({
+        monetizationNotified: false,
+        atwNotified: false,
+      })),
+      clearMonetizationUnlockDedup: vi.fn(async () => {}),
+      parseNumericAtwLevel: vi.fn(() => 1),
     }));
     vi.doMock("@/lib/queue", () => ({ adRatingQueue: { add: vi.fn(async () => {}) } }));
     vi.doMock("@/lib/utils/cache", () => ({

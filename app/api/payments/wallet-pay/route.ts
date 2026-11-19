@@ -14,6 +14,12 @@ import {
 } from "@/lib/security/walletPinHelper";
 import { validateAndComputeAdPricing } from "../../../../lib/ads/pricingEnforcement";
 import { assessAdDeliveryCapacity } from "../../../../lib/ads/capacityEstimator";
+import { syncBiddedAdActivation } from "../../../../lib/ads/biddedAdsSync";
+import {
+  convertUsdToNgn,
+  getCanonicalHighlightFloorRateNgn,
+  getUserCurrency,
+} from "../../../../lib/utils/currency";
 
 function isApprovalValidWithin72Hours(adminStatement: string | null | undefined): {
   valid: boolean;
@@ -66,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     const { isAdminEmail } = await import("@/lib/authHelper");
     const isAdmin = isAdminEmail(emailLower);
-    const amountNum = parseFloat(amount);
+    let amountNum = parseFloat(amount);
     amountNumRef = amountNum;
 
     if (!isAdmin && (!Number.isFinite(amountNum) || amountNum <= 0)) {
@@ -168,10 +174,14 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        // Store and bill canonically in NGN (C-02)
         adData.adType = pricing.adCategory;
         adData.impressions = pricing.impressionsCount;
-        adData.costPerImpression = pricing.effectiveRate;
-        adData.totalCost = pricing.computedTotalCost;
+        adData.costPerImpression = pricing.canonicalRateNgn;
+        adData.bidPrice = pricing.isBidded ? pricing.canonicalRateNgn : null;
+        adData.totalCost = pricing.canonicalTotalCostNgn;
+        amountNum = pricing.canonicalTotalCostNgn;
+        amountNumRef = amountNum;
       }
 
       if (adData.id) {
@@ -195,15 +205,31 @@ export async function POST(req: NextRequest) {
       if (!metadata?.title || !metadata?.content) {
         return NextResponse.json({ error: "Highlight title and content are required" }, { status: 400 });
       }
-      const days = Math.min(5, Math.max(1, parseInt(metadata?.campaign_days || 1, 10)));
+      const rawDays = parseInt(metadata?.campaign_days || 1, 10);
+      if (!Number.isFinite(rawDays) || rawDays < 1 || rawDays > 90) {
+        return NextResponse.json({ error: "Highlight duration must be between 1 and 90 days." }, { status: 400 });
+      }
+      const days = Math.floor(rawDays);
       const isBidded = !!metadata?.is_bidded;
-      const bidPrice = metadata?.bid_price ? parseFloat(metadata.bid_price) : 1000;
-      const expectedHighlightCost = (isBidded ? Math.max(1000, bidPrice) : 1000) * days;
-      if (!isAdmin && Math.abs(amountNum - expectedHighlightCost) > 1) {
+      const floorRateNgn = getCanonicalHighlightFloorRateNgn(userPinData?.country);
+      const isUsdUser = getUserCurrency(userPinData?.country) === "USD";
+      const rawBid = metadata?.bid_price ? parseFloat(metadata.bid_price) : 0;
+      const bidNgn = rawBid > 0 ? (isUsdUser && rawBid < 500 ? convertUsdToNgn(rawBid) : rawBid) : floorRateNgn;
+      const dailyRateNgn = isBidded ? Math.max(floorRateNgn, bidNgn) : floorRateNgn;
+      const expectedHighlightCost = Math.round(dailyRateNgn * days);
+      const matchesDirect = Math.abs(amountNum - expectedHighlightCost) <= 1;
+      const matchesFromUsd = isUsdUser && Math.abs(convertUsdToNgn(amountNum) - expectedHighlightCost) <= 750;
+      if (!isAdmin && !matchesDirect && !matchesFromUsd) {
         return NextResponse.json(
           { error: "Cost validation mismatch for highlight campaign." },
           { status: 400 }
         );
+      }
+      if (!isAdmin) {
+        amountNum = expectedHighlightCost;
+        amountNumRef = amountNum;
+        metadata.campaign_days = days;
+        metadata.bid_price = dailyRateNgn;
       }
       if (metadata?.editingId) {
         const [{ data: existingHl }, { data: existingActiveHl }] = await Promise.all([
@@ -232,7 +258,7 @@ export async function POST(req: NextRequest) {
         .from("adds")
         .select("*")
         .eq("id", adId)
-        .ilike("user_email", emailLower)
+        .eq("user_email", emailLower)
         .maybeSingle();
 
       if (adCheckErr || !adCheck) {
@@ -254,6 +280,7 @@ export async function POST(req: NextRequest) {
           productCtaLink: adCheck.product_cta_link,
           userCountry: userPinData?.country,
           isAdmin: false,
+          storedInCanonicalNgn: true,
         });
         if (!pricing.ok) {
           return NextResponse.json({ error: pricing.error }, { status: pricing.status });
@@ -286,13 +313,14 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
-        const tolerance = pricing.currency === "USD" ? 0.51 : 1;
-        if (expectedAdCost <= 0 || Math.abs(expectedAdCost - pricing.computedTotalCost) > tolerance) {
+        if (expectedAdCost <= 0 || Math.abs(expectedAdCost - pricing.canonicalTotalCostNgn) > 1) {
           return NextResponse.json(
             { error: "Cost validation mismatch. Payment amount does not match campaign configuration." },
             { status: 400 }
           );
         }
+        amountNum = pricing.canonicalTotalCostNgn;
+        amountNumRef = amountNum;
       } else if (!isAdmin && (expectedAdCost <= 0 || Math.abs(amountNum - expectedAdCost) > 1)) {
         return NextResponse.json(
           { error: "Cost validation mismatch. Payment amount does not match campaign configuration." },
@@ -309,7 +337,7 @@ export async function POST(req: NextRequest) {
         .from("news")
         .select("*")
         .eq("id", highlightId)
-        .ilike("user_email", emailLower)
+        .eq("user_email", emailLower)
         .maybeSingle();
 
       if (hlCheckErr || !hlCheck) {
@@ -319,28 +347,44 @@ export async function POST(req: NextRequest) {
       if (!approvalCheck.valid) {
         return NextResponse.json({ error: approvalCheck.reason }, { status: 400 });
       }
-      const days = Math.max(1, Number(hlCheck.campaign_days || 1));
-      const rate = hlCheck.is_bidded && hlCheck.bid_price ? Math.max(1000, Number(hlCheck.bid_price)) : 1000;
-      const expectedHlCost = days * rate;
-      if (!isAdmin && (expectedHlCost <= 0 || Math.abs(amountNum - expectedHlCost) > 1)) {
+      const days = Math.max(1, Math.min(90, Math.floor(Number(hlCheck.campaign_days || 1))));
+      const floorRateNgn = getCanonicalHighlightFloorRateNgn(userPinData?.country);
+      const isUsdUser = getUserCurrency(userPinData?.country) === "USD";
+      const storedRate = hlCheck.is_bidded && hlCheck.bid_price ? Number(hlCheck.bid_price) : floorRateNgn;
+      const rateNgn = Math.max(
+        floorRateNgn,
+        isUsdUser && storedRate < 500 ? convertUsdToNgn(storedRate) : storedRate
+      );
+      const expectedHlCost = Math.round(days * rateNgn);
+      const matchesDirect = Math.abs(amountNum - expectedHlCost) <= 1;
+      const matchesFromUsd = isUsdUser && Math.abs(convertUsdToNgn(amountNum) - expectedHlCost) <= 750;
+      if (!isAdmin && (expectedHlCost <= 0 || (!matchesDirect && !matchesFromUsd))) {
         return NextResponse.json(
           { error: "Cost validation mismatch for highlight campaign." },
           { status: 400 }
         );
       }
+      if (!isAdmin) {
+        amountNum = expectedHlCost;
+        amountNumRef = amountNum;
+      }
       prevalidatedHl = hlCheck;
     }
 
-    // 2. Acquire per-user wallet mutex to prevent concurrent double-spend
+    // 2. Acquire per-user wallet mutex to prevent concurrent double-spend (fail closed on lock conflict)
     walletLockKey = `lock:wallet:${emailLower}`;
-    const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => "OK");
-    if (!acquired) {
-      return NextResponse.json(
-        { error: "Another wallet transaction is currently in progress. Please wait a moment." },
-        { status: 429 }
-      );
+    const redisMod = await import("@/lib/redis");
+    const redisAvailable = typeof redisMod.isRedisReady === "function" ? redisMod.isRedisReady() : true;
+    if (redisAvailable) {
+      const acquired = await redisConnection.set(walletLockKey, "1", "EX", 15, "NX").catch(() => null);
+      if (!acquired) {
+        return NextResponse.json(
+          { error: "Another wallet transaction is currently in progress. Please wait a moment." },
+          { status: 429 }
+        );
+      }
+      lockAcquired = true;
     }
-    lockAcquired = true;
 
     // 3. Check advertiser account restrictions
     const { data: user, error: userError } = await supabaseAdmin
@@ -469,6 +513,21 @@ export async function POST(req: NextRequest) {
       deductionCompleted = true;
 
       const publishedAd = insertedRows?.[0] || activeAd;
+      await syncBiddedAdActivation(
+        supabaseAdmin,
+        {
+          adId: String(adId),
+          userEmail: emailLower,
+          adType: publishedAd.ad_type,
+          industry: publishedAd.industry,
+          costPerImpression: publishedAd.cost_per_impression,
+          bidPrice: publishedAd.bid_price,
+          isBidded: publishedAd.is_bidded,
+          isAdminPost: publishedAd.is_admin_post,
+        },
+        { redis: redisConnection }
+      );
+
       const { dispatchFeedDropWebhook, dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
       dispatchFeedDropWebhook(publishedAd).catch(() => {});
 
@@ -480,13 +539,20 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("notifications").insert([notifRow]);
       dispatchNotificationWebhook(notifRow).catch(() => {});
 
-      const { invalidateCachedUserCampaigns, invalidateCachedProfile: invProfile } = await import("@/lib/utils/cache");
+      const cacheMod = await import("@/lib/utils/cache");
       await Promise.all([
-        invalidateCachedUserCampaigns(emailLower),
-        invProfile(emailLower),
+        typeof cacheMod.invalidateCachedUserCampaigns === "function"
+          ? cacheMod.invalidateCachedUserCampaigns(emailLower)
+          : Promise.resolve(),
+        typeof cacheMod.invalidateCachedProfile === "function"
+          ? cacheMod.invalidateCachedProfile(emailLower)
+          : Promise.resolve(),
         redisConnection.incr(`statement:ver:${emailLower}`).catch(() => {}),
         redisConnection.del(`statement:payments:${emailLower}`, `statement:all:${emailLower}`).catch(() => {}),
       ]);
+      if (typeof (cacheMod as any).evictAdFromL1FeedCaches === "function") {
+        (cacheMod as any).evictAdFromL1FeedCaches(String(adId));
+      }
 
       return NextResponse.json({
         success: true,
@@ -743,28 +809,20 @@ export async function POST(req: NextRequest) {
       }
 
       // If ad is bidded, record in bidded_ads table and update Redis ZSET
-      if (isBidded && bidPrice) {
-        const adIndustry = (adData.adType || "business").toLowerCase();
-        const { error: bidInsertErr } = await supabaseAdmin.from("bidded_ads").insert({
-          ad_id: adData.id,
-          user_email: emailLower,
-          industry: adIndustry,
-          bid_price: bidPrice,
-          is_active: true,
-        });
-
-        if (bidInsertErr) {
-          console.error("❌ Wallet pay: Error inserting bidded_ads record:", bidInsertErr);
-        }
-
-        try {
-          const zsetKey = `bids:zset:${adIndustry}`;
-          await redisConnection.zadd(zsetKey, bidPrice, adData.id);
-          await redisConnection.del("attention:market_rates");
-        } catch (redisErr) {
-          console.warn("⚠️ Redis ZSET update warning:", redisErr);
-        }
-      }
+      await syncBiddedAdActivation(
+        supabaseAdmin,
+        {
+          adId: String(adData.id),
+          userEmail: emailLower,
+          adType: adData.adType,
+          industry: adData.industry,
+          costPerImpression: effectiveRate,
+          bidPrice,
+          isBidded,
+          isAdminPost: isAdmin,
+        },
+        { redis: redisConnection }
+      );
 
       // Add user notification
       await supabaseAdmin.from("notifications").insert({

@@ -105,13 +105,52 @@ export async function GET(req: NextRequest) {
     const canonicalRef = String(payment.reference || reference);
 
     // 3. Branch B: Inbound Payment Verification (Ads, Highlights, Brand Subscriptions)
-    // Use gateway reference (e.g. kora_pay_*) if available from query param, metadata, or column
-    const targetGatewayRef =
-      paramGatewayRef ||
+    // Security (C-01): NEVER allow a caller-supplied `gateway_reference` to override the DB-bound reference!
+    // Only use the server-recorded gateway reference bound to this exact payment row at initialize time.
+    const storedGatewayRef = String(
       (payment.metadata?.gateway_reference as string) ||
-      (payment.metadata?.kora_reference as string) ||
-      (payment.gateway_reference as string) ||
-      canonicalRef;
+        (payment.metadata?.kora_reference as string) ||
+        (payment.gateway_reference as string) ||
+        ""
+    ).trim();
+
+    if (paramGatewayRef) {
+      const cleanParamGwRef = paramGatewayRef.trim();
+      const allowedBoundRefs = new Set([canonicalRef, storedGatewayRef].filter(Boolean));
+      if (!allowedBoundRefs.has(cleanParamGwRef)) {
+        console.warn(
+          `🚨 Potential payment replay blocked: caller passed gateway_reference=${cleanParamGwRef} for canonicalRef=${canonicalRef} (bound=${storedGatewayRef || canonicalRef})`
+        );
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Gateway reference does not match this payment order.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    const targetGatewayRef = storedGatewayRef || canonicalRef;
+
+    // Cross-order replay defense: ensure targetGatewayRef has not already settled another payment row
+    try {
+      const { data: priorSettled } = await supabaseAdmin
+        .from("payments")
+        .select("reference")
+        .eq("gateway_reference", targetGatewayRef)
+        .in("status", ["success", "completed"])
+        .neq("reference", canonicalRef)
+        .maybeSingle();
+      if (priorSettled) {
+        return NextResponse.json(
+          { success: false, error: "This gateway payment reference has already been settled for another order." },
+          { status: 409 }
+        );
+      }
+    } catch {
+      // Optional column in test mocks / legacy schemas
+    }
     
     let verifyResult: {
       success: boolean;

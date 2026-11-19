@@ -9,8 +9,106 @@ interface CachedUser {
   expiresAt: number;
 }
 
+const MAX_EDGE_TOKEN_CACHE = 5000;
 const tokenCache = new Map<string, CachedUser>();
 const jwksKeyCache = new Map<string, { key: CryptoKey; expiresAt: number }>();
+
+function setEdgeTokenCache(token: string, entry: CachedUser) {
+  if (tokenCache.size >= MAX_EDGE_TOKEN_CACHE) {
+    const oldest = tokenCache.keys().next().value;
+    if (oldest) tokenCache.delete(oldest);
+  }
+  tokenCache.set(token, entry);
+}
+
+export interface EdgeAccountBlockStatus {
+  blocked: boolean;
+  blockType?: "temporary" | "permanent";
+  blockedUntil?: string | null;
+  reason?: string | null;
+  message?: string;
+}
+
+/**
+ * Checks whether an authenticated user is temporarily or permanently blocked by an admin.
+ */
+export async function checkAccountBlockedEdge(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  email: string
+): Promise<EdgeAccountBlockStatus> {
+  const cleanEmail = email.toLowerCase().trim();
+  if (!cleanEmail || cleanEmail === "service_role") return { blocked: false };
+
+  try {
+    const [{ data: deact }, { data: userRow }] = await Promise.all([
+      supabase
+        .from("deactivated_users")
+        .select("reason")
+        .ilike("email", cleanEmail)
+        .maybeSingle(),
+      supabase
+        .from("users")
+        .select("id, ad_account_status, suspended_until, ad_ban_reason")
+        .ilike("email", cleanEmail)
+        .maybeSingle(),
+    ]);
+
+    const deactReason = String(deact?.reason || "").toLowerCase().trim();
+    const status = String(userRow?.ad_account_status || "").toLowerCase().trim();
+    const banReason = userRow?.ad_ban_reason ? String(userRow.ad_ban_reason).trim() : null;
+    const reasonSuffix = banReason ? ` Reason: ${banReason}` : "";
+
+    if (
+      deactReason === "admin_perm_banned" ||
+      deactReason === "perm_banned" ||
+      status === "perm_banned" ||
+      status === "banned"
+    ) {
+      return {
+        blocked: true,
+        blockType: "permanent",
+        blockedUntil: null,
+        reason: banReason,
+        message: `Your account has been permanently blocked from accessing Paayh.${reasonSuffix}`,
+      };
+    }
+
+    if (status === "temp_blocked" || status === "suspended") {
+      const rawUntil = userRow?.suspended_until || null;
+      const untilMs = rawUntil ? new Date(rawUntil).getTime() : NaN;
+      if (Number.isFinite(untilMs) && untilMs <= Date.now()) {
+        // Auto-expire finished temporary block
+        if (userRow?.id) {
+          await supabase
+            .from("users")
+            .update({ ad_account_status: "active", suspended_until: null, ad_ban_reason: null })
+            .eq("id", userRow.id);
+        }
+        return { blocked: false };
+      }
+      const untilLabel =
+        rawUntil && Number.isFinite(untilMs)
+          ? ` until ${new Date(untilMs).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })}`
+          : "";
+      return {
+        blocked: true,
+        blockType: "temporary",
+        blockedUntil: rawUntil,
+        reason: banReason,
+        message: `Your account has been temporarily blocked${untilLabel} and cannot access Paayh right now.${reasonSuffix}`,
+      };
+    }
+  } catch {
+    // Non-blocking lookup failure falls through
+  }
+
+  return { blocked: false };
+}
 
 function decodeBase64UrlToBytes(b64url: string): Uint8Array {
   const base64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
@@ -125,7 +223,25 @@ export async function getVerifiedUserEmail(req: Request): Promise<string | null>
         const expectedIss = `https://${cleanDomain}`;
         const nowSec = Math.floor(Date.now() / 1000);
 
-        if (issuer === expectedIss && claims.exp && claims.exp > nowSec) {
+        const allowedAudiences = [
+          Deno.env.get("AUTH0_AUDIENCE"),
+          Deno.env.get("AUTH0_CLIENT_ID"),
+        ]
+          .map((v) => (v || "").trim())
+          .filter(Boolean);
+        const tokenAudList = Array.isArray(claims.aud)
+          ? claims.aud.map(String)
+          : claims.aud
+          ? [String(claims.aud)]
+          : [];
+        const audienceOk =
+          allowedAudiences.length === 0 ||
+          tokenAudList.some((a: string) => allowedAudiences.includes(a));
+
+        if (issuer === expectedIss && audienceOk && claims.exp && claims.exp > nowSec) {
+          if (claims.email_verified === false) {
+            return null;
+          }
           const pubKey = await getAuth0PublicKey(header.kid);
           if (pubKey) {
             const signedData = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
@@ -154,7 +270,7 @@ export async function getVerifiedUserEmail(req: Request): Promise<string | null>
               }
 
               if (email) {
-                tokenCache.set(token, {
+                setEdgeTokenCache(token, {
                   email,
                   expiresAt: Math.min(claims.exp * 1000, Date.now() + 10 * 60 * 1000),
                 });
@@ -182,6 +298,9 @@ export async function getVerifiedUserEmail(req: Request): Promise<string | null>
 
     if (userinfoRes.ok) {
       const userInfo = await userinfoRes.json();
+      if (userInfo?.email_verified === false) {
+        return null;
+      }
       let email = (
         userInfo?.email ||
         userInfo?.["https://xea.app/email"] ||
@@ -198,7 +317,7 @@ export async function getVerifiedUserEmail(req: Request): Promise<string | null>
       }
 
       if (email) {
-        tokenCache.set(token, {
+        setEdgeTokenCache(token, {
           email,
           expiresAt: Date.now() + 5 * 60 * 1000, // 5 min TTL
         });

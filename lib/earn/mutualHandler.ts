@@ -19,6 +19,9 @@ export interface MutualClaimOutput {
   updatedBalance: number | null;
   liveClicks: number;
   attentionWorthScore?: number | null;
+  milestoneNotified?: boolean;
+  monetizationUnlocked?: boolean;
+  atwUpgraded?: boolean;
 }
 
 export async function processMutualClaim(input: MutualClaimInput): Promise<MutualClaimOutput> {
@@ -29,22 +32,36 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
   let publisherEmail: string | null = null;
   let updatedMutualCount = 0;
   let updatedImpressionCount: number | undefined;
+  let milestoneNotified = false;
+  let monetizationUnlocked = false;
+  let atwUpgraded = false;
 
   try {
     const [{ data: adRow }, { data: dbUserBefore }] = await Promise.all([
       supabaseAdmin
         .from("addsactive")
-        .select("user_email, impression_count, mutual_adds_count")
+        .select("id, user_email, impression_count, mutual_adds_count, is_paused, completed_at")
         .eq("id", adId)
         .maybeSingle(),
       supabaseAdmin
         .from("users")
-        .select("id, balance, monetization_clicks, monetized, atw_tier, attention_worth_score, mutuals, mutual_count")
-        .ilike("email", emailKey)
+        .select("id, balance, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career, mutuals, mutual_count")
+        .eq("email", emailKey)
         .maybeSingle(),
     ]);
 
-    publisherEmail = adRow?.user_email ? String(adRow.user_email).toLowerCase().trim() : null;
+    if (!adRow || adRow.is_paused || adRow.completed_at) {
+      return {
+        errorResponse: NextResponse.json(
+          { success: false, error: "Active campaign not found." },
+          { status: 404 }
+        ),
+        updatedBalance: null,
+        liveClicks: 0,
+      };
+    }
+
+    publisherEmail = adRow.user_email ? String(adRow.user_email).toLowerCase().trim() : null;
     if (publisherEmail && publisherEmail === emailKey) {
       return {
         errorResponse: NextResponse.json(
@@ -53,6 +70,29 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
         ),
         updatedBalance: null,
         liveClicks: 0,
+      };
+    }
+
+    // Security (C-16): Enforce 50-mutual cap before mutating mutuals
+    const existingMutualsBefore = Array.isArray(dbUserBefore?.mutuals)
+      ? dbUserBefore.mutuals.map((m: any) => String(m).toLowerCase().trim()).filter(Boolean)
+      : [];
+    const currentMutualCountBefore = Math.max(
+      Number(dbUserBefore?.mutual_count || 0),
+      existingMutualsBefore.length
+    );
+    if (
+      publisherEmail &&
+      !existingMutualsBefore.includes(publisherEmail) &&
+      currentMutualCountBefore >= 50
+    ) {
+      return {
+        errorResponse: NextResponse.json(
+          { success: false, code: "MUTUAL_LIMIT_REACHED", error: "Mutual limit reached (50 max)." },
+          { status: 400 }
+        ),
+        updatedBalance: Number(dbUserBefore?.balance ?? 0),
+        liveClicks: Number(dbUserBefore?.monetization_clicks ?? 0),
       };
     }
 
@@ -65,7 +105,7 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
 
     const { data: dbUserAfter } = await supabaseAdmin
       .from("users")
-      .select("id, balance, monetization_clicks, monetized, atw_tier, attention_worth_score, mutuals, mutual_count")
+      .select("id, balance, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career, mutuals, mutual_count")
       .ilike("email", emailKey)
       .maybeSingle();
 
@@ -77,11 +117,12 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
       const rawMutuals = Array.isArray(userRow.mutuals)
         ? userRow.mutuals.map((m: any) => String(m).toLowerCase().trim()).filter(Boolean)
         : [];
-      if (publisherEmail && !rawMutuals.includes(publisherEmail)) {
+      if (publisherEmail && !rawMutuals.includes(publisherEmail) && rawMutuals.length < 50) {
         rawMutuals.push(publisherEmail);
       }
-      const nextMutualCount = Math.max(Number(userRow.mutual_count || 0), rawMutuals.length);
+      const nextMutualCount = Math.min(50, Math.max(Number(userRow.mutual_count || 0), rawMutuals.length));
       const isExemptMut = isExemptFromBarriersAndInactivity(emailKey, userRow as any);
+      const hasCancelledMut = Boolean((userRow as any).has_cancelled_monetization);
       attentionWorthScore = (userRow as any).attention_worth_score;
       const mutTier = computeAtwTierDetails(
         nextClicks,
@@ -90,17 +131,23 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
         attentionWorthScore
       );
       const nextMonetized =
-        isExemptMut ||
-        userRow.monetized === true ||
-        userRow.monetized === "true" ||
-        userRow.monetized === "yes" ||
-        nextClicks >= 500;
+        !hasCancelledMut &&
+        (isExemptMut ||
+          userRow.monetized === true ||
+          userRow.monetized === "true" ||
+          userRow.monetized === "yes" ||
+          userRow.monetized === "1" ||
+          userRow.monetized === "t" ||
+          nextClicks >= 500);
 
       const prevMonetized = Boolean(
         dbUserBefore &&
+          !hasCancelledMut &&
           (dbUserBefore.monetized === true ||
             dbUserBefore.monetized === "true" ||
-            dbUserBefore.monetized === "yes")
+            dbUserBefore.monetized === "yes" ||
+            dbUserBefore.monetized === "1" ||
+            dbUserBefore.monetized === "t")
       );
 
       await supabaseAdmin
@@ -111,11 +158,12 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
           monetization_clicks: nextClicks,
           atw_tier: mutTier.tierCode,
           ...(nextMonetized ? { monetized: "true" } : {}),
+          ...(nextMonetized && !prevMonetized ? { monetized_at: new Date().toISOString() } : {}),
           last_active_at: new Date().toISOString(),
         })
         .eq("id", userRow.id);
 
-      checkAndNotifyClickAndAtwMilestones({
+      const milestoneRes = await checkAndNotifyClickAndAtwMilestones({
         email: emailKey,
         prevClicks,
         prevMonetized,
@@ -125,7 +173,14 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
         nextAtwTier: mutTier.tierCode,
         attentionWorthScore,
         isExempt: isExemptMut,
-      }).catch(() => {});
+        hasCancelled: hasCancelledMut,
+      }).catch(() => null);
+
+      if (milestoneRes) {
+        monetizationUnlocked = Boolean(milestoneRes.monetizationNotified);
+        atwUpgraded = Boolean(milestoneRes.atwNotified);
+        milestoneNotified = monetizationUnlocked || atwUpgraded;
+      }
 
       updatedBalance = Number(userRow.balance) || 0;
       liveClicks = nextClicks;
@@ -208,5 +263,12 @@ export async function processMutualClaim(input: MutualClaimInput): Promise<Mutua
     },
   }).catch(() => {});
 
-  return { updatedBalance, liveClicks, attentionWorthScore };
+  return {
+    updatedBalance,
+    liveClicks,
+    attentionWorthScore,
+    milestoneNotified,
+    monetizationUnlocked,
+    atwUpgraded,
+  };
 }

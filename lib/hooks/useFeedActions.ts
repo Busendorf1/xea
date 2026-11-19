@@ -128,6 +128,14 @@ export function useFeedActions({
                   },
                 })
               );
+              if (
+                data.milestoneNotified ||
+                data.monetizationUnlocked ||
+                data.atwUpgraded ||
+                (data.clicksCount >= 500 && data.clicksCount % 500 === 0)
+              ) {
+                window.dispatchEvent(new CustomEvent("xea:notifications-refresh"));
+              }
             }
           }
         } catch {}
@@ -333,6 +341,14 @@ export function useFeedActions({
                   },
                 })
               );
+              if (
+                resData.milestoneNotified ||
+                resData.monetizationUnlocked ||
+                resData.atwUpgraded ||
+                (authClicks >= 500 && authClicks % 500 === 0)
+              ) {
+                window.dispatchEvent(new CustomEvent("xea:notifications-refresh"));
+              }
             }
 
             window.dispatchEvent(
@@ -472,6 +488,14 @@ export function useFeedActions({
               },
             })
           );
+          if (
+            resData.milestoneNotified ||
+            resData.monetizationUnlocked ||
+            resData.atwUpgraded ||
+            (authClicks >= 500 && authClicks % 500 === 0)
+          ) {
+            window.dispatchEvent(new CustomEvent("xea:notifications-refresh"));
+          }
         }
 
         onMutualSuccess?.();

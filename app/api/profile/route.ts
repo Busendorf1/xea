@@ -56,28 +56,9 @@ async function applyLiveMonetizationAndCooldown(
 }
 
 async function evaluateInactivitySafely(user: Record<string, any>, emailLower: string): Promise<void> {
+  // Note: 60-day dormant balance forfeiture runs via scheduled pg_cron / database-cleanup,
+  // never inline inside user GET /api/profile (prevents full-table scan locks at 500M+ users).
   const activityTracker = await import("@/lib/utils/activityTracker");
-  const adminHelper = await import("@/lib/adminHelper").catch(() => null as any);
-  const isExemptFn = adminHelper?.isExemptFromBarriersAndInactivity;
-  const isExempt = typeof isExemptFn === "function" ? isExemptFn(emailLower, user as any) : false;
-
-  // 60-day dormant balance forfeiture must run BEFORE touchUserActivity updates last_active_at
-  if (user.last_active_at && !isExempt) {
-    const lastActiveMs = new Date(user.last_active_at).getTime();
-    if (!Number.isNaN(lastActiveMs)) {
-      const daysInactive = Math.max(0, Math.floor((Date.now() - lastActiveMs) / (1000 * 60 * 60 * 24)));
-      if (daysInactive >= 60 && Number(user.balance || 0) > 0) {
-        try {
-          await supabaseAdmin.rpc("forfeit_dormant_user_balances_60_days");
-          user.balance = 0;
-          user.monetized = "false";
-          user.monetization_clicks = 0;
-          await cacheUtils.invalidateCachedProfile?.(emailLower);
-        } catch {}
-      }
-    }
-  }
-
   try {
     const activityRes = await activityTracker.touchUserActivity?.(emailLower, user);
     if (activityRes?.isDeMonetized) {
@@ -89,7 +70,35 @@ async function evaluateInactivitySafely(user: Record<string, any>, emailLower: s
 
 export async function GET(req: NextRequest) {
   try {
-    const email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    let email: string | null = null;
+    let getEmailWithBlockInfoFn: typeof authHelper.getAuthenticatedEmailWithBlockInfo | undefined;
+    try {
+      getEmailWithBlockInfoFn = authHelper.getAuthenticatedEmailWithBlockInfo;
+    } catch {}
+    if (typeof getEmailWithBlockInfoFn === "function") {
+      const authRes = await getEmailWithBlockInfoFn(req, {
+        allowMobileHeader: true,
+      });
+      if (authRes.blocked) {
+        return NextResponse.json(
+          {
+            code: "ACCOUNT_BLOCKED",
+            blocked: true,
+            blockType: authRes.blocked.blockType || "permanent",
+            blockedUntil: authRes.blocked.blockedUntil ?? null,
+            reason: authRes.blocked.reason ?? null,
+            error:
+              authRes.blocked.message ||
+              "Your account is currently blocked from accessing Paayh.",
+          },
+          { status: 403 }
+        );
+      }
+      email = authRes.email;
+    } else {
+      email = await getAuthenticatedEmail(req, { allowMobileHeader: true });
+    }
+
     if (!email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -97,7 +106,11 @@ export async function GET(req: NextRequest) {
     const emailLower = email.toLowerCase().trim();
 
     // Fail closed permanently for deactivated / deleted accounts (never resurrect via stale sessions)
-    if (typeof authHelper.isEmailDeactivated === "function" && (await authHelper.isEmailDeactivated(emailLower))) {
+    let isEmailDeactivatedFn: typeof authHelper.isEmailDeactivated | undefined;
+    try {
+      isEmailDeactivatedFn = authHelper.isEmailDeactivated;
+    } catch {}
+    if (typeof isEmailDeactivatedFn === "function" && (await isEmailDeactivatedFn(emailLower))) {
       await cacheUtils.invalidateCachedProfile?.(emailLower).catch(() => {});
       return NextResponse.json(
         { error: "Account has been permanently deactivated.", deactivated: true },

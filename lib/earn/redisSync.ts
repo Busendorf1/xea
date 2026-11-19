@@ -209,11 +209,19 @@ export async function syncPostEarnCaches(params: {
       if (!parsed) {
         const { data: freshUser } = await supabaseAdmin
           .from("users")
-          .select("*")
+          .select(
+            'id, email, username, "firstName", "lastName", business_name, "profileImage", balance, withdrawal, monetized, monetization_clicks, atw_tier, attention_worth_score, country, state, location, interest, industry, gender, is_career, is_affiliate, is_agent, has_updated_profile, has_cancelled_monetization, ad_account_status, suspended_until, last_active_at'
+          )
           .ilike("email", emailKey)
           .maybeSingle();
         parsed = freshUser || { email: emailKey };
       }
+      // Strip sensitive secrets before writing to L1/L2 caches
+      delete parsed.passphrase;
+      delete parsed.wallet_pin_hash;
+      delete parsed.bvn_hash;
+      delete parsed.nin_hash;
+
       const isExemptSync = isExemptFromBarriersAndInactivity(emailKey, parsed);
       const effectiveScore = attentionWorthScore ?? parsed?.attention_worth_score;
       const syncTier = computeAtwTierDetails(liveClicks, parsed?.atw_tier, isExemptSync, effectiveScore);
@@ -224,7 +232,7 @@ export async function syncPostEarnCaches(params: {
         parsed.attention_worth_score = effectiveScore;
       }
       if (liveClicks >= 500 || isExemptSync) parsed.monetized = "true";
-      await redisConnection.set(profileKey, JSON.stringify(parsed), "EX", 60).catch(() => {});
+      await setCachedProfile(emailKey, parsed).catch(() => {});
     }
   } catch (rErr) {
     console.warn("⚠️ Redis sync warning in /api/earn:", rErr);

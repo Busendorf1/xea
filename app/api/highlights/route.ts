@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { getCachedProfile, getCachedHighlights, setCachedHighlights, registerL1HighlightsEvictionHandler } from "@/lib/utils/cache";
 import redisConnection, { isRedisReady } from "@/lib/redis";
@@ -173,25 +174,42 @@ async function loadActiveHighlightsPool(): Promise<any[]> {
 
 export async function GET(req: NextRequest) {
   try {
+    const rl = await checkRateLimit(req, {
+      limit: 120,
+      windowSeconds: 60,
+      identifierPrefix: "highlights_get",
+    });
+    if (!rl.allowed && rl.response) {
+      return rl.response;
+    }
+
     const { searchParams } = new URL(req.url);
     const highestBidQuery = searchParams.get("highestBid");
     const interestQuery = searchParams.get("interest");
 
-    // 0. Query highest bid price for an interest to guide advertisers (cached 15s in Redis)
+    // 0. Query highest bid price for an interest to guide advertisers (cached 15s in Redis + Vercel Edge CDN)
     if (highestBidQuery === "true" && interestQuery) {
-      const interestKey = `hl:highest_bid:${interestQuery.toLowerCase().trim()}`;
+      const normalizedInterest = interestQuery.toLowerCase().trim();
+      const interestKey = `hl:highest_bid:${normalizedInterest}`;
+      const cdnHeaders = {
+        "Cache-Control": "public, max-age=10, s-maxage=15, stale-while-revalidate=30",
+        "CDN-Cache-Control": "public, s-maxage=15, stale-while-revalidate=30",
+      };
       try {
         if (isRedisReady()) {
           const cachedBid = await redisConnection.get(interestKey);
           if (cachedBid !== null) {
-            return NextResponse.json({ highestBid: parseFloat(cachedBid), interest: interestQuery });
+            return NextResponse.json(
+              { highestBid: parseFloat(cachedBid), interest: normalizedInterest },
+              { headers: cdnHeaders }
+            );
           }
         }
 
         const { data: topBidRows } = await supabaseReadOnly
           .from("newsactive")
           .select("bid_price, created_at, scheduled_start_at, scheduled_end_at, expires_at, campaign_days, is_paused, admin_statement")
-          .eq("interest", interestQuery)
+          .ilike("interest", normalizedInterest)
           .eq("is_bidded", true)
           .or("is_paused.eq.false,is_paused.is.null")
           .order("bid_price", { ascending: false })
@@ -203,9 +221,9 @@ export async function GET(req: NextRequest) {
         if (isRedisReady()) {
           await redisConnection.set(interestKey, String(highestBid), "EX", 15).catch(() => {});
         }
-        return NextResponse.json({ highestBid, interest: interestQuery });
+        return NextResponse.json({ highestBid, interest: normalizedInterest }, { headers: cdnHeaders });
       } catch {
-        return NextResponse.json({ highestBid: 1000, interest: interestQuery });
+        return NextResponse.json({ highestBid: 1000, interest: normalizedInterest }, { headers: cdnHeaders });
       }
     }
 
@@ -267,7 +285,11 @@ export async function GET(req: NextRequest) {
       interests = safeParseArray(profileSource.interest);
     }
 
-    if (!resolvedCountry && profileSource?.country && profileSource.country !== "placeholder") {
+    if (
+      !resolvedCountry &&
+      profileSource?.country &&
+      String(profileSource.country).trim().toLowerCase() !== "placeholder"
+    ) {
       resolvedCountry = String(profileSource.country).trim();
     }
     if (!resolvedState && profileSource?.state) {

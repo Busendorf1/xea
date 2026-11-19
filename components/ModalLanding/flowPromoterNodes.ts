@@ -219,7 +219,7 @@ export const promoterFlowNodes: Record<string, FlowNode> = {
   promoter_p8_budget: {
     id: 'promoter_p8_budget',
     aiMessage:
-      'Any amount you deem fit. You have complete freedom to test with a small budget and scale as you see results.',
+      'You can start testing with as few as 100 verified attentions at the category floor rate (1–90 day duration) and scale up anytime as you see results.',
     referralLink: {
       label: 'Read Campaign Funding Terms',
       url: '/terms',

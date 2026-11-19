@@ -22,23 +22,11 @@ describe("Feed Smoothness, Video Startup & Fetch Performance (Web)", () => {
     }
   });
 
-  it("GET /api/media/[...path] uses cache: 'no-store' for byte-Range requests, preserves 206 streaming headers, and revalidates full fetches", async () => {
+  it("GET /api/media/[...path] redirects video/Range requests to storage origin (no serverless bottleneck) and CDN-caches small images", async () => {
     const fetchCalls: Array<{ url: string; init: RequestInit | undefined }> = [];
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       fetchCalls.push({ url, init });
-      const headers = new Headers(init?.headers);
-      if (headers.get("Range")) {
-        return new Response("partial-chunk", {
-          status: 206,
-          headers: {
-            "content-type": "video/mp4",
-            "content-range": "bytes 0-12/1024",
-            "content-length": "13",
-            etag: '"abc123"',
-          },
-        });
-      }
       return new Response("full-body", {
         status: 200,
         headers: {
@@ -50,6 +38,7 @@ describe("Feed Smoothness, Video Startup & Fetch Performance (Web)", () => {
 
     const { GET } = await import("../../app/api/media/[...path]/route");
 
+    // Videos & byte-Range requests MUST 307 redirect directly to Storage/R2 origin (bypasses Vercel 4.5MB serverless limit)
     const rangeReq = new NextRequest("http://localhost:3000/api/media/ad-media/demo/clip.mp4", {
       method: "GET",
       headers: { range: "bytes=0-12" },
@@ -58,13 +47,14 @@ describe("Feed Smoothness, Video Startup & Fetch Performance (Web)", () => {
       params: Promise.resolve({ path: ["ad-media", "demo", "clip.mp4"] }),
     });
 
-    expect(rangeRes.status).toBe(206);
-    expect(rangeRes.headers.get("Content-Range")).toBe("bytes 0-12/1024");
-    expect(rangeRes.headers.get("Accept-Ranges")).toBe("bytes");
-    expect(fetchCalls[0].url).toBe("https://proj.supabase.co/storage/v1/object/public/ad-media/demo/clip.mp4");
-    expect(fetchCalls[0].init?.cache).toBe("no-store");
-    expect((fetchCalls[0].init as any)?.next).toBeUndefined();
+    expect(rangeRes.status).toBe(307);
+    expect(rangeRes.headers.get("Location")).toBe(
+      "https://proj.supabase.co/storage/v1/object/public/ad-media/demo/clip.mp4"
+    );
+    expect(rangeRes.headers.get("Cache-Control")).toContain("s-maxage=300");
+    expect(fetchCalls.length).toBe(0);
 
+    // Small images stream through Vercel Anycast Edge CDN (s-maxage=31536000, immutable) without Next.js Data Cache bloat
     const fullReq = new NextRequest("http://localhost:3000/api/media/ad-media/demo/poster.jpg", {
       method: "GET",
     });
@@ -73,8 +63,10 @@ describe("Feed Smoothness, Video Startup & Fetch Performance (Web)", () => {
     });
 
     expect(fullRes.status).toBe(200);
-    expect(fetchCalls[1].init?.cache).toBeUndefined();
-    expect((fetchCalls[1].init as any)?.next).toEqual({ revalidate: 86400 });
+    expect(fullRes.headers.get("Cache-Control")).toContain("s-maxage=31536000");
+    expect(fullRes.headers.get("CDN-Cache-Control")).toContain("max-age=31536000");
+    expect(fetchCalls[0].url).toBe("https://proj.supabase.co/storage/v1/object/public/ad-media/demo/poster.jpg");
+    expect(fetchCalls[0].init?.cache).toBe("no-store");
   });
 
   it("Feed caches client state on mount, limits virtualizer overscan, preloads FullscreenVideoPlayer chunk, and caps metadata probes without row opacity flash", () => {

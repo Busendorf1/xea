@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { supabaseReadOnly } from "@/lib/utils/dbAdmin";
+import { invalidateL1UserNotif, getUserNotifCacheKey } from "./notifications/notificationCache";
 
 export interface EarningWebhookPayload {
   event: "ad.earned" | "balance.updated" | "monetization.achieved" | "ad.seen" | "ad.mutual_added";
@@ -84,12 +85,14 @@ export async function dispatchEarningWebhook(payload: EarningWebhookPayload): Pr
   const emailKey = String(payload.data?.userEmail || "").toLowerCase().trim();
   const payloadString = JSON.stringify(payload);
 
-  // 1. Invalidate L2 monetization cache & publish on Redis PubSub
+  // 1. Invalidate L2 monetization cache (v2 + legacy) & publish on Redis PubSub
   try {
     if (emailKey && isRedisReady()) {
       const pipe = redisConnection.pipeline();
+      pipe.del(`monetize:status:v2:${emailKey}`);
       pipe.del(`monetize:status:${emailKey}`);
       if (typeof payload.data.clicks === "number" && payload.data.clicks > 0) {
+        pipe.set(`user:live_clicks:v2:${emailKey}`, String(payload.data.clicks), "EX", 86400 * 30);
         pipe.set(`user:live_clicks:${emailKey}`, String(payload.data.clicks), "EX", 3600);
       }
       pipe.publish(`live:monetization:${emailKey}`, payloadString);
@@ -97,10 +100,10 @@ export async function dispatchEarningWebhook(payload: EarningWebhookPayload): Pr
     }
   } catch {}
 
-  // 2. Push zero-latency Supabase Realtime webhook broadcast to connected mobile/web clients
+  // 2. Optional Supabase Realtime broadcast (gated behind opt-in flag to preserve free-tier Realtime message quota)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (supabaseUrl && serviceKey && emailKey) {
+  if (process.env.ENABLE_SUPABASE_REALTIME_BROADCAST === "true" && supabaseUrl && serviceKey && emailKey) {
     const userTopic = `realtime:user:${emailKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
     (async () => {
       try {
@@ -202,8 +205,10 @@ export async function dispatchImpressionWebhook(payload: ImpressionWebhookPayloa
   try {
     if (emailKey && isRedisReady()) {
       const pipe = redisConnection.pipeline();
+      pipe.del(`monetize:status:v2:${emailKey}`);
       pipe.del(`monetize:status:${emailKey}`);
       if (typeof payload.data.clicksCount === "number" && payload.data.clicksCount > 0) {
+        pipe.set(`user:live_clicks:v2:${emailKey}`, String(payload.data.clicksCount), "EX", 86400 * 30);
         pipe.set(`user:live_clicks:${emailKey}`, String(payload.data.clicksCount), "EX", 3600);
       }
       pipe.publish(`live:monetization:${emailKey}`, payloadString);
@@ -213,7 +218,7 @@ export async function dispatchImpressionWebhook(payload: ImpressionWebhookPayloa
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (supabaseUrl && serviceKey && emailKey) {
+  if (process.env.ENABLE_SUPABASE_REALTIME_BROADCAST === "true" && supabaseUrl && serviceKey && emailKey) {
     const userTopic = `realtime:user:${emailKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
     (async () => {
       try {
@@ -297,7 +302,8 @@ export async function dispatchImpressionWebhook(payload: ImpressionWebhookPayloa
  */
 export async function dispatchFeedDropWebhook(
   ad: Record<string, any>,
-  providedProfile?: Record<string, any> | null
+  providedProfile?: Record<string, any> | null,
+  options?: { skipExternalWebhook?: boolean }
 ): Promise<void> {
   if (!ad || !ad.id) return;
 
@@ -351,14 +357,14 @@ export async function dispatchFeedDropWebhook(
       await pipe.exec().catch(() => {});
     }
 
-    // 2. Dispatch external / configured HTTP webhook non-blockingly
+    // 2. Dispatch external / configured HTTP webhook non-blockingly (skipped when already handling inbound /api/webhooks/feed-drop)
     const webhookUrl =
       process.env.FEED_DROP_WEBHOOK_URL ||
       process.env.EARNING_WEBHOOK_URL ||
       process.env.NEXT_PUBLIC_WEBHOOK_URL;
     const webhookSecret = getWebhookSecret();
 
-    if (webhookUrl && webhookSecret) {
+    if (!options?.skipExternalWebhook && webhookUrl && webhookSecret) {
       const timestamp = Date.now().toString();
       const nonce = crypto.randomUUID();
       const signaturePayload = `${timestamp}.${nonce}.${payloadString}`;
@@ -419,9 +425,12 @@ export async function dispatchNotificationWebhook(notification: {
 
   const payloadString = JSON.stringify(payload);
 
+  invalidateL1UserNotif(emailKey);
+
   try {
     if (isRedisReady()) {
       const pipe = redisConnection.pipeline();
+      pipe.del(getUserNotifCacheKey(emailKey));
       pipe.del(`notifications:${emailKey}`);
       pipe.publish(LIVE_NOTIFICATION_CHANNEL, payloadString);
       pipe.publish(`${LIVE_NOTIFICATION_CHANNEL}:${emailKey}`, payloadString);
@@ -434,30 +443,31 @@ export async function dispatchNotificationWebhook(notification: {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (supabaseUrl && serviceKey) {
     const userTopic = `realtime:user:${emailKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
-    (async () => {
-      try {
-        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                topic: userTopic,
-                event: "notification",
-                payload: {
-                  ...payload.data,
-                  read: false,
-                },
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              topic: userTopic,
+              event: "notification",
+              payload: {
+                ...payload.data,
+                read: false,
               },
-            ],
-          }),
-        });
-      } catch {}
-    })();
+            },
+          ],
+        }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+    } catch {}
   }
 
   const webhookUrl =

@@ -14,6 +14,8 @@ import {
 
 import {
   handleSuspendUser,
+  handleBlockUser,
+  handleUnblockUser,
   handleAdjustUserBalance,
   handleDeleteUser,
   handleAdAccountAction,
@@ -42,6 +44,8 @@ const adminActionSchema = z.object({
   action: z.enum([
     "toggle_monetization",
     "suspend",
+    "block_user",
+    "unblock_user",
     "adjust_balance",
     "delete",
     "ad_account_action",
@@ -105,46 +109,72 @@ export async function POST(req: NextRequest) {
     const { action, userId, payload } = parseResult.data;
     const adminEmail = admin.email.toLowerCase();
 
-    // Invalidate cached overview stats and user pages in Redis whenever an admin modifies user balances, status, or deletes users
-    await redisConnection.del("admin:overview_stats").catch(() => {});
-    await redisConnection.del("admin:overview:stats").catch(() => {});
-    try {
-      const { scanDeletePattern } = await import("@/lib/redis");
-      await scanDeletePattern("admin:users:list:*");
-    } catch {}
-
+    let response: NextResponse;
     switch (action) {
       case "toggle_monetization":
-        return await handleToggleMonetization(adminEmail, userId, payload);
+        response = await handleToggleMonetization(adminEmail, userId, payload);
+        break;
       case "suspend":
-        return await handleSuspendUser(adminEmail, userId, payload);
+        response = await handleSuspendUser(adminEmail, userId, payload);
+        break;
+      case "block_user":
+        response = await handleBlockUser(adminEmail, userId, payload);
+        break;
+      case "unblock_user":
+        response = await handleUnblockUser(adminEmail, userId, payload);
+        break;
       case "adjust_balance":
-        return await handleAdjustUserBalance(adminEmail, userId, payload);
+        response = await handleAdjustUserBalance(adminEmail, userId, payload);
+        break;
       case "delete":
-        return await handleDeleteUser(adminEmail, userId);
+        response = await handleDeleteUser(adminEmail, userId);
+        break;
       case "ad_account_action":
-        return await handleAdAccountAction(adminEmail, userId, payload);
+        response = await handleAdAccountAction(adminEmail, userId, payload);
+        break;
       case "update_profile":
-        return await handleUpdateUserProfile(adminEmail, userId, payload);
+        response = await handleUpdateUserProfile(adminEmail, userId, payload);
+        break;
       case "update_special_roles":
-        return await handleUpdateSpecialRoles(adminEmail, userId, payload);
+        response = await handleUpdateSpecialRoles(adminEmail, userId, payload);
+        break;
       case "toggle_agent":
-        return await handleToggleAgent(adminEmail, userId, payload);
+        response = await handleToggleAgent(adminEmail, userId, payload);
+        break;
       case "ban_agent":
-        return await handleBanAgent(adminEmail, userId, payload);
+        response = await handleBanAgent(adminEmail, userId, payload);
+        break;
       case "remove_follower":
-        return await handleRemoveFollower(adminEmail, userId, payload);
+        response = await handleRemoveFollower(adminEmail, userId, payload);
+        break;
       case "remove_all_followers":
-        return await handleRemoveAllFollowers(adminEmail, userId, payload);
+        response = await handleRemoveAllFollowers(adminEmail, userId, payload);
+        break;
       case "detach_upline_agent":
-        return await handleDetachUplineAgent(adminEmail, userId, payload);
+        response = await handleDetachUplineAgent(adminEmail, userId, payload);
+        break;
       case "deactivate_account":
-        return await handleDeactivateAccount(adminEmail, userId, payload);
+        response = await handleDeactivateAccount(adminEmail, userId, payload);
+        break;
       case "reset_clicks":
-        return await handleResetClicks(adminEmail, userId, payload);
+        response = await handleResetClicks(adminEmail, userId, payload);
+        break;
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
+
+    // Invalidate cached overview stats and bump O(1) version key instead of running Redis SCAN loops
+    if (response.status >= 200 && response.status < 300) {
+      try {
+        await Promise.allSettled([
+          redisConnection.del("admin:overview_stats"),
+          redisConnection.del("admin:overview:stats"),
+          redisConnection.incr("admin:lists:version"),
+        ]);
+      } catch {}
+    }
+
+    return response;
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/admin/users:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });

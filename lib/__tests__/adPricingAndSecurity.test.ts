@@ -445,7 +445,10 @@ describe("Ad Pricing Floors, Billing Security & 100 Min Attentions", () => {
         getAuthenticatedEmail: vi.fn(async () => "advertiser@example.com"),
         isAdminEmail: vi.fn(() => false),
       }));
-      vi.doMock("@/lib/redis", () => ({ default: { get: vi.fn(async () => null), set: vi.fn(async () => "OK") } }));
+      vi.doMock("@/lib/redis", () => ({
+        default: { get: vi.fn(async () => null), set: vi.fn(async () => "OK") },
+        isRedisReady: vi.fn(() => false),
+      }));
       vi.doMock("@/lib/payment/payoutProvider", () => ({
         PayoutProvider: {
           getActiveGateway: vi.fn(async () => "kora"),
@@ -525,7 +528,10 @@ describe("Ad Pricing Floors, Billing Security & 100 Min Attentions", () => {
         getAuthenticatedEmail: vi.fn(async () => "advertiser@example.com"),
         isAdminEmail: vi.fn(() => false),
       }));
-      vi.doMock("@/lib/redis", () => ({ default: { get: vi.fn(async () => null), set: vi.fn(async () => "OK") } }));
+      vi.doMock("@/lib/redis", () => ({
+        default: { get: vi.fn(async () => null), set: vi.fn(async () => "OK") },
+        isRedisReady: vi.fn(() => false),
+      }));
       vi.doMock("@/lib/utils/cache", () => ({ invalidateCachedProfile: vi.fn(async () => {}) }));
       vi.doMock("@/lib/services/payoutSettlementService", () => ({
         spendWalletBalanceAtomic: vi.fn(),
@@ -613,6 +619,7 @@ describe("Ad Pricing Floors, Billing Security & 100 Min Attentions", () => {
       vi.doMock("@/lib/utils/dbAdmin", () => ({ default: mockDb, supabaseReadOnly: mockDb }));
       vi.doMock("@/lib/redis", () => ({
         default: { get: vi.fn(async () => null), set: vi.fn(async () => "OK") },
+        isRedisReady: vi.fn(() => false),
       }));
 
       const { GET } = await import("../../app/api/bidding/market-rates/route");
@@ -626,6 +633,225 @@ describe("Ad Pricing Floors, Billing Security & 100 Min Attentions", () => {
       expect(body.marketRates.business.floorPrice).toBe(45);
       expect(body.marketRates.individual.floorPrice).toBe(25);
       expect(body.marketRates.product_sales.floorPrice).toBe(55);
+    });
+
+    it("persists is_bidded & bid_price on /api/campaigns/submit and syncs bidded_ads on wallet-pay publish_ad", async () => {
+      const insertedQueueRows: any[] = [];
+      const mockSubmitDb = createSupabaseMock({
+        userCountry: "Nigeria",
+        onInsertAd: (row) => insertedQueueRows.push(row),
+      });
+      vi.doMock("@/lib/utils/dbAdmin", () => ({ default: mockSubmitDb, supabaseReadOnly: mockSubmitDb }));
+      vi.doMock("@/lib/authHelper", () => ({
+        getAuthenticatedEmail: vi.fn(async () => "advertiser@example.com"),
+        isAdminEmail: vi.fn(() => false),
+      }));
+      vi.doMock("@/lib/services/cleanupService", () => ({
+        cleanupExpiredApprovedCampaigns: vi.fn(async () => {}),
+      }));
+      vi.doMock("@/lib/utils/cache", () => ({
+        invalidateCachedUserCampaigns: vi.fn(async () => {}),
+      }));
+      vi.doMock("@/lib/webhookDispatcher", () => ({
+        dispatchNotificationWebhook: vi.fn(async () => {}),
+      }));
+
+      const { POST: submitPost } = await import("../../app/api/campaigns/submit/route");
+
+      // 1. Bidded ad above floor -> saves is_bidded: true, bid_price: 120
+      const biddedRes = await submitPost(
+        makeJsonReq("http://localhost/api/campaigns/submit", "POST", {
+          adData: {
+            adType: "business",
+            impressions: 500,
+            costPerImpression: 120,
+            totalCost: 60000,
+            isBidded: true,
+            bidPrice: 120,
+            adContent: "Priority bidded business campaign",
+          },
+        })
+      );
+      expect(biddedRes.status).toBe(200);
+      expect(insertedQueueRows[0]?.is_bidded).toBe(true);
+      expect(insertedQueueRows[0]?.bid_price).toBe(120);
+
+      // 2. Floor ad -> saves is_bidded: false, bid_price: null
+      const floorRes = await submitPost(
+        makeJsonReq("http://localhost/api/campaigns/submit", "POST", {
+          adData: {
+            adType: "business",
+            impressions: 500,
+            costPerImpression: 45,
+            totalCost: 22500,
+            isBidded: false,
+            adContent: "Standard floor business campaign",
+          },
+        })
+      );
+      expect(floorRes.status).toBe(200);
+      expect(insertedQueueRows[1]?.is_bidded).toBe(false);
+      expect(insertedQueueRows[1]?.bid_price).toBeNull();
+
+      // 3. Wallet-pay publish_ad syncs bidded_ads & Redis ZSET when bidded, skips bidded_ads when floor
+      vi.resetModules();
+      const biddedAdsInserts: any[] = [];
+      const redisZaddCalls: any[] = [];
+      const redisDelCalls: string[] = [];
+
+      const publishMockFor = (draftRow: Record<string, any>) => ({
+        from: vi.fn((table: string) => {
+          const chain: any = {
+            select: vi.fn(() => chain),
+            eq: vi.fn(() => chain),
+            ilike: vi.fn(() => chain),
+            update: vi.fn(() => chain),
+            delete: vi.fn(() => chain),
+            upsert: vi.fn((rows: any) => ({
+              select: vi.fn(async () => ({ data: Array.isArray(rows) ? rows : [rows], error: null })),
+            })),
+            insert: vi.fn((rows: any) => {
+              if (table === "bidded_ads") {
+                biddedAdsInserts.push(Array.isArray(rows) ? rows[0] : rows);
+              }
+              return {
+                select: vi.fn(async () => ({ data: Array.isArray(rows) ? rows : [rows], error: null })),
+                then: (resolve: any) => resolve({ data: rows, error: null }),
+              };
+            }),
+            maybeSingle: vi.fn(async () => {
+              if (table === "users") {
+                return {
+                  data: {
+                    email: "advertiser@example.com",
+                    country: "Nigeria",
+                    wallet_pin_hash: "hashed",
+                  },
+                  error: null,
+                };
+              }
+              if (table === "adds") {
+                return { data: draftRow, error: null };
+              }
+              return { data: null, error: null };
+            }),
+            then: (resolve: any) => resolve({ data: [], error: null }),
+          };
+          return chain;
+        }),
+        rpc: vi.fn(async () => ({ data: null, error: null })),
+      });
+
+      const sharedMocks = () => {
+        vi.doMock("@/lib/authHelper", () => ({
+          getAuthenticatedEmail: vi.fn(async () => "advertiser@example.com"),
+          isAdminEmail: vi.fn(() => false),
+        }));
+        vi.doMock("@/lib/redis", () => ({
+          default: {
+            get: vi.fn(async () => null),
+            set: vi.fn(async () => "OK"),
+            incr: vi.fn(async () => 1),
+            del: vi.fn(async (...keys: string[]) => {
+              redisDelCalls.push(...keys);
+              return 1;
+            }),
+            zadd: vi.fn(async (...args: any[]) => {
+              redisZaddCalls.push(args);
+              return 1;
+            }),
+          },
+          isRedisReady: vi.fn(() => false),
+        }));
+        vi.doMock("@/lib/utils/cache", () => ({
+          invalidateCachedProfile: vi.fn(async () => {}),
+          invalidateCachedUserCampaigns: vi.fn(async () => {}),
+          evictAdFromL1FeedCaches: vi.fn(),
+        }));
+        vi.doMock("@/lib/services/payoutSettlementService", () => ({
+          spendWalletBalanceAtomic: vi.fn(async () => ({ success: true, newBalance: 100000 })),
+          refundWalletDeductionAtomic: vi.fn(async () => ({ success: true })),
+        }));
+        vi.doMock("@/lib/security/walletPinHelper", () => ({
+          verifyTransactionPin: vi.fn(async () => ({ valid: true })),
+          resolveStoredWalletPinHash: vi.fn(() => "hashed"),
+        }));
+        vi.doMock("@/lib/webhookDispatcher", () => ({
+          dispatchFeedDropWebhook: vi.fn(async () => {}),
+          dispatchNotificationWebhook: vi.fn(async () => {}),
+        }));
+      };
+
+      const biddedPublishDb = publishMockFor({
+        id: "pub-bid-1",
+        user_email: "advertiser@example.com",
+        ad_type: "business",
+        industry: ["business"],
+        impressions: 500,
+        campaign_days: 5,
+        user_frequency_cap: 1,
+        targeting_all: true,
+        cost_per_impression: 120,
+        bid_price: 120,
+        is_bidded: true,
+        total_cost: 60000,
+        admin_statement: `APPROVED:${new Date().toISOString()}`,
+      });
+      vi.doMock("@/lib/utils/dbAdmin", () => ({ default: biddedPublishDb, supabaseReadOnly: biddedPublishDb }));
+      sharedMocks();
+
+      let mod = await import("../../app/api/payments/wallet-pay/route");
+      const pubBidRes = await mod.POST(
+        makeJsonReq("http://localhost/api/payments/wallet-pay", "POST", {
+          type: "publish_ad",
+          amount: 60000,
+          pin: "1234",
+          metadata: { adId: "pub-bid-1" },
+        })
+      );
+      expect(pubBidRes.status).toBe(200);
+      expect(biddedAdsInserts).toHaveLength(1);
+      expect(biddedAdsInserts[0]).toMatchObject({
+        ad_id: "pub-bid-1",
+        industry: "business",
+        bid_price: 120,
+        is_active: true,
+      });
+      expect(redisZaddCalls).toContainEqual(["bids:zset:business", 120, "pub-bid-1"]);
+      expect(redisDelCalls).toContain("attention:market_rates");
+
+      // Floor-priced publish_ad should succeed cleanly WITHOUT adding to bidded_ads
+      vi.resetModules();
+      biddedAdsInserts.length = 0;
+      const floorPublishDb = publishMockFor({
+        id: "pub-floor-1",
+        user_email: "advertiser@example.com",
+        ad_type: "business",
+        industry: ["business"],
+        impressions: 500,
+        campaign_days: 5,
+        user_frequency_cap: 1,
+        targeting_all: true,
+        cost_per_impression: 45,
+        bid_price: null,
+        is_bidded: false,
+        total_cost: 22500,
+        admin_statement: `APPROVED:${new Date().toISOString()}`,
+      });
+      vi.doMock("@/lib/utils/dbAdmin", () => ({ default: floorPublishDb, supabaseReadOnly: floorPublishDb }));
+      sharedMocks();
+
+      mod = await import("../../app/api/payments/wallet-pay/route");
+      const pubFloorRes = await mod.POST(
+        makeJsonReq("http://localhost/api/payments/wallet-pay", "POST", {
+          type: "publish_ad",
+          amount: 22500,
+          pin: "1234",
+          metadata: { adId: "pub-floor-1" },
+        })
+      );
+      expect(pubFloorRes.status).toBe(200);
+      expect(biddedAdsInserts).toHaveLength(0);
     });
   });
 });

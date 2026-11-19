@@ -42,7 +42,7 @@ interface AdminMasterStatementTableProps {
 
 function isOutflow(type: string) {
   const t = (type || "").toLowerCase();
-  return t === "withdrawal" || t === "transfer_sent";
+  return t === "withdrawal" || t === "transfer_sent" || t === "transfer_reversal_debit";
 }
 
 function getStatusBadge(status: string) {

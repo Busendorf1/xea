@@ -506,3 +506,51 @@ export function rankAndSpaceAds<T extends CampaignCandidate>(ads: T[]): T[] {
   }
   return spaced;
 }
+
+/**
+ * Interleaves bidded ads and standard floor-priced ads at a 3:1 (75% / 25%) ratio
+ * while avoiding consecutive ads from the same advertiser where possible.
+ */
+export function interleaveBiddedAndStandardAds<T extends CampaignCandidate>(ads: T[]): T[] {
+  const biddedTier: T[] = [];
+  const standardTier: T[] = [];
+
+  for (const ad of ads) {
+    const bidVal = Number(ad.bid_price ?? 0);
+    const cpiVal = Number(ad.cost_per_impression ?? 0);
+    const isBiddedAd = Boolean(ad.is_bidded) || (bidVal > 0 && bidVal > cpiVal);
+    if (isBiddedAd) {
+      biddedTier.push(ad);
+    } else {
+      standardTier.push(ad);
+    }
+  }
+
+  const interleaved: T[] = [];
+  let bIdx = 0;
+  let sIdx = 0;
+
+  while (bIdx < biddedTier.length || sIdx < standardTier.length) {
+    for (let k = 0; k < 3 && bIdx < biddedTier.length; k++) {
+      const candidate = biddedTier[bIdx++];
+      const prevEmail =
+        interleaved.length > 0
+          ? String(interleaved[interleaved.length - 1].user_email || "").toLowerCase().trim()
+          : "";
+      const candEmail = String(candidate.user_email || "").toLowerCase().trim();
+      if (prevEmail && candEmail && prevEmail === candEmail && bIdx < biddedTier.length) {
+        const nextCandidate = biddedTier[bIdx];
+        biddedTier[bIdx] = candidate;
+        interleaved.push(nextCandidate);
+        bIdx++;
+      } else {
+        interleaved.push(candidate);
+      }
+    }
+    if (sIdx < standardTier.length) {
+      interleaved.push(standardTier[sIdx++]);
+    }
+  }
+
+  return interleaved;
+}

@@ -147,7 +147,14 @@ export default function Header() {
     if (user) {
       fetchNotifications();
       const interval = setInterval(fetchNotifications, 30000);
-      return () => clearInterval(interval);
+      const handleRefresh = () => {
+        fetchNotifications();
+      };
+      window.addEventListener("xea:notifications-refresh", handleRefresh);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener("xea:notifications-refresh", handleRefresh);
+      };
     }
   }, [user]);
 

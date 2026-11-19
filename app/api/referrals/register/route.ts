@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerReferralInvite } from "@/lib/referralEngine";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { checkRateLimit, getTrustedClientIp } from "@/lib/edgeRateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimit = await checkRateLimit(req, {
+      limit: 10,
+      windowSeconds: 300,
+      identifierPrefix: "referrals_register",
+    });
+    if (!rateLimit.allowed && rateLimit.response) {
+      return rateLimit.response;
+    }
+
+    // Security (C-17): Strictly require a verified authenticated session matching refereeEmail
+    const sessionEmail = await getAuthenticatedEmail(req);
+    if (!sessionEmail) {
+      return NextResponse.json(
+        { error: "Unauthorized. Please sign in to register a referral invite." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const { referrerCode, refereeEmail, deviceHash } = body;
 
@@ -17,23 +36,18 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanReferee = String(refereeEmail).toLowerCase().trim();
-
-    // If the request carries an authenticated session, ensure the caller is registering themselves
-    const sessionEmail = await getAuthenticatedEmail(req);
-    if (sessionEmail && sessionEmail.toLowerCase().trim() !== cleanReferee) {
+    if (sessionEmail.toLowerCase().trim() !== cleanReferee) {
       return NextResponse.json(
         { error: "Forbidden: You can only register referrals for your own authenticated account." },
         { status: 403 }
       );
     }
 
-    // Extract client IP address for subnet rate limiting
-    const forwardedFor = req.headers.get("x-forwarded-for");
-    const ipAddress = forwardedFor ? forwardedFor.split(",")[0].trim() : req.headers.get("x-real-ip") || "127.0.0.1";
+    const ipAddress = getTrustedClientIp(req);
 
     const result = await registerReferralInvite({
       referrerCode,
-      refereeEmail,
+      refereeEmail: cleanReferee,
       deviceHash,
       ipAddress,
     });
@@ -45,7 +59,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Referral invite registered successfully in pending status.",
-      referrerEmail: result.referrerEmail,
     });
   } catch (err: any) {
     console.error("❌ Error in POST /api/referrals/register:", err);

@@ -2,8 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import { verifyAdminUser } from "@/lib/authHelper";
 import redisConnection, { scanDeletePattern } from "@/lib/redis";
+import { invalidateUserNotificationCaches } from "@/lib/notifications/notificationCache";
+import { dispatchNotificationWebhook } from "@/lib/webhookDispatcher";
 
 export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizePostgrestSearch(raw: string): string {
+  return raw.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function invalidateTicketCaches() {
+  try {
+    await Promise.allSettled([
+      scanDeletePattern("admin:tickets:*"),
+      redisConnection.del("admin:overview:stats"),
+      redisConnection.del("admin:overview_stats"),
+    ]);
+  } catch {}
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,9 +34,9 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
-    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10), 1), 100);
-    const search = searchParams.get("search")?.trim() || "";
+    const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+    const limit = Math.min(Math.max(parseSafeInt(searchParams.get("limit"), 10), 1), 100);
+    const search = sanitizePostgrestSearch(searchParams.get("search")?.trim() || "");
     const fresh = searchParams.get("fresh") === "true";
 
     const cacheKey = `admin:tickets:page:${page}:${limit}:${search.toLowerCase()}`;
@@ -102,12 +123,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing ticketId" }, { status: 400 });
     }
 
-    // Invalidate tickets and overview stats caches on ticket operations
-    try {
-      await scanDeletePattern("admin:tickets:*");
-      await redisConnection.del("admin:overview:stats").catch(() => {});
-    } catch {}
-
     if (action === "close" || action === "resolve") {
       const now = new Date().toISOString();
       const { data: ticket, error: fetchErr } = await supabaseAdmin
@@ -133,18 +148,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
 
-      // Send notification to ticket owner
+      // Send notification to ticket owner and evict L1/L2 caches
       if (ticket.user_email) {
         try {
-          await supabaseAdmin.from("notifications").insert({
+          const notifRow = {
             user_email: ticket.user_email.toLowerCase().trim(),
             title: "Support Ticket Closed",
             message: `Your help request ("${ticket.subject || "Support Request"}") has been marked as CLOSED by our Help Center team and will be automatically deleted in 24 hours.`,
-          });
+          };
+          await supabaseAdmin.from("notifications").insert(notifRow);
+          await invalidateUserNotificationCaches(notifRow.user_email);
+          dispatchNotificationWebhook(notifRow).catch(() => {});
         } catch {}
       }
 
       await recordAdminAudit(adminEmail, "close_help_ticket", ticketId);
+      await invalidateTicketCaches();
 
       return NextResponse.json({ success: true, status: "closed", resolved_at: now });
     }
@@ -161,6 +180,7 @@ export async function POST(req: NextRequest) {
       }
 
       await recordAdminAudit(adminEmail, "delete_help_ticket", ticketId);
+      await invalidateTicketCaches();
 
       return NextResponse.json({ success: true });
     }
@@ -185,6 +205,7 @@ export async function POST(req: NextRequest) {
       }
 
       await recordAdminAudit(adminEmail, "reply_help_ticket", ticketId, replyText.trim().slice(0, 200));
+      await invalidateTicketCaches();
 
       return NextResponse.json({ success: true });
     }

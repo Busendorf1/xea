@@ -33,20 +33,37 @@ function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 async function getMasterKeyBytes(): Promise<Uint8Array> {
+  // Security (C-10): Fail closed — NEVER fall back to a hardcoded static encryption key
   const rawSecret =
     Deno.env.get("PII_ENCRYPTION_KEY") ||
     Deno.env.get("EARN_TOKEN_SECRET") ||
     Deno.env.get("AUTH0_SECRET") ||
-    "xea-default-auth0-secret-key-32ch";
+    "";
 
-  const data = encoder.encode(`xea-aes256gcm:${rawSecret}`);
+  if (!rawSecret || rawSecret.trim().length < 16) {
+    throw new Error("CRITICAL: PII_ENCRYPTION_KEY is not configured in Edge Function environment.");
+  }
+
+  const data = encoder.encode(`xea-aes256gcm:${rawSecret.trim()}`);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return new Uint8Array(digest);
+}
+
+export function maskPhoneNumberEdge(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const raw = String(phone).trim();
+  if (!raw || raw.startsWith("PLACEHOLDER")) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 4) return "****";
+  const prefix = raw.startsWith("+") ? `+${digits.slice(0, Math.min(3, digits.length - 4))}` : digits.slice(0, Math.min(3, digits.length - 4));
+  const suffix = digits.slice(-4);
+  return `${prefix}****${suffix}`;
 }
 
 /**
  * Encrypts a sensitive string using AES-256-GCM (100% compatible with Node.js `lib/security/piiCrypto.ts`).
  * Format: `enc:v1:<iv_hex>:<auth_tag_hex>:<ciphertext_hex>`
+ * Security (C-10): Fails closed (throws) on encryption failure — never returns plaintext.
  */
 export async function encryptSensitiveFieldEdge(
   plaintext: string | null | undefined
@@ -61,33 +78,29 @@ export async function encryptSensitiveFieldEdge(
     return trimmed;
   }
 
-  try {
-    const keyBytes = await getMasterKeyBytes();
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyBytes,
-      { name: "AES-GCM" },
-      false,
-      ["encrypt"]
-    );
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encoded = encoder.encode(trimmed);
-    const encryptedBuf = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv, tagLength: 128 },
-      cryptoKey,
-      encoded
-    );
-    const fullBytes = new Uint8Array(encryptedBuf);
-    // WebCrypto AES-GCM appends the 16-byte authentication tag at the end
-    const cipherBytes = fullBytes.slice(0, fullBytes.length - 16);
-    const authTagBytes = fullBytes.slice(fullBytes.length - 16);
+  const keyBytes = await getMasterKeyBytes();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"]
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = encoder.encode(trimmed);
+  const encryptedBuf = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, tagLength: 128 },
+    cryptoKey,
+    encoded
+  );
+  const fullBytes = new Uint8Array(encryptedBuf);
+  // WebCrypto AES-GCM appends the 16-byte authentication tag at the end
+  const cipherBytes = fullBytes.slice(0, fullBytes.length - 16);
+  const authTagBytes = fullBytes.slice(fullBytes.length - 16);
 
-    return `${ENCRYPTION_PREFIX}${bytesToHex(iv)}:${bytesToHex(
-      authTagBytes
-    )}:${bytesToHex(cipherBytes)}`;
-  } catch {
-    return trimmed;
-  }
+  return `${ENCRYPTION_PREFIX}${bytesToHex(iv)}:${bytesToHex(
+    authTagBytes
+  )}:${bytesToHex(cipherBytes)}`;
 }
 
 /**
@@ -138,7 +151,8 @@ export async function decryptSensitiveFieldEdge(
  * and computes `has_wallet_pin` before stripping sensitive hashes.
  */
 export async function decryptProfilePIIEdge<T extends Record<string, any>>(
-  user: T | null
+  user: T | null,
+  options?: { maskPhone?: boolean }
 ): Promise<T | null> {
   if (!user) return null;
   const copy: Record<string, any> = { ...user };
@@ -148,6 +162,16 @@ export async function decryptProfilePIIEdge<T extends Record<string, any>>(
     copy.phone.startsWith(ENCRYPTION_PREFIX)
   ) {
     copy.phone = (await decryptSensitiveFieldEdge(copy.phone)) || "";
+  }
+  const hasRealPhone = Boolean(
+    typeof copy.phone === "string" &&
+      copy.phone.trim() !== "" &&
+      !copy.phone.startsWith("PLACEHOLDER")
+  );
+  copy.has_phone = hasRealPhone;
+  if (options?.maskPhone !== false && hasRealPhone) {
+    copy.phone_masked = maskPhoneNumberEdge(copy.phone);
+    copy.phone = copy.phone_masked;
   }
   if (
     typeof copy.firstName === "string" &&

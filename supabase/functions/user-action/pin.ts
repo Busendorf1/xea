@@ -181,16 +181,37 @@ export async function handleWalletPinAction(
     }
 
     // Verify registered phone number on file before allowing PIN reset
+    const confirmEmail = String(body?.confirmEmail || "").toLowerCase().trim();
+    if (confirmEmail && confirmEmail !== cleanEmail) {
+      const nextLock = await recordPinAttemptDb(supabase, cleanEmail, false);
+      if (nextLock.locked) {
+        return errorResponse(
+          `Too many failed PIN reset attempts. Locked for ${PIN_LOCKOUT_MINUTES} minutes.`,
+          429,
+          { retryAfter: nextLock.secondsLeft },
+        );
+      }
+      return errorResponse("Email verification failed.", 403, {
+        attemptsLeft: nextLock.remainingAttempts,
+      });
+    }
+
     const digits = phoneInput.replace(/\D/g, "");
     const decryptedStored = user.phone
-      ? await decryptSensitiveFieldEdge(String(user.phone))
+      ? (await decryptSensitiveFieldEdge(String(user.phone))) || ""
       : "";
+    if (!decryptedStored || decryptedStored.startsWith("PLACEHOLDER")) {
+      return errorResponse(
+        "Please register a valid phone number in your Profile Settings before resetting your Wallet PIN.",
+        400,
+      );
+    }
     const storedLast10 = decryptedStored.replace(/\D/g, "").slice(-10);
     const inputLast10 = digits.slice(-10);
     const phoneHash = phoneInput ? await computePhoneHash(phoneInput) : "";
 
     const phoneVerified =
-      Boolean(digits.length >= 10 && storedLast10 && storedLast10 === inputLast10) ||
+      Boolean(digits.length >= 10 && storedLast10.length >= 7 && storedLast10 === inputLast10) ||
       Boolean(user.phone_hash && phoneHash && user.phone_hash === phoneHash);
 
     if (!phoneVerified) {
@@ -212,6 +233,18 @@ export async function handleWalletPinAction(
     const hashed = await hashAndFormatPin(newPin, cleanEmail);
     await supabase.from("users").update({ wallet_pin_hash: hashed }).eq("id", user.id);
     await recordPinAttemptDb(supabase, cleanEmail, true);
+    try {
+      await supabase.from("notifications").insert({
+        user_email: cleanEmail,
+        title: "Security Alert: Wallet PIN Reset",
+        message:
+          "Your 4-digit Wallet PIN was recently reset after verifying your registered phone number.",
+        read: false,
+        is_global: false,
+      });
+    } catch {
+      // Non-blocking security alert
+    }
     return jsonResponse({ success: true, hasPin: true, message: "Wallet PIN reset successfully." });
   }
 

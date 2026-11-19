@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthenticatedEmail } from "@/lib/authHelper";
+import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
@@ -33,6 +34,9 @@ const businessQuerySchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const authEmail = await getAuthenticatedEmail(req);
+    if (!authEmail) {
+      return NextResponse.json({ error: "Please sign in to submit a business subscription application." }, { status: 401 });
+    }
     const rawBody = await req.json().catch(() => ({}));
 
     // Parse & Validate payload via Zod
@@ -195,6 +199,15 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const rl = await checkRateLimit(req, {
+      limit: 60,
+      windowSeconds: 60,
+      identifierPrefix: "business_subscribe_get",
+    });
+    if (!rl.allowed && rl.response) {
+      return rl.response;
+    }
+
     const { searchParams } = new URL(req.url);
     const rawDomain = searchParams.get("domain");
     const rawEmail = searchParams.get("email");
@@ -207,9 +220,13 @@ export async function GET(req: NextRequest) {
     const queryDomain = queryResult.success ? queryResult.data.domain : null;
     const queryEmail = queryResult.success ? queryResult.data.email : null;
 
-    // 1. If email is queried, fetch user's brand subscription standing
+    // 1. If email is queried, require verified authentication and match caller (or admin) to prevent PII enumeration
     if (queryEmail) {
+      const authEmail = await getAuthenticatedEmail(req);
       const cleanEmail = queryEmail.trim().toLowerCase();
+      if (!authEmail || (authEmail.toLowerCase().trim() !== cleanEmail && !isAdminEmail(authEmail))) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
       const { data: sub } = await supabaseAdmin
         .from("premium_subscribers")
         .select("id, business_name, domain, discount_percentage, status, payment_status, amount, currency, contact_email, user_email, rejection_reason, created_at, paid_at")

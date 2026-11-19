@@ -3,12 +3,16 @@ import { assessAdDeliveryCapacityEdge, isConcreteTargetingValue } from "./adCapa
 import { isAdminEmail } from "./cors.ts";
 import {
   applyProductSalesSubsidyEdge,
+  convertUsdToNgnEdge,
+  getCanonicalHighlightFloorRateNgnEdge,
   getLocalizedAdFloorRateEdge,
   getUserCurrencyEdge,
   isVerifiedSubscriberProductLinkEdge,
   resolveUserPricingCountryEdge,
   validateAndComputeAdPricingEdge,
 } from "./adPricing.ts";
+
+const BRAND_SUBSCRIPTION_FEE_NGN = 150000;
 
 export interface ResourceValidationResult {
   valid: boolean;
@@ -158,6 +162,7 @@ export async function validatePayableResource(
         productCtaLink: ad.product_cta_link,
         userCountry,
         isAdmin: false,
+        storedInCanonicalNgn: true,
       });
       if (!pricing.ok) {
         return {
@@ -196,8 +201,7 @@ export async function validatePayableResource(
         };
       }
       const storedTotal = Number(ad.total_cost || 0);
-      const tol = pricing.currency === "USD" ? 0.51 : 1;
-      if (storedTotal > 0 && Math.abs(storedTotal - pricing.computedTotalCost) > tol) {
+      if (storedTotal > 0 && Math.abs(storedTotal - pricing.canonicalTotalCostNgn) > 1) {
         return {
           valid: false,
           statusCode: 400,
@@ -205,7 +209,7 @@ export async function validatePayableResource(
           serverCost: 0,
         };
       }
-      return { valid: true, statusCode: 200, serverCost: pricing.computedTotalCost, draftRow: ad };
+      return { valid: true, statusCode: 200, serverCost: pricing.canonicalTotalCostNgn, draftRow: ad };
     }
 
     const impCount = Math.max(0, Number(ad.impressions || 0));
@@ -304,7 +308,15 @@ export async function validatePayableResource(
       }
     }
 
-    const serverCost = isAdmin ? 0 : Math.round(Number(news.total_cost || 0) * 100) / 100;
+    const userCountry = await resolveUserPricingCountryEdge(supabaseAdmin, cleanEmail);
+    const hlFloorNgn = getCanonicalHighlightFloorRateNgnEdge(userCountry);
+    const hlDays = Math.max(1, Math.min(90, Math.floor(Number(news.campaign_days || 1))));
+    const storedDaily = news.is_bidded && Number(news.bid_price || 0) > 0
+      ? Math.max(hlFloorNgn, Number(news.bid_price))
+      : hlFloorNgn;
+    const minExpectedCost = Math.round(hlDays * storedDaily);
+    const storedCost = Math.round(Number(news.total_cost || 0) * 100) / 100;
+    const serverCost = isAdmin ? 0 : Math.max(minExpectedCost, storedCost);
     if (!isAdmin && (!Number.isFinite(serverCost) || serverCost <= 0)) {
       return {
         valid: false,
@@ -334,13 +346,15 @@ export async function validatePayableResource(
       return { valid: false, statusCode: 403, error: "Unauthorized campaign boost.", serverCost: 0 };
     }
     const userCountry = await resolveUserPricingCountryEdge(supabaseAdmin, cleanEmail);
+    const isUsdUser = getUserCurrencyEdge(userCountry) === "USD";
     const adCategory = String(activeAd.ad_type || "individual").trim().toLowerCase();
-    const baseFloor = getLocalizedAdFloorRateEdge(adCategory, userCountry);
+    const baseFloorLocal = getLocalizedAdFloorRateEdge(adCategory, userCountry);
     const subsidyQualified =
       adCategory === "product_sales"
         ? await isVerifiedSubscriberProductLinkEdge(supabaseAdmin, activeAd.product_cta_link)
         : false;
-    const adFloorRate = subsidyQualified ? applyProductSalesSubsidyEdge(baseFloor) : baseFloor;
+    const floorLocal = subsidyQualified ? applyProductSalesSubsidyEdge(baseFloorLocal) : baseFloorLocal;
+    const adFloorRate = isUsdUser ? convertUsdToNgnEdge(floorLocal) : floorLocal;
 
     const addImp = Math.max(
       0,
@@ -450,7 +464,7 @@ export async function validatePayableResource(
   }
 
   if (payType === "boost_highlight") {
-    const hlId = String(meta.highlight_id || meta.highlightId || "").trim();
+    const hlId = String(meta.highlight_id || meta.highlightId || meta.ad_id || "").trim();
     if (!hlId) {
       return { valid: false, statusCode: 400, error: "highlight_id is required.", serverCost: 0 };
     }
@@ -465,26 +479,75 @@ export async function validatePayableResource(
     if (String(activeHl.user_email || "").toLowerCase().trim() !== cleanEmail) {
       return { valid: false, statusCode: 403, error: "Unauthorized highlight boost.", serverCost: 0 };
     }
-    const amt = Number(meta.boost_amount || meta.amount || params.requestedAmount || 0);
-    if (!isAdmin && (!Number.isFinite(amt) || amt <= 0)) {
-      return { valid: false, statusCode: 400, error: "Boost amount must be greater than zero.", serverCost: 0 };
+    // Security (C-04): Compute highlight boost cost authoritatively server-side (never trust caller meta.amount)
+    const userCountry = await resolveUserPricingCountryEdge(supabaseAdmin, cleanEmail);
+    const floorNgn = getCanonicalHighlightFloorRateNgnEdge(userCountry);
+    const isUsdUser = getUserCurrencyEdge(userCountry) === "USD";
+    const currentDays = Math.max(1, Math.min(90, Math.floor(Number(activeHl.campaign_days || 1))));
+    const addDays = Math.max(0, Math.floor(Number(meta.additional_days ?? meta.addDays ?? meta.additionalDays ?? 0)));
+    if (!isAdmin && currentDays + addDays > 90) {
+      return { valid: false, statusCode: 400, error: "Highlights cannot exceed 90 total days.", serverCost: 0 };
     }
-    return { valid: true, statusCode: 200, serverCost: isAdmin ? 0 : Math.round(amt * 100) / 100, draftRow: activeHl };
+    const currentDaily = activeHl.is_bidded && Number(activeHl.bid_price || 0) >= floorNgn
+      ? Number(activeHl.bid_price)
+      : floorNgn;
+    const rawNewDaily = Number(meta.newBidPrice ?? meta.new_bid_price ?? meta.cost_per_impression ?? currentDaily);
+    const normalizedNewDaily = isUsdUser && rawNewDaily > 0 && rawNewDaily < 500
+      ? convertUsdToNgnEdge(rawNewDaily)
+      : rawNewDaily;
+    if (!isAdmin && (!Number.isFinite(normalizedNewDaily) || normalizedNewDaily < currentDaily - 0.01)) {
+      return { valid: false, statusCode: 400, error: `Highlight daily rate cannot be below ${currentDaily} NGN.`, serverCost: 0 };
+    }
+    const effectiveDaily = Math.max(currentDaily, normalizedNewDaily);
+    const upgradeCost = effectiveDaily > currentDaily ? (effectiveDaily - currentDaily) * currentDays : 0;
+    const serverCost = isAdmin ? 0 : Math.round((addDays * effectiveDaily + upgradeCost) * 100) / 100;
+    if (!isAdmin && (!Number.isFinite(serverCost) || serverCost <= 0)) {
+      return { valid: false, statusCode: 400, error: "Boost cost must be greater than zero.", serverCost: 0 };
+    }
+    return { valid: true, statusCode: 200, serverCost, draftRow: activeHl };
   }
 
-  if (payType === "business_subscription") {
-    const amt = Number(meta.amount || params.requestedAmount || 0);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      return { valid: false, statusCode: 400, error: "Invalid subscription amount.", serverCost: 0 };
+  if (payType === "business_subscription" || payType === "brand_subscription") {
+    // Security (C-04): Authoritative lookup on premium_subscribers; require ownership, approval, and exact server fee
+    const subId = String(meta.subscriber_id || meta.brand_id || "").trim();
+    if (!subId) {
+      return { valid: false, statusCode: 400, error: "subscriber_id is required.", serverCost: 0 };
     }
-    return { valid: true, statusCode: 200, serverCost: Math.round(amt * 100) / 100 };
+    const { data: subRow } = await supabaseAdmin
+      .from("premium_subscribers")
+      .select("id, user_email, status, payment_status, domain, business_name")
+      .eq("id", subId)
+      .maybeSingle();
+    if (!subRow) {
+      return { valid: false, statusCode: 404, error: "Business subscription application not found.", serverCost: 0 };
+    }
+    if (String(subRow.user_email || "").toLowerCase().trim() !== cleanEmail) {
+      return { valid: false, statusCode: 403, error: "You do not own this business subscription application.", serverCost: 0 };
+    }
+    if (subRow.status !== "approved") {
+      return {
+        valid: false,
+        statusCode: 403,
+        error: subRow.status === "active"
+          ? "This business subscription is already active."
+          : "Your business subscription application must be approved by moderation before payment.",
+        serverCost: 0,
+      };
+    }
+    return {
+      valid: true,
+      statusCode: 200,
+      serverCost: isAdmin ? 0 : BRAND_SUBSCRIPTION_FEE_NGN,
+      draftRow: subRow,
+    };
   }
 
-  const fallbackAmt = Number(params.requestedAmount || meta.amount || 0);
-  if (!Number.isFinite(fallbackAmt) || fallbackAmt <= 0) {
-    return { valid: false, statusCode: 400, error: "Payment amount must be greater than zero.", serverCost: 0 };
-  }
-  return { valid: true, statusCode: 200, serverCost: Math.round(fallbackAmt * 100) / 100 };
+  return {
+    valid: false,
+    statusCode: 400,
+    error: `Unsupported payment type "${payType}".`,
+    serverCost: 0,
+  };
 }
 
 /**
@@ -561,6 +624,40 @@ export async function refundWalletAtomic(
     success: true,
     newBalance: Number(data.new_balance ?? 0),
   };
+}
+
+// deno-lint-ignore no-explicit-any
+async function syncBiddedAdEdge(
+  supabaseAdmin: any,
+  params: {
+    adId: string;
+    userEmail: string;
+    adType?: string | null;
+    industry?: unknown;
+    costPerImpression?: unknown;
+    bidPrice?: unknown;
+    isBidded?: unknown;
+    isAdminPost?: unknown;
+  },
+) {
+  const rate = Number(params.bidPrice || params.costPerImpression || 0);
+  if (params.isAdminPost || !params.isBidded || !Number.isFinite(rate) || rate <= 0 || !params.adId) {
+    return;
+  }
+  const firstInd = Array.isArray(params.industry) ? params.industry[0] : params.industry;
+  const industry = String(params.adType || firstInd || "business").trim().toLowerCase() || "business";
+  try {
+    await supabaseAdmin.from("bidded_ads").delete().eq("ad_id", params.adId);
+    await supabaseAdmin.from("bidded_ads").insert([
+      {
+        ad_id: params.adId,
+        user_email: params.userEmail.toLowerCase().trim(),
+        industry,
+        bid_price: rate,
+        is_active: true,
+      },
+    ]);
+  } catch {}
 }
 
 /**
@@ -689,6 +786,16 @@ export async function activatePaidResource(
         })
         .eq("id", editingId);
       if (updErr) return { success: false, error: updErr.message };
+      await syncBiddedAdEdge(supabaseAdmin, {
+        adId: editingId,
+        userEmail: cleanEmail,
+        adType: draft.ad_type,
+        industry: draft.industry,
+        costPerImpression: draft.cost_per_impression,
+        bidPrice: draft.bid_price,
+        isBidded: draft.is_bidded,
+        isAdminPost: isAdmin || Boolean(draft.is_admin_post),
+      });
       await supabaseAdmin.from("adds").delete().eq("id", adId);
       return { success: true, activatedId: editingId, message: "Campaign updated and published." };
     }
@@ -711,10 +818,21 @@ export async function activatePaidResource(
       .single();
 
     if (insErr) return { success: false, error: insErr.message };
+    const activatedAdId = String(inserted?.id || adId);
+    await syncBiddedAdEdge(supabaseAdmin, {
+      adId: activatedAdId,
+      userEmail: cleanEmail,
+      adType: draft.ad_type,
+      industry: draft.industry,
+      costPerImpression: draft.cost_per_impression,
+      bidPrice: draft.bid_price,
+      isBidded: draft.is_bidded,
+      isAdminPost: isAdmin || Boolean(draft.is_admin_post),
+    });
     await supabaseAdmin.from("adds").delete().eq("id", adId);
     return {
       success: true,
-      activatedId: String(inserted?.id || adId),
+      activatedId: activatedAdId,
       message: "Campaign published live!",
     };
   }
@@ -846,6 +964,16 @@ export async function activatePaidResource(
       .update(updatePayload)
       .eq("id", adId);
     if (updErr) return { success: false, error: updErr.message };
+    await syncBiddedAdEdge(supabaseAdmin, {
+      adId,
+      userEmail: cleanEmail,
+      adType: ad.ad_type,
+      industry: ad.industry,
+      costPerImpression: newCpi,
+      bidPrice: Math.max(Number(ad.bid_price || 0), newCpi),
+      isBidded,
+      isAdminPost: isAdAdminPost,
+    });
     await supabaseAdmin.from("adds").update(updatePayload).eq("id", adId);
     return { success: true, activatedId: adId, message: "Campaign boosted successfully." };
   }
@@ -883,16 +1011,41 @@ export async function activatePaidResource(
     return { success: true, activatedId: hlId, message: "Highlight boosted successfully." };
   }
 
-  if (payType === "business_subscription") {
-    const subId = String(metadata.subscriber_id || "").trim();
-    if (subId) {
-      const nextExpiry = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
-      await supabaseAdmin
-        .from("premium_subscribers")
-        .update({ status: "active", expires_at: nextExpiry, paid_amount: amountPaid })
-        .eq("id", subId);
+  if (payType === "business_subscription" || payType === "brand_subscription") {
+    const subId = String(metadata.subscriber_id || metadata.brand_id || "").trim();
+    if (!subId) {
+      return { success: false, error: "Missing subscriber_id." };
     }
-    return { success: true, message: "Business subscription activated." };
+    const { data: subRow } = await supabaseAdmin
+      .from("premium_subscribers")
+      .select("id, user_email, status")
+      .eq("id", subId)
+      .maybeSingle();
+    if (!subRow) {
+      return { success: false, error: "Business subscription record not found." };
+    }
+    if (String(subRow.user_email || "").toLowerCase().trim() !== cleanEmail) {
+      return { success: false, error: "Business subscription ownership verification failed." };
+    }
+    if (subRow.status !== "approved" && subRow.status !== "active") {
+      return { success: false, error: "Business subscription has not been approved by moderation." };
+    }
+    if (!isAdmin && amountPaid < BRAND_SUBSCRIPTION_FEE_NGN - 1) {
+      return { success: false, error: "Paid amount is below the required business subscription fee." };
+    }
+    const nextExpiry = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+    await supabaseAdmin
+      .from("premium_subscribers")
+      .update({
+        status: "active",
+        payment_status: "paid",
+        paid_at: new Date().toISOString(),
+        expires_at: nextExpiry,
+        paid_amount: amountPaid,
+      })
+      .eq("id", subId)
+      .eq("user_email", cleanEmail);
+    return { success: true, activatedId: subId, message: "Business subscription activated." };
   }
 
   return { success: true, message: "Payment processed." };

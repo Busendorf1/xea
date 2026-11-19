@@ -7,11 +7,42 @@ const rawDomain =
 
 const cleanDomain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+const isProdRuntime = process.env.NODE_ENV === "production" && !isBuildPhase;
+
+const resolvedAuth0Secret = (process.env.AUTH0_SECRET || "").trim();
+if (
+  isProdRuntime &&
+  (!resolvedAuth0Secret ||
+    resolvedAuth0Secret.length < 32 ||
+    resolvedAuth0Secret === "placeholder-secret-must-be-32-characters-long")
+) {
+  throw new Error(
+    "CRITICAL SECURITY MISCONFIGURATION: AUTH0_SECRET must be configured with at least 32 characters in production."
+  );
+}
+
+function resolveSafeCallbackRedirect(rawReturnTo: string | undefined | null, baseUrl: string): string {
+  if (!rawReturnTo || typeof rawReturnTo !== "string") return `${baseUrl}/`;
+  const trimmed = rawReturnTo.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) {
+    return `${baseUrl}/`;
+  }
+  try {
+    const baseParsed = new URL(baseUrl);
+    const resolved = new URL(trimmed, baseParsed);
+    if (resolved.origin !== baseParsed.origin) return `${baseUrl}/`;
+    return resolved.toString();
+  } catch {
+    return `${baseUrl}/`;
+  }
+}
+
 export const auth0 = new Auth0Client({
   domain: cleanDomain,
   clientId: process.env.AUTH0_CLIENT_ID || "placeholder-client-id",
   clientSecret: process.env.AUTH0_CLIENT_SECRET || "placeholder-client-secret",
-  secret: process.env.AUTH0_SECRET || "placeholder-secret-must-be-32-characters-long",
+  secret: resolvedAuth0Secret || "dev-only-local-secret-do-not-use-in-prod-32ch",
   appBaseUrl: process.env.APP_BASE_URL || process.env.AUTH0_BASE_URL || "http://localhost:3000",
   httpTimeout: 15000,
   async beforeSessionSaved(session) {
@@ -65,7 +96,7 @@ export const auth0 = new Auth0Client({
         { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } }
       );
     }
-    const target = ctx.returnTo ? new URL(ctx.returnTo, baseUrl).toString() : `${baseUrl}/`;
+    const target = resolveSafeCallbackRedirect(ctx.returnTo, baseUrl);
     return NextResponse.redirect(target, 307);
   },
 });

@@ -180,6 +180,13 @@ export function AdminPayoutsTable({
   totalCount,
   onPageChange,
 }: AdminPayoutsTableProps) {
+  const bulkEligiblePayouts = payouts.filter(
+    (p) => p.status === "queued" || p.status === "pending"
+  );
+  const allEligibleSelected =
+    bulkEligiblePayouts.length > 0 &&
+    bulkEligiblePayouts.every((p) => selectedRefs.has(p.reference));
+
   return (
     <>
       <div className={styles.tableContainer} style={{ scrollBehavior: "smooth" }}>
@@ -189,7 +196,9 @@ export function AdminPayoutsTable({
               <th className={styles.th} style={{ width: "40px" }}>
                 <input
                   type="checkbox"
-                  checked={selectedRefs.size === payouts.length && payouts.length > 0}
+                  checked={allEligibleSelected}
+                  disabled={bulkEligiblePayouts.length === 0}
+                  title="Select all queued/pending payouts on this page"
                   onChange={toggleSelectAll}
                 />
               </th>
@@ -231,6 +240,8 @@ export function AdminPayoutsTable({
                 const meta = item.metadata || {};
                 const isRetryable =
                   item.status === "failed" || item.status === "queued" || item.status === "pending";
+                const isBulkSelectable =
+                  item.status === "queued" || item.status === "pending";
                 const rawAmount = parseFloat((item.amount as any) || (meta.amount as any) || 0);
                 const dynamicFee = meta.gateway_fee ?? meta.transfer_fee ?? meta.fee;
                 const dynamicNet = meta.net_amount;
@@ -240,8 +251,16 @@ export function AdminPayoutsTable({
                     <td className={styles.td}>
                       <input
                         type="checkbox"
-                        checked={selectedRefs.has(item.reference)}
-                        onChange={() => toggleSelectRef(item.reference)}
+                        disabled={!isBulkSelectable}
+                        checked={isBulkSelectable && selectedRefs.has(item.reference)}
+                        title={
+                          isBulkSelectable
+                            ? "Select for bulk retry"
+                            : item.status === "failed"
+                              ? "Use individual Retry for refunded failed payouts"
+                              : `Cannot bulk-retry ${item.status} payout`
+                        }
+                        onChange={() => isBulkSelectable && toggleSelectRef(item.reference)}
                       />
                     </td>
                     <td className={styles.td}>

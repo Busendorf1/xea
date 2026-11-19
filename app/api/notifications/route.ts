@@ -3,47 +3,41 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { getCachedProfile } from "@/lib/utils/cache";
+import {
+  getL1UserNotif,
+  setL1UserNotif,
+  invalidateL1UserNotif,
+  getUserNotifCacheKey,
+  GLOBAL_ANN_CACHE_KEY,
+  getL1GlobalAnnouncements,
+  setL1GlobalAnnouncements,
+} from "@/lib/notifications/notificationCache";
 
 export const dynamic = "force-dynamic";
 
 const USER_NOTIF_TTL_SECONDS = 25;
 const GLOBAL_ANN_TTL_SECONDS = 60;
-const GLOBAL_ANN_CACHE_KEY = "notifications:global_announcements:v1";
 
-// L1 In-Memory Caches (absorbs 30s header polling in <0.1ms even when Redis is over quota)
-const l1UserNotifCache = new Map<string, { data: any[]; expiresAt: number }>();
-const MAX_L1_NOTIF_USERS = 3000;
-let l1GlobalAnnCache: { data: any[]; expiresAt: number } | null = null;
+// Coalesce concurrent global announcement DB loads across simultaneous requests
 let inFlightGlobalAnnPromise: Promise<any[]> | null = null;
 
-function getUserNotifCacheKey(emailLower: string): string {
-  return `notifications:user:${emailLower}`;
-}
-
-function setL1UserNotif(emailLower: string, data: any[]) {
-  if (l1UserNotifCache.size >= MAX_L1_NOTIF_USERS && !l1UserNotifCache.has(emailLower)) {
-    const firstKey = l1UserNotifCache.keys().next().value;
-    if (firstKey) l1UserNotifCache.delete(firstKey);
-  }
-  l1UserNotifCache.set(emailLower, {
-    data,
-    expiresAt: Date.now() + USER_NOTIF_TTL_SECONDS * 1000,
-  });
-}
-
 async function invalidateUserNotifCache(emailLower: string): Promise<void> {
-  l1UserNotifCache.delete(emailLower);
+  invalidateL1UserNotif(emailLower);
   if (!isRedisReady()) return;
   try {
-    await redisConnection.del(getUserNotifCacheKey(emailLower));
+    await Promise.allSettled([
+      redisConnection.del(getUserNotifCacheKey(emailLower)),
+      redisConnection.del(`notifications:${emailLower}`),
+    ]);
   } catch {
     // Non-blocking cache invalidation
   }
 }
 
 async function loadGlobalAnnouncements(fifteenDaysAgo: string): Promise<any[]> {
-  if (l1GlobalAnnCache && Date.now() < l1GlobalAnnCache.expiresAt) {
-    return l1GlobalAnnCache.data;
+  const l1Global = getL1GlobalAnnouncements<any>();
+  if (l1Global) {
+    return l1Global;
   }
   if (inFlightGlobalAnnPromise) {
     return inFlightGlobalAnnPromise;
@@ -57,7 +51,7 @@ async function loadGlobalAnnouncements(fifteenDaysAgo: string): Promise<any[]> {
           if (cachedGlobalStr) {
             const parsed = JSON.parse(cachedGlobalStr);
             if (Array.isArray(parsed)) {
-              l1GlobalAnnCache = { data: parsed, expiresAt: Date.now() + GLOBAL_ANN_TTL_SECONDS * 1000 };
+              setL1GlobalAnnouncements(parsed);
               return parsed;
             }
           }
@@ -73,11 +67,11 @@ async function loadGlobalAnnouncements(fifteenDaysAgo: string): Promise<any[]> {
 
       if (annErr) {
         console.error("❌ Error fetching global announcements:", annErr);
-        return l1GlobalAnnCache?.data || [];
+        return getL1GlobalAnnouncements<any>() || [];
       }
 
       const rows = dbGlobalAnns || [];
-      l1GlobalAnnCache = { data: rows, expiresAt: Date.now() + GLOBAL_ANN_TTL_SECONDS * 1000 };
+      setL1GlobalAnnouncements(rows);
 
       if (isRedisReady()) {
         redisConnection
@@ -103,9 +97,9 @@ export async function GET(req: NextRequest) {
     const emailLower = email.toLowerCase().trim();
 
     // 0a. Ultra-fast L1 In-Memory cache hit (<0.1ms)
-    const l1Hit = l1UserNotifCache.get(emailLower);
-    if (l1Hit && Date.now() < l1Hit.expiresAt) {
-      return NextResponse.json(l1Hit.data);
+    const l1Hit = getL1UserNotif<any>(emailLower);
+    if (l1Hit) {
+      return NextResponse.json(l1Hit);
     }
 
     const userCacheKey = getUserNotifCacheKey(emailLower);
@@ -135,21 +129,21 @@ export async function GET(req: NextRequest) {
         const { data } = await supabaseReadOnly
           .from("users")
           .select("created_at, monetized")
-          .eq("email", emailLower)
+          .ilike("email", emailLower)
           .maybeSingle();
         return data;
       })(),
       supabaseReadOnly
         .from("notifications")
         .select("*")
-        .eq("user_email", emailLower)
+        .ilike("user_email", emailLower)
         .gte("created_at", fifteenDaysAgo)
         .order("created_at", { ascending: false })
         .limit(100),
       supabaseReadOnly
         .from("read_announcements")
         .select("announcement_id")
-        .eq("user_email", emailLower)
+        .ilike("user_email", emailLower)
         .limit(200),
       loadGlobalAnnouncements(fifteenDaysAgo),
     ]);
@@ -261,18 +255,18 @@ export async function POST(req: NextRequest) {
         supabaseAdmin
           .from("notifications")
           .update({ read: true })
-          .eq("user_email", emailLower),
+          .ilike("user_email", emailLower),
         supabaseAdmin
           .from("users")
           .select("created_at, monetized")
-          .eq("email", emailLower)
+          .ilike("email", emailLower)
           .maybeSingle(),
       ]);
 
       const user = userRes.data;
       if (user) {
         const userSignupDate = user.created_at;
-        const isMonetized = user.monetized === "yes" || user.monetized === true;
+        const isMonetized = user.monetized === "yes" || user.monetized === "true" || user.monetized === true;
 
         let annQuery = supabaseAdmin
           .from("global_announcements")
@@ -318,7 +312,7 @@ export async function POST(req: NextRequest) {
           .from("notifications")
           .update({ read: true })
           .eq("id", notificationId)
-          .eq("user_email", emailLower);
+          .ilike("user_email", emailLower);
       }
 
       await invalidateUserNotifCache(emailLower);
@@ -348,7 +342,7 @@ export async function DELETE(req: NextRequest) {
       const { error: delErr } = await supabaseAdmin
         .from("notifications")
         .delete()
-        .eq("user_email", emailLower);
+        .ilike("user_email", emailLower);
 
       if (delErr) {
         console.error("❌ Error deleting all notifications:", delErr);
@@ -377,7 +371,7 @@ export async function DELETE(req: NextRequest) {
       const { error: delErr } = await supabaseAdmin
         .from("notifications")
         .delete()
-        .eq("user_email", emailLower)
+        .ilike("user_email", emailLower)
         .in("id", notificationIds);
 
       if (delErr) {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import supabaseAdmin from "@/lib/utils/dbAdmin";
-import { purgeStorageMedia } from "@/lib/utils/storageCleaner";
+import supabaseAdmin from "../utils/dbAdmin";
+import { purgeStorageMedia } from "../utils/storageCleaner";
+import { dispatchNotificationWebhook } from "../webhookDispatcher";
+import { invalidateUserNotificationCaches } from "../notifications/notificationCache";
 import {
   ALLOWED_DIRECT_HIGHLIGHT_FIELDS,
   ALLOWED_HIGHLIGHT_EDIT_FIELDS,
@@ -63,12 +65,12 @@ export async function handleAdminHighlightCampaignAction(
       await supabaseAdmin.from("news").delete().eq("id", id);
 
       const notifRow = {
-        user_email: pendingHighlight.user_email,
+        user_email: String(pendingHighlight.user_email || "").toLowerCase().trim(),
         title: "Highlight Edit Live",
         message: "Your highlight edit was approved and applied to your live highlight.",
       };
       await supabaseAdmin.from("notifications").insert([notifRow]);
-      const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+      await invalidateUserNotificationCaches(notifRow.user_email);
       dispatchNotificationWebhook(notifRow).catch(() => {});
 
       await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
@@ -88,12 +90,12 @@ export async function handleAdminHighlightCampaignAction(
       .eq("id", id);
 
     const notifRow = {
-      user_email: pendingHighlight.user_email,
+      user_email: String(pendingHighlight.user_email || "").toLowerCase().trim(),
       title: "Highlight Approved",
       message: "Your highlight is approved! Complete payment in My Highlights to go live.",
     };
     await supabaseAdmin.from("notifications").insert([notifRow]);
-    const { dispatchNotificationWebhook } = await import("@/lib/webhookDispatcher");
+    await invalidateUserNotificationCaches(notifRow.user_email);
     dispatchNotificationWebhook(notifRow).catch(() => {});
 
     await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, payload, pendingHighlight.user_email);
@@ -124,13 +126,14 @@ export async function handleAdminHighlightCampaignAction(
       })
       .eq("id", id);
 
-    await supabaseAdmin.from("notifications").insert([
-      {
-        user_email: hlToReject.user_email,
-        title: "Highlight Revision Requested",
-        message: `Admin feedback: "${feedbackReason}". Please visit My Highlights to adjust.`,
-      },
-    ]);
+    const rejectNotif = {
+      user_email: String(hlToReject.user_email || "").toLowerCase().trim(),
+      title: "Highlight Revision Requested",
+      message: `Admin feedback: "${feedbackReason}". Please visit My Highlights to adjust.`,
+    };
+    await supabaseAdmin.from("notifications").insert([rejectNotif]);
+    await invalidateUserNotificationCaches(rejectNotif.user_email);
+    dispatchNotificationWebhook(rejectNotif).catch(() => {});
 
     await invalidateAdminCampaignCache(adminEmail, action, id, feedbackReason, payload, hlToReject.user_email);
     return NextResponse.json({ success: true, message: "Feedback dropped. User can now review and adjust the highlight." });
@@ -228,8 +231,8 @@ export async function handleAdminHighlightCampaignAction(
     }
 
     const [activeRes, pendingRes] = await Promise.all([
-      supabaseAdmin.from("newsactive").update(fieldsToUpdate).eq("id", id),
-      supabaseAdmin.from("news").update(fieldsToUpdate).eq("id", id),
+      supabaseAdmin.from("newsactive").update(fieldsToUpdate).eq("id", id).select("user_email").maybeSingle(),
+      supabaseAdmin.from("news").update(fieldsToUpdate).eq("id", id).select("user_email").maybeSingle(),
     ]);
 
     if (activeRes.error && pendingRes.error) {
@@ -239,7 +242,15 @@ export async function handleAdminHighlightCampaignAction(
       );
     }
 
-    await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, fieldsToUpdate);
+    const targetEmail = activeRes?.data?.user_email || pendingRes?.data?.user_email;
+    await invalidateAdminCampaignCache(
+      adminEmail,
+      action,
+      id,
+      payload?.statement || payload?.reason,
+      fieldsToUpdate,
+      targetEmail
+    );
     return NextResponse.json({ success: true, message: "Highlight details updated successfully." });
   }
 
@@ -247,16 +258,27 @@ export async function handleAdminHighlightCampaignAction(
     if (!payload) return NextResponse.json({ error: "Payload is required" }, { status: 400 });
 
     const cleanHighlight = pickAllowedFields(payload, ALLOWED_DIRECT_HIGHLIGHT_FIELDS);
+    if (cleanHighlight.user_email) {
+      cleanHighlight.user_email = String(cleanHighlight.user_email).toLowerCase().trim();
+    }
     const highlightRecord = {
       ...cleanHighlight,
       is_paused: false,
+      is_admin_post: true,
       created_at: now,
     };
 
     const { error: directHlErr } = await supabaseAdmin.from("newsactive").insert([highlightRecord]);
     if (directHlErr) throw directHlErr;
 
-    await invalidateAdminCampaignCache(adminEmail, action, id, payload?.statement || payload?.reason, cleanHighlight);
+    await invalidateAdminCampaignCache(
+      adminEmail,
+      action,
+      cleanHighlight.id || id,
+      payload?.statement || payload?.reason,
+      cleanHighlight,
+      cleanHighlight.user_email
+    );
     return NextResponse.json({ success: true, message: "Highlight published directly to active feed!" });
   }
 

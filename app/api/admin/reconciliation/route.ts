@@ -3,6 +3,13 @@ import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 
+export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 // Proactive cache invalidator for reconciliation metrics, treasury, and paginated pages
 async function invalidateReconciliationCaches() {
   try {
@@ -107,8 +114,8 @@ export async function GET(req: NextRequest) {
     // ------------------------------------------------------------------------
     // HIGH-VOLUME FORFEITED BALANCES: CACHED AGGREGATES & PAGINATED QUERIES
     // ------------------------------------------------------------------------
-    const forfeitPage = Math.max(1, parseInt(req.nextUrl.searchParams.get("forfeitPage") || "1", 10));
-    const forfeitLimit = Math.min(Math.max(1, parseInt(req.nextUrl.searchParams.get("forfeitLimit") || "20", 10)), 100);
+    const forfeitPage = Math.max(1, parseSafeInt(req.nextUrl.searchParams.get("forfeitPage"), 1));
+    const forfeitLimit = Math.min(Math.max(1, parseSafeInt(req.nextUrl.searchParams.get("forfeitLimit"), 20)), 100);
     const forfeitStatus = (req.nextUrl.searchParams.get("forfeitStatus") || "ALL").toUpperCase();
     const forfeitSearch = req.nextUrl.searchParams.get("forfeitSearch")?.trim().toLowerCase() || "";
 
@@ -375,43 +382,62 @@ export async function POST(req: NextRequest) {
 
     if (action === "resolve_forfeiture") {
       const { forfeitureId } = body;
-      if (!forfeitureId) {
-        return NextResponse.json({ error: "Missing forfeitureId parameter" }, { status: 400 });
+      if (typeof forfeitureId !== "string" || !/^[0-9a-fA-F-]{8,64}$/.test(forfeitureId.trim())) {
+        return NextResponse.json({ error: "Valid forfeitureId parameter is required" }, { status: 400 });
       }
+      const cleanForfeitureId = forfeitureId.trim();
 
       // 1. Try atomic Postgres RPC first
       const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc("resolve_forfeited_balance", {
         p_admin_email: userEmail,
-        p_forfeiture_id: forfeitureId,
+        p_forfeiture_id: cleanForfeitureId,
         p_notes: notes || "Resolved to platform balance by admin",
       });
 
-      if (!rpcErr && rpcRes && rpcRes.success) {
-        await invalidateReconciliationCaches();
-        return NextResponse.json(rpcRes);
+      if (!rpcErr && rpcRes) {
+        if (rpcRes.success) {
+          await invalidateReconciliationCaches();
+          return NextResponse.json(rpcRes);
+        }
+        return NextResponse.json(
+          { error: rpcRes.error || "Failed to resolve forfeited balance." },
+          { status: 400 }
+        );
       }
 
       if (rpcErr && rpcErr.message && !rpcErr.message.includes("does not exist") && !rpcErr.message.includes("could not find function")) {
         return NextResponse.json({ error: rpcErr.message }, { status: 400 });
       }
 
-      // 2. Direct Database Fallback if RPC function not yet deployed in Supabase
-      const { data: forfeiture, error: fFetchErr } = await supabaseAdmin
+      // 2. Direct Database Fallback ONLY if RPC function is not deployed in Supabase.
+      // Atomically claim the PENDING forfeiture row FIRST so concurrent requests cannot double-absorb!
+      const { data: claimedForfeiture, error: claimErr } = await supabaseAdmin
         .from("forfeited_balances")
+        .update({
+          status: "RESOLVED",
+          resolved_at: new Date().toISOString(),
+          resolved_by: userEmail.toLowerCase().trim(),
+          resolution_notes: notes || "Resolved to platform balance by admin",
+        })
+        .eq("id", cleanForfeitureId)
+        .eq("status", "PENDING")
         .select("*")
-        .eq("id", forfeitureId)
         .maybeSingle();
 
-      if (fFetchErr || !forfeiture) {
-        return NextResponse.json({ error: "Forfeited balance record not found." }, { status: 404 });
+      if (claimErr) {
+        return NextResponse.json({ error: claimErr.message }, { status: 500 });
       }
 
-      if (forfeiture.status !== "PENDING") {
-        return NextResponse.json({ error: `This forfeiture has already been resolved (Status: ${forfeiture.status}).` }, { status: 400 });
+      if (!claimedForfeiture) {
+        return NextResponse.json(
+          { error: "Forfeited balance record not found or has already been resolved." },
+          { status: 409 }
+        );
       }
 
+      const forfeiture = claimedForfeiture;
       const amountNum = parseFloat(forfeiture.amount) || 0;
-      const ref = `FORFEIT-RES-${forfeitureId.slice(0, 8)}-${Date.now()}`;
+      const ref = `FORFEIT-RES-${cleanForfeitureId.slice(0, 8)}-${Date.now()}`;
 
       // Credit platform treasury
       const { data: prevTreasury } = await supabaseAdmin
@@ -422,8 +448,8 @@ export async function POST(req: NextRequest) {
 
       const oldBal = parseFloat(prevTreasury?.balance || 0);
       const oldAbsorbed = parseFloat(prevTreasury?.total_forfeited_absorbed || 0);
-      const newBal = oldBal + amountNum;
-      const newAbsorbed = oldAbsorbed + amountNum;
+      const newBal = Math.round((oldBal + amountNum) * 100) / 100;
+      const newAbsorbed = Math.round((oldAbsorbed + amountNum) * 100) / 100;
 
       await supabaseAdmin
         .from("platform_treasury")
@@ -433,17 +459,6 @@ export async function POST(req: NextRequest) {
           total_forfeited_absorbed: newAbsorbed,
           updated_at: new Date().toISOString(),
         });
-
-      // Mark forfeiture as resolved
-      await supabaseAdmin
-        .from("forfeited_balances")
-        .update({
-          status: "RESOLVED",
-          resolved_at: new Date().toISOString(),
-          resolved_by: userEmail.toLowerCase().trim(),
-          resolution_notes: notes || "Resolved to platform balance by admin",
-        })
-        .eq("id", forfeitureId);
 
       // Record in payments
       try {

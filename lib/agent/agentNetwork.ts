@@ -50,6 +50,19 @@ export async function bindUserToAgentByCode({
     return { success: false, error: "You cannot refer your own account." };
   }
 
+  // Block circular referrals (A <-> B) so two accounts cannot mutually farm agent commission
+  try {
+    const { data: reverseEdge } = await supabaseAdmin
+      .from("referrals")
+      .select("id")
+      .ilike("referrer_email", cleanReferee)
+      .ilike("referee_email", referrerEmail)
+      .maybeSingle();
+    if (reverseEdge) {
+      return { success: false, error: "Circular referrals are not permitted." };
+    }
+  } catch {}
+
   // Block banned/revoked referrers while allowing active regular users & agents to invite followers
   const referrerStatus = await checkIsUserAgent(referrerEmail);
   if (referrerStatus.isBanned) {
@@ -136,6 +149,7 @@ export async function bindUserToAgentByCode({
     await Promise.all([
       redisConnection.set(`agent:edge:${cleanReferee}`, JSON.stringify(edge), "EX", 86400 * 365).catch(() => {}),
       redisConnection.sadd(`agent:downline:${referrerEmail}`, cleanReferee).catch(() => {}),
+      redisConnection.expire(`agent:downline:${referrerEmail}`, 600).catch(() => {}),
     ]);
   }
 

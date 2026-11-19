@@ -3,6 +3,7 @@ import { getAuthenticatedEmail } from "@/lib/authHelper";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection from "@/lib/redis";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+import { clearMonetizationUnlockDedup } from "@/lib/notifications/milestoneNotifications";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,18 +14,35 @@ export async function POST(req: NextRequest) {
 
     const cleanUserEmail = userEmail.toLowerCase().trim();
 
+    // Guard (M-03): Only allow resuming/resetting monetization if user actually opted out (`has_cancelled_monetization === true`)
+    const { data: currentUser, error: fetchErr } = await supabaseAdmin
+      .from("users")
+      .select("has_cancelled_monetization")
+      .ilike("email", cleanUserEmail)
+      .maybeSingle();
+
+    if (fetchErr) {
+      return NextResponse.json({ error: "Failed to verify monetization state." }, { status: 500 });
+    }
+    if (!currentUser?.has_cancelled_monetization) {
+      return NextResponse.json(
+        { error: "Monetization is not cancelled for this account." },
+        { status: 400 }
+      );
+    }
+
     // Reset monetization_clicks to 0 and set monetized to false to start 500 clicks path
-    // Uses indexed exact match for 0-lock, sub-millisecond execution at 500M+ users
     const { error: updateErr } = await supabaseAdmin
       .from("users")
       .update({
         monetized: "false",
+        monetized_at: null,
         monetization_clicks: 0,
         atw_tier: "ATW1",
         attention_worth_score: 0.1,
         has_cancelled_monetization: false,
       })
-      .eq("email", cleanUserEmail);
+      .ilike("email", cleanUserEmail);
 
     if (updateErr) {
       console.error("❌ Error resuming monetization path:", updateErr);
@@ -34,6 +52,7 @@ export async function POST(req: NextRequest) {
     // Invalidate Redis Caches
     await Promise.all([
       invalidateCachedProfile(cleanUserEmail),
+      clearMonetizationUnlockDedup(cleanUserEmail).catch(() => {}),
       redisConnection.del(`monetize:status:${cleanUserEmail}`).catch(() => {}),
       redisConnection.del(`monetize:status:v2:${cleanUserEmail}`).catch(() => {}),
       redisConnection.del(`user:live_clicks:${cleanUserEmail}`).catch(() => {}),

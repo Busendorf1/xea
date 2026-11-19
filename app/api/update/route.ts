@@ -2,7 +2,29 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
 import { getAuthenticatedEmail, isAdminEmail } from "@/lib/authHelper";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { invalidateCachedProfile } from "@/lib/utils/cache";
+
+const RESERVED_USERNAMES = new Set([
+  "admin",
+  "administrator",
+  "paayh",
+  "paayhofficial",
+  "support",
+  "help",
+  "security",
+  "billing",
+  "official",
+  "staff",
+  "moderator",
+  "system",
+  "root",
+  "api",
+  "auth",
+  "login",
+  "logout",
+  "xea",
+]);
 import { getProfileEditCooldownState } from "@/lib/utils/profileCooldown";
 import {
   encryptSensitiveField,
@@ -25,7 +47,28 @@ export async function POST(req: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
     const isAdmin = isAdminEmail(emailLower);
+
+    const rl = await checkRateLimit(req, {
+      limit: 15,
+      windowSeconds: 60,
+      identifier: emailLower,
+      identifierPrefix: "profile_update",
+    });
+    if (!rl.allowed && rl.response) {
+      return rl.response;
+    }
+
     const data = await req.json();
+
+    // Enforce bounded text field lengths to prevent payload bloating / DoS
+    if (typeof data?.bio === "string" && data.bio.length > 500) {
+      return NextResponse.json({ error: "Bio cannot exceed 500 characters." }, { status: 400 });
+    }
+    for (const field of ["firstName", "lastName", "business_name", "country", "state", "location"] as const) {
+      if (typeof data?.[field] === "string" && data[field].length > 100) {
+        return NextResponse.json({ error: `${field} cannot exceed 100 characters.` }, { status: 400 });
+      }
+    }
 
     // Validate profileImage URL upfront against strict HTTPS allowlist (blocks XSS/SSRF)
     let validatedProfileImage: string | undefined = undefined;
@@ -134,11 +177,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Check username uniqueness if username is provided in update
+    // 3. Check username validity, reserved blocklist & uniqueness if username is provided in update
     const usernameInput = data.username;
     let cleanUsername: string | null = null;
     if (usernameInput) {
       cleanUsername = String(usernameInput).trim().toLowerCase().replace(/^@/, "");
+      if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+        return NextResponse.json(
+          { error: "Username must be between 3 and 30 characters." },
+          { status: 400 }
+        );
+      }
+      if (!isAdmin && RESERVED_USERNAMES.has(cleanUsername)) {
+        return NextResponse.json(
+          { error: "This username is reserved. Please choose another." },
+          { status: 400 }
+        );
+      }
       const handlesToCheck = [cleanUsername, `@${cleanUsername}`];
       const { data: usernameCheck, error: userErr } = await supabaseAdmin
         .from("users")

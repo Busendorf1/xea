@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getVerifiedUserEmail } from "../_shared/auth.ts";
+import { checkAccountBlockedEdge, getVerifiedUserEmail } from "../_shared/auth.ts";
 import { computePhoneHash, corsHeaders, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { decryptSensitiveFieldEdge } from "../_shared/crypto.ts";
 import { deductWalletAtomic, refundWalletAtomic } from "../_shared/paymentActivation.ts";
@@ -96,11 +96,28 @@ serve(async (req: Request) => {
         body?.phone || body?.phoneNumber || body?.registeredPhone || "",
       ).trim();
 
-      if (!Number.isFinite(amount) || amount < 100) {
-        return errorResponse("Minimum withdrawal amount is ₦100.", 400);
+      const MIN_WITHDRAWAL = 10000;
+      if (!Number.isFinite(amount) || amount < MIN_WITHDRAWAL) {
+        return errorResponse(`Minimum withdrawal amount is ₦${MIN_WITHDRAWAL.toLocaleString("en-NG")}.`, 400);
       }
       if (!/^\d{10}$/.test(accountNumber) || !bankCode || !accountName) {
         return errorResponse("Complete 10-digit bank account details are required.", 400);
+      }
+
+      // 0. Check admin temporary/permanent block
+      const blockStatus = await checkAccountBlockedEdge(supabase, cleanEmail);
+      if (blockStatus.blocked) {
+        return errorResponse(
+          blockStatus.message || "Your account is currently blocked from accessing Paayh.",
+          403,
+          {
+            code: "ACCOUNT_BLOCKED",
+            blocked: true,
+            blockType: blockStatus.blockType || "permanent",
+            blockedUntil: blockStatus.blockedUntil ?? null,
+            reason: blockStatus.reason ?? null,
+          },
+        );
       }
 
       // 1. Enforce mandatory Wallet PIN + DB brute-force lockout
@@ -136,6 +153,8 @@ serve(async (req: Request) => {
 
       if (
         user.ad_account_status === "banned" ||
+        user.ad_account_status === "perm_banned" ||
+        user.ad_account_status === "temp_blocked" ||
         user.ad_account_status === "deactivated" ||
         (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now())
       ) {
@@ -173,25 +192,31 @@ serve(async (req: Request) => {
         );
       }
 
-      // 4. Unified fee calculation from active gateway schedule
+      // 4. Unified fee calculation (H-04 parity: deduct fee FROM payout so user can withdraw 100% of balance)
       const primaryProvider = getActiveGateway();
       const quotedFee = calculateTransferFee(amount, primaryProvider);
-      const totalDebit = Math.round((amount + quotedFee) * 100) / 100;
-
-      if (Number(user.balance || 0) < totalDebit) {
+      const netAmount = Math.round((amount - quotedFee) * 100) / 100;
+      if (netAmount <= 0) {
         return errorResponse(
-          `Insufficient balance. You need ₦${totalDebit.toLocaleString()} (including ₦${quotedFee} fee).`,
+          `Withdrawal amount must exceed the ₦${quotedFee} network transfer fee.`,
+          400,
+        );
+      }
+
+      if (Number(user.balance || 0) < amount) {
+        return errorResponse(
+          `Insufficient balance. Your available balance is ₦${Number(user.balance || 0).toLocaleString()}.`,
           400,
         );
       }
 
       const reference = `wd_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
-      // 5. Atomic wallet deduction BEFORE disbursement
+      // 5. Atomic wallet deduction BEFORE disbursement (deduct gross amount; disburse netAmount)
       const deduction = await deductWalletAtomic(
         supabase,
         cleanEmail,
-        totalDebit,
+        amount,
         "withdrawal",
         reference,
       );
@@ -207,20 +232,20 @@ serve(async (req: Request) => {
       // 6. Execute disbursement via unified payout provider
       const payout = await initiatePayout({
         reference,
-        amount,
+        amount: netAmount,
         bankCode,
         accountNumber,
         accountName,
         customerEmail: cleanEmail,
         customerName,
-        narration: `XEA Withdrawal - ${reference}`,
+        narration: `Paayh Withdrawal - ${reference}`,
       });
 
       if (!payout.success) {
         await refundWalletAtomic(
           supabase,
           cleanEmail,
-          totalDebit,
+          amount,
           "withdrawal_failed_rollback",
           `refund_${reference}`,
         );
@@ -230,21 +255,7 @@ serve(async (req: Request) => {
         );
       }
 
-      // Refund any positive fee delta if fallback provider had a lower fee
-      if (payout.fee < quotedFee) {
-        const feeDelta = Math.round((quotedFee - payout.fee) * 100) / 100;
-        if (feeDelta > 0) {
-          await refundWalletAtomic(
-            supabase,
-            cleanEmail,
-            feeDelta,
-            "withdrawal_fee_adjustment",
-            `fee_adj_${reference}`,
-          );
-        }
-      }
-
-      const actualFee = Math.min(quotedFee, payout.fee);
+      const actualFee = quotedFee;
       const nextWithdrawn = Math.round((Number(user.withdrawal || 0) + amount) * 100) / 100;
       await supabase
         .from("users")
@@ -256,12 +267,14 @@ serve(async (req: Request) => {
           user_email: cleanEmail,
           reference: payout.reference || reference,
           amount,
-          status: payout.status === "success" ? "completed" : "processing",
+          status: payout.status === "success" ? "success" : "processing",
           type: "withdrawal",
           description: `Withdrawal to ${bankName || bankCode} (${accountNumber.slice(-4)})`,
           metadata: {
             provider: payout.provider,
             fee: actualFee,
+            net_amount: netAmount,
+            fee_bearer: "user",
             bank_code: bankCode,
             bank_name: bankName,
             account_last4: accountNumber.slice(-4),
@@ -275,10 +288,11 @@ serve(async (req: Request) => {
         success: true,
         provider: payout.provider,
         reference: payout.reference || reference,
-        status: payout.status,
+        status: payout.status === "success" ? "success" : "processing",
         amount,
+        netAmount,
         fee: actualFee,
-        totalDebited: Math.round((amount + actualFee) * 100) / 100,
+        totalDebited: amount,
         newBalance: deduction.newBalance,
         message: "Withdrawal initiated successfully.",
       });

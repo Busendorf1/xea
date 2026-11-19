@@ -1,6 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { getAuthenticatedEmail, revokeUserTokensLocally } from "@/lib/authHelper";
 
 export const dynamic = "force-dynamic";
+
+function isSameOriginHeader(headerValue: string | null, expectedOrigin: string): boolean {
+  if (!headerValue) return true; // Direct navigation / mobile client with no Origin/Referer
+  try {
+    return new URL(headerValue).origin === new URL(expectedOrigin).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function revokeSessionAndCaches(req: NextRequest): Promise<void> {
+  try {
+    const email = await getAuthenticatedEmail(req, { allowMobileHeader: false }).catch(() => null);
+    const authHeader = req.headers.get("Authorization") || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
+
+    const { default: redisConnection, isRedisReady } = await import("@/lib/redis");
+    if (bearerToken && isRedisReady()) {
+      const digest = crypto.createHash("sha256").update(bearerToken).digest("hex");
+      await redisConnection.del(`auth:bearer:${digest}`).catch(() => {});
+    }
+
+    if (email) {
+      const emailLower = email.toLowerCase().trim();
+      revokeUserTokensLocally(emailLower);
+      if (isRedisReady()) {
+        await Promise.allSettled([
+          redisConnection.set(`revoked_before:${emailLower}`, String(Date.now()), "EX", 86400),
+          redisConnection.del(`auth:status:${emailLower}`),
+        ]);
+      }
+      const { invalidateCachedProfile } = await import("@/lib/utils/cache");
+      await invalidateCachedProfile(emailLower).catch(() => {});
+    }
+  } catch {
+    // Best-effort revocation; never block logout flow
+  }
+}
 
 function isValidHttpUrl(value: string | undefined | null): value is string {
   if (!value || typeof value !== "string") return false;
@@ -61,6 +101,20 @@ export async function GET(req: NextRequest) {
   const baseUrl = resolveSafeAbsoluteBaseUrl(req);
   const returnToUrl = resolveSafeReturnTo(req, baseUrl);
 
+  // Mitigate cross-site logout CSRF (C-09): reject cross-origin Referer/Origin requests
+  const originHeader = req.headers.get("origin");
+  const refererHeader = req.headers.get("referer");
+  const reqOrigin = req.nextUrl?.origin || baseUrl;
+  const originAllowed =
+    isSameOriginHeader(originHeader, baseUrl) || isSameOriginHeader(originHeader, reqOrigin);
+  const refererAllowed =
+    isSameOriginHeader(refererHeader, baseUrl) || isSameOriginHeader(refererHeader, reqOrigin);
+  if ((originHeader && !originAllowed) || (refererHeader && !refererAllowed)) {
+    return NextResponse.json({ error: "Cross-origin logout request rejected" }, { status: 403 });
+  }
+
+  await revokeSessionAndCaches(req);
+
   // Build direct Auth0 v2 logout URL with a guaranteed absolute http(s) returnTo URL
   const auth0LogoutUrl =
     clientId && clientId !== "placeholder-client-id"
@@ -107,5 +161,15 @@ export async function GET(req: NextRequest) {
   response.headers.set("Pragma", "no-cache");
   response.headers.set("Expires", "0");
 
+  return response;
+}
+
+/**
+ * POST /auth/logout — Server-side session & Bearer token revocation endpoint for Mobile & Web clients.
+ */
+export async function POST(req: NextRequest) {
+  await revokeSessionAndCaches(req);
+  const response = NextResponse.json({ success: true });
+  response.headers.set("Cache-Control", "private, no-store, max-age=0");
   return response;
 }

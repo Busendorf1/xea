@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
 import { formatCurrency as globalFormatCurrency } from "@/lib/utils/currency";
+import { buildInviteUrl } from "@/lib/utils/inviteLink";
 import { useAgentNetwork, formatCompactCount } from "./useAgentNetwork";
 import styles from "./AgentSystem.module.css";
 
@@ -33,7 +34,7 @@ export function BecomeAgentPage({ formatCurrency }: { formatCurrency?: (val: num
 
   const copyInviteLink = async () => {
     if (typeof window === "undefined" || !data.referralCode) return;
-    const inviteUrl = `${window.location.origin}/signup?ref=${encodeURIComponent(data.referralCode)}`;
+    const inviteUrl = buildInviteUrl(data.referralCode, window.location.origin);
     try {
       await navigator.clipboard.writeText(inviteUrl);
       setCopiedLink(true);

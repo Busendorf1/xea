@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { getAuthenticatedEmail } from "@/lib/authHelper";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import supabaseAdmin from "@/lib/utils/dbAdmin";
@@ -6,7 +7,6 @@ import { streamImpressionsToClickHouse } from "@/lib/clickhouse";
 import {
   incrementCachedMonetizationClicks,
   invalidateCachedProfile,
-  invalidateCachedUserCampaigns,
 } from "@/lib/utils/cache";
 import {
   recordCoalescedAdClick,
@@ -17,9 +17,14 @@ import { dispatchImpressionWebhook } from "@/lib/webhookDispatcher";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { computeAtwTierDetails } from "@/lib/attentionTierEngine";
 import { checkAndNotifyClickAndAtwMilestones } from "@/lib/notifications/milestoneNotifications";
+import { checkRateLimit } from "@/lib/edgeRateLimit";
+import { getEarnTokenSecret, verifyHmacSignature } from "@/lib/targetingEngine";
+import { env } from "@/lib/env";
 
 // L1 In-Memory click deduplication map (15s TTL) so CTA clicks never fail when Redis is in quota cooldown
 const l1ClickLocks = new Map<string, number>();
+// L1 per-token progress burn fallback so rapid click-type cycling cannot farm monetization clicks
+const l1ProgressBurn = new Map<string, number>();
 
 const CLICK_TYPE_CANONICAL_MAP: Record<string, string> = {
   phone: "phone",
@@ -69,37 +74,130 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const emailLower = email.toLowerCase().trim();
+
+    // 0. Per-user strict rate limit (C-13)
+    const rateLimit = await checkRateLimit(request, {
+      limit: 20,
+      windowSeconds: 60,
+      identifierPrefix: "campaign_click",
+      identifier: emailLower,
+    });
+    if (!rateLimit.allowed && rateLimit.response) {
+      return rateLimit.response;
+    }
+
     const body = await request.json();
-    const { adId, clickType } = body;
+    const { adId, clickType, token, servedAt } = body;
 
     if (!adId || !clickType) {
       return NextResponse.json({ error: "Missing adId or clickType" }, { status: 400 });
     }
 
+    // 1. Cryptographic signed feed token verification + 30m expiry (C-13)
+    if (!token || !servedAt) {
+      return NextResponse.json(
+        { error: "Verification token and timestamp are required." },
+        { status: 403 }
+      );
+    }
+
+    const secretKey = getEarnTokenSecret();
+    const fallbackAuth0Key = env.AUTH0_SECRET || process.env.AUTH0_SECRET || "";
+    const candidateKeys = Array.from(new Set([secretKey, fallbackAuth0Key].filter(Boolean)));
+    if (candidateKeys.length === 0) {
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
+
+    const rawEmail = email.trim();
+    const payloads = [`${adId}:${emailLower}:${servedAt}`, `${adId}:${rawEmail}:${servedAt}`];
+    if (!verifyHmacSignature(payloads, String(token), candidateKeys)) {
+      return NextResponse.json(
+        { error: "Cryptographic token verification failed." },
+        { status: 403 }
+      );
+    }
+
+    const now = Date.now();
+    const parsedServedAt = Number.parseInt(String(servedAt), 10);
+    if (!Number.isFinite(parsedServedAt) || parsedServedAt > now + 60_000 || now - parsedServedAt > 1_800_000) {
+      return NextResponse.json(
+        { error: "Feed token expired. Please refresh feed." },
+        { status: 403 }
+      );
+    }
+
+    // 2. Verify ad exists in addsactive, is active, and is NOT owned by caller (C-13)
+    const { data: activeAd } = await supabaseAdmin
+      .from("addsactive")
+      .select("id, user_email, is_paused, completed_at, is_admin_post, impressions, impression_count, user_frequency_cap")
+      .eq("id", adId)
+      .maybeSingle();
+
+    if (!activeAd || activeAd.is_paused || activeAd.completed_at) {
+      return NextResponse.json({ error: "Active campaign not found." }, { status: 404 });
+    }
+
+    const adOwnerEmail = activeAd.user_email ? String(activeAd.user_email).toLowerCase().trim() : null;
+    if (adOwnerEmail && adOwnerEmail === emailLower) {
+      return NextResponse.json({
+        success: true,
+        isOwner: true,
+        message: "Owner CTA click ignored to preserve campaign metrics.",
+      });
+    }
+
     const rawClickType = String(clickType).toLowerCase().trim();
     const canonicalClickType = CLICK_TYPE_CANONICAL_MAP[rawClickType] || "product_cta";
 
-    const emailLower = email.toLowerCase().trim();
-    const now = Date.now();
     const lockKey = `lock:click:${emailLower}:${adId}:${canonicalClickType}`;
 
-    // 1. L1 In-Memory 5s deduplication check
+    // 3. L1 In-Memory 15s deduplication check per (user, adId, clickType)
     const existingL1 = l1ClickLocks.get(lockKey);
     if (existingL1 && existingL1 > now) {
       return NextResponse.json({ success: true, duplicate: true });
     }
-    l1ClickLocks.set(lockKey, now + 5000);
+    l1ClickLocks.set(lockKey, now + 15_000);
     if (l1ClickLocks.size > 5000) {
       for (const [k, exp] of l1ClickLocks) {
         if (exp <= now) l1ClickLocks.delete(k);
       }
     }
 
-    // 2. L2 Redis 5s deduplication check (only enforced when Redis is ready)
+    // 4. L2 Redis 15s deduplication check
     if (isRedisReady()) {
-      const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 5, "NX").catch(() => "OK");
+      const lockAcquired = await redisConnection.set(lockKey, "1", "EX", 15, "NX").catch(() => null);
       if (!lockAcquired) {
         return NextResponse.json({ success: true, duplicate: true });
+      }
+    }
+
+    // 5. Decouple repeated CTA clicks from monetization progression & impression consumption:
+    //    Burn unified `used:feed_progress:<tokenHash>` so at most ONE progression/seen credit
+    //    is ever awarded per ad view across /earn, /seen, /monetize, and all 9 CTA click types (C-13/C-16).
+    const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32);
+    const progressBurnKey = `used:feed_progress:${tokenHash}`;
+    let canCreditProgress = false;
+    const l1BurnExp = l1ProgressBurn.get(progressBurnKey);
+    if (!l1BurnExp || l1BurnExp <= now) {
+      l1ProgressBurn.set(progressBurnKey, now + 1_800_000);
+      if (l1ProgressBurn.size > 5000) {
+        for (const [k, exp] of l1ProgressBurn) {
+          if (exp <= now) l1ProgressBurn.delete(k);
+        }
+      }
+      if (isRedisReady()) {
+        const burned = await redisConnection.set(progressBurnKey, "1", "EX", 1800, "NX").catch(() => null);
+        canCreditProgress = Boolean(burned);
+      } else {
+        // When Redis is offline, require adId not already viewed up to cap in ad_impressions
+        const { data: impRow } = await supabaseAdmin
+          .from("ad_impressions")
+          .select("view_count")
+          .eq("ad_id", adId)
+          .eq("user_email", emailLower)
+          .maybeSingle();
+        canCreditProgress = Number(impRow?.view_count || 0) < Math.max(1, Number(activeAd.user_frequency_cap || 1));
       }
     }
 
@@ -110,118 +208,150 @@ export async function POST(request: NextRequest) {
       request.headers.get("cf-ipcountry") ||
       "Global";
 
-    // 3. Every form of click is also a Seen indicator:
-    //    Persist CTA click + Seen impression + atomically increment user's monetization_clicks in DB & Redis
+    // 6. Always record CTA click analytics; ONLY credit seen impression & monetization click once per ad view
     let clicksCount: number | undefined;
     let isMonetized: boolean | undefined;
     let impressionCount: number | undefined;
     let resolvedAtwTier: string | null | undefined;
     let resolvedAtwScore: number | null | undefined;
+    let resolvedIsExempt = isExemptFromBarriersAndInactivity(emailLower);
+    let milestoneNotified = false;
+    let monetizationUnlocked = false;
+    let atwUpgraded = false;
+    const nowIso = new Date(now).toISOString();
 
     await Promise.all([
       recordCoalescedAdClick(adId, canonicalClickType as CanonicalClickType),
-      (async () => {
-        try {
-          const updatedImp = await recordCoalescedAdSeen(adId, emailLower, {
-            userCap: 1,
-            isPlatformPost: false,
-            adOwnerEmail: null,
-            dbImpressionsTarget: 0,
-            dbImpressionCount: 0,
-          });
-          if (typeof updatedImp === "number") {
-            impressionCount = updatedImp;
-          }
-        } catch {}
-      })(),
-      (async () => {
-        const { data: prevUserRow } = await supabaseAdmin
-          .from("users")
-          .select("id, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score")
-          .eq("email", emailLower)
-          .maybeSingle();
+      ...(canCreditProgress
+        ? [
+            (async () => {
+              try {
+                const updatedImp = await recordCoalescedAdSeen(adId, emailLower, {
+                  userCap: Math.max(1, Number(activeAd.user_frequency_cap || 1)),
+                  isPlatformPost: Boolean(activeAd.is_admin_post),
+                  adOwnerEmail,
+                  dbImpressionsTarget: Number(activeAd.impressions || 0),
+                  dbImpressionCount: Number(activeAd.impression_count || 0),
+                });
+                if (typeof updatedImp === "number") {
+                  impressionCount = updatedImp;
+                }
+              } catch {}
+            })(),
+            (async () => {
+              const { data: prevUserRow } = await supabaseAdmin
+                .from("users")
+                .select("id, monetization_clicks, monetized, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career")
+                .eq("email", emailLower)
+                .maybeSingle();
 
-        const prevClicks = Number(prevUserRow?.monetization_clicks || 0);
-        const prevMonetized =
-          prevUserRow?.monetized === true ||
-          prevUserRow?.monetized === "true" ||
-          prevUserRow?.monetized === "yes";
-        const hasCancelled = Boolean(prevUserRow?.has_cancelled_monetization);
-        const existingAtwTier: string | null | undefined = prevUserRow?.atw_tier;
-        const existingAtwScore: number | null | undefined = prevUserRow?.attention_worth_score;
+              const prevClicks = Number(prevUserRow?.monetization_clicks || 0);
+              const prevMonetized =
+                prevUserRow?.monetized === true ||
+                prevUserRow?.monetized === "true" ||
+                prevUserRow?.monetized === "yes" ||
+                prevUserRow?.monetized === "1" ||
+                prevUserRow?.monetized === "t";
+              const hasCancelled = Boolean(prevUserRow?.has_cancelled_monetization);
+              const existingAtwTier: string | null | undefined = prevUserRow?.atw_tier;
+              const existingAtwScore: number | null | undefined = prevUserRow?.attention_worth_score;
+              const isExempt = isExemptFromBarriersAndInactivity(emailLower, prevUserRow as any);
+              resolvedIsExempt = isExempt;
 
-        const [rpcRes, liveVal] = await Promise.all([
-          supabaseAdmin.rpc("increment_user_click_progress", {
-            p_email: emailLower,
-            p_count: 1,
-          }),
-          incrementCachedMonetizationClicks(emailLower, 1).catch(() => 0),
-        ]);
+              const [rpcRes, liveVal] = await Promise.all([
+                supabaseAdmin.rpc("increment_user_click_progress", {
+                  p_email: emailLower,
+                  p_count: 1,
+                }),
+                incrementCachedMonetizationClicks(emailLower, 1).catch(() => 0),
+              ]);
 
-        const rpcCount =
-          !rpcRes.error &&
-          rpcRes.data &&
-          rpcRes.data.length > 0 &&
-          typeof rpcRes.data[0].new_click_count === "number"
-            ? Number(rpcRes.data[0].new_click_count)
-            : null;
+              const rpcCount =
+                !rpcRes.error &&
+                rpcRes.data &&
+                rpcRes.data.length > 0 &&
+                typeof rpcRes.data[0].new_click_count === "number"
+                  ? Number(rpcRes.data[0].new_click_count)
+                  : null;
 
-        if (rpcCount !== null && rpcCount > 0) {
-          clicksCount = Math.max(rpcCount, liveVal || 0);
-          isMonetized = hasCancelled ? false : (!!rpcRes.data[0].is_now_monetized || clicksCount >= 500);
-        } else {
-          const nextDbClicks = Math.max(prevClicks + 1, liveVal || 0);
-          const nextMon = hasCancelled ? false : (prevMonetized || nextDbClicks >= 500);
-          if (prevUserRow?.id) {
-            await supabaseAdmin
-              .from("users")
-              .update({
-                monetization_clicks: nextDbClicks,
-                ...(nextMon ? { monetized: "true" } : {}),
-              })
-              .eq("id", prevUserRow.id);
-          }
-          clicksCount = nextDbClicks;
-          isMonetized = nextMon;
-        }
+              if (rpcCount !== null && rpcCount > 0) {
+                clicksCount = Math.max(rpcCount, liveVal || 0);
+                isMonetized = hasCancelled
+                  ? false
+                  : Boolean(isExempt || rpcRes.data[0].is_now_monetized || prevMonetized || clicksCount >= 500);
+              } else {
+                const nextDbClicks = Math.max(prevClicks + 1, liveVal || 0);
+                const nextMon = hasCancelled ? false : (isExempt || prevMonetized || nextDbClicks >= 500);
+                if (prevUserRow?.id) {
+                  await supabaseAdmin
+                    .from("users")
+                    .update({
+                      monetization_clicks: nextDbClicks,
+                      ...(nextMon ? { monetized: "true" } : {}),
+                      ...(nextMon && !prevMonetized ? { monetized_at: nowIso } : {}),
+                    })
+                    .eq("id", prevUserRow.id);
+                }
+                clicksCount = nextDbClicks;
+                isMonetized = nextMon;
+              }
 
-        const isExempt = isExemptFromBarriersAndInactivity(emailLower);
-        const tierDetails = computeAtwTierDetails(clicksCount || 0, existingAtwTier, isExempt, existingAtwScore);
+              const tierDetails = computeAtwTierDetails(clicksCount || 0, existingAtwTier, isExempt, existingAtwScore);
 
-        supabaseAdmin
-          .from("users")
-          .update({
-            atw_tier: tierDetails.tierCode,
-            ...(isMonetized || isExempt ? { monetized: "true" } : {}),
-          })
-          .eq("email", emailLower)
-          .then(() => {});
+              const needsUserSync =
+                tierDetails.tierCode !== existingAtwTier ||
+                (!hasCancelled && Boolean(isMonetized || isExempt) && !prevMonetized) ||
+                (rpcCount !== null && clicksCount !== undefined && clicksCount > rpcCount);
 
-        checkAndNotifyClickAndAtwMilestones({
-          email: emailLower,
-          prevClicks,
-          prevMonetized,
-          prevAtwTier: existingAtwTier,
-          nextClicks: clicksCount || 0,
-          nextMonetized: Boolean(isMonetized),
-          nextAtwTier: tierDetails.tierCode,
-          attentionWorthScore: existingAtwScore,
-          isExempt,
-          hasCancelled,
-        }).catch(() => {});
+              if (needsUserSync) {
+                const syncPayload: Record<string, unknown> = {
+                  atw_tier: tierDetails.tierCode,
+                };
+                if (rpcCount !== null && clicksCount !== undefined && clicksCount > rpcCount) {
+                  syncPayload.monetization_clicks = clicksCount;
+                }
+                if (!hasCancelled && (isMonetized || isExempt) && !prevMonetized) {
+                  syncPayload.monetized = "true";
+                  syncPayload.monetized_at = nowIso;
+                }
+                const updateQuery = prevUserRow?.id
+                  ? supabaseAdmin.from("users").update(syncPayload).eq("id", prevUserRow.id)
+                  : supabaseAdmin.from("users").update(syncPayload).eq("email", emailLower);
+                await Promise.resolve(updateQuery).catch(() => {});
+              }
 
-        if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
-          redisConnection.set(`user:live_clicks:v2:${emailLower}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});
-          redisConnection.del(`monetize:status:v2:${emailLower}`).catch(() => {});
-        }
-        invalidateCachedProfile(emailLower).catch(() => {});
-        resolvedAtwTier = existingAtwTier;
-        resolvedAtwScore = existingAtwScore;
-      })(),
+              const milestoneRes = await checkAndNotifyClickAndAtwMilestones({
+                email: emailLower,
+                prevClicks,
+                prevMonetized,
+                prevAtwTier: existingAtwTier,
+                nextClicks: clicksCount || 0,
+                nextMonetized: Boolean(isMonetized),
+                nextAtwTier: tierDetails.tierCode,
+                attentionWorthScore: existingAtwScore,
+                isExempt,
+                hasCancelled,
+              }).catch(() => null);
+
+              if (milestoneRes) {
+                monetizationUnlocked = Boolean(milestoneRes.monetizationNotified);
+                atwUpgraded = Boolean(milestoneRes.atwNotified);
+                milestoneNotified = monetizationUnlocked || atwUpgraded;
+              }
+
+              if (clicksCount !== undefined && clicksCount > 0 && isRedisReady()) {
+                redisConnection.set(`user:live_clicks:v2:${emailLower}`, String(clicksCount), "EX", 86400 * 30).catch(() => {});
+                redisConnection.del(`monetize:status:v2:${emailLower}`).catch(() => {});
+              }
+              invalidateCachedProfile(emailLower).catch(() => {});
+              resolvedAtwTier = tierDetails.tierCode;
+              resolvedAtwScore = existingAtwScore;
+            })(),
+          ]
+        : []),
     ]);
 
-    const isExempt = isExemptFromBarriersAndInactivity(emailLower);
-    const tierDetails = computeAtwTierDetails(clicksCount || 0, resolvedAtwTier, isExempt, resolvedAtwScore);
+    const tierDetails = computeAtwTierDetails(clicksCount || 0, resolvedAtwTier, resolvedIsExempt, resolvedAtwScore);
     if (typeof clicksCount === "number") {
       dispatchImpressionWebhook({
         event: "ad.seen",
@@ -230,7 +360,7 @@ export async function POST(request: NextRequest) {
           userEmail: emailLower,
           adId,
           clicksCount,
-          isMonetized: Boolean(isMonetized || isExempt),
+          isMonetized: Boolean(isMonetized || resolvedIsExempt),
           impressionCount,
           atwTier: tierDetails.tierCode,
         },
@@ -253,10 +383,13 @@ export async function POST(request: NextRequest) {
       success: true,
       clickType: canonicalClickType,
       clicksCount,
-      isMonetized: Boolean(isMonetized || isExempt),
+      isMonetized: Boolean(isMonetized || resolvedIsExempt),
       atwTier: tierDetails.tierCode,
       holdingCap: tierDetails.isUnlimited ? null : tierDetails.holdingCap,
       impressionCount,
+      milestoneNotified,
+      monetizationUnlocked,
+      atwUpgraded,
     });
   } catch (err: any) {
     console.error("❌ Unexpected error in POST /api/campaigns/click:", err);

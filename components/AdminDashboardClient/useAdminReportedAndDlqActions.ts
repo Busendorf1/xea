@@ -13,7 +13,7 @@ interface UseAdminReportedAndDlqActionsParams {
   setInspectingAd: (a: any) => void;
   adActionLoading: string | null;
   setAdActionLoading: (l: string | null) => void;
-  searchQuery: string;
+  reportedAdsSearch: string;
   setDlqLoading: (l: boolean) => void;
   setDlqJobs: (j: any[]) => void;
   setDlqCount: (c: number) => void;
@@ -30,7 +30,7 @@ export function useAdminReportedAndDlqActions({
   setInspectingAd,
   adActionLoading,
   setAdActionLoading,
-  searchQuery,
+  reportedAdsSearch,
   setDlqLoading,
   setDlqJobs,
   setDlqCount,
@@ -113,7 +113,7 @@ export function useAdminReportedAndDlqActions({
         json.message || "Ad campaign deactivated successfully for all users!",
         "Campaign Deactivated"
       );
-      fetchReportedAds(reportedAdsPage, searchQuery, true);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch, true);
     } catch (e: any) {
       await alertDialog("Failed to deactivate ad: " + e.message, "Error");
     } finally {
@@ -160,7 +160,7 @@ export function useAdminReportedAndDlqActions({
           `All ads created by advertiser ${advertiserEmail} have been deactivated and the account has been banned.`,
         "Advertiser Blocked"
       );
-      fetchReportedAds(reportedAdsPage, searchQuery, true);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch, true);
     } catch (e: any) {
       await alertDialog("Failed to block advertiser: " + e.message, "Error");
     } finally {
@@ -190,7 +190,7 @@ export function useAdminReportedAndDlqActions({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
       await alertDialog("Report dismissed successfully.", "Report Dismissed");
-      fetchReportedAds(reportedAdsPage, searchQuery, true);
+      fetchReportedAds(reportedAdsPage, reportedAdsSearch, true);
     } catch (e: any) {
       await alertDialog("Failed to dismiss report: " + e.message, "Error");
     } finally {

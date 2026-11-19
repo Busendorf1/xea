@@ -1,6 +1,10 @@
-import supabaseAdmin from "@/lib/utils/dbAdmin";
-import redisConnection, { isRedisReady, scanDeletePattern } from "@/lib/redis";
-import { invalidateCachedUserCampaigns } from "@/lib/utils/cache";
+import supabaseAdmin from "../utils/dbAdmin";
+import redisConnection, { isRedisReady, scanDeletePattern } from "../redis";
+import {
+  evictAdFromL1FeedCaches,
+  invalidateAllHighlights,
+  invalidateCachedUserCampaigns,
+} from "../utils/cache";
 import { z } from "zod";
 
 export const ADMIN_CAMPAIGNS_CACHE_PREFIX = "admin:campaigns:";
@@ -28,23 +32,22 @@ export const adminCampaignActionSchema = z.object({
   payload: z.record(z.string(), z.any()).optional(),
 });
 
-// Strict field allowlists to prevent mass assignment of financial/ownership/system columns
+// Strict field allowlists matching real public.adds / public.addsactive schema columns
 export const ALLOWED_AD_EDIT_FIELDS = [
-  "headline",
-  "content",
   "ad_content",
-  "cta_link",
-  "cta_button_text",
   "ad_type",
   "ad_media_type",
   "ad_media",
   "ad_media_url",
-  "media_url",
   "ad_action_buttons",
   "action_phone",
   "action_whatsapp",
   "action_website",
   "action_email",
+  "product_cta_type",
+  "product_cta_link",
+  "product_name",
+  "product_price",
   "impressions",
   "campaign_days",
   "daily_impression_cap",
@@ -53,10 +56,11 @@ export const ALLOWED_AD_EDIT_FIELDS = [
   "interest",
   "country",
   "state",
-  "location",
+  "province",
   "gender",
   "age_range",
-  "employment",
+  "targeting_all",
+  "employment_status",
   "lifestyle",
   "behavior",
   "personality",
@@ -83,18 +87,12 @@ export const ALLOWED_HIGHLIGHT_EDIT_FIELDS = [
 export const ALLOWED_DIRECT_AD_FIELDS = [
   "id",
   "user_email",
-  "headline",
-  "content",
   "ad_content",
-  "cta_link",
-  "cta_button_text",
   "ad_type",
   "ad_media_type",
-  "media_url",
   "ad_media",
   "ad_media_url",
   "impressions",
-  "impressions_remaining",
   "campaign_days",
   "daily_impression_cap",
   "daily_impression_count",
@@ -104,13 +102,20 @@ export const ALLOWED_DIRECT_AD_FIELDS = [
   "action_whatsapp",
   "action_website",
   "action_email",
+  "product_cta_type",
+  "product_cta_link",
   "industry",
   "interest",
   "country",
   "state",
-  "location",
+  "province",
   "gender",
   "age_range",
+  "targeting_all",
+  "employment_status",
+  "lifestyle",
+  "behavior",
+  "personality",
   "custom_sponsor_name",
   "custom_sponsor_handle",
   "custom_sponsor_logo",
@@ -189,6 +194,14 @@ export async function invalidateAdminCampaignCache(
   }
   if (targetUserEmail) {
     tasks.push(invalidateCachedUserCampaigns(targetUserEmail).catch(() => {}));
+  }
+
+  // Always evict in-process L1 feed & highlights caches synchronously so changes reflect immediately
+  if (action?.includes("ad")) {
+    evictAdFromL1FeedCaches(targetId);
+  }
+  if (action?.includes("highlight")) {
+    tasks.push(invalidateAllHighlights().catch(() => {}));
   }
 
   if (isRedisReady()) {

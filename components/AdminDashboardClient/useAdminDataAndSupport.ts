@@ -42,7 +42,9 @@ export function useAdminDataAndSupport(params: {
   reportedAds: any[];
   setReportedAds: (r: any[]) => void;
   reportedAdsPage: number;
+  setReportedAdsPage: (p: number) => void;
   reportedAdsSearch: string;
+  setReportedAdsSearch: (s: string) => void;
   setReportedAdsCount: (c: number) => void;
   setInspectLoading: (l: boolean) => void;
   setInspectingAd: (a: any) => void;
@@ -113,7 +115,9 @@ export function useAdminDataAndSupport(params: {
     reportedAds,
     setReportedAds,
     reportedAdsPage,
+    setReportedAdsPage,
     reportedAdsSearch,
+    setReportedAdsSearch,
     setReportedAdsCount,
     setInspectLoading,
     setInspectingAd,
@@ -168,7 +172,7 @@ export function useAdminDataAndSupport(params: {
     setInspectingAd,
     adActionLoading,
     setAdActionLoading,
-    searchQuery,
+    reportedAdsSearch,
     setDlqLoading,
     setDlqJobs,
     setDlqCount,
@@ -279,8 +283,8 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchPendingAdsTab = async (page: number, fresh = false) => {
-    if (pendingAds.length === 0) setLoading(true);
+  const fetchPendingAdsTab = async (page: number, fresh = false, silent = false) => {
+    if (!silent && pendingAds.length === 0) setLoading(true);
     try {
       const res = await fetch(
         `/api/admin/campaigns?tab=ad-approvals&page=${page}&limit=10${fresh ? "&fresh=true" : ""}`,
@@ -293,7 +297,7 @@ export function useAdminDataAndSupport(params: {
     } catch (e) {
       console.error("Error fetching pending ads:", e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -317,8 +321,8 @@ export function useAdminDataAndSupport(params: {
     }
   };
 
-  const fetchPendingHighlightsTab = async (page: number, fresh = false) => {
-    if (pendingHighlights.length === 0) setLoading(true);
+  const fetchPendingHighlightsTab = async (page: number, fresh = false, silent = false) => {
+    if (!silent && pendingHighlights.length === 0) setLoading(true);
     try {
       const res = await fetch(
         `/api/admin/campaigns?tab=highlight-approvals&page=${page}&limit=10${fresh ? "&fresh=true" : ""}`,
@@ -331,7 +335,7 @@ export function useAdminDataAndSupport(params: {
     } catch (e) {
       console.error("Error fetching pending highlights:", e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -413,8 +417,8 @@ export function useAdminDataAndSupport(params: {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (pendingAds.length === 0) fetchPendingAdsTab(0);
-      if (pendingHighlights.length === 0) fetchPendingHighlightsTab(0);
+      if (pendingAds.length === 0) fetchPendingAdsTab(0, false, true);
+      if (pendingHighlights.length === 0) fetchPendingHighlightsTab(0, false, true);
     }, 800);
     return () => clearTimeout(timer);
   }, []);
@@ -424,7 +428,7 @@ export function useAdminDataAndSupport(params: {
     if (activeTab === "overview") {
       await fetchOverviewStats(true);
     } else if (activeTab === "accounts") {
-      await fetchUsersTab(usersPage, searchQuery, usersLimit, true);
+      await fetchUsersTab(usersPage, searchQuery, usersLimit, true, usersFilter);
     } else if (activeTab === "ad-approvals") {
       await fetchPendingAdsTab(pendingAdsPage, true);
     } else if (activeTab === "active-ads") {
@@ -437,6 +441,10 @@ export function useAdminDataAndSupport(params: {
       await fetchHelpTickets(helpTicketsPage, helpTicketSearch, true);
     } else if (activeTab === "reported-ads") {
       await fetchReportedAds(reportedAdsPage, reportedAdsSearch, true);
+    } else if (activeTab === "queues") {
+      await fetchDlqJobs();
+    } else {
+      await fetchOverviewStats(true);
     }
     setRefreshing(false);
   };
@@ -451,6 +459,8 @@ export function useAdminDataAndSupport(params: {
     setActiveHighlightsPage(0);
     setHelpTicketsPage(0);
     setHelpTicketSearch("");
+    setReportedAdsPage(0);
+    setReportedAdsSearch("");
     setReplyingTicket(null);
     setReplyText("");
   };

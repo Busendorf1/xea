@@ -1,6 +1,7 @@
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
 import LoggedInClientContainer, { TabKey } from "@/app/user/logged-in/LoggedInClientContainer";
+import AccountBlockedNotice from "@/components/ui/AccountBlockedNotice";
 import { getUserProfileForDashboard } from "@/lib/getUserProfileForDashboard";
 import { isAdminEmail } from "@/lib/authHelper";
 import { extractSharedAdIdFromSearchParams } from "@/lib/utils/adShare";
@@ -74,6 +75,10 @@ export default async function LoggedInPage({ searchParams }: PageProps) {
       }
       redirect("/user/profile-setup");
     }
+  }
+
+  if (profileResult.blockedAccount) {
+    return <AccountBlockedNotice blocked={profileResult.blockedAccount} />;
   }
 
   if (profileResult.redirectUrl) {

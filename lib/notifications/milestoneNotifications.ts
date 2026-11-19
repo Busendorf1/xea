@@ -2,6 +2,8 @@ import supabaseAdmin from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
 import { dispatchNotificationWebhook } from "@/lib/webhookDispatcher";
 import { computeAtwTierDetails, MAX_ATW_LEVEL } from "@/lib/attentionTierEngine";
+import { isExemptFromBarriersAndInactivity } from "../adminHelper";
+import { invalidateL1UserNotif, getUserNotifCacheKey } from "./notificationCache";
 
 export function parseNumericAtwLevel(tierCode?: string | null): number {
   if (!tierCode || typeof tierCode !== "string") return 1;
@@ -14,13 +16,32 @@ export function parseNumericAtwLevel(tierCode?: string | null): number {
   return Math.min(MAX_ATW_LEVEL, parsed);
 }
 
-async function invalidateUserNotificationAndTierCaches(emailLower: string): Promise<void> {
+export async function invalidateUserNotificationAndTierCaches(emailLower: string): Promise<void> {
+  const clean = String(emailLower || "").toLowerCase().trim();
+  if (!clean) return;
+  invalidateL1UserNotif(clean);
   if (!isRedisReady()) return;
   await Promise.allSettled([
-    redisConnection.del(`notifications:user:${emailLower}`),
-    redisConnection.del(`monetize:status:v2:${emailLower}`),
-    redisConnection.del(`monetize:status:${emailLower}`),
-    redisConnection.del(`user:profile:${emailLower}`),
+    redisConnection.del(getUserNotifCacheKey(clean)),
+    redisConnection.del(`notifications:${clean}`),
+    redisConnection.del(`monetize:status:v2:${clean}`),
+    redisConnection.del(`monetize:status:${clean}`),
+    redisConnection.del(`user:profile:${clean}`),
+  ]);
+}
+
+/**
+ * Clears Redis milestone deduplication keys when a user opts out, reapplies,
+ * or is reset due to 7-day inactivity so they receive the congratulatory
+ * notification again when they re-qualify at 500 clicks.
+ */
+export async function clearMonetizationUnlockDedup(email: string): Promise<void> {
+  const emailLower = String(email || "").toLowerCase().trim();
+  if (!emailLower || !isRedisReady()) return;
+  await Promise.allSettled([
+    redisConnection.del(`notif:milestone:v2:monetized:500:${emailLower}`),
+    redisConnection.del(`notif:milestone:v2:monetized:500:${emailLower}:lock`),
+    redisConnection.del(`notif:milestone:monetized:500:${emailLower}`),
   ]);
 }
 
@@ -31,6 +52,7 @@ async function insertDeduplicatedNotification(params: {
   dedupKey: string;
   dedupTtlSeconds: number;
   dbDedupLookbackDays?: number;
+  sqlAlreadyInserted?: boolean;
 }): Promise<boolean> {
   const {
     emailLower,
@@ -39,31 +61,74 @@ async function insertDeduplicatedNotification(params: {
     dedupKey,
     dedupTtlSeconds,
     dbDedupLookbackDays = 30,
+    sqlAlreadyInserted = false,
   } = params;
 
   if (!emailLower) return false;
 
+  const lockKey = `${dedupKey}:lock`;
+  let lockAcquired = false;
+
   if (isRedisReady()) {
     try {
-      const acquired = await redisConnection.set(dedupKey, "1", "EX", dedupTtlSeconds, "NX");
+      // Fast-path check: only set AFTER a DB row is confirmed to exist
+      if (typeof redisConnection.get === "function") {
+        const alreadySent = await redisConnection.get(dedupKey);
+        if (alreadySent === "1") return false;
+      }
+      // Short 30s in-flight lock prevents duplicate concurrent inserts without permanent suppression on error
+      const acquired = await redisConnection.set(lockKey, "1", "EX", 30, "NX");
       if (!acquired) return false;
+      lockAcquired = true;
     } catch {
       // Fall through to DB dedup check
     }
   }
 
+  const releaseLock = async () => {
+    if (lockAcquired && isRedisReady()) {
+      await redisConnection.del(lockKey).catch(() => {});
+      lockAcquired = false;
+    }
+  };
+
   try {
     const sinceIso = new Date(Date.now() - dbDedupLookbackDays * 86400_000).toISOString();
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: selectErr } = await supabaseAdmin
       .from("notifications")
-      .select("id")
+      .select("id, created_at")
       .ilike("user_email", emailLower)
       .eq("title", title)
       .gte("created_at", sinceIso)
       .limit(1)
       .maybeSingle();
 
+    if (selectErr) {
+      console.warn("⚠️ Error checking existing milestone notification:", selectErr.message);
+    }
+
     if (existing?.id) {
+      const createdMs = existing.created_at ? new Date(existing.created_at).getTime() : 0;
+      const insertedJustNow =
+        sqlAlreadyInserted || (createdMs > 0 && Date.now() - createdMs <= 15_000);
+
+      if (isRedisReady()) {
+        await redisConnection.set(dedupKey, "1", "EX", dedupTtlSeconds).catch(() => {});
+      }
+      await releaseLock();
+
+      if (insertedJustNow) {
+        await invalidateUserNotificationAndTierCaches(emailLower);
+        await dispatchNotificationWebhook({
+          id: existing.id,
+          user_email: emailLower,
+          title,
+          message,
+          created_at: existing.created_at || new Date().toISOString(),
+        }).catch(() => {});
+        return true;
+      }
+
       return false;
     }
 
@@ -75,24 +140,30 @@ async function insertDeduplicatedNotification(params: {
 
     if (insertErr) {
       console.warn("⚠️ Failed inserting milestone notification:", insertErr.message);
+      await releaseLock();
       return false;
     }
 
+    // Confirm long-TTL Redis dedup ONLY after DB insert succeeded
+    if (isRedisReady()) {
+      await redisConnection.set(dedupKey, "1", "EX", dedupTtlSeconds).catch(() => {});
+    }
+    await releaseLock();
+
     await invalidateUserNotificationAndTierCaches(emailLower);
 
-    if (inserted) {
-      dispatchNotificationWebhook({
-        id: inserted.id,
-        user_email: emailLower,
-        title,
-        message,
-        created_at: inserted.created_at,
-      }).catch(() => {});
-    }
+    await dispatchNotificationWebhook({
+      id: inserted?.id,
+      user_email: emailLower,
+      title,
+      message,
+      created_at: inserted?.created_at || new Date().toISOString(),
+    }).catch(() => {});
 
     return true;
   } catch (err: unknown) {
     console.warn("⚠️ Milestone notification error:", (err as Error)?.message || err);
+    await releaseLock();
     return false;
   }
 }
@@ -100,7 +171,10 @@ async function insertDeduplicatedNotification(params: {
 /**
  * Notifies a user once when reaching 500 clicks and unlocking monetization.
  */
-export async function notifyMonetizationUnlocked(email: string): Promise<boolean> {
+export async function notifyMonetizationUnlocked(
+  email: string,
+  options?: { sqlAlreadyInserted?: boolean }
+): Promise<boolean> {
   const emailLower = String(email || "").toLowerCase().trim();
   if (!emailLower) return false;
 
@@ -109,9 +183,10 @@ export async function notifyMonetizationUnlocked(email: string): Promise<boolean
     title: "Monetization Unlocked! Welcome to ATW1",
     message:
       "Congratulations! You have reached 500 clicks and unlocked monetization (ATW1, ₦30,000 balance cap). Start earning on ads now, and remember to withdraw promptly.",
-    dedupKey: `notif:milestone:monetized:500:${emailLower}`,
+    dedupKey: `notif:milestone:v2:monetized:500:${emailLower}`,
     dedupTtlSeconds: 86400 * 7,
     dbDedupLookbackDays: 7,
+    sqlAlreadyInserted: options?.sqlAlreadyInserted,
   });
 }
 
@@ -121,7 +196,8 @@ export async function notifyMonetizationUnlocked(email: string): Promise<boolean
 export async function notifyAtwLevelIncreased(
   email: string,
   tierCode: string,
-  holdingCapFormatted: string
+  holdingCapFormatted: string,
+  options?: { sqlAlreadyInserted?: boolean }
 ): Promise<boolean> {
   const emailLower = String(email || "").toLowerCase().trim();
   if (!emailLower || !tierCode || tierCode.toLowerCase() === "unlimited") return false;
@@ -130,9 +206,10 @@ export async function notifyAtwLevelIncreased(
     emailLower,
     title: `ATW Level Upgraded to ${tierCode}`,
     message: `Congratulations! Your ATW level has increased to ${tierCode}, raising your new balance cap to ${holdingCapFormatted}. Please withdraw your earnings promptly so you don't hit your limit.`,
-    dedupKey: `notif:milestone:atw:${emailLower}:${tierCode.toUpperCase()}`,
+    dedupKey: `notif:milestone:v2:atw:${emailLower}:${tierCode.toUpperCase()}`,
     dedupTtlSeconds: 86400 * 180,
     dbDedupLookbackDays: 180,
+    sqlAlreadyInserted: options?.sqlAlreadyInserted,
   });
 }
 
@@ -147,6 +224,15 @@ export interface ClickAndAtwMilestoneCheckInput {
   attentionWorthScore?: number | null;
   isExempt?: boolean;
   hasCancelled?: boolean;
+  checkRecentUnlock?: boolean;
+  sqlMonetizationNotified?: boolean;
+  sqlAtwNotified?: boolean;
+}
+
+export interface MilestoneNotificationResult {
+  monetizationNotified: boolean;
+  atwNotified: boolean;
+  notifiedAtwTier?: string;
 }
 
 /**
@@ -155,7 +241,7 @@ export interface ClickAndAtwMilestoneCheckInput {
  */
 export async function checkAndNotifyClickAndAtwMilestones(
   input: ClickAndAtwMilestoneCheckInput
-): Promise<void> {
+): Promise<MilestoneNotificationResult> {
   const {
     email,
     prevClicks,
@@ -167,16 +253,23 @@ export async function checkAndNotifyClickAndAtwMilestones(
     attentionWorthScore,
     isExempt = false,
     hasCancelled = false,
+    checkRecentUnlock = false,
+    sqlMonetizationNotified = false,
+    sqlAtwNotified = false,
   } = input;
 
-  if (!email || isExempt || hasCancelled) return;
+  if (!email || isExempt || hasCancelled) {
+    return { monetizationNotified: false, atwNotified: false };
+  }
 
   const crossedMonetizationThreshold =
     nextMonetized &&
     nextClicks >= 500 &&
     (prevMonetized === false ||
       (typeof prevClicks === "number" && prevClicks < 500) ||
-      nextClicks === 500);
+      nextClicks === 500 ||
+      checkRecentUnlock ||
+      sqlMonetizationNotified);
 
   const nextDetails = computeAtwTierDetails(
     nextClicks,
@@ -185,31 +278,51 @@ export async function checkAndNotifyClickAndAtwMilestones(
     attentionWorthScore
   );
 
-  const prevLevel =
-    prevAtwTier !== undefined
-      ? parseNumericAtwLevel(prevAtwTier)
-      : typeof prevClicks === "number"
-      ? computeAtwTierDetails(prevClicks, undefined, isExempt, attentionWorthScore).level
-      : nextDetails.level;
+  const hasExplicitPrevTier =
+    typeof prevAtwTier === "string" && prevAtwTier.trim().length > 0;
+  const prevLevel = hasExplicitPrevTier
+    ? parseNumericAtwLevel(prevAtwTier)
+    : typeof prevClicks === "number"
+    ? computeAtwTierDetails(prevClicks, undefined, isExempt, attentionWorthScore).level
+    : nextDetails.level;
 
   const atwIncreased =
     !nextDetails.isUnlimited &&
     nextDetails.level >= 2 &&
-    nextDetails.level > prevLevel;
+    (nextDetails.level > prevLevel || sqlAtwNotified);
 
-  const tasks: Promise<unknown>[] = [];
+  let monetizationNotified = false;
+  let atwNotified = false;
+
+  const tasks: Promise<void>[] = [];
   if (crossedMonetizationThreshold) {
-    tasks.push(notifyMonetizationUnlocked(email));
+    tasks.push(
+      notifyMonetizationUnlocked(email, { sqlAlreadyInserted: sqlMonetizationNotified }).then(
+        (sent) => {
+          monetizationNotified = sent;
+        }
+      )
+    );
   }
   if (atwIncreased) {
     tasks.push(
-      notifyAtwLevelIncreased(email, nextDetails.tierCode, nextDetails.holdingCapFormatted)
+      notifyAtwLevelIncreased(email, nextDetails.tierCode, nextDetails.holdingCapFormatted, {
+        sqlAlreadyInserted: sqlAtwNotified,
+      }).then((sent) => {
+        atwNotified = sent;
+      })
     );
   }
 
   if (tasks.length > 0) {
     await Promise.allSettled(tasks);
   }
+
+  return {
+    monetizationNotified,
+    atwNotified,
+    notifiedAtwTier: atwNotified ? nextDetails.tierCode : undefined,
+  };
 }
 
 export interface SqlUpgradedAtwUser {
@@ -219,7 +332,7 @@ export interface SqlUpgradedAtwUser {
 }
 
 /**
- * Invalidates Redis caches and dispatches notification webhooks after SQL RPCs insert ATW upgrade notifications.
+ * Invalidates Redis/L1 caches and dispatches notification webhooks after SQL RPCs insert ATW upgrade notifications.
  */
 export async function syncSqlAtwUpgradeNotifications(
   upgradedUsers: SqlUpgradedAtwUser[]
@@ -237,12 +350,12 @@ export async function syncSqlAtwUpgradeNotifications(
       const capFormatted = `₦${(level * 30000).toLocaleString("en-US")}`;
       if (isRedisReady()) {
         await redisConnection
-          .set(`notif:milestone:atw:${emailLower}:${tierCode.toUpperCase()}`, "1", "EX", 86400 * 180, "NX")
+          .set(`notif:milestone:v2:atw:${emailLower}:${tierCode.toUpperCase()}`, "1", "EX", 86400 * 180)
           .catch(() => {});
       }
       await invalidateUserNotificationAndTierCaches(emailLower);
 
-      dispatchNotificationWebhook({
+      await dispatchNotificationWebhook({
         user_email: emailLower,
         title: `ATW Level Upgraded to ${tierCode}`,
         message: `Congratulations! Your ATW level has increased to ${tierCode}, raising your new balance cap to ${capFormatted}. Please withdraw your earnings promptly so you don't hit your limit.`,
@@ -291,7 +404,7 @@ export async function notifyUpgradedUsersFromLevelMap(
   const tasks: Promise<unknown>[] = [];
   for (const row of data || []) {
     const emailLower = String(row?.email || "").toLowerCase().trim();
-    if (!emailLower || row.is_affiliate || row.is_career) continue;
+    if (!emailLower || isExemptFromBarriersAndInactivity(emailLower, row as any)) continue;
 
     const prevLevel = beforeLevels.get(emailLower) ?? 1;
     const details = computeAtwTierDetails(

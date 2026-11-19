@@ -337,7 +337,7 @@ export async function handleInitialize(
     reference,
     callbackUrl,
     metadata: cleanMeta,
-    customerName: String(metadata.name || cleanEmail.split("@")[0] || "XEA Customer").slice(0, 60),
+    customerName: String(metadata.name || cleanEmail.split("@")[0] || "Paayh Customer").slice(0, 60),
   });
 
   if (!initRes.success || !initRes.authorization_url) {
@@ -347,17 +347,39 @@ export async function handleInitialize(
     );
   }
 
-  const { error: insErr } = await supabase.from("payments").insert([
+  const boundMeta = {
+    ...cleanMeta,
+    gateway_reference: initRes.reference,
+    ...(initRes.provider === "kora" ? { kora_reference: initRes.reference } : {}),
+  };
+
+  let { error: insErr } = await supabase.from("payments").insert([
     {
       user_email: cleanEmail,
       reference: initRes.reference,
+      gateway_reference: initRes.reference,
       amount: finalAmount,
       status: "pending",
       type: payType,
       description: `${initRes.provider} checkout (${payType})`,
-      metadata: cleanMeta,
+      metadata: boundMeta,
     },
   ]);
+
+  if (insErr && String(insErr.message || "").includes("gateway_reference")) {
+    const fb = await supabase.from("payments").insert([
+      {
+        user_email: cleanEmail,
+        reference: initRes.reference,
+        amount: finalAmount,
+        status: "pending",
+        type: payType,
+        description: `${initRes.provider} checkout (${payType})`,
+        metadata: boundMeta,
+      },
+    ]);
+    insErr = fb.error;
+  }
 
   if (insErr) {
     return errorResponse("Failed to create payment session record.", 500);
@@ -449,19 +471,49 @@ export async function handleVerify(
     });
   }
 
-  // 2. Verify with gateway provider
+  // 2. Verify with gateway provider — Security (C-01): strictly use the DB-bound reference; NEVER trust an unrelated caller-supplied gateway_reference
   const preferredProvider = String(existingPayment.description || "").toLowerCase().includes("paystack")
     ? "paystack"
     : String(existingPayment.description || "").toLowerCase().includes("kora")
     ? "kora"
     : undefined;
-  const targetGatewayRef = String(
-    gatewayRefParam ||
-      existingPayment.metadata?.gateway_reference ||
+  const storedGatewayRef = String(
+    existingPayment.metadata?.gateway_reference ||
       existingPayment.metadata?.kora_reference ||
       existingPayment.gateway_reference ||
-      canonicalRef,
+      "",
   ).trim();
+
+  if (gatewayRefParam) {
+    const allowedRefs = new Set([canonicalRef, storedGatewayRef].filter(Boolean));
+    if (!allowedRefs.has(gatewayRefParam)) {
+      return errorResponse(
+        "Gateway reference does not match the bound payment order.",
+        403,
+      );
+    }
+  }
+
+  const targetGatewayRef = storedGatewayRef || canonicalRef;
+
+  // Cross-order replay defense: block reuse of an already-settled gateway reference on another order
+  try {
+    const { data: priorSettled } = await supabase
+      .from("payments")
+      .select("reference")
+      .eq("gateway_reference", targetGatewayRef)
+      .in("status", ["success", "completed"])
+      .neq("reference", canonicalRef)
+      .maybeSingle();
+    if (priorSettled) {
+      return errorResponse(
+        "This gateway reference has already been settled for another order.",
+        409,
+      );
+    }
+  } catch {
+    // Optional column in legacy schemas
+  }
 
   const verified = await verifyPaymentWithProvider(targetGatewayRef, preferredProvider);
   if (!verified.success || verified.status !== "success") {

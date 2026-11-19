@@ -1,11 +1,26 @@
-import { NextRequest, NextResponse } from "next/server";
-import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
-import redisConnection, { isRedisReady } from "@/lib/redis";
-import { getSpecialRoleProfile } from "@/lib/adminHelper";
+import { NextResponse } from "next/server";
+import supabaseAdmin, { supabaseReadOnly } from "../utils/dbAdmin";
+import redisConnection, { isRedisReady } from "../redis";
+import { getSpecialRoleProfile } from "../adminHelper";
+import { blindHashPII, decryptProfilePII, decryptSensitiveField } from "../security/piiCrypto";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizeAdminUserRow<T extends Record<string, any>>(row: T): T {
+  const decrypted = decryptProfilePII(row) || ({ ...row } as Record<string, any>);
+  delete decrypted.passphrase;
+  delete decrypted.wallet_pin_hash;
+  delete decrypted.bvn_hash;
+  delete decrypted.nin_hash;
+  return decrypted as T;
+}
 
 export async function handleGetUserDetails(searchParams: URLSearchParams) {
-  const userId = searchParams.get("userId");
-  const userEmail = searchParams.get("email");
+  const userId = searchParams.get("userId")?.trim();
+  const userEmail = searchParams.get("email")?.trim();
   if (!userId && !userEmail) {
     return NextResponse.json({ error: "userId or email is required" }, { status: 400 });
   }
@@ -22,14 +37,19 @@ export async function handleGetUserDetails(searchParams: URLSearchParams) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const user = userRows[0];
+  const user = sanitizeAdminUserRow(userRows[0]);
   const emailLower = (user.email || "").toLowerCase().trim();
 
   // Lazy-load agentSystem only when details are requested
-  const { getAgentNetworkData, checkIsUserAgent } = await import("@/lib/agentSystem");
+  const { getAgentNetworkData, checkIsUserAgent } = await import("../agentSystem");
 
   const [statementRes, networkTree, agentStatus, adsRes, activeAdsRes, newsRes, activeNewsRes, referralsRes] = await Promise.all([
-    dbClient.from("financial_statements").select("*").ilike("user_email", emailLower).order("created_at", { ascending: false }).limit(50),
+    dbClient
+      .from("payments")
+      .select("id, user_email, reference, amount, type, status, description, metadata, created_at")
+      .ilike("user_email", emailLower)
+      .order("created_at", { ascending: false })
+      .limit(50),
     getAgentNetworkData(emailLower),
     checkIsUserAgent(emailLower),
     dbClient.from("adds").select("*").ilike("user_email", emailLower).order("created_at", { ascending: false }).limit(30),
@@ -40,6 +60,14 @@ export async function handleGetUserDetails(searchParams: URLSearchParams) {
   ]);
 
   const special = getSpecialRoleProfile(emailLower, user);
+  const adsList = adsRes.data || [];
+  const activeAdsList = activeAdsRes.data || [];
+  const newsList = newsRes.data || [];
+  const activeNewsList = activeNewsRes.data || [];
+  const totalClicksOnAds = activeAdsList.reduce(
+    (sum: number, ad: any) => sum + (Number(ad.impression_count) || 0) + (Number(ad.mutual_adds_count) || 0),
+    0
+  );
 
   return NextResponse.json({
     user: {
@@ -52,24 +80,40 @@ export async function handleGetUserDetails(searchParams: URLSearchParams) {
       is_career: special.isCareer,
       is_affiliate: special.isAffiliate,
       affiliate_role: special.affiliateRole,
+      reviewAdsCount: adsList.length,
+      activeAdsCount: activeAdsList.length,
+      reviewHighlightsCount: newsList.length,
+      activeHighlightsCount: activeNewsList.length,
+      totalClicksOnAds,
     },
     statement: statementRes.data || [],
     network: networkTree,
     referrals: referralsRes.data || [],
     campaigns: {
-      ads: adsRes.data || [],
-      activeAds: activeAdsRes.data || [],
-      news: newsRes.data || [],
-      activeNews: activeNewsRes.data || [],
+      ads: adsList,
+      activeAds: activeAdsList,
+      news: newsList,
+      activeNews: activeNewsList,
     },
   });
 }
 
+async function getAdminListsVersion(): Promise<string> {
+  if (!isRedisReady()) return "0";
+  try {
+    return (await redisConnection.get("admin:lists:version")) || "0";
+  } catch {
+    return "0";
+  }
+}
+
 export async function handleGetAgentsList(searchParams: URLSearchParams) {
   const search = searchParams.get("search")?.trim() || "";
-  const cacheKey = `admin:agents:list:${search.toLowerCase()}`;
+  const fresh = searchParams.get("fresh") === "true";
+  const ver = await getAdminListsVersion();
+  const cacheKey = `admin:agents:list:v${ver}:${search.toLowerCase()}`;
 
-  if (!search && isRedisReady()) {
+  if (!fresh && !search && isRedisReady()) {
     try {
       const cached = await redisConnection.get(cacheKey);
       if (cached) {
@@ -106,29 +150,45 @@ export async function handleGetAgentsList(searchParams: URLSearchParams) {
   const allCandidates = matchedUsers || [];
   const candidateEmails = allCandidates.map((u: any) => (u.email || "").toLowerCase().trim()).filter(Boolean);
 
-  // 2. Fetch referral aggregations ONLY for matched candidates (avoids unbounded table scan)
+  // 2. Fetch SQL-aggregated referral counts & earnings (avoids 1,000-row PostgREST truncation)
   const followerCountMap = new Map<string, number>();
   const earningsMap = new Map<string, number>();
 
   if (candidateEmails.length > 0) {
-    const { data: refRows } = await supabaseAdmin
-      .from("referrals")
-      .select("referrer_email, total_commission_earned, status")
-      .in("referrer_email", candidateEmails);
-
-    (refRows || []).forEach((row: any) => {
-      const refEmail = (row.referrer_email || "").toLowerCase().trim();
-      if (!refEmail) return;
-      if (row.status !== "opted_out") {
-        followerCountMap.set(refEmail, (followerCountMap.get(refEmail) || 0) + 1);
-      }
-      const earned = Number(row.total_commission_earned) || 0;
-      earningsMap.set(refEmail, (earningsMap.get(refEmail) || 0) + earned);
+    const { data: aggRows, error: aggErr } = await supabaseAdmin.rpc("get_agents_referral_aggregates", {
+      p_emails: candidateEmails,
     });
+
+    if (!aggErr && Array.isArray(aggRows)) {
+      aggRows.forEach((row: any) => {
+        const refEmail = String(row.referrer_email || "").toLowerCase().trim();
+        if (!refEmail) return;
+        followerCountMap.set(refEmail, Number(row.followers_count) || 0);
+        earningsMap.set(refEmail, Number(row.total_earned) || 0);
+      });
+    } else {
+      // Fallback if migration not yet applied
+      const { data: refRows } = await supabaseAdmin
+        .from("referrals")
+        .select("referrer_email, total_commission_earned, status")
+        .in("referrer_email", candidateEmails)
+        .limit(5000);
+
+      (refRows || []).forEach((row: any) => {
+        const refEmail = (row.referrer_email || "").toLowerCase().trim();
+        if (!refEmail) return;
+        if (row.status !== "opted_out") {
+          followerCountMap.set(refEmail, (followerCountMap.get(refEmail) || 0) + 1);
+        }
+        const earned = Number(row.total_commission_earned) || 0;
+        earningsMap.set(refEmail, (earningsMap.get(refEmail) || 0) + earned);
+      });
+    }
   }
 
-  // 3. Map candidates directly without N+1 queries
-  const agents = allCandidates.map((u: any) => {
+  // 3. Map candidates directly without N+1 queries (decrypt PII fields)
+  const agents = allCandidates.map((rawUser: any) => {
+    const u = sanitizeAdminUserRow(rawUser);
     const emailLower = (u.email || "").toLowerCase().trim();
     const isBanned = Boolean(u.agent_banned_until && new Date(u.agent_banned_until).getTime() > Date.now());
     const isAgent = isBanned ? false : Boolean(u.is_agent);
@@ -171,15 +231,15 @@ export async function handleGetAgentsList(searchParams: URLSearchParams) {
 }
 
 export async function handleGetFollowersList(searchParams: URLSearchParams) {
-  const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
-  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "50", 10), 1), 100);
+  const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+  const limit = Math.min(Math.max(parseSafeInt(searchParams.get("limit"), 50), 1), 100);
   const search = searchParams.get("search")?.trim() || "";
   const agentEmail = searchParams.get("agentEmail")?.trim().toLowerCase() || "";
 
   const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
   let query = supabaseAdmin
     .from("referrals")
-    .select("id, referrer_email, referee_email, commission_rate, total_commission_earned, status, opt_out_status, created_at, interactions_count", { count: "planned" });
+    .select("id, referrer_email, referee_email, commission_rate, total_commission_earned, status, opt_out_status, created_at, interactions_count", { count: "exact" });
 
   if (agentEmail) {
     query = query.ilike("referrer_email", agentEmail);
@@ -197,14 +257,18 @@ export async function handleGetFollowersList(searchParams: URLSearchParams) {
   }
 
   const refRows = rows || [];
-  const emailsToLookup = Array.from(
-    new Set(
-      [
-        ...refRows.map((r: any) => (r.referee_email || "").toLowerCase().trim()),
-        ...refRows.map((r: any) => (r.referrer_email || "").toLowerCase().trim()),
-      ].filter(Boolean)
-    )
-  );
+  const rawEmailSet = new Set<string>();
+  refRows.forEach((r: any) => {
+    if (r.referee_email) {
+      rawEmailSet.add(String(r.referee_email).trim());
+      rawEmailSet.add(String(r.referee_email).toLowerCase().trim());
+    }
+    if (r.referrer_email) {
+      rawEmailSet.add(String(r.referrer_email).trim());
+      rawEmailSet.add(String(r.referrer_email).toLowerCase().trim());
+    }
+  });
+  const emailsToLookup = Array.from(rawEmailSet).filter(Boolean);
 
   const profileMap = new Map<string, any>();
   if (emailsToLookup.length > 0) {
@@ -214,7 +278,13 @@ export async function handleGetFollowersList(searchParams: URLSearchParams) {
       .in("email", emailsToLookup);
 
     (profiles || []).forEach((p: any) => {
-      profileMap.set((p.email || "").toLowerCase().trim(), p);
+      const decFirst = decryptSensitiveField(p.firstName) || "";
+      const decLast = decryptSensitiveField(p.lastName) || "";
+      profileMap.set((p.email || "").toLowerCase().trim(), {
+        ...p,
+        firstName: decFirst,
+        lastName: decLast,
+      });
     });
   }
 
@@ -253,12 +323,14 @@ export async function handleGetFollowersList(searchParams: URLSearchParams) {
 }
 
 export async function handleGetAffiliatesList(searchParams: URLSearchParams) {
-  const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
-  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "50", 10), 1), 100);
+  const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+  const limit = Math.min(Math.max(parseSafeInt(searchParams.get("limit"), 50), 1), 100);
   const search = searchParams.get("search")?.trim().toLowerCase() || "";
-  const cacheKey = `admin:affiliates:list:${page}:${limit}:${search}`;
+  const fresh = searchParams.get("fresh") === "true";
+  const ver = await getAdminListsVersion();
+  const cacheKey = `admin:affiliates:list:v${ver}:${page}:${limit}:${search}`;
 
-  if (isRedisReady()) {
+  if (!fresh && isRedisReady()) {
     try {
       const cached = await redisConnection.get(cacheKey);
       if (cached) {
@@ -276,7 +348,7 @@ export async function handleGetAffiliatesList(searchParams: URLSearchParams) {
   const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
   let affQuery = dbClient
     .from("users")
-    .select('id, username, email, "firstName", "lastName", "profileImage", balance, is_career, is_affiliate, affiliate_role, affiliate_earned_total, referral_code, monetized, created_at, phone, country', { count: "planned" })
+    .select('id, username, email, "firstName", "lastName", "profileImage", balance, is_career, is_affiliate, affiliate_role, affiliate_earned_total, referral_code, monetized, created_at, phone, country', { count: "exact" })
     .eq("is_affiliate", true);
 
   if (cleanSearch) {
@@ -292,7 +364,7 @@ export async function handleGetAffiliatesList(searchParams: URLSearchParams) {
   }
 
   const responsePayload = {
-    affiliates: affUsers || [],
+    affiliates: (affUsers || []).map((u: any) => sanitizeAdminUserRow(u)),
     count: affCount || 0,
     page,
     limit,
@@ -326,9 +398,9 @@ export async function handleGetStats() {
     return NextResponse.json(statsJson);
   }
 
-  // Fallback: fast count queries
+  // Fallback: fast estimated count query (avoid full-table sequential scan at 500M+ rows)
   console.warn("⚠️ get_admin_overview_stats RPC fallback triggered in users route:", rpcError?.message);
-  const { count: totalUsersCnt } = await supabaseAdmin.from("users").select("*", { count: "exact", head: true });
+  const { count: totalUsersCnt } = await supabaseAdmin.from("users").select("id", { count: "estimated", head: true });
   const fallbackStats = {
     totalUsers: totalUsersCnt || 0,
     totalBalance: 0,
@@ -343,16 +415,17 @@ export async function handleGetStats() {
 }
 
 export async function handleGetUsersList(searchParams: URLSearchParams) {
-  const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
-  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10), 1), 100);
+  const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+  const limit = Math.min(Math.max(parseSafeInt(searchParams.get("limit"), 10), 1), 100);
   const search = searchParams.get("search")?.trim() || "";
   const filter = searchParams.get("filter")?.trim() || "";
   const fresh = searchParams.get("fresh") === "true";
 
-  const cacheKey = `admin:users:list:${page}:${limit}:${filter}:${search.toLowerCase()}`;
+  const ver = await getAdminListsVersion();
+  const cacheKey = `admin:users:list:v${ver}:${page}:${limit}:${filter}:${search.toLowerCase()}`;
 
   // 1. Try Redis cache first (30-second TTL) for instant response (<2ms)
-  if (!fresh) {
+  if (!fresh && isRedisReady()) {
     try {
       const cached = await redisConnection.get(cacheKey);
       if (cached) {
@@ -368,10 +441,10 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
     }
   }
 
-  const dbClient = supabaseReadOnly || supabaseAdmin;
+  const dbClient = fresh ? supabaseAdmin : (supabaseReadOnly || supabaseAdmin);
   const selectedColumns = 'id, username, email, "firstName", "lastName", "profileImage", business_name, phone, state, country, location, bio, industry, interest, lifestyle, behavior, personality, gender, balance, withdrawal, monetized, monetization_type, monetized_until, monetized_at, monetization_clicks, referral_code, referred_by, suspended_until, ad_account_status, ad_ban_until, ad_ban_reason, mutual_count, created_at, last_active_at, atw_tier, employment, is_career, is_affiliate, affiliate_role, affiliate_earned_total, is_agent, agent_registered_at, agent_banned_until, agent_ban_reason';
   const cleanSearch = search.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
-  let query = dbClient.from("users").select(selectedColumns, { count: "planned" });
+  let query = dbClient.from("users").select(selectedColumns, { count: "exact" });
 
   if (filter === "affiliates") {
     query = query.eq("is_affiliate", true);
@@ -382,7 +455,23 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
   }
 
   if (cleanSearch) {
-    query = query.or(`email.ilike.%${cleanSearch}%,username.ilike.%${cleanSearch}%,firstName.ilike.%${cleanSearch}%,lastName.ilike.%${cleanSearch}%,business_name.ilike.%${cleanSearch}%`);
+    const searchClauses = [
+      `email.ilike.%${cleanSearch}%`,
+      `username.ilike.%${cleanSearch}%`,
+      `firstName.ilike.%${cleanSearch}%`,
+      `lastName.ilike.%${cleanSearch}%`,
+      `business_name.ilike.%${cleanSearch}%`,
+    ];
+    // Support exact blind-indexed phone lookups for encrypted phone numbers
+    const digitsOnly = search.replace(/[\s\-()]/g, "");
+    if (/^\+?\d{7,16}$/.test(digitsOnly)) {
+      const phoneHash = blindHashPII(digitsOnly);
+      if (phoneHash) {
+        searchClauses.push(`phone_hash.eq.${phoneHash}`);
+      }
+      searchClauses.push(`phone.ilike.%${cleanSearch}%`);
+    }
+    query = query.or(searchClauses.join(","));
   }
 
   const { data: users, count, error } = await query
@@ -394,7 +483,7 @@ export async function handleGetUsersList(searchParams: URLSearchParams) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const resolvedUsers = users || [];
+  const resolvedUsers = (users || []).map((u: any) => sanitizeAdminUserRow(u));
 
   // Server-Side Enrichment for the current page (1 SQL aggregation RPC + 0 N+1 queries)
   let enrichedUsers = resolvedUsers;

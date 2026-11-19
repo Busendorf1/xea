@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminUser } from "@/lib/authHelper";
 import supabaseAdmin, { supabaseReadOnly } from "@/lib/utils/dbAdmin";
 import redisConnection, { isRedisReady } from "@/lib/redis";
+import { decryptSensitiveField } from "@/lib/security/piiCrypto";
 import {
   ADMIN_CAMPAIGNS_CACHE_PREFIX,
   CACHE_TTL_SECONDS,
@@ -12,6 +13,11 @@ import { handleAdminAdCampaignAction } from "@/lib/admin/adminCampaignAdActions"
 import { handleAdminHighlightCampaignAction } from "@/lib/admin/adminCampaignHighlightActions";
 
 export const dynamic = "force-dynamic";
+
+function parseSafeInt(raw: string | null, fallback: number): number {
+  const n = parseInt(raw || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 const AD_ACTIONS = new Set([
   "approve_ad",
@@ -46,8 +52,8 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const tab = searchParams.get("tab") || "active-ads";
-    const page = Math.max(0, parseInt(searchParams.get("page") || "0", 10));
-    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10), 1), 50);
+    const page = Math.max(0, parseSafeInt(searchParams.get("page"), 0));
+    const limit = Math.min(Math.max(parseSafeInt(searchParams.get("limit"), 10), 1), 50);
     const rawSearch = (searchParams.get("search") || "").trim();
     const search = sanitizePostgrestSearch(rawSearch);
     const fresh = searchParams.get("fresh") === "true";
@@ -122,18 +128,30 @@ export async function GET(req: NextRequest) {
     }
 
     const rawItems = data || [];
-    const emails = Array.from(new Set(rawItems.map((item: any) => item.user_email).filter(Boolean)));
+    const emailCandidates = new Set<string>();
+    rawItems.forEach((item: any) => {
+      if (item.user_email) {
+        const trimmed = String(item.user_email).trim();
+        emailCandidates.add(trimmed);
+        emailCandidates.add(trimmed.toLowerCase());
+      }
+    });
+    const emails = Array.from(emailCandidates).filter(Boolean);
     const profilesMap: Record<string, any> = {};
 
     if (emails.length > 0) {
       const { data: users } = await supabaseReadOnly
         .from("users")
-        .select("email, username, business_name, firstName, lastName")
+        .select('email, username, business_name, "firstName", "lastName"')
         .in("email", emails);
 
       (users || []).forEach((u: any) => {
         if (u.email) {
-          profilesMap[u.email.toLowerCase()] = u;
+          profilesMap[u.email.toLowerCase().trim()] = {
+            ...u,
+            firstName: decryptSensitiveField(u.firstName) || "",
+            lastName: decryptSensitiveField(u.lastName) || "",
+          };
         }
       });
     }

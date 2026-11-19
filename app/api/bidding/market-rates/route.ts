@@ -21,7 +21,8 @@ export async function GET(_req: NextRequest) {
         return NextResponse.json(JSON.parse(cached), {
           status: 200,
           headers: {
-            "Cache-Control": "public, s-maxage=5, stale-while-revalidate=10",
+            "Cache-Control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
+            "CDN-Cache-Control": "public, s-maxage=15, stale-while-revalidate=60",
           },
         });
       }
@@ -83,7 +84,8 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json(payload, {
       status: 200,
       headers: {
-        "Cache-Control": "public, s-maxage=5, stale-while-revalidate=10",
+        "Cache-Control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
+        "CDN-Cache-Control": "public, s-maxage=15, stale-while-revalidate=60",
       },
     });
   } catch (error: any) {

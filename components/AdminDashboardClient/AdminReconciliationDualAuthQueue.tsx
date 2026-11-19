@@ -191,7 +191,7 @@ export function AdminReconciliationDualAuthQueue({
           <div className={styles.cardsGrid}>
             {pendingRequests.map((req: any) => {
               const isPending = req.status === "PENDING";
-              const isApproved = req.status === "APPROVED";
+              const isApproved = req.status === "APPROVED" || req.status === "EXECUTED";
 
               return (
                 <div

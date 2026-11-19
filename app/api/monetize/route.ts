@@ -11,8 +11,13 @@ import {
 import { checkRateLimit } from "@/lib/edgeRateLimit";
 import { isExemptFromBarriersAndInactivity } from "@/lib/adminHelper";
 import { flushPendingAffiliateYield } from "@/lib/affiliateEngine";
-import { getEarnTokenSecret } from "@/lib/targetingEngine";
+import { getEarnTokenSecret, verifyHmacSignature } from "@/lib/targetingEngine";
 import { env } from "@/lib/env";
+import {
+  checkAndNotifyClickAndAtwMilestones,
+  clearMonetizationUnlockDedup,
+  parseNumericAtwLevel,
+} from "@/lib/notifications/milestoneNotifications";
 
 export const dynamic = "force-dynamic";
 
@@ -77,9 +82,9 @@ export async function GET(req: NextRequest) {
       supabaseReadOnly
         .from("users")
         .select(
-          "id, balance, monetized, monetization_clicks, referral_code, atw_tier, attention_worth_score, last_active_at, created_at, is_affiliate, is_career, has_cancelled_monetization"
+          "id, balance, monetized, monetized_at, monetization_clicks, referral_code, atw_tier, attention_worth_score, last_active_at, created_at, is_affiliate, is_career, has_cancelled_monetization"
         )
-        .eq("email", emailLower)
+        .ilike("email", emailLower)
         .maybeSingle(),
       isRedisReady()
         ? redisConnection.get(`user:live_clicks:v2:${emailLower}`).catch(() => null)
@@ -93,7 +98,7 @@ export async function GET(req: NextRequest) {
       const { data: fbUser } = await supabaseReadOnly
         .from("users")
         .select("id, balance, monetized, monetization_clicks, referral_code, atw_tier, created_at, has_cancelled_monetization")
-        .eq("email", emailLower)
+        .ilike("email", emailLower)
         .maybeSingle();
 
       const rClicks = Number(fbUser?.monetization_clicks ?? 0);
@@ -160,6 +165,7 @@ export async function GET(req: NextRequest) {
         if (isRedisReady()) {
           await redisConnection.del(`user:live_clicks:v2:${emailLower}`).catch(() => {});
         }
+        await clearMonetizationUnlockDedup?.(emailLower).catch(() => {});
         effectiveMonetized = false;
         effectiveClicks = 0;
         effectiveScore = DEFAULT_ATTENTION_WORTH_SCORE;
@@ -173,37 +179,67 @@ export async function GET(req: NextRequest) {
       );
       const effectiveAtwTier = tierDetails.tierCode;
 
-      if (effectiveClicks > dbClicks) {
-        supabaseAdmin
-          .from("users")
-          .update({
-            monetization_clicks: effectiveClicks,
-            atw_tier: effectiveAtwTier,
-            ...(effectiveMonetized && uData.monetized !== "true" && uData.monetized !== true
-              ? { monetized: "true" }
-              : {}),
-          })
-          .ilike("email", emailLower)
-          .then(() => {});
+      const dbIsMonetized =
+        uData.monetized === "true" ||
+        uData.monetized === "yes" ||
+        uData.monetized === "1" ||
+        uData.monetized === "t" ||
+        uData.monetized === true;
+
+      const needsDbSync =
+        effectiveClicks > dbClicks ||
+        effectiveAtwTier !== uData.atw_tier ||
+        effectiveMonetized !== dbIsMonetized;
+
+      if (needsDbSync) {
+        const syncPayload: Record<string, unknown> = {
+          atw_tier: effectiveAtwTier,
+          monetized: effectiveMonetized ? "true" : "false",
+        };
+        if (effectiveClicks > dbClicks) {
+          syncPayload.monetization_clicks = effectiveClicks;
+        }
+        if (effectiveMonetized && !dbIsMonetized) {
+          syncPayload.monetized_at = new Date().toISOString();
+        }
+        const updateQuery = uData.id
+          ? supabaseAdmin.from("users").update(syncPayload).eq("id", uData.id)
+          : supabaseAdmin.from("users").update(syncPayload).ilike("email", emailLower);
+        await Promise.resolve(updateQuery).catch(() => {});
+      }
+
+      if (!isExempt && !hasCancelled && effectiveMonetized && effectiveClicks >= 500) {
+        const monetizedAtMs = uData.monetized_at ? new Date(uData.monetized_at).getTime() : 0;
+        const unlockedRecently =
+          monetizedAtMs > 0 && Date.now() - monetizedAtMs <= 7 * 86400_000;
+        const prevLevel = parseNumericAtwLevel?.(uData.atw_tier) ?? 1;
+        const shouldCheckMilestones =
+          !dbIsMonetized ||
+          dbClicks < 500 ||
+          tierDetails.level > prevLevel ||
+          unlockedRecently;
+
+        if (shouldCheckMilestones && typeof checkAndNotifyClickAndAtwMilestones === "function") {
+          await checkAndNotifyClickAndAtwMilestones({
+            email: emailLower,
+            prevClicks: dbClicks,
+            prevMonetized: dbIsMonetized,
+            prevAtwTier: uData.atw_tier,
+            nextClicks: effectiveClicks,
+            nextMonetized: effectiveMonetized,
+            nextAtwTier: effectiveAtwTier,
+            attentionWorthScore: effectiveScore,
+            isExempt,
+            hasCancelled,
+            checkRecentUnlock: unlockedRecently,
+          }).catch(() => {});
+        }
       }
 
       if (isRedisReady() && effectiveClicks > liveClicksDelta) {
         redisConnection
           .set(`user:live_clicks:v2:${emailLower}`, String(effectiveClicks), "EX", 86400 * 30)
           .catch(() => {});
-      }
-
-      const dbIsMonetized =
-        uData.monetized === "true" || uData.monetized === "yes" || uData.monetized === true;
-      if (effectiveAtwTier !== uData.atw_tier || effectiveMonetized !== dbIsMonetized) {
-        supabaseAdmin
-          .from("users")
-          .update({
-            atw_tier: effectiveAtwTier,
-            monetized: effectiveMonetized ? "true" : "false",
-          })
-          .eq("id", uData.id)
-          .then(() => {});
       }
 
       payload = {
@@ -268,7 +304,7 @@ export async function POST(req: NextRequest) {
       const { data: uRow } = await supabaseReadOnly
         .from("users")
         .select("monetized, monetization_clicks, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career")
-        .eq("email", emailLower)
+        .ilike("email", emailLower)
         .maybeSingle();
       const currentClicks = Number(uRow?.monetization_clicks || 0);
       const hasCancelled = Boolean(uRow?.has_cancelled_monetization);
@@ -286,7 +322,7 @@ export async function POST(req: NextRequest) {
         clicksRemaining: tier.clicksRemaining,
         targetClicks: tier.currentMilestoneTarget,
         atwTier: tier.tierCode,
-        isMonetized: !hasCancelled && !!(uRow?.monetized === "true" || uRow?.monetized === true || currentClicks >= 500 || isExempt),
+        isMonetized: !hasCancelled && !!(uRow?.monetized === "true" || uRow?.monetized === "yes" || uRow?.monetized === true || currentClicks >= 500 || isExempt),
       });
     }
 
@@ -309,28 +345,30 @@ export async function POST(req: NextRequest) {
     const candidateKeys = Array.from(new Set([secretKey, fallbackAuth0Key].filter(Boolean)));
     const rawEmail = email.trim();
     const payloads = [`${adId}:${emailLower}:${servedAt}`, `${adId}:${rawEmail}:${servedAt}`];
-    const isValidToken = candidateKeys.some((k) =>
-      payloads.some((p) => crypto.createHmac("sha256", k).update(p).digest("hex") === token)
-    );
+    const isValidToken = verifyHmacSignature(payloads, String(token), candidateKeys);
     if (!isValidToken) {
       return NextResponse.json({ error: "Invalid verification token." }, { status: 403 });
     }
 
     const parsedServedAt = parseInt(String(servedAt), 10);
     const viewDuration = Date.now() - parsedServedAt;
-    if (isNaN(parsedServedAt) || viewDuration < 10000 || viewDuration > 1800000) {
+    if (isNaN(parsedServedAt) || viewDuration < 14000 || viewDuration > 1800000) {
       return NextResponse.json(
-        { error: "Minimum dwell time (10s) not met or token expired." },
+        { error: "Minimum attention dwell time (16s) not met or token expired." },
         { status: 400 }
       );
     }
 
-    // Anti-replay check in Redis
+    // Unified Anti-replay check in Redis shared across /earn, /monetize, /seen, /click (C-16)
     if (isRedisReady()) {
       const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 32);
-      const tokenBurnKey = `used:monetize_token:${tokenHash}`;
-      const tokenFresh = await redisConnection.set(tokenBurnKey, "1", "EX", 1800, "NX");
-      if (!tokenFresh) {
+      const tokenBurnKey = `used:feed_token:${tokenHash}`;
+      const progressBurnKey = `used:feed_progress:${tokenHash}`;
+      const [tokenFresh, progressFresh] = await Promise.all([
+        redisConnection.set(tokenBurnKey, "1", "EX", 1800, "NX"),
+        redisConnection.set(progressBurnKey, "1", "EX", 1800, "NX"),
+      ]);
+      if (!tokenFresh || !progressFresh) {
         return NextResponse.json(
           { error: "Verification token has already been used.", code: "ALREADY_RECORDED" },
           { status: 409 }
@@ -353,8 +391,8 @@ export async function POST(req: NextRequest) {
         .maybeSingle(),
       supabaseReadOnly
         .from("users")
-        .select("has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career")
-        .eq("email", emailLower)
+        .select("id, monetized, monetization_clicks, has_cancelled_monetization, atw_tier, attention_worth_score, is_affiliate, is_career")
+        .ilike("email", emailLower)
         .maybeSingle(),
     ]);
 
@@ -399,15 +437,59 @@ export async function POST(req: NextRequest) {
     }
 
     const row = data?.[0] || { new_click_count: 0, is_now_monetized: false };
+    const prevClicks = Number(uBefore?.monetization_clicks || 0);
+    const prevMonetized =
+      uBefore?.monetized === true ||
+      uBefore?.monetized === "true" ||
+      uBefore?.monetized === "yes" ||
+      uBefore?.monetized === "1" ||
+      uBefore?.monetized === "t";
     const nextClicks = Number(row.new_click_count || 0);
     const hasCancelled = Boolean(uBefore?.has_cancelled_monetization);
     const isExempt = isExemptFromBarriersAndInactivity(emailLower, uBefore as any);
+    const nextMonetized =
+      !hasCancelled && (Boolean(row.is_now_monetized) || nextClicks >= 500 || isExempt);
     const tierDetails = computeAtwTierDetails(
       nextClicks,
       uBefore?.atw_tier,
       isExempt,
       uBefore?.attention_worth_score
     );
+
+    if (tierDetails.tierCode !== uBefore?.atw_tier || (nextMonetized && !prevMonetized)) {
+      const syncPayload: Record<string, unknown> = {
+        atw_tier: tierDetails.tierCode,
+        ...(nextMonetized ? { monetized: "true" } : {}),
+        ...(nextMonetized && !prevMonetized ? { monetized_at: new Date().toISOString() } : {}),
+      };
+      const upd = uBefore?.id
+        ? supabaseAdmin.from("users").update(syncPayload).eq("id", uBefore.id)
+        : supabaseAdmin.from("users").update(syncPayload).ilike("email", emailLower);
+      await Promise.resolve(upd).catch(() => {});
+    }
+
+    let milestoneNotified = false;
+    let monetizationUnlocked = false;
+    let atwUpgraded = false;
+    if (typeof checkAndNotifyClickAndAtwMilestones === "function") {
+      const milestoneRes = await checkAndNotifyClickAndAtwMilestones({
+        email: emailLower,
+        prevClicks,
+        prevMonetized,
+        prevAtwTier: uBefore?.atw_tier,
+        nextClicks,
+        nextMonetized,
+        nextAtwTier: tierDetails.tierCode,
+        attentionWorthScore: uBefore?.attention_worth_score,
+        isExempt,
+        hasCancelled,
+      }).catch(() => null);
+      if (milestoneRes) {
+        monetizationUnlocked = Boolean(milestoneRes.monetizationNotified);
+        atwUpgraded = Boolean(milestoneRes.atwNotified);
+        milestoneNotified = monetizationUnlocked || atwUpgraded;
+      }
+    }
 
     invalidateCachedProfile(emailLower).catch(() => {});
     if (isRedisReady()) {
@@ -425,7 +507,10 @@ export async function POST(req: NextRequest) {
       targetClicks: tierDetails.currentMilestoneTarget,
       atwTier: tierDetails.tierCode,
       hasCancelled,
-      isMonetized: !hasCancelled && (Boolean(row.is_now_monetized) || isExempt),
+      isMonetized: nextMonetized,
+      milestoneNotified,
+      monetizationUnlocked,
+      atwUpgraded,
     });
   } catch (err: any) {
     console.error("❌ Error in POST /api/monetize:", err);

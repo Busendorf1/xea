@@ -61,7 +61,7 @@ const redisOptions: RedisOptions = {
 
 if (useTls) {
   redisOptions.tls = {
-    rejectUnauthorized: false,
+    rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED === "false" ? false : true,
   };
 }
 
@@ -236,16 +236,20 @@ function createSafeRedisProxy(client: Redis): Redis {
             } catch {}
           }
 
-          // If Redis is not ready or in quota cooldown, fail fast and return safe fallbacks instead of throwing
-          if (!isReady) {
-            if (method === "hgetall") {
-              return {};
+          // Helper for safe offline/error return values — CRITICAL: SET NX MUST fail closed (null), never "OK"!
+          const isSetNxLock =
+            method === "set" &&
+            args.some((a) => typeof a === "string" && a.toUpperCase() === "NX");
+
+          const offlineFallback = () => {
+            if (method === "hgetall") return {};
+            if (method === "mget") {
+              const keys = Array.isArray(args[0]) ? args[0] : args;
+              return keys.map(() => null);
             }
-            // Common read methods
-            if (method === "get" || method === "hget" || method === "mget" || method === "lrange" || method === "smembers") {
+            if (method === "get" || method === "hget" || method === "lrange" || method === "smembers") {
               return null;
             }
-            // Common boolean, counter, or count methods
             if (
               method === "exists" ||
               method === "del" ||
@@ -263,14 +267,19 @@ function createSafeRedisProxy(client: Redis): Redis {
             ) {
               return 0;
             }
-            // Mutation methods
             if (method === "set") {
-              return "OK";
+              // Fail closed for NX distributed locks / idempotency gates so Redis outage never grants duplicate locks
+              return isSetNxLock ? null : "OK";
             }
             if (method === "hset" || method === "setex" || method === "expire") {
               return null;
             }
             return null;
+          };
+
+          // If Redis is not ready or in quota cooldown, fail fast and return safe fallbacks instead of throwing
+          if (!isReady) {
+            return offlineFallback();
           }
 
           // Never allow blocking O(N) KEYS command in production; transparently route to cursor-based SCAN
@@ -286,26 +295,7 @@ function createSafeRedisProxy(client: Redis): Redis {
             const errMsg = String(err?.message || "");
             if (isQuotaError(errMsg)) {
               markQuotaExceeded(errMsg);
-              if (method === "hgetall") return {};
-              if (
-                method === "exists" ||
-                method === "del" ||
-                method === "hdel" ||
-                method === "publish" ||
-                method === "srem" ||
-                method === "scard" ||
-                method === "hlen" ||
-                method === "sismember" ||
-                method === "incr" ||
-                method === "incrby" ||
-                method === "hincrby" ||
-                method === "decr" ||
-                method === "decrby"
-              ) {
-                return 0;
-              }
-              if (method === "set") return "OK";
-              return null;
+              return offlineFallback();
             }
             const isConnectionError =
               errMsg.includes("Connection is closed") ||
@@ -324,30 +314,7 @@ function createSafeRedisProxy(client: Redis): Redis {
                   target.connect().catch(() => {});
                 } catch {}
               }
-              if (method === "hgetall") {
-                return {};
-              }
-              if (
-                method === "exists" ||
-                method === "del" ||
-                method === "hdel" ||
-                method === "publish" ||
-                method === "srem" ||
-                method === "scard" ||
-                method === "hlen" ||
-                method === "sismember" ||
-                method === "incr" ||
-                method === "incrby" ||
-                method === "hincrby" ||
-                method === "decr" ||
-                method === "decrby"
-              ) {
-                return 0;
-              }
-              if (method === "set") {
-                return "OK";
-              }
-              return null;
+              return offlineFallback();
             }
             throw err;
           }
