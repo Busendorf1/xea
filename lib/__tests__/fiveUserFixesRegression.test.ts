@@ -438,4 +438,17 @@ describe("Five User Fixes Regression Suite", () => {
     expect(inviteLinkSource).not.toContain("https://xea.app");
     expect(inviteLinkSource).toContain("buildInviteUrl");
   });
+
+  it("PostgREST .or() filter hardening strips wildcards/metacharacters from feed pool country filters", () => {
+    const webPoolLoader = fs.readFileSync(
+      path.resolve(process.cwd(), "lib/feed/poolLoader.ts"),
+      "utf8"
+    );
+    const edgeFeed = fs.readFileSync(
+      path.resolve(process.cwd(), "supabase/functions/campaigns-action/feed.ts"),
+      "utf8"
+    );
+    expect(webPoolLoader).toContain('replace(/[,()*%\\\\\'"]/g, "")');
+    expect(edgeFeed).toContain('replace(/[,()*%\\\\\'"]/g, "")');
+  });
 });

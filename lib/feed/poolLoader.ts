@@ -65,10 +65,12 @@ export async function loadSharedActiveAdsForCountry(viewerCountryRaw: string): P
         }
 
         if (poolKey !== "__global__") {
-          const safeCountry = cleanCountry.replace(/[,()]/g, "");
-          q = q.or(
-            `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`
-          );
+          const safeCountry = cleanCountry.replace(/[,()*%\\'"]/g, "").trim();
+          if (safeCountry) {
+            q = q.or(
+              `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`
+            );
+          }
         }
 
         const sliceLimit = sliceMode === "rollover" ? 60 : sliceMode === "standard" ? 65 : 250;

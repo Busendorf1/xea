@@ -163,10 +163,12 @@ export async function handleGetFeed(
     }
 
     if (hasViewerCountry) {
-      const safeCountry = viewerCountry.replace(/[,()]/g, "");
-      q = q.or(
-        `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`,
-      );
+      const safeCountry = viewerCountry.replace(/[,()*%\\'"]/g, "").trim();
+      if (safeCountry) {
+        q = q.or(
+          `targeting_all.eq.true,is_admin_post.eq.true,country.is.null,country.eq.,country.ilike.%${safeCountry}%,country.ilike.%all%`,
+        );
+      }
     }
 
     const sliceLimit = sliceMode === "rollover" ? 60 : sliceMode === "standard" ? 65 : 250;
