@@ -121,7 +121,7 @@ export async function flushPendingAffiliateYield(targetEmail?: string | null): P
     // 1. Atomically drain Redis-buffered affiliate yields into Postgres (zero double-credit race)
     if (isRedisReady()) {
       try {
-        let entries: Array<[string, number]> = [];
+        const entries: Array<[string, number]> = [];
         if (typeof (redisConnection as any).eval === "function") {
           const rawPairs = (await (redisConnection as any).eval(
             ATOMIC_DRAIN_AFFILIATE_BUFFER_LUA,
